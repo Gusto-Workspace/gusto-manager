@@ -9,6 +9,7 @@ export default function TakeAwayHeaderComponent({
   actions,
   showBack = false,
   onBack,
+  hideDivider = false,
 }) {
   const router = useRouter();
   const handleBack = onBack || (() => router.push("/dashboard/take-away"));
@@ -18,7 +19,7 @@ export default function TakeAwayHeaderComponent({
       <button
         type="button"
         onClick={() => router.push("/dashboard/take-away/catalog")}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition canHover:hover:bg-darkBlue/5"
         aria-label="Catalogue"
         title="Catalogue"
       >
@@ -27,7 +28,7 @@ export default function TakeAwayHeaderComponent({
       <button
         type="button"
         onClick={() => router.push("/dashboard/take-away/parameters")}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition canHover:hover:bg-darkBlue/5"
         aria-label="Paramètres"
         title="Paramètres"
       >
@@ -38,7 +39,7 @@ export default function TakeAwayHeaderComponent({
 
   return (
     <>
-      <hr className="opacity-20" />
+      {!hideDivider ? <hr className="opacity-20" /> : null}
       <CatalogHeaderDashboardComponent
         icon={
           <TakeAwaySvg
@@ -53,7 +54,9 @@ export default function TakeAwayHeaderComponent({
         onBack={showBack ? handleBack : undefined}
         backLabel="Retour"
         onTitleClick={() => router.push("/dashboard/take-away")}
-        actions={actions !== undefined ? actions : showBack ? null : defaultActions}
+        actions={
+          actions !== undefined ? actions : showBack ? null : defaultActions
+        }
       />
     </>
   );
@@ -64,7 +67,7 @@ export function AddOrderAction({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue text-white shadow-sm transition canHover:hover:bg-blue/90 active:scale-[0.98]"
       aria-label="Créer une commande"
       title="Créer une commande"
     >

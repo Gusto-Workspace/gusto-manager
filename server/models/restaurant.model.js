@@ -324,6 +324,7 @@ const takeAwaySettingsSchema = new mongoose.Schema(
     defaultSlotIntervalMinutes: { type: Number, min: 5, default: 15 },
     defaultSlotMaxOrders: { type: Number, min: 1, default: 6 },
     minimumPickupOrder: { type: Number, min: 0, default: 0 },
+    blockedDates: { type: [String], default: [] },
     completedOrderAutoDeleteEnabled: { type: Boolean, default: false },
     completedOrderAutoDeleteMinutes: { type: Number, min: 1, default: 259200 },
     completedOrderAutoDeleteDays: { type: Number, min: 0, default: 0 },

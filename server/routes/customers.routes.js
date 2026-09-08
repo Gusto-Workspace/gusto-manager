@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const authenticateToken = require("../middleware/authentificate-token");
 const {
   authorizeRestaurantAccess,
+  userCanAccessRestaurant,
 } = require("../middleware/authorize-restaurant-access");
 
 // MODELS
@@ -19,9 +20,39 @@ router.use(
   authenticateToken,
   authorizeRestaurantAccess({
     paramName: "id",
-    requiredOption: "customers",
+    requiredOptionsAny: ["customers", "take_away"],
   }),
 );
+
+async function getCustomerAccessSource(req) {
+  if (req.user?.role === "owner") return "all";
+  const hasFullCustomersAccess = await userCanAccessRestaurant(
+    req.user,
+    req.authorizedRestaurant,
+    { requiredOption: "customers" },
+  );
+  return hasFullCustomersAccess ? "all" : "take_away";
+}
+
+router.use("/restaurants/:id/customers/:customerId", async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.customerId))) {
+      return next();
+    }
+    if ((await getCustomerAccessSource(req)) !== "take_away") return next();
+    const customer = await CustomerModel.findOne({
+      _id: req.params.customerId,
+      restaurant_id: req.params.id,
+      "stats.takeAwayOrdersTotal": { $gt: 0 },
+    })
+      .select("_id")
+      .lean();
+    if (!customer) return res.status(403).json({ message: "Forbidden" });
+    return next();
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 /* ---------------------------------------------------------
    Helpers
@@ -216,7 +247,10 @@ router.get(
       const qRaw = String(req.query.query || "");
       const q = normalize(qRaw);
       const tag = String(req.query.tag || "all");
-      const source = String(req.query.source || "all"); // all | reservations | gift_cards
+      const accessSource = await getCustomerAccessSource(req);
+      const requestedSource = String(req.query.source || "all");
+      const source =
+        accessSource === "take_away" ? "take_away" : requestedSource;
 
       const page = Math.max(1, toInt(req.query.page, 1));
       const limit = Math.min(50, Math.max(5, toInt(req.query.limit, 12)));
@@ -238,6 +272,8 @@ router.get(
         };
       } else if (source === "gift_cards") {
         filter["stats.giftCardsBought"] = { $gt: 0 };
+      } else if (source === "take_away") {
+        filter["stats.takeAwayOrdersTotal"] = { $gt: 0 };
       }
 
       // search filter (safer + more index-friendly on emailNorm/phoneNorm)

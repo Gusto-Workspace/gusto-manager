@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Check, Plus, Trash2 } from "lucide-react";
 
 import { FormField } from "./form.take-away.component";
@@ -11,26 +12,35 @@ import {
   todayKey,
 } from "./take-away.utils";
 
-const initialManualOrder = {
-  customerFirstName: "",
-  customerLastName: "",
-  customerEmail: "",
-  customerPhone: "",
-  fulfillmentMode: "pickup",
-  date: todayKey(),
-  time: "12:00",
-  deliveryZoneId: "",
-  items: [
-    { localId: "line-1", catalogItemId: "", selectedOptionId: "", quantity: 1 },
-  ],
-  deliveryAddress: {
-    line1: "",
-    line2: "",
-    zipCode: "",
-    city: "",
-    instructions: "",
-  },
-};
+function createInitialManualOrder(initialDate = "") {
+  return {
+    customerFirstName: "",
+    customerLastName: "",
+    customerEmail: "",
+    customerPhone: "",
+    fulfillmentMode: "pickup",
+    date: initialDate || todayKey(),
+    time: "12:00",
+    deliveryZoneId: "",
+    items: [
+      {
+        localId: "line-1",
+        catalogItemId: "",
+        selectedOptionId: "",
+        quantity: 1,
+      },
+    ],
+    deliveryAddress: {
+      line1: "",
+      line2: "",
+      zipCode: "",
+      city: "",
+      instructions: "",
+    },
+    customerNote: "",
+    restaurantNote: "",
+  };
+}
 
 function getCatalogItemPriceLabel(item) {
   const optionPrices = (item?.options || [])
@@ -49,9 +59,69 @@ export default function ManualTakeAwayOrderComponent({
   onCreate,
   title = "Nouvelle commande",
   variant = "panel",
+  initialDate = "",
+  blockedDates = [],
+  pickupEnabled = true,
+  deliveryEnabled = true,
+  restaurantId = "",
 }) {
-  const [manualOrder, setManualOrder] = useState(initialManualOrder);
+  const [manualOrder, setManualOrder] = useState(() =>
+    createInitialManualOrder(initialDate),
+  );
   const [errors, setErrors] = useState({});
+  const [existingCustomers, setExistingCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+
+  useEffect(() => {
+    if (!pickupEnabled && deliveryEnabled) {
+      setManualOrder((current) => ({
+        ...current,
+        fulfillmentMode: "delivery",
+      }));
+    }
+  }, [deliveryEnabled, pickupEnabled]);
+
+  useEffect(() => {
+    if (!restaurantId) return undefined;
+    let cancelled = false;
+    const token = localStorage.getItem("token");
+    axios
+      .get(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/customers`,
+        {
+          params: { source: "take_away", page: 1, limit: 50 },
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+      .then(({ data }) => {
+        if (!cancelled) {
+          setExistingCustomers(
+            Array.isArray(data?.customers) ? data.customers : [],
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setExistingCustomers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
+
+  function selectExistingCustomer(customerId) {
+    setSelectedCustomerId(customerId);
+    const customer = existingCustomers.find(
+      (entry) => String(entry._id) === String(customerId),
+    );
+    if (!customer) return;
+    setManualOrder((current) => ({
+      ...current,
+      customerFirstName: customer.firstName || "",
+      customerLastName: customer.lastName || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+    }));
+  }
 
   const activeCatalogGroups = useMemo(() => {
     const groups = new Map();
@@ -92,7 +162,8 @@ export default function ManualTakeAwayOrderComponent({
     );
     const optionsTotal = selectedOption ? Number(selectedOption.price || 0) : 0;
     return (
-      sum + (Number(item.price || 0) + optionsTotal) * Number(line.quantity || 1)
+      sum +
+      (Number(item.price || 0) + optionsTotal) * Number(line.quantity || 1)
     );
   }, 0);
   const manualDeliveryFee =
@@ -217,13 +288,15 @@ export default function ManualTakeAwayOrderComponent({
     });
 
     if (success) {
-      setManualOrder(initialManualOrder);
+      setManualOrder(createInitialManualOrder(initialDate));
+      setSelectedCustomerId("");
       setErrors({});
     }
   }
 
   const itemTitle = manualOrder.items.length > 1 ? "Articles" : "Article";
   const Wrapper = variant === "page" ? "div" : "aside";
+  const selectedDateBlocked = blockedDates.includes(manualOrder.date);
   const wrapperClass =
     variant === "page"
       ? "w-full rounded-3xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm midTablet:p-6"
@@ -236,6 +309,25 @@ export default function ManualTakeAwayOrderComponent({
         {title}
       </h2>
       <div className="flex flex-col gap-4">
+        {existingCustomers.length ? (
+          <FormField label="Client existant (facultatif)">
+            <select
+              className={fieldClass(false)}
+              value={selectedCustomerId}
+              onChange={(event) => selectExistingCustomer(event.target.value)}
+            >
+              <option value="">Nouveau client</option>
+              {existingCustomers.map((customer) => (
+                <option key={customer._id} value={customer._id}>
+                  {[customer.firstName, customer.lastName]
+                    .filter(Boolean)
+                    .join(" ")}
+                  {customer.phone ? ` · ${customer.phone}` : ""}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        ) : null}
         <div className="grid gap-3 midTablet:grid-cols-2">
           <FormField label="Prénom client" error={errors.customerFirstName}>
             <input
@@ -320,11 +412,20 @@ export default function ManualTakeAwayOrderComponent({
                 }))
               }
             >
-              <option value="pickup">Retrait</option>
-              <option value="delivery">Livraison</option>
+              {pickupEnabled ? <option value="pickup">Retrait</option> : null}
+              {deliveryEnabled ? (
+                <option value="delivery">Livraison</option>
+              ) : null}
             </select>
           </FormField>
         </div>
+
+        {selectedDateBlocked ? (
+          <p className="rounded-2xl border border-orange/20 bg-orange/10 px-4 py-3 text-sm font-semibold text-orange">
+            Commandes en ligne bloquées pour cette date. La création manuelle
+            reste autorisée.
+          </p>
+        ) : null}
 
         {manualOrder.fulfillmentMode === "delivery" ? (
           <div className="rounded-xl border border-darkBlue/10 bg-white/70 p-3">
@@ -511,7 +612,7 @@ export default function ManualTakeAwayOrderComponent({
                   type="button"
                   disabled={manualOrder.items.length <= 1}
                   onClick={() => removeManualLine(index)}
-                  className="inline-flex h-11 w-10 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/55 transition hover:bg-red/10 hover:text-red disabled:cursor-not-allowed disabled:opacity-30"
+                  className="inline-flex h-11 w-10 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/55 transition canHover:hover:bg-red/10 canHover:hover:text-red disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Retirer la ligne"
                   title="Retirer la ligne"
                 >
@@ -523,7 +624,7 @@ export default function ManualTakeAwayOrderComponent({
           <button
             type="button"
             onClick={addManualLine}
-            className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
+            className="inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue canHover:hover:bg-darkBlue/5"
           >
             <Plus className="size-4" />
             Ajouter une ligne
@@ -545,6 +646,37 @@ export default function ManualTakeAwayOrderComponent({
             <span>Total</span>
             <span>{toMoney(manualTotal)}</span>
           </div>
+        </div>
+
+        <div className="grid gap-3 midTablet:grid-cols-2">
+          <FormField label="Note client">
+            <textarea
+              className={`${fieldClass(false)} min-h-24 py-3`}
+              maxLength={500}
+              value={manualOrder.customerNote}
+              onChange={(e) =>
+                setManualOrder((prev) => ({
+                  ...prev,
+                  customerNote: e.target.value,
+                }))
+              }
+              placeholder="Allergie, précision communiquée par le client…"
+            />
+          </FormField>
+          <FormField label="Note interne">
+            <textarea
+              className={`${fieldClass(false)} min-h-24 py-3`}
+              maxLength={500}
+              value={manualOrder.restaurantNote}
+              onChange={(e) =>
+                setManualOrder((prev) => ({
+                  ...prev,
+                  restaurantNote: e.target.value,
+                }))
+              }
+              placeholder="Information visible uniquement par l’équipe…"
+            />
+          </FormField>
         </div>
 
         <button

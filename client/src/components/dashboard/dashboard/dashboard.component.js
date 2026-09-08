@@ -20,6 +20,10 @@ function EmptyChartComponent() {
 }
 
 export default function DashboardComponent(props) {
+  const hasGiftCardModule = Boolean(props.restaurantData?.options?.gift_card);
+  const hasTakeAwayModule = Boolean(props.restaurantData?.options?.take_away);
+  const hasStripeTransactions = hasGiftCardModule || hasTakeAwayModule;
+
   //  ---- States pour les VISITES ----
   const [monthlyVisits, setMonthlyVisits] = useState([]);
   const [visitsLoading, setVisitsLoading] = useState(true);
@@ -60,12 +64,12 @@ export default function DashboardComponent(props) {
   useEffect(() => {
     setShowPaymentsDetails(false);
 
-    if (!props.dataLoading && props.restaurantData?.options?.gift_card) {
+    if (!props.dataLoading && hasStripeTransactions) {
       fetchGiftCardSales();
       fetchGiftCardPayouts();
-      fetchMonthlySales();
+      if (hasGiftCardModule) fetchMonthlySales();
     }
-  }, [props.dataLoading]);
+  }, [props.dataLoading, hasGiftCardModule, hasStripeTransactions]);
 
   useEffect(() => {
     if (!props.dataLoading) {
@@ -303,7 +307,7 @@ export default function DashboardComponent(props) {
         />
       )}
 
-      {props.restaurantData?.options?.gift_card && (
+      {hasGiftCardModule && (
         <div className="flex flex-col desktop:flex-row gap-2 midTablet:gap-4">
           <div className="w-full">
             <MonthlyGiftCardSalesChart
@@ -346,7 +350,16 @@ export default function DashboardComponent(props) {
         </div>
       )}
 
-      {showPaymentsDetails && props.restaurantData?.options?.gift_card && (
+      {!hasGiftCardModule && hasTakeAwayModule ? (
+        <LastPayoutDashboardComponent
+          dataLoading={payoutsLoading}
+          payouts={payouts}
+          setShowPaymentsDetails={setShowPaymentsDetails}
+          showPaymentsDetails={showPaymentsDetails}
+        />
+      ) : null}
+
+      {showPaymentsDetails && hasStripeTransactions && (
         <TransactionsDashboardComponent
           payments={payments}
           payouts={payouts}

@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { PackagePlus, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, PackagePlus, Plus, Trash2 } from "lucide-react";
 
 import { GlobalContext } from "@/contexts/global.context";
 import TakeAwayHeaderComponent from "./header.take-away.component";
@@ -26,7 +26,15 @@ function getItemPriceLabel(item) {
   return toMoney(item?.price);
 }
 
-export default function TakeAwayCatalogComponent() {
+function getImportSourceKey(item = {}) {
+  return [
+    item.sourceType || "",
+    item.sourceItemId || "",
+    item.sourceSubCategoryId || "",
+  ].join(":");
+}
+
+export default function TakeAwayCatalogComponent({ webapp = false }) {
   const { restaurantContext } = useContext(GlobalContext);
   const restaurant = restaurantContext.restaurantData;
   const restaurantId = restaurant?._id;
@@ -36,6 +44,8 @@ export default function TakeAwayCatalogComponent() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [importableItems, setImportableItems] = useState([]);
+  const [pendingImportKey, setPendingImportKey] = useState("");
+  const [expandedOptionIds, setExpandedOptionIds] = useState(() => new Set());
   const [customCategoryMode, setCustomCategoryMode] = useState("À emporter");
   const [customCategoryText, setCustomCategoryText] = useState("");
   const [customItem, setCustomItem] = useState({
@@ -147,6 +157,16 @@ export default function TakeAwayCatalogComponent() {
     return existing || raw;
   }
 
+  function toggleOptions(itemId) {
+    const key = String(itemId || "");
+    setExpandedOptionIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function importItem(item) {
     setLoading(true);
     setMessage("");
@@ -154,9 +174,23 @@ export default function TakeAwayCatalogComponent() {
       const { data } = await request({
         method: "post",
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/catalog/import`,
-        data: item,
+        data: {
+          sourceType: item.sourceType,
+          sourceItemId: item.sourceItemId,
+          sourceCategoryId: item.sourceCategoryId,
+          sourceSubCategoryId: item.sourceSubCategoryId,
+        },
       });
       restaurantContext.setRestaurantData(data.restaurant);
+      setImportableItems((current) =>
+        current.map((candidate) =>
+          getImportSourceKey(candidate) === getImportSourceKey(item)
+            ? { ...candidate, alreadyEnabled: true }
+            : candidate,
+        ),
+      );
+      setPendingImportKey("");
+      setMessage(`${item.name} a été ajouté au catalogue Take-away.`);
     } catch (error) {
       console.error(error);
       setMessage("Import impossible.");
@@ -229,6 +263,16 @@ export default function TakeAwayCatalogComponent() {
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/catalog/${item._id}`,
       });
       restaurantContext.setRestaurantData(data.restaurant);
+      if (item.sourceType && item.sourceItemId) {
+        setImportableItems((current) =>
+          current.map((candidate) =>
+            candidate.sourceType === item.sourceType &&
+            String(candidate.sourceItemId) === String(item.sourceItemId)
+              ? { ...candidate, alreadyEnabled: false }
+              : candidate,
+          ),
+        );
+      }
     } catch (error) {
       console.error(error);
       setMessage("Suppression impossible.");
@@ -238,8 +282,10 @@ export default function TakeAwayCatalogComponent() {
   }
 
   return (
-    <section className="flex flex-col gap-6">
-      <TakeAwayHeaderComponent subtitle="Catalogue" showBack />
+    <section className="flex min-w-0 flex-col gap-6">
+      {!webapp ? (
+        <TakeAwayHeaderComponent subtitle="Catalogue" showBack />
+      ) : null}
 
       {message && (
         <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 text-sm text-darkBlue">
@@ -247,102 +293,131 @@ export default function TakeAwayCatalogComponent() {
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
-        <div className="flex flex-col gap-5">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="flex min-w-0 flex-col gap-4">
           <h2 className="text-lg font-semibold">Catalogue à emporter</h2>
           {!catalog.length ? (
             <EmptyState text="Aucun article emporter. Importe un élément de la carte ou crée un article dédié." />
           ) : (
             catalogGroups.map((group) => (
-              <section key={group.name} className="flex flex-col gap-3">
+              <section key={group.name} className="flex min-w-0 flex-col gap-2">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-darkBlue/55">
                   {group.name}
                 </h3>
                 {group.items.map((item) => (
                   <article
                     key={item._id}
-                    className="grid items-center gap-3 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 midTablet:grid-cols-[1fr_120px_220px]"
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_76px_auto_40px] items-center gap-2 rounded-xl border border-darkBlue/10 bg-white/70 p-2.5 mobile:p-3 midTablet:grid-cols-[minmax(0,1fr)_96px_auto_40px]"
                   >
                     <div className="min-w-0">
-                      <p className="font-semibold text-darkBlue">{item.name}</p>
+                      <p className="line-clamp-2 text-sm font-semibold leading-5 text-darkBlue">
+                        {item.name}
+                      </p>
                       {item.sourceDeleted ? (
-                        <p className="mt-1 text-xs font-semibold text-orange">
+                        <p className="mt-0.5 truncate text-[11px] font-semibold text-orange">
                           Source supprimée. Réactive cet article pour le
                           conserver comme article indépendant.
                         </p>
                       ) : null}
                       {item.description ? (
-                        <p className="mt-1 truncate text-xs text-darkBlue/45">
+                        <p
+                          className="mt-0.5 truncate text-[11px] leading-4 text-darkBlue/45"
+                          title={item.description}
+                        >
                           {item.description}
                         </p>
                       ) : null}
                       {item.options?.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {item.options.slice(0, 4).map((option) => (
-                            <span
-                              key={`${item._id}-${option._id || option.name}`}
-                              className="inline-flex items-center gap-1 rounded-full bg-blue/10 px-2 py-1 text-[11px] font-semibold text-blue"
-                            >
-                              {option.name}
-                              <span className="text-blue/70">
-                                {toMoney(option.price)}
-                              </span>
-                            </span>
-                          ))}
-                          {item.options.length > 4 ? (
-                            <span className="inline-flex items-center rounded-full bg-darkBlue/5 px-2 py-1 text-[11px] font-semibold text-darkBlue/55">
-                              +{item.options.length - 4}
-                            </span>
-                          ) : null}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleOptions(item._id)}
+                          className="mt-0.5 flex max-w-full items-center gap-1 text-left text-[11px] leading-4 text-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/25"
+                          aria-expanded={expandedOptionIds.has(
+                            String(item._id),
+                          )}
+                          aria-label={`${item.options.length} option${item.options.length > 1 ? "s" : ""} pour ${item.name}. Afficher le détail.`}
+                        >
+                          <span className="truncate">
+                            {item.options.length} option
+                            {item.options.length > 1 ? "s" : ""} ·{" "}
+                            {item.options[0]?.name}
+                            {item.options.length > 1
+                              ? ` +${item.options.length - 1}`
+                              : ""}
+                          </span>
+                          <ChevronDown
+                            className={`size-3.5 shrink-0 transition-transform ${
+                              expandedOptionIds.has(String(item._id))
+                                ? "rotate-180"
+                                : ""
+                            }`}
+                          />
+                        </button>
                       ) : null}
                     </div>
-                    <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                    <div className="flex h-10 min-w-0 items-center rounded-lg border border-darkBlue/10 bg-white pl-1.5 pr-1 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20 midTablet:px-2">
                       <input
                         type="number"
                         min="0"
                         step="0.01"
-                        className="h-full min-w-0 flex-1 bg-transparent text-center text-base outline-none"
+                        className="h-full min-w-0 flex-1 bg-transparent text-right text-sm outline-none"
                         defaultValue={item.price}
+                        aria-label={`Prix de ${item.name}`}
                         onBlur={(e) =>
                           patchCatalogItem(item, {
                             price: Number(e.target.value || 0),
                           })
                         }
                       />
-                      <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                      <span className="ml-1 text-xs font-semibold text-darkBlue/55">
                         €
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() =>
-                          patchCatalogItem(item, {
-                            active: item.active === false,
-                            visible: item.active === false,
-                          })
-                        }
-                        className={`inline-flex h-11 flex-1 items-center justify-center rounded-xl border px-3 text-sm font-semibold ${
-                          item.active === false
-                            ? "border-red/20 bg-red/10 text-red"
-                            : "border-green/20 bg-green/10 text-green"
-                        }`}
-                      >
-                        {item.active === false ? "Inactif" : "Actif"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => removeCatalogItem(item)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
-                        aria-label={`Retirer ${item.name} du catalogue`}
-                        title="Retirer du catalogue"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() =>
+                        patchCatalogItem(item, {
+                          active: item.active === false,
+                          visible: item.active === false,
+                        })
+                      }
+                      className={`inline-flex h-10 items-center justify-center rounded-lg border px-2 text-[11px] font-semibold transition active:scale-[0.98] disabled:opacity-50 midTablet:px-3 midTablet:text-xs ${
+                        item.active === false
+                          ? "border-red/20 bg-red/10 text-red"
+                          : "border-green/20 bg-green/10 text-green"
+                      }`}
+                    >
+                      {item.active === false ? "Inactif" : "Actif"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => removeCatalogItem(item)}
+                      className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-red/20 bg-white text-red transition canHover:hover:bg-red/10 active:scale-[0.98] disabled:opacity-50"
+                      aria-label={`Retirer ${item.name} du catalogue`}
+                      title="Retirer du catalogue"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                    {item.options?.length &&
+                    expandedOptionIds.has(String(item._id)) ? (
+                      <div className="col-span-full grid gap-1 border-t border-darkBlue/10 pt-2 midTablet:grid-cols-2">
+                        {item.options.map((option) => (
+                          <div
+                            key={`${item._id}-${option._id || option.name}`}
+                            className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-lightGrey px-2.5 py-1.5 text-[11px]"
+                          >
+                            <span className="min-w-0 break-words font-semibold text-darkBlue/75">
+                              {option.name}
+                            </span>
+                            <span className="shrink-0 text-blue">
+                              {toMoney(option.price)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </section>
@@ -350,65 +425,107 @@ export default function TakeAwayCatalogComponent() {
           )}
         </div>
 
-        <aside className="flex flex-col gap-4">
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
+        <aside className="flex min-w-0 flex-col gap-4">
+          <div className="min-w-0 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
               <PackagePlus className="size-5" />
               Importer depuis la carte
             </h2>
-            <div className="max-h-[360px] overflow-auto pr-1">
+            <div className="min-w-0 max-w-full overflow-y-auto overflow-x-hidden pr-1 max-h-[360px]">
               {importableGroups.map((group) => (
-                <div key={group.name} className="mb-4 last:mb-0">
-                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-darkBlue/45">
+                <div key={group.name} className="mb-4 min-w-0 last:mb-0">
+                  <p className="mb-2 break-words text-[11px] font-bold uppercase tracking-wide text-darkBlue/45">
                     {group.name}
                   </p>
-                  {group.items.map((item) => (
-                    <button
-                      key={`${item.sourceType}-${item.sourceItemId}-${item.sourceSubCategoryId || ""}`}
-                      type="button"
-                      disabled={loading}
-                      onClick={() => importItem(item)}
-                      className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-left text-sm hover:bg-darkBlue/5"
-                    >
-                      <span className="min-w-0">
-                        <span className="block font-semibold text-darkBlue">
-                          {item.name}
-                        </span>
-                        {item.description ? (
-                          <span className="mt-0.5 block truncate text-xs text-darkBlue/45">
-                            {item.description}
-                          </span>
-                        ) : null}
-                        <span className="mt-1 block text-xs text-darkBlue/50">
-                          {getItemPriceLabel(item)}
-                        </span>
-                        {item.options?.length ? (
-                          <span className="mt-2 flex flex-wrap gap-1">
-                            {item.options.slice(0, 3).map((option) => (
-                              <span
-                                key={`${item.sourceItemId}-${option.name}`}
-                                className="rounded-full bg-blue/10 px-2 py-0.5 text-[11px] font-semibold text-blue"
-                              >
-                                {option.name} · {toMoney(option.price)}
+                  {group.items.map((item) => {
+                    const sourceKey = getImportSourceKey(item);
+                    const isSelected = pendingImportKey === sourceKey;
+                    const isImported = item.alreadyEnabled === true;
+
+                    return (
+                      <div
+                        key={sourceKey}
+                        className={`mb-2 min-w-0 rounded-xl border bg-white transition ${
+                          isSelected
+                            ? "border-blue/40 ring-2 ring-blue/10"
+                            : "border-darkBlue/10"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          disabled={loading || isImported}
+                          onClick={() => {
+                            setMessage("");
+                            setPendingImportKey((current) =>
+                              current === sourceKey ? "" : sourceKey,
+                            );
+                          }}
+                          className="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition canHover:hover:bg-darkBlue/5 disabled:cursor-default"
+                          aria-expanded={isSelected}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words font-semibold text-darkBlue">
+                              {item.name}
+                            </span>
+                            {item.description ? (
+                              <span className="mt-0.5 block truncate text-xs text-darkBlue/45">
+                                {item.description}
                               </span>
-                            ))}
-                            {item.options.length > 3 ? (
-                              <span className="rounded-full bg-darkBlue/5 px-2 py-0.5 text-[11px] font-semibold text-darkBlue/55">
-                                +{item.options.length - 3}
+                            ) : null}
+                            <span className="mt-1 block text-xs text-darkBlue/50">
+                              {getItemPriceLabel(item)}
+                            </span>
+                            {item.options?.length ? (
+                              <span className="mt-2 flex flex-wrap gap-1">
+                                {item.options.map((option) => (
+                                  <span
+                                    key={`${item.sourceItemId}-${option.name}`}
+                                    className="min-w-0 max-w-full break-words rounded-full bg-blue/10 px-2 py-0.5 text-[11px] font-semibold text-blue"
+                                  >
+                                    {option.name} · {toMoney(option.price)}
+                                  </span>
+                                ))}
                               </span>
                             ) : null}
                           </span>
+                          {isImported ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-green">
+                              <Check className="size-4" /> Importé
+                            </span>
+                          ) : (
+                            <Plus className="size-4 shrink-0" />
+                          )}
+                        </button>
+
+                        {isSelected && !isImported ? (
+                          <div className="flex items-center justify-end gap-2 border-t border-darkBlue/10 px-3 py-2">
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => setPendingImportKey("")}
+                              className="inline-flex h-9 items-center justify-center rounded-lg border border-darkBlue/10 bg-white px-3 text-xs font-semibold text-darkBlue transition canHover:hover:bg-darkBlue/5 active:scale-[0.98]"
+                            >
+                              Annuler
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => importItem(item)}
+                              className="inline-flex h-9 items-center justify-center rounded-lg bg-darkBlue px-3 text-xs font-semibold text-white transition canHover:hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                            >
+                              Confirmer l’import
+                            </button>
+                          </div>
                         ) : null}
-                      </span>
-                      <Plus className="size-4 shrink-0" />
-                    </button>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
+          <div className="min-w-0 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold">Article dédié</h2>
             <div className="flex flex-col gap-3">
               <FormField label="Nom de l’article" error={errors.name}>
@@ -446,7 +563,7 @@ export default function TakeAwayCatalogComponent() {
                   />
                 ) : (
                   <select
-                    className={fieldClass(false)}
+                    className={`${fieldClass(false)} min-w-0 max-w-full`}
                     value={customCategoryMode}
                     onChange={(e) => setCustomCategoryMode(e.target.value)}
                   >

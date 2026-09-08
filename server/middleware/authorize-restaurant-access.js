@@ -12,7 +12,7 @@ function getEmployeeProfile(employee, restaurantId) {
 async function userCanAccessRestaurant(
   user,
   restaurant,
-  { requiredOption = null, ownerOnly = false } = {},
+  { requiredOption = null, requiredOptionsAny = null, ownerOnly = false } = {},
 ) {
   if (!user || !restaurant) return false;
 
@@ -30,11 +30,16 @@ async function userCanAccessRestaurant(
     (employee) => String(employee?._id || employee || "") === String(user.id),
   );
   if (!isListed) return false;
-  if (!requiredOption) return true;
+  const requiredOptions = Array.isArray(requiredOptionsAny)
+    ? requiredOptionsAny.filter(Boolean)
+    : requiredOption
+      ? [requiredOption]
+      : [];
+  if (!requiredOptions.length) return true;
 
   if (
     String(user.restaurantId || "") === restaurantId &&
-    user.options?.[requiredOption] === true
+    requiredOptions.some((option) => user.options?.[option] === true)
   ) {
     return true;
   }
@@ -51,19 +56,20 @@ async function userCanAccessRestaurant(
     profile = getEmployeeProfile(employee, restaurantId);
   }
 
-  return profile?.options?.[requiredOption] === true;
+  return requiredOptions.some((option) => profile?.options?.[option] === true);
 }
 
 function authorizeRestaurantAccess({
   paramName = "restaurantId",
   requiredOption = null,
+  requiredOptionsAny = null,
   ownerOnly = false,
 } = {}) {
   return async function authorizeRestaurantAccessMiddleware(req, res, next) {
     try {
       const restaurantId = req.params?.[paramName];
       const restaurant = await RestaurantModel.findById(restaurantId)
-        .select("_id owner_id employees")
+        .select("_id owner_id employees options.take_away")
         .populate("employees", "restaurantProfiles");
 
       if (!restaurant) {
@@ -72,6 +78,7 @@ function authorizeRestaurantAccess({
 
       const authorized = await userCanAccessRestaurant(req.user, restaurant, {
         requiredOption,
+        requiredOptionsAny,
         ownerOnly,
       });
       if (!authorized) {

@@ -1,4 +1,11 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import axios from "axios";
 import {
   CalendarDays,
@@ -13,7 +20,6 @@ import {
 import { useRouter } from "next/router";
 
 import { GlobalContext } from "@/contexts/global.context";
-import { createAuthenticatedEventSource } from "@/_assets/utils/authenticated-events";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import TakeAwayHeaderComponent, {
   AddOrderAction,
@@ -21,6 +27,7 @@ import TakeAwayHeaderComponent, {
 import CalendarMonthTakeAwayComponent from "./calendar-month.take-away.component";
 import TakeAwayOrderCardComponent from "./order-card.take-away.component";
 import TakeAwayOrderDrawerComponent from "./order-drawer.take-away.component";
+import TakeAwayDateBlockToggle from "./date-block-toggle.take-away.component";
 import { EmptyState } from "./form.take-away.component";
 import {
   STATUS_LABELS,
@@ -48,7 +55,11 @@ export default function ListTakeAwayComponent() {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
   const restaurant = restaurantContext.restaurantData;
-  const restaurantId = restaurant?._id;
+  const restaurantId = restaurant?._id ? String(restaurant._id) : "";
+  const ensureTakeAwayOrdersMonth = restaurantContext.ensureTakeAwayOrdersMonth;
+  const getCachedTakeAwayOrdersMonth =
+    restaurantContext.getCachedTakeAwayOrdersMonth;
+  const applyTakeAwayOrderUpdate = restaurantContext.applyTakeAwayOrderUpdate;
   const selectedDayKey =
     typeof router.query.day === "string" ? router.query.day : null;
   const focusedOrderId =
@@ -56,7 +67,6 @@ export default function ListTakeAwayComponent() {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
@@ -66,45 +76,55 @@ export default function ListTakeAwayComponent() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [drawerError, setDrawerError] = useState("");
+  const [blockSaving, setBlockSaving] = useState(false);
+  const [blockError, setBlockError] = useState("");
   const calendarSearchRef = useRef(null);
+  const cachedOrders = getCachedTakeAwayOrdersMonth?.(
+    currentMonth,
+    restaurantId,
+  );
+  const ordersSource = Array.isArray(cachedOrders)
+    ? cachedOrders
+    : restaurantContext.takeAwayOrdersList || [];
+  const currentMonthFrom = toDateKey(startOfMonth(currentMonth));
+  const currentMonthTo = toDateKey(endOfMonth(currentMonth));
+  const orders = ordersSource.filter((order) => {
+    const key = toDateKey(order.scheduledFor);
+    return key >= currentMonthFrom && key <= currentMonthTo;
+  });
 
-  async function request(config) {
-    return axios({
-      ...config,
-      headers: {
-        ...(config.headers || {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
-  async function fetchOrders() {
-    if (!restaurantId || !token) return;
-    setLoading(true);
-    try {
-      const from = startOfMonth(currentMonth);
-      const to = endOfMonth(currentMonth);
-      const { data } = await request({
-        method: "get",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders`,
-        params: {
-          dateFrom: toDateKey(from),
-          dateTo: toDateKey(to),
-          limit: 300,
+  const request = useCallback(
+    async (config) =>
+      axios({
+        ...config,
+        headers: {
+          ...(config.headers || {}),
+          Authorization: `Bearer ${token}`,
         },
-      });
-      setOrders(Array.isArray(data.orders) ? data.orders : []);
-    } catch (error) {
-      console.error(error);
-      setMessage("Impossible de charger les commandes.");
-    } finally {
-      setLoading(false);
-    }
-  }
+      }),
+    [token],
+  );
 
   useEffect(() => {
-    fetchOrders();
-  }, [restaurantId, currentMonth]);
+    if (!restaurantId) return undefined;
+    let cancelled = false;
+    setMessage("");
+
+    Promise.resolve(
+      ensureTakeAwayOrdersMonth?.(currentMonth, {
+        restaurantId,
+        prefetchAdjacent: true,
+      }),
+    ).then((result) => {
+      if (!cancelled && !Array.isArray(result)) {
+        setMessage("Impossible de charger les commandes.");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMonth, ensureTakeAwayOrdersMonth, restaurantId]);
 
   useEffect(() => {
     if (!selectedDayKey) {
@@ -134,12 +154,7 @@ export default function ListTakeAwayComponent() {
           setCurrentMonth(startOfMonth(orderDay));
           setSelectedDay(orderDay);
         }
-        setOrders((current) => {
-          const withoutOrder = current.filter(
-            (entry) => String(entry._id) !== String(order._id),
-          );
-          return [order, ...withoutOrder];
-        });
+        applyTakeAwayOrderUpdate?.(order, restaurantId);
         setSelectedOrder(order);
         setDrawerError("");
         setDetailsOpen(true);
@@ -167,39 +182,25 @@ export default function ListTakeAwayComponent() {
     return () => {
       cancelled = true;
     };
-  }, [focusedOrderId, restaurantId, router.isReady, token]);
+  }, [
+    applyTakeAwayOrderUpdate,
+    focusedOrderId,
+    request,
+    restaurantId,
+    router,
+    router.isReady,
+    token,
+  ]);
 
   useEffect(() => {
-    if (!restaurantId) return undefined;
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
-    const es = createAuthenticatedEventSource(url);
-    es.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (
-          (payload.type === "takeaway_order_created" ||
-            payload.type === "takeaway_order_updated") &&
-          payload.order
-        ) {
-          setOrders((prev) => {
-            const list = Array.isArray(prev) ? prev : [];
-            const id = String(payload.order._id);
-            const exists = list.some((order) => String(order._id) === id);
-            if (!exists) return [payload.order, ...list];
-            return list.map((order) =>
-              String(order._id) === id ? payload.order : order,
-            );
-          });
-          setSelectedOrder((prev) =>
-            prev && String(prev._id) === String(payload.order._id)
-              ? payload.order
-              : prev,
-          );
-        }
-      } catch {}
-    };
-    return () => es.close();
-  }, [restaurantId]);
+    if (!selectedOrder?._id) return;
+    const updatedOrder = orders.find(
+      (order) => String(order._id) === String(selectedOrder._id),
+    );
+    if (updatedOrder && updatedOrder !== selectedOrder) {
+      setSelectedOrder(updatedOrder);
+    }
+  }, [orders, selectedOrder]);
 
   const filteredOrders = useMemo(() => {
     const q = normalizeForMatch(searchTerm);
@@ -265,11 +266,7 @@ export default function ListTakeAwayComponent() {
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/status`,
         data: { status },
       });
-      setOrders((prev) =>
-        prev.map((current) =>
-          String(current._id) === String(order._id) ? data.order : current,
-        ),
-      );
+      applyTakeAwayOrderUpdate?.(data.order, restaurantId);
       setSelectedOrder(data.order);
     } catch (error) {
       console.error(error);
@@ -291,11 +288,10 @@ export default function ListTakeAwayComponent() {
     const nextQuery = { ...router.query };
     delete nextQuery.orderId;
     delete nextQuery.notificationId;
-    router.replace(
-      { pathname: router.pathname, query: nextQuery },
-      undefined,
-      { shallow: true, scroll: false },
-    );
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, {
+      shallow: true,
+      scroll: false,
+    });
   }
 
   const monthYearLabel = capitalizeFirst(
@@ -312,13 +308,39 @@ export default function ListTakeAwayComponent() {
         year: "numeric",
       })
     : "Calendrier";
+  const blockDateKey = toDateKey(new Date());
+  const dateBlocked = (
+    restaurant?.takeAwaySettings?.blockedDates || []
+  ).includes(blockDateKey);
 
-  const actions = (
+  async function toggleDateBlocked(blocked) {
+    if (!restaurantId || blockSaving) return;
+    setBlockSaving(true);
+    setBlockError("");
+    try {
+      const { data } = await request({
+        method: "put",
+        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/blocked-dates/${blockDateKey}`,
+        data: { blocked },
+      });
+      if (data?.restaurant)
+        restaurantContext.setRestaurantData(data.restaurant);
+    } catch (error) {
+      setBlockError(
+        error?.response?.data?.message ||
+          "Impossible de modifier le blocage des commandes en ligne.",
+      );
+    } finally {
+      setBlockSaving(false);
+    }
+  }
+
+  const sharedActions = (
     <>
       <button
         type="button"
         onClick={() => router.push("/dashboard/take-away/catalog")}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition canHover:hover:bg-darkBlue/5"
         aria-label="Catalogue"
         title="Catalogue"
       >
@@ -327,13 +349,27 @@ export default function ListTakeAwayComponent() {
       <button
         type="button"
         onClick={() => router.push("/dashboard/take-away/parameters")}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition hover:bg-darkBlue/5"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 transition canHover:hover:bg-darkBlue/5"
         aria-label="Paramètres"
         title="Paramètres"
       >
         <Settings className="size-4 text-darkBlue/70" />
       </button>
       <AddOrderAction onClick={() => router.push("/dashboard/take-away/add")} />
+    </>
+  );
+
+  const monthActions = (
+    <>
+      <TakeAwayDateBlockToggle
+        active={dateBlocked}
+        saving={blockSaving}
+        onToggle={toggleDateBlocked}
+        dateLabel="aujourd’hui"
+        roundedClassName="rounded-full"
+        heightClassName="h-10"
+      />
+      {sharedActions}
     </>
   );
 
@@ -365,19 +401,22 @@ export default function ListTakeAwayComponent() {
 
   return (
     <section className="flex flex-col gap-6">
+      <hr className="hidden opacity-20 midTablet:block" />
+
       {selectedDay ? (
-        <>
-          <hr className="opacity-20" />
-          <CatalogHeaderDashboardComponent
-            title="Vente à emporter"
-            subtitle={selectedDayLabel}
-            onBack={backToCalendar}
-            backLabel="Retour au calendrier"
-            actions={actions}
-          />
-        </>
+        <CatalogHeaderDashboardComponent
+          title="Vente à emporter"
+          subtitle={selectedDayLabel}
+          onBack={backToCalendar}
+          backLabel="Retour au calendrier"
+          actions={sharedActions}
+        />
       ) : (
-        <TakeAwayHeaderComponent subtitle="Calendrier" actions={actions} />
+        <TakeAwayHeaderComponent
+          subtitle="Calendrier"
+          actions={monthActions}
+          hideDivider
+        />
       )}
 
       {message && (
@@ -386,7 +425,13 @@ export default function ListTakeAwayComponent() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
+      {blockError ? (
+        <div className="rounded-2xl border border-red/20 bg-red/10 px-4 py-3 text-sm text-red">
+          {blockError}
+        </div>
+      ) : null}
+
+      <div className="-mt-4 flex flex-col gap-4">
         {!selectedDay ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -398,7 +443,7 @@ export default function ListTakeAwayComponent() {
                       new Date(month.getFullYear(), month.getMonth() - 1, 1),
                   )
                 }
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition hover:bg-darkBlue/5"
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition canHover:hover:bg-darkBlue/5"
                 aria-label="Mois précédent"
                 title="Mois précédent"
               >
@@ -415,7 +460,7 @@ export default function ListTakeAwayComponent() {
                       new Date(month.getFullYear(), month.getMonth() + 1, 1),
                   )
                 }
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition hover:bg-darkBlue/5"
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition canHover:hover:bg-darkBlue/5"
                 aria-label="Mois suivant"
                 title="Mois suivant"
               >
@@ -427,7 +472,7 @@ export default function ListTakeAwayComponent() {
                   setCurrentMonth(startOfMonth(new Date()));
                   backToCalendar();
                 }}
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition hover:bg-darkBlue/5"
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 px-2 transition canHover:hover:bg-darkBlue/5"
                 aria-label="Aujourd’hui"
                 title="Aujourd’hui"
               >
@@ -450,7 +495,7 @@ export default function ListTakeAwayComponent() {
                 <button
                   type="button"
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-2 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+                  className="absolute right-2 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition canHover:hover:bg-darkBlue/5"
                   aria-label="Effacer"
                   title="Effacer"
                 >
@@ -482,6 +527,7 @@ export default function ListTakeAwayComponent() {
             monthGridDays={monthGridDays}
             selectedDay={selectedDay}
             setSelectedDay={selectCalendarDay}
+            blockedDates={restaurant?.takeAwaySettings?.blockedDates || []}
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -500,7 +546,7 @@ export default function ListTakeAwayComponent() {
                   <button
                     type="button"
                     onClick={() => setSearchTerm("")}
-                    className="absolute right-2 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
+                    className="absolute right-2 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-xl border border-darkBlue/10 bg-white transition canHover:hover:bg-darkBlue/5"
                     aria-label="Effacer"
                   >
                     <X className="size-4 text-darkBlue/60" />
@@ -553,6 +599,7 @@ export default function ListTakeAwayComponent() {
                           key={order._id}
                           order={order}
                           onOpenDetails={openDetails}
+                          columnLayout
                         />
                       ))}
                     </ul>

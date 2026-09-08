@@ -59,6 +59,7 @@ export default function AddTakeAwayComponent() {
         },
       );
 
+      restaurantContext.applyTakeAwayOrderUpdate?.(data.order, restaurantId);
       const day = toDateKey(data.order?.scheduledFor || scheduledFor);
       await router.push(`/dashboard/take-away?day=${day}`);
       return true;
@@ -84,6 +85,10 @@ export default function AddTakeAwayComponent() {
       <ManualTakeAwayOrderComponent
         catalog={catalog}
         deliveryZones={deliveryZones}
+        blockedDates={restaurant?.takeAwaySettings?.blockedDates || []}
+        pickupEnabled={restaurant?.takeAwaySettings?.pickupEnabled !== false}
+        deliveryEnabled={restaurant?.takeAwaySettings?.deliveryEnabled === true}
+        restaurantId={restaurantId}
         loading={loading}
         onCreate={createOrder}
         title="Nouvelle commande"

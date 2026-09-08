@@ -25,5 +25,10 @@ module.exports = {
     },
     extend: {},
   },
-  plugins: [require("@tailwindcss/typography")],
+  plugins: [
+    require("@tailwindcss/typography"),
+    function canHoverVariant({ addVariant }) {
+      addVariant("canHover", "@media (hover: hover) and (pointer: fine)");
+    },
+  ],
 };

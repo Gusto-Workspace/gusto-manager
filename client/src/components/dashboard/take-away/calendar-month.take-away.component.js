@@ -1,17 +1,10 @@
-import { STATUS_ORDER, toDateKey } from "./take-away.utils";
-
-function getStatusBarColor(status) {
-  if (status === "completed") return "#22c55e";
-  if (status === "canceled" || status === "rejected") return "#ff7664";
-  if (status === "pending") return "#93c5fd";
-  if (status === "ready") return "#f59e0b";
-  return "#3b82f6";
-}
+import { STATUS_ORDER, getStatusColor, toDateKey } from "./take-away.utils";
 
 export default function CalendarMonthTakeAwayComponent({
   monthGridDays,
   selectedDay,
   setSelectedDay,
+  blockedDates = [],
 }) {
   const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
@@ -29,6 +22,7 @@ export default function CalendarMonthTakeAwayComponent({
           const isSelected =
             selectedDay && toDateKey(d.date) === toDateKey(selectedDay);
           const displayTotal = d.total;
+          const isBlocked = blockedDates.includes(toDateKey(d.date));
 
           return (
             <button
@@ -53,9 +47,16 @@ export default function CalendarMonthTakeAwayComponent({
                     {displayTotal}
                   </span>
                 ) : null}
+                {isBlocked ? (
+                  <span
+                    className="absolute bottom-1 right-1 size-2 rounded-full bg-red midTablet:bottom-2 midTablet:right-2"
+                    title="Commandes en ligne bloquées"
+                    aria-label="Commandes en ligne bloquées"
+                  />
+                ) : null}
               </div>
               <div className="mt-2 space-y-1">
-                {STATUS_ORDER.slice(0, 6).map((status) => {
+                {STATUS_ORDER.map((status) => {
                   const value = d.byStatus[status] || 0;
                   const pct = displayTotal
                     ? Math.round((value / displayTotal) * 100)
@@ -69,7 +70,7 @@ export default function CalendarMonthTakeAwayComponent({
                         className="h-1"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: getStatusBarColor(status),
+                          backgroundColor: getStatusColor(status),
                         }}
                       />
                     </div>

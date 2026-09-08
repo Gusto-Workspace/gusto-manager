@@ -1,9 +1,11 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   CalendarDays,
+  Check,
   ChevronDown,
   Clock,
+  Loader2,
   Plus,
   Save,
   Settings2,
@@ -13,7 +15,6 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 import HoursRestaurantComponent from "@/components/dashboard/restaurant/hours.restaurant.component";
 import TakeAwayHeaderComponent from "./header.take-away.component";
-import PushNotificationsSettingsWebapp from "@/components/dashboard/webapp/_shared/push-notifications-settings.webapp";
 import { EmptyState, FormField, ToggleField } from "./form.take-away.component";
 import {
   buildDeliveryZonesPayload,
@@ -41,20 +42,105 @@ const DAYS = [
   { key: "hours.days.sunday", label: "Dimanche" },
 ];
 
-function SectionCard({ icon, title, description, children }) {
+function SectionCard({
+  icon,
+  title,
+  description,
+  children,
+  saveUI,
+  onSave,
+  saveDisabled = false,
+  savePresentation = "full",
+}) {
+  const showSaveButton = saveUI?.dirty || saveUI?.saving || saveUI?.saved;
+
   return (
     <section className="rounded-3xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm midTablet:p-6">
-      <div className="mb-5 flex flex-col gap-1">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-darkBlue">
-          {icon}
-          {title}
-        </h2>
-        {description ? (
-          <p className="text-sm text-darkBlue/60">{description}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-darkBlue">
+            {icon}
+            {title}
+          </h2>
+          {description ? (
+            <p className="text-sm text-darkBlue/60">{description}</p>
+          ) : null}
+        </div>
+
+        {onSave && showSaveButton ? (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saveDisabled || saveUI?.saving || saveUI?.saved}
+            className={[
+              savePresentation === "icon"
+                ? "inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl transition"
+                : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition",
+              saveUI?.saved
+                ? "border border-darkBlue bg-white text-darkBlue opacity-60"
+                : "bg-darkBlue text-white canHover:hover:opacity-90 active:scale-[0.98]",
+              saveUI?.saving || saveDisabled
+                ? "cursor-not-allowed opacity-60"
+                : "",
+            ].join(" ")}
+            aria-label="Enregistrer"
+            title="Enregistrer"
+          >
+            {savePresentation === "icon" ? (
+              saveUI?.saving ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : saveUI?.saved ? (
+                <Check className="size-4" />
+              ) : (
+                <Save className="size-4" />
+              )
+            ) : saveUI?.saving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Enregistrement…
+              </>
+            ) : saveUI?.saved ? (
+              <>
+                <Check className="size-4" />
+                Enregistré
+              </>
+            ) : (
+              <>
+                <Save className="size-4" />
+                Enregistrer
+              </>
+            )}
+          </button>
         ) : null}
       </div>
+      <div className="my-4 h-px bg-darkBlue/10" />
+
+      {saveUI?.error ? (
+        <p className="mb-4 text-sm font-semibold text-red" role="alert">
+          {saveUI.error}
+        </p>
+      ) : null}
+
       {children}
     </section>
+  );
+}
+
+const SECTION_KEYS = [
+  "availability",
+  "operations",
+  "payment",
+  "cleanup",
+  "hours",
+  "delivery",
+];
+
+function createSectionUI() {
+  return Object.fromEntries(
+    SECTION_KEYS.map((key) => [
+      key,
+      { dirty: false, saving: false, saved: false, error: "" },
+    ]),
   );
 }
 
@@ -167,28 +253,33 @@ function buildSlotsFromHours(hours = [], settings = {}) {
   });
 }
 
-export default function TakeAwayParametersComponent() {
+export default function TakeAwayParametersComponent({ webapp = false }) {
   const { restaurantContext } = useContext(GlobalContext);
   const restaurant = restaurantContext.restaurantData;
   const restaurantId = restaurant?._id;
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
   const [settingsForm, setSettingsForm] = useState(null);
   const [deliveryZones, setDeliveryZones] = useState([]);
   const [takeAwayHours, setTakeAwayHours] = useState([]);
   const [openZoneIndex, setOpenZoneIndex] = useState(null);
+  const [sectionUI, setSectionUI] = useState(createSectionUI);
+  const skipHydrationForRestaurantRef = useRef(null);
 
   const stripeReady = Boolean(String(restaurant?.stripeSecretKey || "").trim());
   const paymentRequiresStripe = ["online_required", "customer_choice"].includes(
     settingsForm?.paymentPolicy,
   );
-  const settingsSaveDisabled =
-    loading || (paymentRequiresStripe && !stripeReady);
-
   useEffect(() => {
+    if (
+      skipHydrationForRestaurantRef.current &&
+      skipHydrationForRestaurantRef.current === String(restaurant?._id || "")
+    ) {
+      skipHydrationForRestaurantRef.current = null;
+      return;
+    }
+
     const settings = restaurant?.takeAwaySettings || {};
     const enabled = settings.enabled === true;
     setSettingsForm({
@@ -217,6 +308,7 @@ export default function TakeAwayParametersComponent() {
       ),
     );
     setOpenZoneIndex(null);
+    setSectionUI(createSectionUI());
   }, [restaurant]);
 
   async function request(config) {
@@ -229,44 +321,143 @@ export default function TakeAwayParametersComponent() {
     });
   }
 
-  async function saveSettings() {
-    if (!settingsForm || settingsSaveDisabled) return;
-    setLoading(true);
-    setMessage("");
+  function markSectionDirty(sectionKey) {
+    setSectionUI((current) => ({
+      ...current,
+      [sectionKey]: {
+        ...current[sectionKey],
+        dirty: true,
+        saved: false,
+        error: "",
+      },
+    }));
+  }
+
+  function updateSettings(sectionKey, updater) {
+    setSettingsForm((current) =>
+      typeof updater === "function"
+        ? updater(current)
+        : { ...current, ...updater },
+    );
+    markSectionDirty(sectionKey);
+  }
+
+  function getSectionPayload(sectionKey, hoursOverride = null) {
+    if (sectionKey === "availability") {
+      return {
+        enabled: settingsForm.enabled,
+        pickupEnabled: settingsForm.enabled
+          ? settingsForm.pickupEnabled
+          : false,
+        deliveryEnabled: settingsForm.enabled
+          ? settingsForm.deliveryEnabled
+          : false,
+      };
+    }
+    if (sectionKey === "operations") {
+      return {
+        auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
+        defaultSlotIntervalMinutes: settingsForm.defaultSlotIntervalMinutes,
+        defaultSlotMaxOrders: settingsForm.defaultSlotMaxOrders,
+        minimumPickupOrder: settingsForm.minimumPickupOrder,
+      };
+    }
+    if (sectionKey === "payment") {
+      return { paymentPolicy: settingsForm.paymentPolicy };
+    }
+    if (sectionKey === "cleanup") {
+      return {
+        completedOrderAutoDeleteEnabled:
+          settingsForm.completedOrderAutoDeleteEnabled,
+        completedOrderAutoDeleteMinutes:
+          settingsForm.completedOrderAutoDeleteMinutes,
+        completedOrderAutoDeleteDays:
+          settingsForm.completedOrderAutoDeleteEnabled === true
+            ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
+              (24 * 60)
+            : 0,
+      };
+    }
+    if (sectionKey === "hours") {
+      const hours = hoursOverride || takeAwayHours;
+      return {
+        same_hours_as_restaurant: hoursOverride
+          ? false
+          : settingsForm.same_hours_as_restaurant,
+        ...(settingsForm.same_hours_as_restaurant && !hoursOverride
+          ? {}
+          : { slots: buildSlotsFromHours(hours, settingsForm) }),
+      };
+    }
+    if (sectionKey === "delivery") {
+      return { deliveryZones: buildDeliveryZonesPayload(deliveryZones) };
+    }
+    return {};
+  }
+
+  async function saveSection(sectionKey, { hoursOverride = null } = {}) {
+    if (!settingsForm || sectionUI[sectionKey]?.saving) return false;
+    if (sectionKey === "payment" && paymentRequiresStripe && !stripeReady) {
+      setSectionUI((current) => ({
+        ...current,
+        payment: {
+          ...current.payment,
+          error:
+            "Configure une clé Stripe avant d’activer le paiement en ligne.",
+        },
+      }));
+      return false;
+    }
+
+    setSectionUI((current) => ({
+      ...current,
+      [sectionKey]: {
+        ...current[sectionKey],
+        saving: true,
+        saved: false,
+        error: "",
+      },
+    }));
     try {
       const { data } = await request({
         method: "put",
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/settings`,
-        data: {
-          settings: {
-            ...settingsForm,
-            pickupEnabled: settingsForm.enabled
-              ? settingsForm.pickupEnabled
-              : false,
-            deliveryEnabled: settingsForm.enabled
-              ? settingsForm.deliveryEnabled
-              : false,
-            auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
-            completedOrderAutoDeleteDays:
-              settingsForm.completedOrderAutoDeleteEnabled === true
-                ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
-                  (24 * 60)
-                : 0,
-            slots: buildSlotsFromHours(takeAwayHours, settingsForm),
-            deliveryZones: buildDeliveryZonesPayload(deliveryZones),
-          },
-        },
+        data: { settings: getSectionPayload(sectionKey, hoursOverride) },
       });
+      if (hoursOverride) setTakeAwayHours(hoursOverride);
+      skipHydrationForRestaurantRef.current = String(
+        data.restaurant?._id || "",
+      );
       restaurantContext.setRestaurantData(data.restaurant);
+      setSectionUI((current) => ({
+        ...current,
+        [sectionKey]: {
+          dirty: false,
+          saving: false,
+          saved: true,
+          error: "",
+        },
+      }));
+      return true;
     } catch (error) {
       console.error(error);
-      setMessage("Erreur lors de l’enregistrement.");
-    } finally {
-      setLoading(false);
+      setSectionUI((current) => ({
+        ...current,
+        [sectionKey]: {
+          ...current[sectionKey],
+          saving: false,
+          saved: false,
+          error:
+            error?.response?.data?.message ||
+            "Erreur lors de l’enregistrement.",
+        },
+      }));
+      return false;
     }
   }
 
   function updateDeliveryZone(index, patch) {
+    markSectionDirty("delivery");
     setDeliveryZones((prev) =>
       prev.map((zone, zoneIndex) =>
         zoneIndex === index ? { ...zone, ...patch } : zone,
@@ -283,6 +474,7 @@ export default function TakeAwayParametersComponent() {
   }
 
   function addZipCodeToZone(index) {
+    markSectionDirty("delivery");
     setDeliveryZones((prev) =>
       prev.map((zone, zoneIndex) => {
         if (zoneIndex !== index) return zone;
@@ -305,6 +497,7 @@ export default function TakeAwayParametersComponent() {
   }
 
   function removeZipCodeFromZone(index, zipCodeToRemove) {
+    markSectionDirty("delivery");
     setDeliveryZones((prev) =>
       prev.map((zone, zoneIndex) =>
         zoneIndex === index
@@ -320,6 +513,7 @@ export default function TakeAwayParametersComponent() {
   }
 
   function addDeliveryZone() {
+    markSectionDirty("delivery");
     setDeliveryZones((prev) => {
       const next = [
         ...prev,
@@ -341,6 +535,7 @@ export default function TakeAwayParametersComponent() {
   }
 
   function removeDeliveryZone(index) {
+    markSectionDirty("delivery");
     setDeliveryZones((prev) => {
       const next = prev.filter((_, zoneIndex) => zoneIndex !== index);
       setOpenZoneIndex((current) => {
@@ -354,56 +549,40 @@ export default function TakeAwayParametersComponent() {
   }
 
   async function saveTakeAwayHoursImmediate(newHours) {
-    setTakeAwayHours(newHours);
-
-    const nextSettings = {
-      ...settingsForm,
+    updateSettings("hours", (current) => ({
+      ...current,
       same_hours_as_restaurant: false,
-      slots: buildSlotsFromHours(newHours, settingsForm),
-      deliveryZones: buildDeliveryZonesPayload(deliveryZones),
-    };
-
-    try {
-      const { data } = await request({
-        method: "put",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/settings`,
-        data: { settings: nextSettings },
-      });
-      restaurantContext.setRestaurantData(data.restaurant);
-    } catch (error) {
-      console.error(error);
-      setMessage("Erreur lors de l’enregistrement des horaires.");
-    }
+    }));
+    const saved = await saveSection("hours", { hoursOverride: newHours });
+    if (!saved) throw new Error("TAKE_AWAY_HOURS_SAVE_FAILED");
   }
 
   if (!settingsForm) return null;
 
   return (
-    <section className="flex flex-col gap-6">
-      <TakeAwayHeaderComponent subtitle="Paramètres" showBack />
-
-      {message && (
-        <div className="rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3 text-sm text-darkBlue">
-          {message}
-        </div>
-      )}
+    <section className={`flex flex-col ${webapp ? "gap-4" : "gap-6"}`}>
+      {!webapp ? (
+        <TakeAwayHeaderComponent subtitle="Paramètres" showBack />
+      ) : null}
 
       <div className="flex w-full flex-col gap-5">
         <SectionCard
           icon={<Settings2 className="size-4 shrink-0 opacity-60" />}
           title="Disponibilité"
           description="Active le module et choisis les modes proposés aux clients."
+          saveUI={sectionUI.availability}
+          onSave={() => saveSection("availability")}
+          savePresentation={webapp ? "icon" : "full"}
         >
           <div className="grid gap-4 midTablet:grid-cols-2">
             <ToggleField
               checked={settingsForm.enabled}
               onChange={(checked) =>
-                setSettingsForm((prev) => ({
+                updateSettings("availability", (prev) => ({
                   ...prev,
                   enabled: checked,
                   pickupEnabled: checked ? prev.pickupEnabled : false,
                   deliveryEnabled: checked ? prev.deliveryEnabled : false,
-                  auto_accept: checked ? prev.auto_accept : false,
                 }))
               }
               title="Activer les commandes en ligne"
@@ -413,7 +592,9 @@ export default function TakeAwayParametersComponent() {
               checked={settingsForm.enabled && settingsForm.pickupEnabled}
               disabled={!settingsForm.enabled}
               onChange={(checked) =>
-                setSettingsForm((prev) => ({ ...prev, pickupEnabled: checked }))
+                updateSettings("availability", {
+                  pickupEnabled: checked,
+                })
               }
               title="Autoriser le retrait"
               description="Les clients peuvent venir récupérer leur commande au restaurant."
@@ -422,59 +603,42 @@ export default function TakeAwayParametersComponent() {
               checked={settingsForm.enabled && settingsForm.deliveryEnabled}
               disabled={!settingsForm.enabled}
               onChange={(checked) =>
-                setSettingsForm((prev) => ({
-                  ...prev,
+                updateSettings("availability", {
                   deliveryEnabled: checked,
-                }))
+                })
               }
               title="Autoriser la livraison"
               description="Les clients peuvent choisir une adresse dans une zone couverte."
-            />
-            <ToggleField
-              checked={settingsForm.enabled && settingsForm.auto_accept}
-              disabled={!settingsForm.enabled}
-              onChange={(checked) =>
-                setSettingsForm((prev) => ({ ...prev, auto_accept: checked }))
-              }
-              title="Accepter automatiquement les commandes"
-              description="Si désactivé, les nouvelles commandes restent en attente jusqu’à validation."
             />
           </div>
         </SectionCard>
 
         <SectionCard
           icon={<Clock className="size-4 shrink-0 opacity-60" />}
-          title="Créneaux et paiement"
-          description="Définis le rythme de production, les quotas par créneau et la règle de paiement."
+          title="Commandes et créneaux"
+          description="Définis la validation des commandes, le rythme de production et les quotas."
+          saveUI={sectionUI.operations}
+          onSave={() => saveSection("operations")}
+          savePresentation={webapp ? "icon" : "full"}
         >
           <div className="grid gap-4 midTablet:grid-cols-2">
-            <FormField label="Règle de paiement">
-              <select
-                className={fieldClass(false)}
-                value={settingsForm.paymentPolicy}
-                onChange={(e) =>
-                  setSettingsForm((prev) => ({
-                    ...prev,
-                    paymentPolicy: e.target.value,
-                  }))
-                }
-              >
-                <option value="on_site">Paiement au retrait/livraison</option>
-                <option value="online_required">
-                  Paiement en ligne obligatoire
-                </option>
-                <option value="customer_choice">Choix client</option>
-              </select>
-            </FormField>
+            <ToggleField
+              checked={settingsForm.enabled && settingsForm.auto_accept}
+              disabled={!settingsForm.enabled}
+              onChange={(checked) =>
+                updateSettings("operations", { auto_accept: checked })
+              }
+              title="Accepter automatiquement les commandes"
+              description="Si désactivé, les nouvelles commandes restent en attente jusqu’à validation."
+            />
             <FormField label="Durée d’un créneau">
               <select
                 className={fieldClass(false)}
                 value={settingsForm.defaultSlotIntervalMinutes}
                 onChange={(e) =>
-                  setSettingsForm((prev) => ({
-                    ...prev,
+                  updateSettings("operations", {
                     defaultSlotIntervalMinutes: e.target.value,
-                  }))
+                  })
                 }
               >
                 {SLOT_INTERVAL_OPTIONS.map((minutes) => (
@@ -489,10 +653,9 @@ export default function TakeAwayParametersComponent() {
                 className={fieldClass(false)}
                 value={settingsForm.defaultSlotMaxOrders}
                 onChange={(e) =>
-                  setSettingsForm((prev) => ({
-                    ...prev,
+                  updateSettings("operations", {
                     defaultSlotMaxOrders: e.target.value,
-                  }))
+                  })
                 }
               >
                 {SLOT_QUOTA_OPTIONS.map((quantity) => (
@@ -511,10 +674,9 @@ export default function TakeAwayParametersComponent() {
                   className="h-full min-w-0 flex-1 bg-transparent outline-none"
                   value={settingsForm.minimumPickupOrder}
                   onChange={(e) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
+                    updateSettings("operations", {
                       minimumPickupOrder: e.target.value,
-                    }))
+                    })
                   }
                 />
                 <span className="ml-2 text-sm font-semibold text-darkBlue/55">
@@ -527,8 +689,45 @@ export default function TakeAwayParametersComponent() {
 
         <SectionCard
           icon={<Settings2 className="size-4 shrink-0 opacity-60" />}
+          title="Paiement"
+          description="Choisis le mode de règlement proposé dans le parcours public."
+          saveUI={sectionUI.payment}
+          onSave={() => saveSection("payment")}
+          saveDisabled={paymentRequiresStripe && !stripeReady}
+          savePresentation={webapp ? "icon" : "full"}
+        >
+          <FormField label="Règle de paiement">
+            <select
+              className={fieldClass(false)}
+              value={settingsForm.paymentPolicy}
+              onChange={(e) =>
+                updateSettings("payment", {
+                  paymentPolicy: e.target.value,
+                })
+              }
+            >
+              <option value="on_site">Paiement au retrait/livraison</option>
+              <option value="online_required">
+                Paiement en ligne obligatoire
+              </option>
+              <option value="customer_choice">Choix client</option>
+            </select>
+          </FormField>
+          {paymentRequiresStripe && !stripeReady ? (
+            <p className="mt-3 rounded-xl border border-orange/20 bg-orange/10 px-4 py-3 text-sm font-semibold text-orange">
+              Configure une clé Stripe dans le restaurant avant d’enregistrer un
+              mode avec paiement en ligne.
+            </p>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard
+          icon={<Settings2 className="size-4 shrink-0 opacity-60" />}
           title="Automatisations"
           description="Nettoie automatiquement les commandes terminées après le délai choisi."
+          saveUI={sectionUI.cleanup}
+          onSave={() => saveSection("cleanup")}
+          savePresentation={webapp ? "icon" : "full"}
         >
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
             <div className="flex items-start justify-between gap-3">
@@ -555,7 +754,7 @@ export default function TakeAwayParametersComponent() {
                     className="sr-only"
                     checked={settingsForm.completedOrderAutoDeleteEnabled}
                     onChange={(e) =>
-                      setSettingsForm((prev) => ({
+                      updateSettings("cleanup", (prev) => ({
                         ...prev,
                         completedOrderAutoDeleteEnabled: e.target.checked,
                         completedOrderAutoDeleteMinutes: e.target.checked
@@ -582,10 +781,9 @@ export default function TakeAwayParametersComponent() {
                 disabled={!settingsForm.completedOrderAutoDeleteEnabled}
                 value={settingsForm.completedOrderAutoDeleteMinutes}
                 onChange={(e) =>
-                  setSettingsForm((prev) => ({
-                    ...prev,
+                  updateSettings("cleanup", {
                     completedOrderAutoDeleteMinutes: e.target.value,
-                  }))
+                  })
                 }
               >
                 {AUTO_DELETE_OPTIONS.map((option) => (
@@ -598,72 +796,52 @@ export default function TakeAwayParametersComponent() {
           </div>
         </SectionCard>
 
-        <section className="rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm">
-          <div className="px-2 py-4 mobile:p-4 midTablet:p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-base font-semibold text-darkBlue">
-                  <CalendarDays className="size-4 shrink-0 opacity-60" />
-                  Horaires de vente à emporter
-                </p>
-                <p className="text-sm text-darkBlue/60">
-                  {settingsForm.same_hours_as_restaurant
-                    ? "Utilise les horaires du restaurant."
-                    : "Définis des horaires spécifiques aux commandes à emporter."}
-                </p>
-              </div>
+        <SectionCard
+          icon={<CalendarDays className="size-4 shrink-0 opacity-60" />}
+          title="Horaires de vente à emporter"
+          description={
+            settingsForm.same_hours_as_restaurant
+              ? "Utilise les horaires du restaurant."
+              : "Définis des horaires spécifiques aux commandes à emporter."
+          }
+          saveUI={sectionUI.hours}
+          onSave={() => saveSection("hours")}
+          savePresentation={webapp ? "icon" : "full"}
+        >
+          <ToggleField
+            checked={settingsForm.same_hours_as_restaurant}
+            onChange={(checked) =>
+              updateSettings("hours", {
+                same_hours_as_restaurant: checked,
+              })
+            }
+            title="Utiliser les horaires du restaurant"
+            description="Désactive cette option pour définir des horaires spécifiques au Take-away."
+          />
 
-              <label
-                className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border transition ${
-                  settingsForm.same_hours_as_restaurant
-                    ? "border-blue/40 bg-blue"
-                    : "border-darkBlue/10 bg-darkBlue/10"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={settingsForm.same_hours_as_restaurant}
-                  onChange={(e) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      same_hours_as_restaurant: e.target.checked,
-                    }))
-                  }
-                />
-                <span
-                  className={`absolute top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-white shadow-sm transition ${
-                    settingsForm.same_hours_as_restaurant
-                      ? "translate-x-7"
-                      : "translate-x-1"
-                  }`}
-                />
-              </label>
+          {!settingsForm.same_hours_as_restaurant ? (
+            <div className="mt-4 border-t border-darkBlue/10 pt-4">
+              <HoursRestaurantComponent
+                restaurantId={restaurantId}
+                dataLoading={restaurantContext.dataLoading}
+                closeEditing={restaurantContext.closeEditing}
+                reservations
+                reservationHours={takeAwayHours}
+                onSaveReservationHours={saveTakeAwayHoursImmediate}
+                hoursTitle="Horaires personnalisés"
+                hoursSubtitle="Éditez puis enregistrez les plages disponibles pour les commandes à emporter."
+              />
             </div>
-
-            {!settingsForm.same_hours_as_restaurant ? (
-              <>
-                <div className="my-4 h-px bg-darkBlue/10" />
-                <HoursRestaurantComponent
-                  restaurantId={restaurantId}
-                  dataLoading={restaurantContext.dataLoading}
-                  closeEditing={restaurantContext.closeEditing}
-                  reservations
-                  reservationHours={takeAwayHours}
-                  onChange={(data) => setTakeAwayHours(data.hours)}
-                  onSaveReservationHours={saveTakeAwayHoursImmediate}
-                  hoursTitle="Horaires de vente à emporter"
-                  hoursSubtitle="Définissez les créneaux disponibles pour les commandes à emporter."
-                />
-              </>
-            ) : null}
-          </div>
-        </section>
+          ) : null}
+        </SectionCard>
 
         <SectionCard
           icon={<Plus className="size-4 shrink-0 opacity-60" />}
           title="Zones de livraison"
           description="Ajoute une zone, indique les codes postaux couverts, puis les frais et le minimum de commande."
+          saveUI={sectionUI.delivery}
+          onSave={() => saveSection("delivery")}
+          savePresentation={webapp ? "icon" : "full"}
         >
           {!deliveryZones.length ? (
             <EmptyState text="Aucune zone configurée. Ajoute une première zone de livraison." />
@@ -708,7 +886,7 @@ export default function TakeAwayParametersComponent() {
                       <button
                         type="button"
                         onClick={() => removeDeliveryZone(index)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red hover:bg-red/10"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red/20 bg-white text-red canHover:hover:bg-red/10"
                         aria-label="Supprimer la zone"
                         title="Supprimer la zone"
                       >
@@ -721,7 +899,7 @@ export default function TakeAwayParametersComponent() {
                             current === index ? null : index,
                           )
                         }
-                        className="inline-flex size-8 items-center justify-center rounded-xl text-darkBlue/50 transition hover:bg-darkBlue/5"
+                        className="inline-flex size-8 items-center justify-center rounded-xl text-darkBlue/50 transition canHover:hover:bg-darkBlue/5"
                         aria-label={
                           openZoneIndex === index
                             ? "Replier la zone"
@@ -746,9 +924,7 @@ export default function TakeAwayParametersComponent() {
                   >
                     <div className="overflow-hidden">
                       <div className="grid gap-3 midTablet:grid-cols-2">
-                        <FormField
-                          label="Nom de la zone"
-                        >
+                        <FormField label="Nom de la zone">
                           <input
                             className={fieldClass(false)}
                             value={zone.name}
@@ -759,9 +935,7 @@ export default function TakeAwayParametersComponent() {
                             }
                           />
                         </FormField>
-                        <FormField
-                          label="Codes postaux couverts"
-                        >
+                        <FormField label="Codes postaux couverts">
                           <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white pl-3 pr-1 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
                             <input
                               inputMode="numeric"
@@ -785,7 +959,7 @@ export default function TakeAwayParametersComponent() {
                                 type="button"
                                 onClick={() => addZipCodeToZone(index)}
                                 disabled={!/^\d{5}$/.test(zone.zipCodeDraft)}
-                                className="inline-flex size-9 items-center justify-center rounded-lg bg-blue text-white transition hover:bg-blue/90 disabled:cursor-not-allowed disabled:bg-darkBlue/15 disabled:text-darkBlue/35"
+                                className="inline-flex size-9 items-center justify-center rounded-lg bg-blue text-white transition canHover:hover:bg-blue/90 disabled:cursor-not-allowed disabled:bg-darkBlue/15 disabled:text-darkBlue/35"
                                 aria-label="Ajouter le code postal"
                                 title="Ajouter le code postal"
                               >
@@ -806,7 +980,7 @@ export default function TakeAwayParametersComponent() {
                                     onClick={() =>
                                       removeZipCodeFromZone(index, zipCode)
                                     }
-                                    className="text-darkBlue/45 transition hover:text-red"
+                                    className="text-darkBlue/45 transition canHover:hover:text-red"
                                     aria-label={`Supprimer le code postal ${zipCode}`}
                                     title="Supprimer ce code postal"
                                   >
@@ -888,31 +1062,12 @@ export default function TakeAwayParametersComponent() {
           <button
             type="button"
             onClick={addDeliveryZone}
-            className="mt-3 inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5"
+            className="mt-3 inline-flex h-10 w-fit items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 text-sm font-semibold text-darkBlue canHover:hover:bg-darkBlue/5"
           >
             <Plus className="size-4" />
             Ajouter une zone
           </button>
         </SectionCard>
-
-        <PushNotificationsSettingsWebapp module="take_away" />
-
-        {paymentRequiresStripe && !stripeReady ? (
-          <div className="rounded-xl border border-orange/20 bg-orange/10 px-4 py-3 text-sm font-semibold text-orange">
-            Configure une clé Stripe dans le restaurant pour enregistrer un mode
-            avec paiement en ligne.
-          </div>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={saveSettings}
-          disabled={settingsSaveDisabled}
-          className="inline-flex h-11 w-fit items-center gap-2 rounded-xl bg-blue px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Save className="size-4" />
-          Enregistrer
-        </button>
       </div>
     </section>
   );

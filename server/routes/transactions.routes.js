@@ -77,6 +77,15 @@ function isStripeTakeAwayTransaction(charge, expectedRestaurantId = "") {
   );
 }
 
+async function isTakeAwayRefundTarget(charge) {
+  if (getStripeTransactionType(charge) === "takeaway_order") return true;
+  const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+  if (!paymentIntentId) return false;
+  return Boolean(
+    await TakeAwayOrderModel.exists({ stripePaymentIntentId: paymentIntentId }),
+  );
+}
+
 function isMissingStripePaymentIntentError(error) {
   const code = String(error?.code || error?.raw?.code || "").toLowerCase();
   const message = String(
@@ -324,13 +333,21 @@ async function buildTakeAwayPaymentMaps({
 }) {
   const filters = [];
   const normalizedPaymentIntentIds = Array.from(
-    new Set(paymentIntentIds.map((value) => String(value || "").trim()).filter(Boolean)),
+    new Set(
+      paymentIntentIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
   );
   const normalizedOrderIds = Array.from(
-    new Set(orderIds.map((value) => String(value || "").trim()).filter(Boolean)),
+    new Set(
+      orderIds.map((value) => String(value || "").trim()).filter(Boolean),
+    ),
   );
   if (normalizedPaymentIntentIds.length) {
-    filters.push({ stripePaymentIntentId: { $in: normalizedPaymentIntentIds } });
+    filters.push({
+      stripePaymentIntentId: { $in: normalizedPaymentIntentIds },
+    });
   }
   if (normalizedOrderIds.length) {
     filters.push({ _id: { $in: normalizedOrderIds } });
@@ -549,14 +566,11 @@ async function fetchGiftPurchaseFallbackTransactions({
       .map((value) => String(value || "").trim())
       .filter(Boolean),
   );
-  const purchases = (Array.isArray(purchasesGiftCards)
-    ? purchasesGiftCards
-    : []
+  const purchases = (
+    Array.isArray(purchasesGiftCards) ? purchasesGiftCards : []
   )
     .filter((purchase) => {
-      const paymentIntentId = String(
-        purchase?.paymentIntentId || "",
-      ).trim();
+      const paymentIntentId = String(purchase?.paymentIntentId || "").trim();
       return paymentIntentId && !excludedIds.has(paymentIntentId);
     })
     .sort((left, right) => {
@@ -585,11 +599,7 @@ async function fetchGiftPurchaseFallbackTransactions({
         const paymentIntent = stripePaymentData?.paymentIntent || null;
         const charge = stripePaymentData?.charge || null;
 
-        if (
-          !paymentIntent ||
-          paymentIntent.status !== "succeeded" ||
-          !charge
-        ) {
+        if (!paymentIntent || paymentIntent.status !== "succeeded" || !charge) {
           return null;
         }
 
@@ -990,146 +1000,163 @@ async function fetchVisibleDashboardCharges({
 }
 
 // RECUPERER TOUS LES PAIEMENTS STRIPE (10 par 10)
-router.get("/owner/restaurants/:id/payments", async (req, res) => {
-  const { id } = req.params;
-  const { limit = 10, starting_after } = req.query;
+router.get(
+  "/owner/restaurants/:id/payments",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
+  async (req, res) => {
+    const { id } = req.params;
+    const { limit = 10, starting_after } = req.query;
 
-  try {
-    const restaurant = await RestaurantModel.findById(id).select(
-      "stripeSecretKey purchasesGiftCards",
-    );
-    if (!restaurant || !restaurant.stripeSecretKey) {
-      return res
-        .status(404)
-        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    try {
+      const restaurant = await RestaurantModel.findById(id).select(
+        "stripeSecretKey purchasesGiftCards",
+      );
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      }
+
+      const stripeInstance = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey),
+      );
+
+      const { charges, hasMore, lastChargeId } =
+        await fetchVisibleDashboardCharges({
+          stripeInstance,
+          restaurantId: id,
+          purchasesGiftCards: restaurant?.purchasesGiftCards,
+          limit,
+          startingAfter: starting_after,
+        });
+
+      return res.status(200).json({
+        charges,
+        has_more: hasMore,
+        last_charge_id: lastChargeId,
+      });
+    } catch (error) {
+      console.error("Erreur lors de la récupération des transactions :", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
+    }
+  },
+);
+
+// RECHERCHE DE PAIEMENTS PAR NOM/PRÉNOM
+router.get(
+  "/owner/restaurants/:id/payments/search",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
+  async (req, res) => {
+    const { id } = req.params;
+    const { query, limit = 100 } = req.query;
+
+    if (!query) {
+      return res.status(400).json({
+        message: "Veuillez fournir un nom ou un prénom pour la recherche.",
+      });
     }
 
-    const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey),
-    );
+    try {
+      // 1) Récupération du restaurant et de sa clé Stripe
+      const restaurant = await RestaurantModel.findById(id).select(
+        "stripeSecretKey purchasesGiftCards",
+      );
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      }
 
-    const { charges, hasMore, lastChargeId } =
-      await fetchVisibleDashboardCharges({
+      const stripeInstance = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey),
+      );
+
+      const { charges: allCharges } = await fetchVisibleDashboardCharges({
         stripeInstance,
         restaurantId: id,
         purchasesGiftCards: restaurant?.purchasesGiftCards,
         limit,
-        startingAfter: starting_after,
       });
 
-    return res.status(200).json({
-      charges,
-      has_more: hasMore,
-      last_charge_id: lastChargeId,
-    });
-  } catch (error) {
-    console.error("Erreur lors de la récupération des transactions :", error);
-    return res.status(500).json({ message: "Erreur interne du serveur" });
-  }
-});
+      // 3) Filtrer sur le nom client réellement affiché
+      const lowerQuery = query.toLowerCase();
+      const charges = allCharges.filter((charge) =>
+        `${charge?.customer || ""} ${charge?.orderNumber || ""}`
+          .toLowerCase()
+          .includes(lowerQuery),
+      );
 
-// RECHERCHE DE PAIEMENTS PAR NOM/PRÉNOM
-router.get("/owner/restaurants/:id/payments/search", async (req, res) => {
-  const { id } = req.params;
-  const { query, limit = 100 } = req.query;
-
-  if (!query) {
-    return res.status(400).json({
-      message: "Veuillez fournir un nom ou un prénom pour la recherche.",
-    });
-  }
-
-  try {
-    // 1) Récupération du restaurant et de sa clé Stripe
-    const restaurant = await RestaurantModel.findById(id).select(
-      "stripeSecretKey purchasesGiftCards",
-    );
-    if (!restaurant || !restaurant.stripeSecretKey) {
-      return res
-        .status(404)
-        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      // 5) Retour au client
+      return res.status(200).json({
+        charges,
+        has_more: false,
+        count: charges.length,
+      });
+    } catch (error) {
+      console.error("Erreur lors de la recherche des paiements :", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
     }
-
-    const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey),
-    );
-
-    const { charges: allCharges } = await fetchVisibleDashboardCharges({
-      stripeInstance,
-      restaurantId: id,
-      purchasesGiftCards: restaurant?.purchasesGiftCards,
-      limit,
-    });
-
-    // 3) Filtrer sur le nom client réellement affiché
-    const lowerQuery = query.toLowerCase();
-    const charges = allCharges.filter((charge) =>
-      `${charge?.customer || ""} ${charge?.orderNumber || ""}`
-        .toLowerCase()
-        .includes(lowerQuery),
-    );
-
-    // 5) Retour au client
-    return res.status(200).json({
-      charges,
-      has_more: false,
-      count: charges.length,
-    });
-  } catch (error) {
-    console.error("Erreur lors de la recherche des paiements :", error);
-    return res.status(500).json({ message: "Erreur interne du serveur" });
-  }
-});
+  },
+);
 
 // Récupérer les virements Stripe (payouts)
-router.get("/owner/restaurants/:id/payouts", async (req, res) => {
-  const { id } = req.params;
-  const { limit = 10, starting_after } = req.query;
+router.get(
+  "/owner/restaurants/:id/payouts",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
+  async (req, res) => {
+    const { id } = req.params;
+    const { limit = 10, starting_after } = req.query;
 
-  try {
-    const restaurant = await RestaurantModel.findById(id);
-    if (!restaurant || !restaurant.stripeSecretKey) {
-      return res
-        .status(404)
-        .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+    try {
+      const restaurant = await RestaurantModel.findById(id);
+      if (!restaurant || !restaurant.stripeSecretKey) {
+        return res
+          .status(404)
+          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
+      }
+
+      const stripeInstance = require("stripe")(
+        decryptApiKey(restaurant.stripeSecretKey),
+      );
+
+      // Liste paginée des virements
+      const payoutsList = await stripeInstance.payouts.list({
+        limit: Number(limit),
+        starting_after,
+      });
+
+      // Formatage
+      const payouts = payoutsList.data.map((payout) => {
+        return {
+          id: payout.id,
+          arrivalDate: payout.arrival_date, // timestamp UNIX
+          amount: (payout.amount / 100).toFixed(2),
+          currency: payout.currency,
+          status: payout.status,
+        };
+      });
+
+      return res.status(200).json({
+        payouts,
+        has_more: payoutsList.has_more,
+        last_payout_id:
+          payouts.length > 0 ? payouts[payouts.length - 1].id : null,
+      });
+    } catch (error) {
+      console.error("Erreur lors de la récupération des virements :", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
     }
-
-    const stripeInstance = require("stripe")(
-      decryptApiKey(restaurant.stripeSecretKey),
-    );
-
-    // Liste paginée des virements
-    const payoutsList = await stripeInstance.payouts.list({
-      limit: Number(limit),
-      starting_after,
-    });
-
-    // Formatage
-    const payouts = payoutsList.data.map((payout) => {
-      return {
-        id: payout.id,
-        arrivalDate: payout.arrival_date, // timestamp UNIX
-        amount: (payout.amount / 100).toFixed(2),
-        currency: payout.currency,
-        status: payout.status,
-      };
-    });
-
-    return res.status(200).json({
-      payouts,
-      has_more: payoutsList.has_more,
-      last_payout_id:
-        payouts.length > 0 ? payouts[payouts.length - 1].id : null,
-    });
-  } catch (error) {
-    console.error("Erreur lors de la récupération des virements :", error);
-    return res.status(500).json({ message: "Erreur interne du serveur" });
-  }
-});
+  },
+);
 
 // Récupérer les transactions associées à un payout
 router.get(
   "/owner/restaurants/:id/payouts/:payoutId/payments",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
   async (req, res) => {
     const { id, payoutId } = req.params;
     const { limit = 10, starting_after } = req.query;
@@ -1201,34 +1228,41 @@ router.get(
 );
 
 // Résumé rapide des ventes de cartes cadeaux (lecture DB uniquement)
-router.get("/owner/restaurants/:id/payments/summary", async (req, res) => {
-  const { id } = req.params;
+router.get(
+  "/owner/restaurants/:id/payments/summary",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
+  async (req, res) => {
+    const { id } = req.params;
 
-  try {
-    const restaurant =
-      await RestaurantModel.findById(id).select("giftCardSold");
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found." });
+    try {
+      const restaurant =
+        await RestaurantModel.findById(id).select("giftCardSold");
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found." });
+      }
+
+      const stats = restaurant.giftCardSold || {
+        totalSold: 0,
+        totalRefunded: 0,
+      };
+
+      return res.status(200).json({
+        totalSold: stats.totalSold,
+        totalRefunded: stats.totalRefunded,
+      });
+    } catch (error) {
+      console.error("Erreur summary-fast :", error);
+      return res.status(500).json({ message: "Erreur interne du serveur" });
     }
-
-    const stats = restaurant.giftCardSold || {
-      totalSold: 0,
-      totalRefunded: 0,
-    };
-
-    return res.status(200).json({
-      totalSold: stats.totalSold,
-      totalRefunded: stats.totalRefunded,
-    });
-  } catch (error) {
-    console.error("Erreur summary-fast :", error);
-    return res.status(500).json({ message: "Erreur interne du serveur" });
-  }
-});
+  },
+);
 
 // Récupération des ventes mensuelles de cartes cadeaux (6 mois)
 router.get(
   "/owner/restaurants/:id/payments/monthly-sales",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id" }),
   async (req, res) => {
     const { id } = req.params;
 
@@ -1343,6 +1377,12 @@ router.post(
 
       const charge = await stripeInstance.charges.retrieve(paymentId);
       const paymentIntentId = getStripePaymentIntentId(charge?.payment_intent);
+      if (await isTakeAwayRefundTarget(charge)) {
+        return res.status(409).json({
+          message:
+            "Une commande à emporter doit être annulée ou refusée depuis le module Vente à emporter.",
+        });
+      }
       const giftPurchaseByPaymentIntent = buildGiftPurchaseMap(
         restaurant?.purchasesGiftCards,
       );
@@ -1398,3 +1438,4 @@ router.post(
 
 module.exports = router;
 module.exports.formatChargeForDashboard = formatChargeForDashboard;
+module.exports.isTakeAwayRefundTarget = isTakeAwayRefundTarget;

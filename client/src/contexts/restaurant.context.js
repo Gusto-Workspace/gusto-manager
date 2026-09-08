@@ -15,6 +15,9 @@ const EMPTY_UNREAD_BY_MODULE = {
   take_away: 0,
 };
 
+const TAKE_AWAY_PERIOD_CACHE_LIMIT = 9;
+const TAKE_AWAY_MUTATION_OVERRIDE_LIMIT = 500;
+
 function countUnreadTotal(byModule = {}) {
   return Object.values(byModule).reduce(
     (total, value) => total + (Number(value) || 0),
@@ -73,6 +76,27 @@ function isReservationInRange(reservation, from, to) {
   return Boolean(dateKey && dateKey >= from && dateKey <= to);
 }
 
+function getTakeAwayOrderDateKey(order) {
+  return toReservationDateKey(order?.scheduledFor);
+}
+
+function isTakeAwayOrderInRange(order, from, to) {
+  const dateKey = getTakeAwayOrderDateKey(order);
+  return Boolean(dateKey && dateKey >= from && dateKey <= to);
+}
+
+function getTakeAwayOrderRestaurantId(order, fallback = "") {
+  const value = order?.restaurant_id || order?.restaurantId || fallback;
+  return value?._id ? String(value._id) : String(value || "");
+}
+
+function trimOldestMapEntries(map, limit) {
+  while (map.size > limit) {
+    const oldestKey = map.keys().next().value;
+    map.delete(oldestKey);
+  }
+}
+
 function getRestaurantReadParams(pathname = "") {
   return String(pathname).startsWith("/dashboard/webapp/reservations")
     ? { scope: "reservations" }
@@ -85,6 +109,9 @@ export default function RestaurantContext() {
   const [restaurantData, setRestaurantData] = useState(null);
   const [reservationsList, setReservationsList] = useState([]);
   const [activePeriodLoading, setActivePeriodLoading] = useState(false);
+  const [takeAwayOrdersList, setTakeAwayOrdersList] = useState([]);
+  const [activeTakeAwayPeriodLoading, setActiveTakeAwayPeriodLoading] =
+    useState(false);
   const [userConnected, setUserConnected] = useState(null);
   const [restaurantsList, setRestaurantsList] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -124,6 +151,11 @@ export default function RestaurantContext() {
   const reservationPeriodRequestsRef = useRef(new Map());
   const reservationMutationOverridesRef = useRef(new Map());
   const activeReservationPeriodRef = useRef(null);
+  const takeAwayPeriodsCacheRef = useRef(new Map());
+  const takeAwayPeriodRequestsRef = useRef(new Map());
+  const takeAwayMutationOverridesRef = useRef(new Map());
+  const activeTakeAwayPeriodRef = useRef(null);
+  const takeAwayCacheGenerationRef = useRef(0);
   const currentRestaurantIdRef = useRef(null);
 
   useEffect(() => {
@@ -400,6 +432,13 @@ export default function RestaurantContext() {
             ? data.reservations
             : [];
 
+          if (
+            reservationPeriodRequestsRef.current.get(cacheKey) !==
+            requestPromise
+          ) {
+            return null;
+          }
+
           reservationMutationOverridesRef.current.forEach(
             (override, reservationId) => {
               reservations = reservations.filter(
@@ -423,11 +462,15 @@ export default function RestaurantContext() {
         } catch (e) {
           console.warn("Failed to fetch reservations list", e);
           return null;
-        } finally {
+        }
+      })().finally(() => {
+        if (
+          reservationPeriodRequestsRef.current.get(cacheKey) === requestPromise
+        ) {
           reservationPeriodRequestsRef.current.delete(cacheKey);
           if (activate && isActivePeriod()) setActivePeriodLoading(false);
         }
-      })();
+      });
 
       reservationPeriodRequestsRef.current.set(cacheKey, requestPromise);
       const reservations = await requestPromise;
@@ -582,6 +625,230 @@ export default function RestaurantContext() {
         (item) => String(item?._id) !== id,
       ),
     );
+  }, []);
+
+  const loadTakeAwayOrderPeriod = useCallback(
+    async ({
+      restaurantId = null,
+      from,
+      to,
+      force = false,
+      activate = true,
+    } = {}) => {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const rid = String(restaurantId || restaurantData?._id || "");
+
+      if (!token || !rid || !from || !to) {
+        if (activate) {
+          setTakeAwayOrdersList([]);
+          setActiveTakeAwayPeriodLoading(false);
+        }
+        return [];
+      }
+
+      const period = { restaurantId: rid, from: String(from), to: String(to) };
+      const requestGeneration = takeAwayCacheGenerationRef.current;
+      const canActivate = () =>
+        !currentRestaurantIdRef.current ||
+        currentRestaurantIdRef.current === period.restaurantId;
+      const cacheKey = `${period.restaurantId}:${period.from}:${period.to}`;
+      const isActivePeriod = () => {
+        const active = activeTakeAwayPeriodRef.current;
+        return (
+          active?.restaurantId === period.restaurantId &&
+          active?.from === period.from &&
+          active?.to === period.to
+        );
+      };
+
+      if (activate && canActivate()) activeTakeAwayPeriodRef.current = period;
+
+      const cached = takeAwayPeriodsCacheRef.current.get(cacheKey);
+      if (!force && cached) {
+        if (activate && canActivate() && isActivePeriod()) {
+          setTakeAwayOrdersList(cached.orders);
+          setActiveTakeAwayPeriodLoading(false);
+        }
+        return cached.orders;
+      }
+
+      const inFlight = takeAwayPeriodRequestsRef.current.get(cacheKey);
+      if (!force && inFlight) {
+        if (activate && canActivate() && isActivePeriod()) {
+          setActiveTakeAwayPeriodLoading(true);
+        }
+        const orders = await inFlight;
+        if (activate && orders && canActivate() && isActivePeriod()) {
+          setTakeAwayOrdersList(orders);
+          setActiveTakeAwayPeriodLoading(false);
+        }
+        return orders;
+      }
+
+      if (activate && canActivate()) setActiveTakeAwayPeriodLoading(true);
+
+      const requestPromise = (async () => {
+        try {
+          const { data } = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/take-away/orders`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { dateFrom: period.from, dateTo: period.to, limit: 300 },
+            },
+          );
+          let orders = Array.isArray(data?.orders) ? data.orders : [];
+
+          if (
+            requestGeneration !== takeAwayCacheGenerationRef.current ||
+            !canActivate() ||
+            takeAwayPeriodRequestsRef.current.get(cacheKey) !== requestPromise
+          ) {
+            return null;
+          }
+
+          takeAwayMutationOverridesRef.current.forEach((override, orderId) => {
+            const overrideOrder = override?.order || override;
+            const overrideRestaurantId =
+              override?.restaurantId ||
+              getTakeAwayOrderRestaurantId(overrideOrder);
+            if (overrideRestaurantId !== period.restaurantId) return;
+            orders = orders.filter(
+              (item) => String(item?._id) !== String(orderId),
+            );
+            if (
+              overrideOrder &&
+              isTakeAwayOrderInRange(overrideOrder, period.from, period.to)
+            ) {
+              orders.unshift(overrideOrder);
+            }
+          });
+
+          takeAwayPeriodsCacheRef.current.set(cacheKey, {
+            ...period,
+            orders,
+          });
+          trimOldestMapEntries(
+            takeAwayPeriodsCacheRef.current,
+            TAKE_AWAY_PERIOD_CACHE_LIMIT,
+          );
+          return orders;
+        } catch (error) {
+          console.warn("Failed to fetch Take-away orders", error);
+          return null;
+        }
+      })().finally(() => {
+        if (
+          takeAwayPeriodRequestsRef.current.get(cacheKey) === requestPromise
+        ) {
+          takeAwayPeriodRequestsRef.current.delete(cacheKey);
+          if (activate && canActivate() && isActivePeriod()) {
+            setActiveTakeAwayPeriodLoading(false);
+          }
+        }
+      });
+
+      takeAwayPeriodRequestsRef.current.set(cacheKey, requestPromise);
+      const orders = await requestPromise;
+      if (activate && orders && canActivate() && isActivePeriod()) {
+        setTakeAwayOrdersList(orders);
+      }
+      return orders;
+    },
+    [restaurantData?._id],
+  );
+
+  const ensureTakeAwayOrdersMonth = useCallback(
+    async (date = new Date(), options = {}) => {
+      const range = getReservationMonthRange(date);
+      if (!range) return null;
+
+      const orders = await loadTakeAwayOrderPeriod({
+        ...options,
+        restaurantId: options.restaurantId || restaurantData?._id,
+        ...range,
+      });
+
+      if (orders && options.prefetchAdjacent !== false) {
+        const sourceDate = date instanceof Date ? date : new Date(date);
+        const adjacentDates = [
+          new Date(sourceDate.getFullYear(), sourceDate.getMonth() - 1, 1),
+          new Date(sourceDate.getFullYear(), sourceDate.getMonth() + 1, 1),
+        ];
+
+        window.setTimeout(() => {
+          adjacentDates.forEach((adjacentDate) => {
+            loadTakeAwayOrderPeriod({
+              ...options,
+              restaurantId: options.restaurantId || restaurantData?._id,
+              ...getReservationMonthRange(adjacentDate),
+              activate: false,
+              force: false,
+            });
+          });
+        }, 0);
+      }
+
+      return orders;
+    },
+    [loadTakeAwayOrderPeriod, restaurantData?._id],
+  );
+
+  const getCachedTakeAwayOrdersMonth = useCallback(
+    (date = new Date(), restaurantId = null) => {
+      const range = getReservationMonthRange(date);
+      const rid = String(restaurantId || restaurantData?._id || "");
+      if (!range || !rid) return null;
+      return (
+        takeAwayPeriodsCacheRef.current.get(`${rid}:${range.from}:${range.to}`)
+          ?.orders || null
+      );
+    },
+    [restaurantData?._id],
+  );
+
+  const applyTakeAwayOrderUpdate = useCallback((order, restaurantId = "") => {
+    if (!order?._id) return;
+    const orderId = String(order._id);
+    const rid = getTakeAwayOrderRestaurantId(
+      order,
+      restaurantId || currentRestaurantIdRef.current,
+    );
+    if (!rid) return;
+    takeAwayMutationOverridesRef.current.set(orderId, {
+      order,
+      restaurantId: rid,
+    });
+    trimOldestMapEntries(
+      takeAwayMutationOverridesRef.current,
+      TAKE_AWAY_MUTATION_OVERRIDE_LIMIT,
+    );
+
+    takeAwayPeriodsCacheRef.current.forEach((entry, key) => {
+      if (entry.restaurantId !== rid) return;
+      const previous = (entry.orders || []).find(
+        (item) => String(item?._id) === orderId,
+      );
+      const withoutOrder = (entry.orders || []).filter(
+        (item) => String(item?._id) !== orderId,
+      );
+      const orders = isTakeAwayOrderInRange(order, entry.from, entry.to)
+        ? [{ ...previous, ...order }, ...withoutOrder]
+        : withoutOrder;
+      takeAwayPeriodsCacheRef.current.set(key, { ...entry, orders });
+    });
+
+    const activePeriod = activeTakeAwayPeriodRef.current;
+    if (!activePeriod || activePeriod.restaurantId !== rid) return;
+    setTakeAwayOrdersList((current) => {
+      const list = Array.isArray(current) ? current : [];
+      const previous = list.find((item) => String(item?._id) === orderId);
+      const withoutOrder = list.filter((item) => String(item?._id) !== orderId);
+      if (!isTakeAwayOrderInRange(order, activePeriod.from, activePeriod.to)) {
+        return withoutOrder;
+      }
+      return [{ ...previous, ...order }, ...withoutOrder];
+    });
   }, []);
 
   const reconnectRealtime = useCallback(() => {
@@ -793,6 +1060,32 @@ export default function RestaurantContext() {
         }
 
         if (
+          ["takeaway_order_created", "takeaway_order_updated"].includes(
+            payload.type,
+          ) &&
+          payload.order
+        ) {
+          customersCacheRef.current.clear();
+          customerDetailsRequestsRef.current.clear();
+          applyTakeAwayOrderUpdate(payload.order, payload.restaurantId);
+        }
+
+        if (payload.type === "takeaway_availability_updated") {
+          setRestaurantData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              takeAwaySettings: {
+                ...(prev.takeAwaySettings || {}),
+                blockedDates: Array.isArray(payload.blockedDates)
+                  ? payload.blockedDates
+                  : prev.takeAwaySettings?.blockedDates || [],
+              },
+            };
+          });
+        }
+
+        if (
           payload.type === "reservation_settings_updated" &&
           payload.reservationsSettings
         ) {
@@ -883,6 +1176,7 @@ export default function RestaurantContext() {
       // Le client SSE authentifié gère la reconnexion.
     };
   }, [
+    applyTakeAwayOrderUpdate,
     applyReservationUpdate,
     removeReservationFromCache,
     restaurantData?._id,
@@ -915,7 +1209,7 @@ export default function RestaurantContext() {
       return "reservations";
     if (pathname.startsWith("/dashboard/webapp/gift-cards"))
       return "gift_cards";
-    if (pathname.startsWith("/dashboard/take-away")) return "take_away";
+    if (pathname.startsWith("/dashboard/webapp/take-away")) return "take_away";
     if (pathname.startsWith("/dashboard/webapp/time-clock")) return "employees";
     return null;
   }
@@ -1118,12 +1412,19 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setReservationsList([]);
     setActivePeriodLoading(false);
+    setTakeAwayOrdersList([]);
+    setActiveTakeAwayPeriodLoading(false);
     customersCacheRef.current.clear();
     customerDetailsRequestsRef.current.clear();
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
     activeReservationPeriodRef.current = null;
+    takeAwayPeriodsCacheRef.current.clear();
+    takeAwayPeriodRequestsRef.current.clear();
+    takeAwayMutationOverridesRef.current.clear();
+    activeTakeAwayPeriodRef.current = null;
+    takeAwayCacheGenerationRef.current += 1;
     currentRestaurantIdRef.current = null;
     setUserConnected(null);
     setNotifications([]);
@@ -1411,9 +1712,16 @@ export default function RestaurantContext() {
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
     activeReservationPeriodRef.current = null;
+    takeAwayPeriodsCacheRef.current.clear();
+    takeAwayPeriodRequestsRef.current.clear();
+    takeAwayMutationOverridesRef.current.clear();
+    activeTakeAwayPeriodRef.current = null;
+    takeAwayCacheGenerationRef.current += 1;
     currentRestaurantIdRef.current = String(restaurantId);
     setActivePeriodLoading(false);
     setReservationsList([]);
+    setActiveTakeAwayPeriodLoading(false);
+    setTakeAwayOrdersList([]);
 
     // ----- OWNER -----
     if (role === "owner") {
@@ -1621,9 +1929,14 @@ export default function RestaurantContext() {
 
   async function resyncAfterForeground({ hard = false } = {}) {
     const activeReservationPeriod = activeReservationPeriodRef.current;
+    const activeTakeAwayPeriod = activeTakeAwayPeriodRef.current;
     const shouldRefreshReservations = Boolean(
       activeReservationPeriod &&
         String(currentPathRef.current || "").includes("/reservations"),
+    );
+    const shouldRefreshTakeAway = Boolean(
+      activeTakeAwayPeriod &&
+        String(currentPathRef.current || "").includes("/take-away"),
     );
 
     if (shouldRefreshReservations) {
@@ -1641,6 +1954,16 @@ export default function RestaurantContext() {
       });
     }
 
+    if (shouldRefreshTakeAway) {
+      takeAwayMutationOverridesRef.current.clear();
+      const activeCacheKey = `${activeTakeAwayPeriod.restaurantId}:${activeTakeAwayPeriod.from}:${activeTakeAwayPeriod.to}`;
+      takeAwayPeriodsCacheRef.current.forEach((_entry, cacheKey) => {
+        if (cacheKey !== activeCacheKey) {
+          takeAwayPeriodsCacheRef.current.delete(cacheKey);
+        }
+      });
+    }
+
     await refetchCurrentRestaurant({
       reconnectSSE: true,
       syncNotifications: true,
@@ -1651,6 +1974,16 @@ export default function RestaurantContext() {
         restaurantId: activeReservationPeriod.restaurantId,
         from: activeReservationPeriod.from,
         to: activeReservationPeriod.to,
+        force: true,
+        activate: true,
+      });
+    }
+
+    if (shouldRefreshTakeAway) {
+      await loadTakeAwayOrderPeriod({
+        restaurantId: activeTakeAwayPeriod.restaurantId,
+        from: activeTakeAwayPeriod.from,
+        to: activeTakeAwayPeriod.to,
         force: true,
         activate: true,
       });
@@ -1675,12 +2008,19 @@ export default function RestaurantContext() {
     setRestaurantData(null);
     setReservationsList([]);
     setActivePeriodLoading(false);
+    setTakeAwayOrdersList([]);
+    setActiveTakeAwayPeriodLoading(false);
     customersCacheRef.current.clear();
     customerDetailsRequestsRef.current.clear();
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
     activeReservationPeriodRef.current = null;
+    takeAwayPeriodsCacheRef.current.clear();
+    takeAwayPeriodRequestsRef.current.clear();
+    takeAwayMutationOverridesRef.current.clear();
+    activeTakeAwayPeriodRef.current = null;
+    takeAwayCacheGenerationRef.current += 1;
     currentRestaurantIdRef.current = null;
     setRestaurantsList([]);
     setNotifications([]);
@@ -1754,6 +2094,8 @@ export default function RestaurantContext() {
     setReservationsList,
     reservationsLoading: activePeriodLoading,
     activePeriodLoading,
+    takeAwayOrdersList,
+    takeAwayOrdersLoading: activeTakeAwayPeriodLoading,
     userConnected,
     setUserConnected,
     restaurantsList,
@@ -1769,6 +2111,10 @@ export default function RestaurantContext() {
     loadReservationPeriod,
     applyReservationUpdate,
     removeReservationFromCache,
+    ensureTakeAwayOrdersMonth,
+    getCachedTakeAwayOrdersMonth,
+    loadTakeAwayOrderPeriod,
+    applyTakeAwayOrderUpdate,
     logout,
     setCloseEditing,
     closeEditing,

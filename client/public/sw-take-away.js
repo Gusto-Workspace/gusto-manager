@@ -30,7 +30,7 @@ self.addEventListener("push", (event) => {
     icon: "/icons/android/gusto-192.png",
     badge: "/img/logo-blanc.png",
     data: {
-      link: payload.link || "/dashboard/take-away",
+      link: payload.link || "/dashboard/webapp/take-away",
       ...payload,
     },
   };
@@ -51,7 +51,7 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const rawLink =
-    event.notification?.data?.link || "/dashboard/take-away";
+    event.notification?.data?.link || "/dashboard/webapp/take-away";
   const targetUrl = new URL(rawLink, self.location.origin).href;
   const message = {
     type: "notification:navigate",
@@ -68,7 +68,7 @@ self.addEventListener("notificationclick", (event) => {
           clientList.find((client) => {
             try {
               return new URL(client.url).pathname.startsWith(
-                "/dashboard/take-away",
+                "/dashboard/webapp/take-away",
               );
             } catch (_error) {
               return false;

@@ -82,6 +82,9 @@ export default function FormLoginComponent() {
     if (redirectTo.startsWith("/dashboard/webapp/gift-cards")) {
       return "gift_card";
     }
+    if (redirectTo.startsWith("/dashboard/webapp/take-away")) {
+      return "take_away";
+    }
     return null;
   }
 
@@ -102,6 +105,10 @@ export default function FormLoginComponent() {
 
   function goAfterLogin(role) {
     if (role === "employee") {
+      if (redirectTo?.startsWith("/dashboard/webapp/take-away")) {
+        router.replace(redirectTo);
+        return;
+      }
       router.replace("/dashboard/my-space");
       return;
     }

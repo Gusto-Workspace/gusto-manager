@@ -61,6 +61,8 @@ export default function DetailsDrawerCustomersComponent({
   t,
   restaurantId,
   hasTakeAwayModule = true,
+  defaultTab = "reservations",
+  activityScope = "all",
   onUpdated,
   onAction,
 }) {
@@ -68,7 +70,7 @@ export default function DetailsDrawerCustomersComponent({
   const fetchCustomerDetailsCached =
     restaurantContext?.fetchCustomerDetailsCached;
   const [isVisible, setIsVisible] = useState(false);
-  const [tab, setTab] = useState("reservations");
+  const [tab, setTab] = useState(defaultTab);
 
   // edit modes
   const [isEditing, setIsEditing] = useState(false);
@@ -159,7 +161,7 @@ export default function DetailsDrawerCustomersComponent({
   useEffect(() => {
     if (!open) return;
 
-    setTab("reservations");
+    setTab(defaultTab);
     setDragY(0);
     lockScroll();
 
@@ -183,7 +185,7 @@ export default function DetailsDrawerCustomersComponent({
       restoreScroll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [defaultTab, open]);
 
   useEffect(() => {
     if (!open) setIsVisible(false);
@@ -209,7 +211,7 @@ export default function DetailsDrawerCustomersComponent({
   useEffect(() => {
     if (!customer) return;
 
-    setTab("reservations");
+    setTab(defaultTab);
     setIsEditing(false);
     setIsEditingNote(false);
     setSaveError(null);
@@ -224,7 +226,7 @@ export default function DetailsDrawerCustomersComponent({
     });
     setNoteDraft(customer.notes || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerId]);
+  }, [customerId, defaultTab]);
 
   // fetch details when open + customerId
   useEffect(() => {
@@ -759,36 +761,42 @@ export default function DetailsDrawerCustomersComponent({
           </div>
 
           {/* Stats */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
-              <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                <Calendar className="size-4 text-darkBlue/40" />
-                Réservations
-              </p>
-              <p className="mt-1 text-lg font-semibold text-darkBlue">
-                {reservationsTotal}
-              </p>
-            </div>
+          <div
+            className={`mt-4 grid gap-3 ${activityScope === "take_away" ? "grid-cols-1" : "grid-cols-2"}`}
+          >
+            {activityScope !== "take_away" ? (
+              <>
+                <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
+                  <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                    <Calendar className="size-4 text-darkBlue/40" />
+                    Réservations
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-darkBlue">
+                    {reservationsTotal}
+                  </p>
+                </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
-              <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                <UserX className="size-4 text-darkBlue/40" />
-                No-shows
-              </p>
-              <p className="mt-1 text-lg font-semibold text-darkBlue">
-                {reservationsNoShow}
-              </p>
-            </div>
+                <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
+                  <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                    <UserX className="size-4 text-darkBlue/40" />
+                    No-shows
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-darkBlue">
+                    {reservationsNoShow}
+                  </p>
+                </div>
 
-            <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
-              <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
-                <Gift className="size-4 text-darkBlue/40" />
-                Cartes cadeaux
-              </p>
-              <p className="mt-1 text-lg font-semibold text-darkBlue">
-                {giftCardsBought}
-              </p>
-            </div>
+                <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
+                  <p className="text-[11px] text-darkBlue/50 flex items-center gap-2">
+                    <Gift className="size-4 text-darkBlue/40" />
+                    Cartes cadeaux
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-darkBlue">
+                    {giftCardsBought}
+                  </p>
+                </div>
+              </>
+            ) : null}
 
             {hasTakeAwayModule ? (
               <div className="rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm p-4">
@@ -847,45 +855,51 @@ export default function DetailsDrawerCustomersComponent({
 
           {/* Tabs */}
           <div className="mt-4 rounded-2xl bg-white/50 border border-darkBlue/10 shadow-sm overflow-hidden">
-            <div className="flex border-b border-darkBlue/10 bg-white/50">
-              <button
-                className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
-                  tab === "reservations"
-                    ? "text-darkBlue bg-darkBlue/5"
-                    : "text-darkBlue/60 hover:bg-darkBlue/5"
-                }`}
-                onClick={() => setTab("reservations")}
-                type="button"
-              >
-                Dernières réservations ({sortedReservations.length})
-              </button>
-
-              <button
-                className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
-                  tab === "giftcards"
-                    ? "text-darkBlue bg-darkBlue/5"
-                    : "text-darkBlue/60 hover:bg-darkBlue/5"
-                }`}
-                onClick={() => setTab("giftcards")}
-                type="button"
-              >
-                Cartes cadeaux ({giftCards.length})
-              </button>
-
-              {hasTakeAwayModule ? (
+            {activityScope !== "take_away" ? (
+              <div className="flex border-b border-darkBlue/10 bg-white/50">
                 <button
                   className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
-                    tab === "takeaway"
+                    tab === "reservations"
                       ? "text-darkBlue bg-darkBlue/5"
                       : "text-darkBlue/60 hover:bg-darkBlue/5"
                   }`}
-                  onClick={() => setTab("takeaway")}
+                  onClick={() => setTab("reservations")}
                   type="button"
                 >
-                  À emporter ({takeAwayOrders.length})
+                  Dernières réservations ({sortedReservations.length})
                 </button>
-              ) : null}
-            </div>
+
+                <button
+                  className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
+                    tab === "giftcards"
+                      ? "text-darkBlue bg-darkBlue/5"
+                      : "text-darkBlue/60 hover:bg-darkBlue/5"
+                  }`}
+                  onClick={() => setTab("giftcards")}
+                  type="button"
+                >
+                  Cartes cadeaux ({giftCards.length})
+                </button>
+
+                {hasTakeAwayModule ? (
+                  <button
+                    className={`flex-1 px-4 py-3 text-xs font-semibold transition ${
+                      tab === "takeaway"
+                        ? "text-darkBlue bg-darkBlue/5"
+                        : "text-darkBlue/60 hover:bg-darkBlue/5"
+                    }`}
+                    onClick={() => setTab("takeaway")}
+                    type="button"
+                  >
+                    À emporter ({takeAwayOrders.length})
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="border-b border-darkBlue/10 bg-white/50 px-4 py-3 text-xs font-semibold text-darkBlue">
+                Historique Vente à emporter ({takeAwayOrders.length})
+              </div>
+            )}
 
             <div className="p-4">
               {loadingDetails ? (

@@ -9,7 +9,11 @@ const OwnerModel = require("../models/owner.model");
 const authenticateToken = require("../middleware/authentificate-token");
 
 const {
+  _addClient: addClient,
+  _isTakeAwayPayload: isTakeAwayPayload,
   _isEventSessionAuthorized: isEventSessionAuthorized,
+  _removeClient: removeClient,
+  broadcastToRestaurant,
   mountSseRoute,
 } = require("../services/sse-bus.service");
 
@@ -53,6 +57,42 @@ test("SSE requires both a valid session and restaurant access", async () => {
   );
 
   assert.equal(authorized, false);
+});
+
+test("SSE take-away events are delivered only to clients with module rights", () => {
+  const restaurantId = "sse-take-away-restaurant";
+  const allowedWrites = [];
+  const deniedWrites = [];
+  const allowedResponse = {
+    locals: { gustoEventModules: { take_away: true } },
+    write: (value) => allowedWrites.push(value),
+  };
+  const deniedResponse = {
+    locals: { gustoEventModules: { take_away: false } },
+    write: (value) => deniedWrites.push(value),
+  };
+
+  addClient(restaurantId, allowedResponse);
+  addClient(restaurantId, deniedResponse);
+  try {
+    const takeAwayPayload = {
+      type: "takeaway_order_created",
+      order: { _id: "order-1" },
+    };
+    assert.equal(isTakeAwayPayload(takeAwayPayload), true);
+    broadcastToRestaurant(restaurantId, takeAwayPayload);
+    broadcastToRestaurant(restaurantId, {
+      type: "reservation_created",
+      reservation: { _id: "reservation-1" },
+    });
+
+    assert.equal(allowedWrites.length, 2);
+    assert.equal(deniedWrites.length, 1);
+    assert.match(deniedWrites[0], /reservation_created/);
+  } finally {
+    removeClient(restaurantId, allowedResponse);
+    removeClient(restaurantId, deniedResponse);
+  }
 });
 
 test("authentication middleware rejects a JWT with a revoked version", async () => {

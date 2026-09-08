@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import {
   X,
   Phone,
@@ -19,12 +19,9 @@ import {
 } from "./reservation-status.utils";
 import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
 import { GlobalContext } from "@/contexts/global.context";
+import useMobileDrawerSwipe from "@/components/_shared/use-mobile-drawer-swipe";
 
 const CLOSE_MS = 280;
-
-// Swipe config (mobile only)
-const SWIPE_VELOCITY = 0.6; // px/ms
-const CLOSE_RATIO = 0.25; // 25% panel height => close
 
 function fmtDate(d) {
   if (!d) return "-";
@@ -140,43 +137,14 @@ export default function ReservationsDrawerComponent({
   const restoreScroll = () => {};
   const lockScroll = () => {};
 
-  // ✅ detect tablet+ (to avoid breaking slide-right)
-  const [isTabletUp, setIsTabletUp] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(min-width: 768px)");
-    const update = () => setIsTabletUp(mq.matches);
-
-    update();
-    if (mq.addEventListener) mq.addEventListener("change", update);
-    else mq.addListener(update);
-
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", update);
-      else mq.removeListener(update);
-    };
-  }, []);
-
-  // ✅ Swipe state (mobile only)
-  const panelRef = useRef(null);
-  const [panelH, setPanelH] = useState(null);
-
-  const [dragY, setDragY] = useState(0);
-  const dragStateRef = useRef({
-    active: false,
-    startY: 0,
-    lastY: 0,
-    startT: 0,
-    lastT: 0,
-  });
-
-  const measurePanel = () => {
-    const el = panelRef.current;
-    if (!el) return;
-    const h = el.getBoundingClientRect().height || 0;
-    if (h > 0) setPanelH(h);
-  };
+  const {
+    panelRef,
+    measurePanel,
+    resetDrag,
+    getOverlayOpacity,
+    getPanelStyle,
+    dragHandleProps,
+  } = useMobileDrawerSwipe(closeWithAnimation);
 
   // Open animation (like notifications)
   useEffect(() => {
@@ -184,7 +152,7 @@ export default function ReservationsDrawerComponent({
 
     lockScroll();
     setIsVisible(false);
-    setDragY(0);
+    resetDrag();
     setBankHoldOpen(false);
 
     const raf = requestAnimationFrame(() => {
@@ -215,7 +183,7 @@ export default function ReservationsDrawerComponent({
 
   function closeWithAnimation() {
     setIsVisible(false);
-    setDragY(0);
+    resetDrag();
     setTimeout(() => {
       restoreScroll();
       onClose?.();
@@ -448,67 +416,7 @@ export default function ReservationsDrawerComponent({
 
   if (!open) return null;
 
-  // ✅ swipe thresholds (mobile)
-  const panelFallback = 720;
-  const DRAG_MAX_PX = Math.max(240, (panelH || panelFallback) - 12);
-  const SWIPE_CLOSE_PX = Math.max(
-    90,
-    Math.floor((panelH || panelFallback) * CLOSE_RATIO),
-  );
-
-  // ✅ swipe handlers (mobile drag zone only)
-  const onPointerDown = (e) => {
-    if (isTabletUp) return; // ✅ never swipe on tablet+
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-
-    dragStateRef.current.active = true;
-    dragStateRef.current.startY = e.clientY;
-    dragStateRef.current.lastY = e.clientY;
-    dragStateRef.current.startT = performance.now();
-    dragStateRef.current.lastT = dragStateRef.current.startT;
-
-    try {
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    } catch {}
-  };
-
-  const onPointerMove = (e) => {
-    if (isTabletUp) return;
-    if (!dragStateRef.current.active) return;
-
-    const y = e.clientY;
-    const dy = y - dragStateRef.current.startY;
-
-    dragStateRef.current.lastY = y;
-    dragStateRef.current.lastT = performance.now();
-
-    const clamped = Math.max(0, Math.min(DRAG_MAX_PX, dy));
-    setDragY(clamped);
-  };
-
-  const onPointerUp = () => {
-    if (isTabletUp) return;
-    if (!dragStateRef.current.active) return;
-    dragStateRef.current.active = false;
-
-    const dt = Math.max(
-      1,
-      dragStateRef.current.lastT - dragStateRef.current.startT,
-    );
-    const v = (dragStateRef.current.lastY - dragStateRef.current.startY) / dt; // px/ms
-
-    if (dragY >= SWIPE_CLOSE_PX || v >= SWIPE_VELOCITY) {
-      closeWithAnimation();
-      return;
-    }
-
-    setDragY(0);
-  };
-
-  // overlay opacity while dragging (mobile)
-  const overlayOpacity = !isVisible
-    ? 0
-    : 1 * (1 - Math.min(1, dragY / DRAG_MAX_PX));
+  const overlayOpacity = getOverlayOpacity(isVisible);
 
   return (
     <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
@@ -546,28 +454,13 @@ export default function ReservationsDrawerComponent({
               : "translate-y-full tablet:translate-y-0 tablet:translate-x-full"
           }
         `}
-        style={
-          isTabletUp
-            ? undefined
-            : {
-                transform: isVisible
-                  ? `translateY(${dragY}px)`
-                  : "translateY(100%)",
-                transition: dragStateRef.current.active
-                  ? "none"
-                  : "transform 240ms ease-out",
-                willChange: "transform",
-              }
-        }
+        style={getPanelStyle(isVisible)}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ✅ Mobile drag zone */}
         <div
           className="tablet:hidden cursor-grab active:cursor-grabbing touch-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          {...dragHandleProps}
         >
           <div className="py-3 flex justify-center">
             <div className="h-1.5 w-12 rounded-full bg-darkBlue/20" />

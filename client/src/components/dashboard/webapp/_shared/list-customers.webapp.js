@@ -25,6 +25,7 @@ import {
   UserX,
   X,
   Menu,
+  ShoppingBag,
 } from "lucide-react";
 
 // COMPONENT
@@ -189,6 +190,7 @@ export default function ListCustomersReservationsWebapp({
   defaultSourceFilter = "all",
   sidebarTitle = "Réservations",
   sidebarModule = "reservations",
+  lockSourceFilter = false,
 }) {
   const { t } = useTranslation("customers");
 
@@ -200,7 +202,13 @@ export default function ListCustomersReservationsWebapp({
   const hasGiftCardModule = !!restaurantOptions.gift_card;
   const hasReservationsModule = !!restaurantOptions.reservations;
   const hasTakeAwayModule = !!restaurantOptions.take_away;
-  const showSourceFilter = hasGiftCardModule && hasReservationsModule;
+  const enabledSourceCount = [
+    hasGiftCardModule,
+    hasReservationsModule,
+    hasTakeAwayModule,
+  ].filter(Boolean).length;
+  const showSourceFilter = !lockSourceFilter && enabledSourceCount > 1;
+  const applySourceFilter = showSourceFilter || lockSourceFilter;
 
   const fetchCustomersCached = restaurantContext?.fetchCustomersCached;
   const invalidateCustomersCache = restaurantContext?.invalidateCustomersCache;
@@ -214,7 +222,8 @@ export default function ListCustomersReservationsWebapp({
   const [tagFilter, setTagFilter] = useState("all");
   const normalizedDefaultSourceFilter =
     defaultSourceFilter === "reservations" ||
-    defaultSourceFilter === "gift_cards"
+    defaultSourceFilter === "gift_cards" ||
+    defaultSourceFilter === "take_away"
       ? defaultSourceFilter
       : "all";
   const hasAppliedDefaultSourceRef = useRef(false);
@@ -251,7 +260,10 @@ export default function ListCustomersReservationsWebapp({
 
   useEffect(() => {
     if (!showSourceFilter) {
-      if (sourceFilter !== "all") setSourceFilter("all");
+      const fixedSource = lockSourceFilter
+        ? normalizedDefaultSourceFilter
+        : "all";
+      if (sourceFilter !== fixedSource) setSourceFilter(fixedSource);
       return;
     }
 
@@ -259,7 +271,12 @@ export default function ListCustomersReservationsWebapp({
       hasAppliedDefaultSourceRef.current = true;
       setSourceFilter(normalizedDefaultSourceFilter);
     }
-  }, [showSourceFilter, sourceFilter, normalizedDefaultSourceFilter]);
+  }, [
+    lockSourceFilter,
+    showSourceFilter,
+    sourceFilter,
+    normalizedDefaultSourceFilter,
+  ]);
 
   useEffect(() => {
     setPagination((p) => ({ ...p, page: 1 }));
@@ -285,7 +302,7 @@ export default function ListCustomersReservationsWebapp({
         query: debouncedQuery,
         tag: tagFilter,
         source: sourceFilter,
-        showSourceFilter,
+        showSourceFilter: applySourceFilter,
         ttlMs: 600_000,
       });
 
@@ -317,7 +334,7 @@ export default function ListCustomersReservationsWebapp({
         query: debouncedQuery,
         tag: tagFilter,
         source: sourceFilter,
-        showSourceFilter,
+        showSourceFilter: applySourceFilter,
         ttlMs: 600_000,
         force,
       });
@@ -370,7 +387,7 @@ export default function ListCustomersReservationsWebapp({
         query: debouncedQuery,
         tag: tagFilter,
         source: sourceFilter,
-        showSourceFilter,
+        showSourceFilter: applySourceFilter,
         ttlMs: 600_000,
       });
 
@@ -501,7 +518,7 @@ export default function ListCustomersReservationsWebapp({
           {query ? (
             <button
               onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 rounded-2xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition"
               aria-label="Effacer"
               title="Effacer"
               type="button"
@@ -524,6 +541,9 @@ export default function ListCustomersReservationsWebapp({
                 <option value="all">Tous</option>
                 <option value="reservations">Réservations</option>
                 <option value="gift_cards">Cartes cadeaux</option>
+                {hasTakeAwayModule ? (
+                  <option value="take_away">Vente à emporter</option>
+                ) : null}
               </select>
             </div>
           ) : null}
@@ -575,7 +595,7 @@ export default function ListCustomersReservationsWebapp({
                 className="
                                grid grid-cols-1 tablet:grid-cols-[56px_1.1fr_1.1fr_1fr_1.6fr_1fr_48px]
                                gap-3 px-4 py-4 tablet:py-3
-                               desktop:hover:bg-darkBlue/5 transition
+                               desktop:canHover:hover:bg-darkBlue/5 transition
                              "
               >
                 {/* Mobile header line */}
@@ -589,6 +609,19 @@ export default function ListCustomersReservationsWebapp({
                       <p className="text-sm font-semibold text-darkBlue truncate">
                         {c.firstName} {c.lastName}
                       </p>
+                      {sourceFilter === "take_away" ? (
+                        <p className="mt-0.5 text-xs text-darkBlue/50">
+                          {Number(c.stats?.takeAwayOrdersTotal || 0)} commande
+                          {Number(c.stats?.takeAwayOrdersTotal || 0) > 1
+                            ? "s"
+                            : ""}
+                          {c.lastTakeAwayOrderAt
+                            ? ` · dernière le ${new Date(
+                                c.lastTakeAwayOrderAt,
+                              ).toLocaleDateString("fr-FR")}`
+                            : ""}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
@@ -596,7 +629,7 @@ export default function ListCustomersReservationsWebapp({
                   {!(Array.isArray(c.tags) && c.tags.length) ? (
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2"
                         onClick={() => {
                           if (!c.phone) return;
                           window.location.href = `tel:${String(c.phone).replace(
@@ -611,7 +644,7 @@ export default function ListCustomersReservationsWebapp({
                       </button>
 
                       <button
-                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2"
                         onClick={() => {
                           if (!c.email) return;
                           window.location.href = `mailto:${c.email}`;
@@ -623,7 +656,7 @@ export default function ListCustomersReservationsWebapp({
                       </button>
 
                       <button
-                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2"
                         onClick={() => openDrawer(c)}
                         aria-label="Voir la fiche"
                         type="button"
@@ -633,7 +666,7 @@ export default function ListCustomersReservationsWebapp({
                     </div>
                   ) : (
                     <button
-                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                      className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2"
                       onClick={() => openDrawer(c)}
                       aria-label="Voir la fiche"
                       type="button"
@@ -663,7 +696,7 @@ export default function ListCustomersReservationsWebapp({
                   <Phone className="size-4 text-darkBlue/40" />
                   <button
                     type="button"
-                    className="truncate hover:underline"
+                    className="truncate canHover:hover:underline"
                     title="Clique pour appeler"
                     onClick={() => {
                       if (!c.phone) return;
@@ -682,7 +715,7 @@ export default function ListCustomersReservationsWebapp({
                   <Mail className="size-4 text-darkBlue/40" />
                   <button
                     type="button"
-                    className="truncate hover:underline"
+                    className="truncate canHover:hover:underline"
                     title="Clique pour envoyer un email"
                     onClick={() => {
                       if (!c.email) return;
@@ -693,9 +726,20 @@ export default function ListCustomersReservationsWebapp({
                   </button>
                 </div>
 
-                {/* Tags + tooltip */}
+                {/* Tags ou synthèse Take-away */}
                 <div className="hidden tablet:flex items-center gap-2 flex-wrap">
-                  {(c.tags || []).length ? (
+                  {sourceFilter === "take_away" ? (
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold text-darkBlue/65">
+                      <ShoppingBag className="size-4 text-darkBlue/40" />
+                      {Number(c.stats?.takeAwayOrdersTotal || 0)} commande
+                      {Number(c.stats?.takeAwayOrdersTotal || 0) > 1 ? "s" : ""}
+                      {c.lastTakeAwayOrderAt
+                        ? ` · ${new Date(
+                            c.lastTakeAwayOrderAt,
+                          ).toLocaleDateString("fr-FR")}`
+                        : ""}
+                    </span>
+                  ) : (c.tags || []).length ? (
                     c.tags
                       .slice(0, 2)
                       .map((tagKey) => (
@@ -715,7 +759,7 @@ export default function ListCustomersReservationsWebapp({
                 {/* Arrow only */}
                 <div className="hidden tablet:flex items-center justify-end">
                   <button
-                    className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2"
+                    className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2"
                     onClick={() => openDrawer(c)}
                     aria-label="Voir la fiche"
                     type="button"
@@ -741,7 +785,7 @@ export default function ListCustomersReservationsWebapp({
 
                     <div className="flex gap-1">
                       <button
-                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:canHover:hover:bg-darkBlue/5 transition p-2"
                         onClick={() => {
                           if (!c.phone) return;
                           window.location.href = `tel:${String(c.phone).replace(
@@ -756,7 +800,7 @@ export default function ListCustomersReservationsWebapp({
                       </button>
 
                       <button
-                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:hover:bg-darkBlue/5 transition p-2"
+                        className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white desktop:canHover:hover:bg-darkBlue/5 transition p-2"
                         onClick={() => {
                           if (!c.email) return;
                           window.location.href = `mailto:${c.email}`;
@@ -789,7 +833,7 @@ export default function ListCustomersReservationsWebapp({
       {/* Pagination */}
       <div className="flex items-center justify-center gap-2 px-1 py-2">
         <button
-          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
           disabled={pagination.page <= 1 || loading}
           onClick={() =>
             setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))
@@ -805,7 +849,7 @@ export default function ListCustomersReservationsWebapp({
         </div>
 
         <button
-          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5 transition p-2 disabled:opacity-50"
           disabled={pagination.page >= pagination.totalPages || loading}
           onClick={() =>
             setPagination((p) => ({
@@ -828,6 +872,8 @@ export default function ListCustomersReservationsWebapp({
         t={t}
         restaurantId={restaurantId}
         hasTakeAwayModule={hasTakeAwayModule}
+        defaultTab={sourceFilter === "take_away" ? "takeaway" : "reservations"}
+        activityScope={sourceFilter === "take_away" ? "take_away" : "all"}
         onUpdated={() => {
           invalidateCustomersCache?.(restaurantId);
           fetchCustomers({

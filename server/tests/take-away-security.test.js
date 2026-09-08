@@ -21,6 +21,22 @@ require.cache[notificationsServicePath] = {
     },
   },
 };
+const takeAwayMailerServicePath = require.resolve(
+  "../services/take-away-mailer.service",
+);
+const { buildTakeAwayEmail } = require(takeAwayMailerServicePath);
+const emailCalls = [];
+require.cache[takeAwayMailerServicePath] = {
+  id: takeAwayMailerServicePath,
+  filename: takeAwayMailerServicePath,
+  loaded: true,
+  exports: {
+    sendTakeAwayOrderEmail: async (payload) => {
+      emailCalls.push(payload);
+      return { messageId: `email-${emailCalls.length}` };
+    },
+  },
+};
 const {
   assertPaymentIntentMatchesOrder,
   assertStatusTransition,
@@ -30,9 +46,16 @@ const {
   createTakeAwayOrder,
   expirePendingTakeAwayOrders,
   getOrderPaymentMethod,
+  getAvailableSlots,
+  getBlockedTakeAwayDates,
+  isTakeAwayDateBlocked,
+  hashPublicAccessToken,
   handleTakeAwayStripeWebhookEvent,
+  findPublicOrderByAccessToken,
+  findPublicOrderByAttempt,
   refundPaidOrder,
   resolveAuthoritativeSlot,
+  updateOrderStatus,
   validateCustomerInput,
   validateDeliveryAddress,
   verifyTakeAwayWebhookSignature,
@@ -131,6 +154,7 @@ function futureRestaurant({ maxOrders = 1 } = {}) {
 function validPayload(idempotencyKey = "checkout-security-0001") {
   return {
     idempotencyKey,
+    publicAccessToken: "public_order_token_1234567890abcdefghijklmno",
     customerFirstName: "Ada",
     customerLastName: "Lovelace",
     customerPhone: "+33612345678",
@@ -276,22 +300,48 @@ test("PaymentIntent creation uses a stable order-scoped idempotency key", async 
 test("a signed success event finalizes payment without the browser and is replay-safe", async (t) => {
   const originalFindOne = TakeAwayOrderModel.findOne;
   const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const originalUpdateOne = TakeAwayOrderModel.updateOne;
   notificationCalls = 0;
+  emailCalls.length = 0;
   let current = orderDocument({
     stripePaymentIntentId: "pi_webhook",
     restaurantNotifiedAt: null,
+    pendingCustomerEmailEvents: [],
+    customerEmailEventsSent: [],
   });
   let paymentWrites = 0;
   TakeAwayOrderModel.findOne = async () => current;
   TakeAwayOrderModel.findOneAndUpdate = async (filter, update) => {
+    if (filter.pendingCustomerEmailEvents) {
+      const eventType = filter.pendingCustomerEmailEvents;
+      if (
+        !current.pendingCustomerEmailEvents.includes(eventType) ||
+        current.customerEmailEventsSent.includes(eventType)
+      ) {
+        return null;
+      }
+      current.pendingCustomerEmailEvents =
+        current.pendingCustomerEmailEvents.filter(
+          (event) => event !== eventType,
+        );
+      current.customerEmailEventsSent.push(eventType);
+      return current;
+    }
     if (current.paymentStatus === "paid") return null;
     paymentWrites += 1;
     Object.assign(current, update.$set);
+    if (update.$addToSet?.pendingCustomerEmailEvents) {
+      current.pendingCustomerEmailEvents.push(
+        update.$addToSet.pendingCustomerEmailEvents,
+      );
+    }
     return current;
   };
+  TakeAwayOrderModel.updateOne = async () => ({ modifiedCount: 1 });
   t.after(() => {
     TakeAwayOrderModel.findOne = originalFindOne;
     TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+    TakeAwayOrderModel.updateOne = originalUpdateOne;
   });
 
   const restaurant = {
@@ -310,6 +360,258 @@ test("a signed success event finalizes payment without the browser and is replay
   assert.equal(current.status, "pending");
   assert.equal(paymentWrites, 1);
   assert.equal(notificationCalls, 1);
+  assert.deepEqual(
+    emailCalls.map((call) => call.eventType),
+    ["received"],
+  );
+});
+
+test("a public order cannot be loaded with its id alone", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const token = "public_order_token_1234567890abcdefghijklmno";
+  const order = orderDocument({
+    publicAccessTokenHash: hashPublicAccessToken(token),
+  });
+  TakeAwayOrderModel.findOne = () => ({
+    select: async () => order,
+  });
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+  });
+
+  assert.equal(
+    await findPublicOrderByAccessToken({
+      restaurantId: "restaurant-1",
+      orderId: "order-1",
+      token: "",
+    }),
+    null,
+  );
+  assert.equal(
+    await findPublicOrderByAccessToken({
+      restaurantId: "restaurant-1",
+      orderId: "order-1",
+      token: "public_order_token_wrong_1234567890abcdefgh",
+    }),
+    null,
+  );
+  assert.equal(
+    await findPublicOrderByAccessToken({
+      restaurantId: "restaurant-1",
+      orderId: "order-1",
+      token,
+    }),
+    order,
+  );
+});
+
+test("a lost create response can recover the order with the attempt secrets", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const token = "public_order_token_1234567890abcdefghijklmno";
+  const order = orderDocument({
+    idempotencyKey: "order_attempt_1234567890abcdefghijklmno",
+    publicAccessTokenHash: hashPublicAccessToken(token),
+  });
+  let receivedFilter = null;
+  TakeAwayOrderModel.findOne = (filter) => {
+    receivedFilter = filter;
+    return { select: async () => order };
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+  });
+
+  assert.equal(
+    await findPublicOrderByAttempt({
+      restaurantId: "restaurant-1",
+      idempotencyKey: order.idempotencyKey,
+      token,
+    }),
+    order,
+  );
+  assert.equal(receivedFilter.restaurant_id, "restaurant-1");
+  assert.equal(receivedFilter.source, "public");
+  assert.equal(receivedFilter.idempotencyKey, order.idempotencyKey);
+  assert.equal(
+    await findPublicOrderByAttempt({
+      restaurantId: "restaurant-1",
+      idempotencyKey: order.idempotencyKey,
+      token: "public_order_token_wrong_1234567890abcdefgh",
+    }),
+    null,
+  );
+});
+
+test("status transitions send only the matching customer emails once", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const originalUpdateOne = TakeAwayOrderModel.updateOne;
+  emailCalls.length = 0;
+  const current = orderDocument({
+    fulfillmentMode: "pickup",
+    paymentMethod: "on_site",
+    paymentStatus: "not_required",
+    pendingCustomerEmailEvents: [],
+    customerEmailEventsSent: [],
+  });
+
+  TakeAwayOrderModel.findOne = async () => current;
+  TakeAwayOrderModel.findOneAndUpdate = async (filter, update) => {
+    if (filter.pendingCustomerEmailEvents) {
+      const eventType = filter.pendingCustomerEmailEvents;
+      if (
+        !current.pendingCustomerEmailEvents.includes(eventType) ||
+        current.customerEmailEventsSent.includes(eventType)
+      ) {
+        return null;
+      }
+      current.pendingCustomerEmailEvents =
+        current.pendingCustomerEmailEvents.filter(
+          (candidate) => candidate !== eventType,
+        );
+      current.customerEmailEventsSent.push(eventType);
+      return current;
+    }
+
+    if (filter.status && current.status !== filter.status) return null;
+    Object.assign(current, update.$set || {});
+    const queued = update.$addToSet?.pendingCustomerEmailEvents;
+    if (queued && !current.pendingCustomerEmailEvents.includes(queued)) {
+      current.pendingCustomerEmailEvents.push(queued);
+    }
+    return current;
+  };
+  TakeAwayOrderModel.updateOne = async (_filter, update) => {
+    const queued = update.$addToSet?.pendingCustomerEmailEvents;
+    if (
+      queued &&
+      !current.customerEmailEventsSent.includes(queued) &&
+      !current.pendingCustomerEmailEvents.includes(queued)
+    ) {
+      current.pendingCustomerEmailEvents.push(queued);
+    }
+    return { modifiedCount: 1 };
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+    TakeAwayOrderModel.updateOne = originalUpdateOne;
+  });
+
+  const restaurant = { _id: "restaurant-1" };
+  await updateOrderStatus({
+    restaurant,
+    orderId: current._id,
+    status: "confirmed",
+  });
+  await updateOrderStatus({
+    restaurant,
+    orderId: current._id,
+    status: "preparing",
+  });
+  await updateOrderStatus({
+    restaurant,
+    orderId: current._id,
+    status: "ready",
+  });
+  await updateOrderStatus({
+    restaurant,
+    orderId: current._id,
+    status: "ready",
+  });
+
+  assert.deepEqual(
+    emailCalls.map((call) => call.eventType),
+    ["confirmed", "ready"],
+  );
+});
+
+test("take-away customer emails use business wording for every useful event", () => {
+  const restaurant = { name: "Les Capuccins", takeAwaySettings: {} };
+  const baseOrder = orderDocument({
+    customerFirstName: "Ada",
+    customerLastName: "Lovelace",
+    customerEmail: "ada@example.com",
+    fulfillmentMode: "pickup",
+    paymentMethod: "online",
+    paymentStatus: "paid",
+    scheduledFor: new Date("2099-09-07T17:00:00.000Z"),
+    items: [{ name: "Plat", quantity: 1, lineTotal: 12.5, options: [] }],
+  });
+
+  const received = buildTakeAwayEmail({
+    eventType: "received",
+    order: baseOrder,
+    restaurant,
+  });
+  const confirmed = buildTakeAwayEmail({
+    eventType: "confirmed",
+    order: baseOrder,
+    restaurant,
+  });
+  const rejectedPending = buildTakeAwayEmail({
+    eventType: "rejected",
+    order: {
+      ...baseOrder,
+      status: "rejected",
+      stripeRefundStatus: "pending",
+      refundTargetStatus: "rejected",
+    },
+    restaurant,
+  });
+  const canceledPending = buildTakeAwayEmail({
+    eventType: "canceled",
+    order: {
+      ...baseOrder,
+      status: "canceled",
+      stripeRefundStatus: "failed",
+      refundTargetStatus: "canceled",
+    },
+    restaurant,
+  });
+  const rejectedRefunded = buildTakeAwayEmail({
+    eventType: "rejected",
+    order: {
+      ...baseOrder,
+      status: "rejected",
+      paymentStatus: "refunded",
+      stripeRefundStatus: "succeeded",
+    },
+    restaurant,
+  });
+  const canceledRefunded = buildTakeAwayEmail({
+    eventType: "canceled",
+    order: {
+      ...baseOrder,
+      status: "canceled",
+      paymentStatus: "refunded",
+      stripeRefundStatus: "succeeded",
+    },
+    restaurant,
+  });
+  const ready = buildTakeAwayEmail({
+    eventType: "ready",
+    order: baseOrder,
+    restaurant,
+  });
+  const delivery = buildTakeAwayEmail({
+    eventType: "out_for_delivery",
+    order: { ...baseOrder, fulfillmentMode: "delivery" },
+    restaurant,
+  });
+
+  assert.match(received.htmlContent, /doit encore la confirmer/);
+  assert.match(confirmed.htmlContent, /commande est confirmée/i);
+  assert.match(rejectedPending.htmlContent, /commande a été refusée/i);
+  assert.match(rejectedPending.htmlContent, /remboursement.*initié/i);
+  assert.doesNotMatch(rejectedPending.htmlContent, /a été remboursé/i);
+  assert.match(canceledPending.htmlContent, /commande a été annulée/i);
+  assert.match(canceledPending.htmlContent, /remboursement.*initié/i);
+  assert.doesNotMatch(canceledPending.htmlContent, /a été remboursé/i);
+  assert.match(rejectedRefunded.htmlContent, /a été remboursé/i);
+  assert.match(canceledRefunded.htmlContent, /a été remboursé/i);
+  assert.match(ready.htmlContent, /commande est prête/i);
+  assert.match(delivery.htmlContent, /commande est en route/i);
 });
 
 test("the webhook rejects an invalid Stripe signature", () => {
@@ -583,17 +885,25 @@ test("status transitions enforce graph and fulfillment mode", () => {
 });
 
 test("canceling a paid order performs one confirmed Stripe refund", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
   const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
   const order = orderDocument({
+    source: "dashboard",
     status: "confirmed",
     paymentStatus: "paid",
     stripePaymentIntentId: "pi_paid",
   });
   let receivedIdempotencyKey = "";
+  let statusWhenStripeWasCalled = "";
+  let paymentWhenStripeWasCalled = "";
+  let refundStatusWhenStripeWasCalled = "";
   const stripe = {
     refunds: {
       create: async (_params, options) => {
         receivedIdempotencyKey = options.idempotencyKey;
+        statusWhenStripeWasCalled = order.status;
+        paymentWhenStripeWasCalled = order.paymentStatus;
+        refundStatusWhenStripeWasCalled = order.stripeRefundStatus;
         return {
           id: "re_1",
           status: "succeeded",
@@ -609,9 +919,13 @@ test("canceling a paid order performs one confirmed Stripe refund", async (t) =>
       },
     },
   };
-  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) =>
-    orderDocument({ ...order, ...update.$set });
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(order, update.$set || {});
+    return order;
+  };
   t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
     TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
   });
 
@@ -623,28 +937,298 @@ test("canceling a paid order performs one confirmed Stripe refund", async (t) =>
   });
   assert.equal(refunded.paymentStatus, "refunded");
   assert.equal(refunded.status, "canceled");
+  assert.equal(refunded.stripeRefundStatus, "succeeded");
+  assert.equal(statusWhenStripeWasCalled, "canceled");
+  assert.equal(paymentWhenStripeWasCalled, "paid");
+  assert.equal(refundStatusWhenStripeWasCalled, "pending");
   assert.match(receivedIdempotencyKey, /order-1-refund$/);
 });
 
-test("a refused Stripe refund leaves the order paid", async () => {
+test("a pending Stripe refund keeps the rejection and payment paid", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
   const order = orderDocument({
+    source: "dashboard",
+    status: "pending",
+    paymentStatus: "paid",
+    stripePaymentIntentId: "pi_paid",
+  });
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(order, update.$set || {});
+    return order;
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+
+  const pending = await refundPaidOrder({
+    restaurant: { _id: "restaurant-1" },
+    order,
+    targetStatus: "rejected",
+    stripeInstance: {
+      refunds: {
+        create: async () => ({
+          id: "re_pending",
+          status: "pending",
+          amount: 1250,
+          payment_intent: "pi_paid",
+          metadata: {
+            type: "takeaway_order_refund",
+            restaurantId: "restaurant-1",
+            orderId: "order-1",
+            targetStatus: "rejected",
+          },
+        }),
+      },
+    },
+  });
+
+  assert.equal(pending.status, "rejected");
+  assert.equal(pending.paymentStatus, "paid");
+  assert.equal(pending.stripeRefundStatus, "pending");
+  assert.equal(pending.stripeRefundId, "re_pending");
+});
+
+test("a pending refund sends the business decision email only once", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const originalUpdateOne = TakeAwayOrderModel.updateOne;
+  emailCalls.length = 0;
+  const order = orderDocument({
+    status: "pending",
+    paymentStatus: "paid",
+    stripePaymentIntentId: "pi_paid",
+    pendingCustomerEmailEvents: [],
+    customerEmailEventsSent: [],
+  });
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (filter, update) => {
+    const claimedEvent = filter.pendingCustomerEmailEvents;
+    if (claimedEvent) {
+      if (
+        !order.pendingCustomerEmailEvents.includes(claimedEvent) ||
+        order.customerEmailEventsSent.includes(claimedEvent)
+      ) {
+        return null;
+      }
+      order.pendingCustomerEmailEvents =
+        order.pendingCustomerEmailEvents.filter(
+          (eventType) => eventType !== claimedEvent,
+        );
+      order.customerEmailEventsSent.push(claimedEvent);
+      return order;
+    }
+    Object.assign(order, update.$set || {});
+    const queued = update.$addToSet?.pendingCustomerEmailEvents;
+    if (queued && !order.pendingCustomerEmailEvents.includes(queued)) {
+      order.pendingCustomerEmailEvents.push(queued);
+    }
+    return order;
+  };
+  TakeAwayOrderModel.updateOne = async (_filter, update) => {
+    const pulled = update.$pull?.pendingCustomerEmailEvents;
+    if (typeof pulled === "string") {
+      order.pendingCustomerEmailEvents =
+        order.pendingCustomerEmailEvents.filter(
+          (eventType) => eventType !== pulled,
+        );
+    }
+    return { modifiedCount: 1 };
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+    TakeAwayOrderModel.updateOne = originalUpdateOne;
+  });
+
+  let refundCreationCalls = 0;
+  const stripeInstance = {
+    refunds: {
+      create: async () => {
+        refundCreationCalls += 1;
+        return {
+          id: "re_pending",
+          status: "pending",
+          amount: 1250,
+          payment_intent: "pi_paid",
+          metadata: {
+            type: "takeaway_order_refund",
+            restaurantId: "restaurant-1",
+            orderId: "order-1",
+            targetStatus: "rejected",
+          },
+        };
+      },
+    },
+  };
+  const restaurant = { _id: "restaurant-1" };
+  await refundPaidOrder({
+    restaurant,
+    order,
+    targetStatus: "rejected",
+    stripeInstance,
+  });
+  await refundPaidOrder({
+    restaurant,
+    order,
+    targetStatus: "rejected",
+    stripeInstance,
+  });
+
+  assert.deepEqual(
+    emailCalls.map((call) => call.eventType),
+    ["rejected"],
+  );
+  assert.equal(refundCreationCalls, 1);
+});
+
+test("a failed Stripe refund keeps the cancellation and payment paid", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const originalConsoleError = console.error;
+  const order = orderDocument({
+    source: "dashboard",
     status: "confirmed",
     paymentStatus: "paid",
     stripePaymentIntentId: "pi_paid",
   });
-  await assert.rejects(
-    refundPaidOrder({
-      restaurant: { _id: "restaurant-1" },
-      order,
-      targetStatus: "canceled",
-      stripeInstance: {
-        refunds: { create: async () => Promise.reject(new Error("declined")) },
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(order, update.$set || {});
+    return order;
+  };
+  console.error = () => {};
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+    console.error = originalConsoleError;
+  });
+
+  const failed = await refundPaidOrder({
+    restaurant: { _id: "restaurant-1" },
+    order,
+    targetStatus: "canceled",
+    stripeInstance: {
+      refunds: { create: async () => Promise.reject(new Error("declined")) },
+    },
+  });
+
+  assert.equal(failed.paymentStatus, "paid");
+  assert.equal(failed.status, "canceled");
+  assert.equal(failed.stripeRefundStatus, "failed");
+});
+
+test("retrying a failed refund uses the failed refund id for idempotency", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const order = orderDocument({
+    source: "dashboard",
+    status: "rejected",
+    paymentStatus: "paid",
+    stripePaymentIntentId: "pi_paid",
+    stripeRefundId: "re_failed",
+    stripeRefundStatus: "failed",
+    refundTargetStatus: "rejected",
+  });
+  let receivedIdempotencyKey = "";
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(order, update.$set || {});
+    return order;
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+
+  const retried = await refundPaidOrder({
+    restaurant: { _id: "restaurant-1" },
+    order,
+    targetStatus: "rejected",
+    stripeInstance: {
+      refunds: {
+        create: async (_params, options) => {
+          receivedIdempotencyKey = options.idempotencyKey;
+          return {
+            id: "re_retry_pending",
+            status: "pending",
+            amount: 1250,
+            payment_intent: "pi_paid",
+            metadata: {
+              type: "takeaway_order_refund",
+              restaurantId: "restaurant-1",
+              orderId: "order-1",
+              targetStatus: "rejected",
+            },
+          };
+        },
       },
-    }),
-    (error) => error.status === 502,
-  );
+    },
+  });
+
+  assert.equal(retried.status, "rejected");
+  assert.equal(retried.paymentStatus, "paid");
+  assert.equal(retried.stripeRefundStatus, "pending");
+  assert.match(receivedIdempotencyKey, /refund-after-re_failed$/);
+});
+
+test("refund webhooks preserve the decision and reconcile the final payment state", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const order = orderDocument({
+    source: "dashboard",
+    status: "rejected",
+    paymentStatus: "paid",
+    stripePaymentIntentId: "pi_paid",
+    stripeRefundId: "re_webhook",
+    stripeRefundStatus: "pending",
+    refundTargetStatus: "rejected",
+  });
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(order, update.$set || {});
+    return order;
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+
+  const baseRefund = {
+    id: "re_webhook",
+    amount: 1250,
+    currency: "eur",
+    payment_intent: "pi_paid",
+    metadata: {
+      type: "takeaway_order_refund",
+      restaurantId: "restaurant-1",
+      orderId: "order-1",
+      targetStatus: "rejected",
+    },
+  };
+  await handleTakeAwayStripeWebhookEvent({
+    restaurant: { _id: "restaurant-1" },
+    event: {
+      type: "refund.updated",
+      data: { object: { ...baseRefund, status: "failed" } },
+    },
+  });
+  assert.equal(order.status, "rejected");
   assert.equal(order.paymentStatus, "paid");
-  assert.equal(order.status, "confirmed");
+  assert.equal(order.stripeRefundStatus, "failed");
+
+  await handleTakeAwayStripeWebhookEvent({
+    restaurant: { _id: "restaurant-1" },
+    event: {
+      type: "refund.updated",
+      data: { object: { ...baseRefund, status: "succeeded" } },
+    },
+  });
+  assert.equal(order.status, "rejected");
+  assert.equal(order.paymentStatus, "refunded");
+  assert.equal(order.stripeRefundStatus, "succeeded");
 });
 
 test("cross-restaurant access is denied", async () => {
@@ -831,4 +1415,102 @@ test("dashboard orders remain on-site under an online-required public policy", (
     ),
     "on_site",
   );
+});
+
+test("a blocked take-away date is normalized and has no public slots", async (t) => {
+  const originalAggregate = TakeAwayOrderModel.aggregate;
+  TakeAwayOrderModel.aggregate = async () => [];
+  t.after(() => {
+    TakeAwayOrderModel.aggregate = originalAggregate;
+  });
+
+  const restaurant = futureRestaurant();
+  restaurant.takeAwaySettings.blockedDates = [
+    "2099-09-07",
+    "2099-09-07",
+    "not-a-date",
+  ];
+
+  assert.deepEqual(getBlockedTakeAwayDates(restaurant.takeAwaySettings), [
+    "2099-09-07",
+  ]);
+  assert.equal(isTakeAwayDateBlocked(restaurant, "2099-09-07"), true);
+  assert.deepEqual(
+    await getAvailableSlots({ restaurant, dateKey: "2099-09-07" }),
+    [],
+  );
+
+  const manualSlots = await getAvailableSlots({
+    restaurant,
+    dateKey: "2099-09-07",
+    respectPublicBlock: false,
+  });
+  assert.equal(manualSlots.length, 2);
+
+  assert.deepEqual(
+    await getAvailableSlots({ restaurant, dateKey: "2099-08-38" }),
+    [],
+  );
+});
+
+test("a direct public create is rejected for a blocked date", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  TakeAwayOrderModel.findOne = async () => null;
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+  });
+
+  const restaurant = futureRestaurant();
+  restaurant.takeAwaySettings.blockedDates = ["2099-09-07"];
+
+  await assert.rejects(
+    createTakeAwayOrder({
+      restaurant,
+      payload: validPayload("checkout-blocked-date-0001"),
+      source: "public",
+    }),
+    (error) => error.status === 403 && error.code === "TAKE_AWAY_DATE_BLOCKED",
+  );
+});
+
+test("a dashboard order remains allowed on a blocked date", async (t) => {
+  const originals = {
+    findOne: TakeAwayOrderModel.findOne,
+    aggregate: TakeAwayOrderModel.aggregate,
+    create: TakeAwayOrderModel.create,
+    lockFindOneAndUpdate: TakeAwaySlotLockModel.findOneAndUpdate,
+    lockDeleteOne: TakeAwaySlotLockModel.deleteOne,
+  };
+  TakeAwayOrderModel.findOne = async () => null;
+  TakeAwayOrderModel.aggregate = async () => [];
+  TakeAwayOrderModel.create = async (input) =>
+    orderDocument({
+      ...input,
+      _id: "order-dashboard-blocked-date",
+      customer: "customer-1",
+      crmRecordedAt: new Date(),
+    });
+  TakeAwaySlotLockModel.findOneAndUpdate = async (_filter, update) => ({
+    owner: update.$set.owner,
+  });
+  TakeAwaySlotLockModel.deleteOne = async () => ({ deletedCount: 1 });
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originals.findOne;
+    TakeAwayOrderModel.aggregate = originals.aggregate;
+    TakeAwayOrderModel.create = originals.create;
+    TakeAwaySlotLockModel.findOneAndUpdate = originals.lockFindOneAndUpdate;
+    TakeAwaySlotLockModel.deleteOne = originals.lockDeleteOne;
+  });
+
+  const restaurant = futureRestaurant();
+  restaurant.takeAwaySettings.blockedDates = ["2099-09-07"];
+  const order = await createTakeAwayOrder({
+    restaurant,
+    payload: validPayload("checkout-dashboard-blocked-date-0001"),
+    source: "dashboard",
+  });
+
+  assert.equal(order.source, "dashboard");
+  assert.equal(order.status, "confirmed");
+  assert.equal(order.slotId, "2099-09-07-19:00");
 });

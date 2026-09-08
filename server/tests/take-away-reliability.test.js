@@ -18,11 +18,10 @@ const {
   cleanupCompletedTakeAwayOrders,
   listImportableSourceItems,
   markCatalogSourcesDeleted,
+  mergeTakeAwaySettingsInput,
   upsertCatalogItemFromSource,
 } = require("../services/take-away.service");
-const {
-  onTakeAwayOrderCreated,
-} = require("../services/customers.service");
+const { onTakeAwayOrderCreated } = require("../services/customers.service");
 const {
   buildNotificationContent,
   buildNotificationMeta,
@@ -30,9 +29,62 @@ const {
 } = require("../services/notifications.service");
 const transactionsRouter = require("../routes/transactions.routes");
 const pushRouter = require("../routes/push-subscription.routes");
+const notificationsRouter = require("../routes/notifications.routes");
 const {
   sanitizePublicRestaurantData,
 } = require("../services/public-restaurant-serialization.service");
+
+test("take-away settings sections merge without resetting unrelated values", () => {
+  const current = {
+    enabled: true,
+    pickupEnabled: true,
+    deliveryEnabled: true,
+    auto_accept: true,
+    paymentPolicy: "customer_choice",
+    same_hours_as_restaurant: false,
+    defaultSlotIntervalMinutes: 15,
+    defaultSlotMaxOrders: 6,
+    minimumPickupOrder: 12,
+    completedOrderAutoDeleteEnabled: true,
+    completedOrderAutoDeleteMinutes: 1440,
+    slots: [
+      {
+        day: "hours.days.monday",
+        isClosed: false,
+        slots: [
+          {
+            start: "12:00",
+            end: "14:00",
+            intervalMinutes: 15,
+            maxOrders: 6,
+          },
+        ],
+      },
+    ],
+    deliveryZones: [
+      {
+        name: "Centre",
+        zipCodes: ["19100"],
+        fee: 4,
+        minimumOrder: 25,
+        estimatedMinutes: 30,
+        active: true,
+      },
+    ],
+  };
+
+  const merged = mergeTakeAwaySettingsInput(current, {
+    auto_accept: false,
+    defaultSlotMaxOrders: 8,
+  });
+
+  assert.equal(merged.auto_accept, false);
+  assert.equal(merged.defaultSlotMaxOrders, 8);
+  assert.equal(merged.paymentPolicy, "customer_choice");
+  assert.equal(merged.minimumPickupOrder, 12);
+  assert.equal(merged.slots[0].slots[0].start, "12:00");
+  assert.equal(merged.deliveryZones[0].zipCodes[0], "19100");
+});
 
 test("wine imports use explicit volume options without double charging", () => {
   const restaurant = {
@@ -127,11 +179,7 @@ test("dish, menu, drink and wine sources follow the same deletion rule", () => {
 
   for (const sourceType of sourceTypes) {
     assert.equal(
-      markCatalogSourcesDeleted(
-        restaurant,
-        sourceType,
-        `${sourceType}-1`,
-      ),
+      markCatalogSourcesDeleted(restaurant, sourceType, `${sourceType}-1`),
       1,
     );
   }
@@ -227,11 +275,11 @@ test("take-away notifications carry the day and order id to every target", () =>
   };
   assert.equal(
     buildNotificationContent({ type: "takeaway_order_created", data }).link,
-    "/dashboard/take-away?day=2026-09-08&orderId=order-1",
+    "/dashboard/webapp/take-away?day=2026-09-08&orderId=order-1",
   );
   assert.equal(
     buildPushLink({ module: "take_away", data, notificationId: "notif-1" }),
-    "/dashboard/take-away?day=2026-09-08&orderId=order-1&notificationId=notif-1",
+    "/dashboard/webapp/take-away?day=2026-09-08&orderId=order-1&notificationId=notif-1",
   );
   assert.equal(
     buildNotificationMeta({ type: "takeaway_order_created", data })
@@ -310,11 +358,73 @@ test("Stripe take-away charges are visible even after order cleanup", () => {
   assert.equal(transaction.refundedAt, 1788782500);
 });
 
+test("the generic refund workflow refuses every take-away charge", async (t) => {
+  const originalExists = TakeAwayOrderModel.exists;
+  t.after(() => {
+    TakeAwayOrderModel.exists = originalExists;
+  });
+
+  TakeAwayOrderModel.exists = async () => null;
+  assert.equal(
+    await transactionsRouter.isTakeAwayRefundTarget({
+      payment_intent: {
+        id: "pi_takeaway_metadata",
+        metadata: { type: "takeaway_order" },
+      },
+    }),
+    true,
+  );
+
+  TakeAwayOrderModel.exists = async (filter) =>
+    filter.stripePaymentIntentId === "pi_takeaway_database";
+  assert.equal(
+    await transactionsRouter.isTakeAwayRefundTarget({
+      payment_intent: "pi_takeaway_database",
+    }),
+    true,
+  );
+  assert.equal(
+    await transactionsRouter.isTakeAwayRefundTarget({
+      payment_intent: "pi_other",
+    }),
+    false,
+  );
+});
+
+test("financial owner routes require authentication and restaurant access", () => {
+  const financialRoutes = transactionsRouter.stack.filter(
+    (layer) =>
+      layer.route?.path?.startsWith("/owner/restaurants/:id/") &&
+      ["get", "post"].includes(
+        Object.keys(layer.route.methods).find(
+          (method) => layer.route.methods[method],
+        ),
+      ),
+  );
+
+  assert.ok(financialRoutes.length >= 7);
+  for (const layer of financialRoutes) {
+    const middlewareNames = layer.route.stack.map(
+      (routeLayer) => routeLayer.handle.name,
+    );
+    assert.ok(
+      middlewareNames.includes("authenticateToken"),
+      `${layer.route.path} must authenticate`,
+    );
+    assert.ok(
+      middlewareNames.includes("authorizeRestaurantAccessMiddleware"),
+      `${layer.route.path} must authorize the restaurant`,
+    );
+  }
+});
+
 test("take-away push checks restaurant and employee module rights", async (t) => {
   const originalRestaurantFindOne = RestaurantModel.findOne;
   const originalEmployeeExists = EmployeeModel.exists;
   assert.equal(
-    PushSubscriptionModel.schema.path("module").enumValues.includes("take_away"),
+    PushSubscriptionModel.schema
+      .path("module")
+      .enumValues.includes("take_away"),
     true,
   );
   let restaurantTakeAwayEnabled = true;
@@ -361,6 +471,62 @@ test("take-away push checks restaurant and employee module rights", async (t) =>
   );
 });
 
+test("take-away notifications follow the same employee module rights", async () => {
+  const restaurantId = "restaurant-1";
+  const employeeId = "employee-1";
+  const restaurant = {
+    _id: restaurantId,
+    owner_id: "owner-1",
+    employees: [
+      {
+        _id: employeeId,
+        restaurantProfiles: [
+          {
+            restaurant: restaurantId,
+            options: { take_away: false },
+          },
+        ],
+      },
+    ],
+    options: { take_away: true },
+  };
+
+  assert.equal(
+    await notificationsRouter.canAccessTakeAwayNotifications({
+      user: {
+        id: employeeId,
+        role: "employee",
+        restaurantId,
+        options: { take_away: true },
+      },
+      authorizedRestaurant: restaurant,
+    }),
+    true,
+  );
+  assert.equal(
+    await notificationsRouter.canAccessTakeAwayNotifications({
+      user: {
+        id: employeeId,
+        role: "employee",
+        restaurantId,
+        options: { take_away: false },
+      },
+      authorizedRestaurant: restaurant,
+    }),
+    false,
+  );
+  assert.equal(
+    await notificationsRouter.canAccessTakeAwayNotifications({
+      user: { id: "owner-1", role: "owner" },
+      authorizedRestaurant: {
+        ...restaurant,
+        options: { take_away: false },
+      },
+    }),
+    false,
+  );
+});
+
 test("public restaurant serialization preserves website fields and removes internals", () => {
   const publicRestaurant = sanitizePublicRestaurantData({
     _id: "restaurant-1",
@@ -390,7 +556,10 @@ test("public restaurant serialization preserves website fields and removes inter
   assert.equal(publicRestaurant.menus.length, 1);
   assert.equal(publicRestaurant.giftCards.length, 1);
   assert.equal(publicRestaurant.reservationsSettings.auto_accept, true);
-  assert.equal(publicRestaurant.reservationsSettings.reservation_hours.length, 1);
+  assert.equal(
+    publicRestaurant.reservationsSettings.reservation_hours.length,
+    1,
+  );
   for (const field of [
     "stripeSecretKey",
     "stripeCustomerId",

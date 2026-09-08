@@ -62,16 +62,13 @@ export function getNotificationTargetPath(
   }
 
   if (notificationModule === "take_away") {
-    return buildPath("/dashboard/take-away", {
+    return buildPath("/dashboard/webapp/take-away", {
       day: toDateKey(meta?.scheduledFor || data?.scheduledFor),
       orderId: meta?.orderId || data?._id || data?.orderId,
     });
   }
 
-  if (
-    notificationModule === "employees" &&
-    type === "leave_request_created"
-  ) {
+  if (notificationModule === "employees" && type === "leave_request_created") {
     return buildPath("/dashboard/employees/planning/days-off", {
       employeeId: meta?.employeeId || data?.employeeId,
     });

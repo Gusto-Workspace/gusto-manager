@@ -44,16 +44,16 @@ function formatScheduledFor(value) {
 }
 
 function interpolateTemplate(value, variables) {
-  return cleanString(value).replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, key) =>
-    Object.hasOwn(variables, key) ? variables[key] : "",
+  return cleanString(value).replace(
+    /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g,
+    (_, key) => (Object.hasOwn(variables, key) ? variables[key] : ""),
   );
 }
 
 function getEventCopy(eventType, order, variables) {
-  const paidOnline =
-    order?.paymentMethod === "online" &&
-    ["paid", "refunded"].includes(order?.paymentStatus);
   const refunded = order?.paymentStatus === "refunded";
+  const paidOnline =
+    order?.paymentMethod === "online" && order?.paymentStatus === "paid";
 
   if (eventType === "received") {
     return {
@@ -80,8 +80,10 @@ function getEventCopy(eventType, order, variables) {
       subject: `Commande ${variables.orderNumber} refusée`,
       heading: "Votre commande n’a pas pu être acceptée",
       message: refunded
-        ? "Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : "Aucun paiement en ligne ne sera encaissé pour cette commande.",
+        ? "Votre commande a été refusée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
+        : paidOnline
+          ? "Votre commande a été refusée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
+          : "Votre commande a été refusée. Aucun paiement en ligne ne sera encaissé pour cette commande.",
     };
   }
   if (eventType === "canceled") {
@@ -89,8 +91,10 @@ function getEventCopy(eventType, order, variables) {
       subject: `Commande ${variables.orderNumber} annulée`,
       heading: "Votre commande a été annulée",
       message: refunded
-        ? "Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : "Pour toute question, vous pouvez contacter directement le restaurant.",
+        ? "Votre commande a été annulée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
+        : paidOnline
+          ? "Votre commande a été annulée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
+          : "Votre commande a été annulée. Pour toute question, vous pouvez contacter directement le restaurant.",
     };
   }
   if (eventType === "ready") {
@@ -117,7 +121,9 @@ function renderItems(order) {
         .map((option) => escapeHtml(option.name))
         .filter(Boolean)
         .join(", ");
-      const detail = options ? `<br><span style="color:#76635c;">${options}</span>` : "";
+      const detail = options
+        ? `<br><span style="color:#76635c;">${options}</span>`
+        : "";
       return `<tr>
         <td style="padding:10px 0;border-bottom:1px solid #eaded9;">${Number(item.quantity || 0)} × ${escapeHtml(item.name)}${detail}</td>
         <td style="padding:10px 0;border-bottom:1px solid #eaded9;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(item.lineTotal, order.currency))}</td>
@@ -154,11 +160,10 @@ function buildTakeAwayEmail({ eventType, order, restaurant }) {
     orderNumber: cleanString(order.orderNumber),
     scheduledFor: formatScheduledFor(order.scheduledFor),
   };
-  const orderForCopy = {
-    ...order,
+  const orderForCopy = Object.assign(Object.create(order), {
     restaurantTakeAwayEmailTemplates:
       restaurant?.takeAwaySettings?.email_templates || {},
-  };
+  });
   const copy = getEventCopy(eventType, orderForCopy, variables);
   if (!copy) return null;
 
@@ -167,7 +172,11 @@ function buildTakeAwayEmail({ eventType, order, restaurant }) {
     order.paymentMethod === "online"
       ? order.paymentStatus === "refunded"
         ? "Payé en ligne · remboursé"
-        : "Payé en ligne"
+        : order.paymentStatus === "paid"
+          ? ["canceled", "rejected"].includes(order.status)
+            ? "Payé en ligne · remboursement à confirmer"
+            : "Payé en ligne"
+          : "Paiement en ligne non finalisé"
       : order.fulfillmentMode === "delivery"
         ? "Paiement à la livraison"
         : "Paiement au retrait";

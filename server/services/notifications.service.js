@@ -207,7 +207,7 @@ function buildNotificationContent({ type, data }) {
       return {
         title: "Nouvelle commande à emporter",
         message: `${name || "Client"} • ${mode}${total ? ` • ${total}` : ""}`,
-        link: buildPath("/dashboard/take-away", {
+        link: buildPath("/dashboard/webapp/take-away", {
           day: toDateKey(data?.scheduledFor),
           orderId: data?._id || data?.orderId || null,
         }),
@@ -242,7 +242,7 @@ function buildPushLink({
   }
 
   if (module === "take_away") {
-    return buildPath("/dashboard/take-away", {
+    return buildPath("/dashboard/webapp/take-away", {
       day: toDateKey(data?.scheduledFor),
       orderId: data?._id || data?.orderId || null,
       notificationId,
