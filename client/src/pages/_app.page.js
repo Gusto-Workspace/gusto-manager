@@ -22,6 +22,10 @@ import {
   normalizeDashboardPath,
 } from "@/_assets/utils/dashboard-access";
 import {
+  consumeGustoMenuPrintReturnPath,
+  GUSTO_MENU_PRINT_RETURN_STORAGE_KEY,
+} from "@/_assets/utils/restaurant-menu-print";
+import {
   getPushPermissionStatus,
   isPushDisabledForModule,
   setupPushForModule,
@@ -44,6 +48,42 @@ const RESERVATIONS_IPAD_STARTUP_SCREENS = [
     media: `screen and (device-width: ${deviceWidth}px) and (device-height: ${deviceHeight}px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)`,
   },
 ]);
+
+function GustoMenuPrintReturnRestore() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!router.isReady) return undefined;
+    if (normalizeDashboardPath(router.pathname) !== "/dashboard/manager") {
+      return undefined;
+    }
+
+    let restoring = false;
+    const restorePendingPath = () => {
+      if (restoring) return;
+
+      const returnPath = consumeGustoMenuPrintReturnPath();
+      if (!returnPath) return;
+
+      restoring = true;
+      router.replace(returnPath);
+    };
+    const handleStorage = (event) => {
+      if (event.key !== GUSTO_MENU_PRINT_RETURN_STORAGE_KEY) return;
+      if (!event.newValue) return;
+      restorePendingPath();
+    };
+
+    window.addEventListener("storage", handleStorage);
+    restorePendingPath();
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [router, router.isReady, router.pathname]);
+
+  return null;
+}
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
@@ -597,6 +637,7 @@ function App({ Component, pageProps }) {
       </Head>
 
       <GlobalProvider>
+        <GustoMenuPrintReturnRestore />
         <IosLaunchSnapshotShield enabled={isReservationsWebapp} />
         <WebAppNotificationBadgeSync />
         <WebAppPushSubscriptionSync />
