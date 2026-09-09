@@ -123,13 +123,18 @@ export default function CardReservationWebapp(props) {
                 ) : null}
 
                 {hasCommentary ? (
-                  <span className={metaPill}>
-                    <CommentarySvg
-                      width={15}
-                      height={15}
-                      className="opacity-50"
-                    />
-                  </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openDetails();
+                    }}
+                    className={`${metaPill} reservation-commentary-attention cursor-pointer bg-orange/10 text-orange transition hover:scale-[1.03] hover:bg-orange/20 focus:outline-none focus:ring-2 focus:ring-orange/30`}
+                    aria-label="Ouvrir la réservation et lire le commentaire"
+                    title="Voir le commentaire"
+                  >
+                    <CommentarySvg width={15} height={15} />
+                  </button>
                 ) : null}
               </div>
 

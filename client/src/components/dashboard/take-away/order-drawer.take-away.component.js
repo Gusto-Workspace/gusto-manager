@@ -18,6 +18,7 @@ import {
   getStatusTone,
   toMoney,
 } from "./take-away.utils";
+import ConfirmModalTakeAwayWebapp from "../webapp/take-away/confirm-modal.take-away.webapp";
 
 const CLOSE_MS = 220;
 
@@ -30,10 +31,12 @@ export default function TakeAwayOrderDrawerComponent({
   errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [pendingAction, setPendingAction] = useState("");
 
   useEffect(() => {
     if (!open) {
       setIsVisible(false);
+      setPendingAction("");
       return;
     }
     const id = window.setTimeout(() => setIsVisible(true), 10);
@@ -44,18 +47,25 @@ export default function TakeAwayOrderDrawerComponent({
 
   function closeWithAnimation() {
     setIsVisible(false);
+    setPendingAction("");
     window.setTimeout(() => onClose?.(), CLOSE_MS);
   }
 
   function runAction(status) {
     const needsConfirm = ["canceled", "rejected", "completed"].includes(status);
     if (needsConfirm) {
-      const ok = window.confirm(
-        `Confirmer le passage de la commande en statut "${STATUS_LABELS[status]}" ?`,
-      );
-      if (!ok) return;
+      setPendingAction(status);
+      return;
     }
     onAction?.(order, status);
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction || loading) return;
+    const targetStatus =
+      pendingAction === "retry_refund" ? order.status : pendingAction;
+    const succeeded = await onAction?.(order, targetStatus);
+    if (succeeded !== false) setPendingAction("");
   }
 
   const availableActions = (NEXT_STATUS[order.status] || []).filter(
@@ -215,7 +225,7 @@ export default function TakeAwayOrderDrawerComponent({
                   </p>
                   <button
                     type="button"
-                    onClick={() => runAction(order.status)}
+                    onClick={() => setPendingAction("retry_refund")}
                     disabled={loading}
                     className="mt-2 inline-flex items-center gap-2 rounded-lg border border-red/20 bg-white px-3 py-2 text-xs font-semibold transition canHover:hover:bg-red/5 disabled:opacity-50"
                   >
@@ -326,6 +336,15 @@ export default function TakeAwayOrderDrawerComponent({
           ) : null}
         </div>
       </aside>
+      <ConfirmModalTakeAwayWebapp
+        open={Boolean(pendingAction)}
+        order={order}
+        status={pendingAction}
+        processing={loading}
+        error={errorMessage}
+        onClose={() => setPendingAction("")}
+        onConfirm={confirmPendingAction}
+      />
     </div>
   );
 }

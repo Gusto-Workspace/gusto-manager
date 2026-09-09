@@ -426,6 +426,55 @@ export default function SlotsParametersComponent({
         <div className={divider} />
 
         <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+          <p className="font-semibold text-darkBlue">
+            Capacité maximale par service
+          </p>
+          <p className="mt-1 text-xs text-darkBlue/50">
+            Limite le total des couverts acceptés sur le service. Laisse un
+            champ vide pour ne pas appliquer de limite.
+          </p>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 midTablet:grid-cols-2">
+            {[
+              { name: "max_covers_lunch", label: "Service du midi" },
+              { name: "max_covers_dinner", label: "Service du soir" },
+            ].map((field) => (
+              <label key={field.name} className="block">
+                <span className="mb-2 block text-sm font-semibold text-darkBlue/75">
+                  {field.label}
+                </span>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="Sans limite"
+                    onWheel={(event) => event.currentTarget.blur()}
+                    className={`${inputBase} pr-20`}
+                    {...register(field.name, {
+                      min: 1,
+                      validate: (value) =>
+                        value === "" || Number.isInteger(Number(value)),
+                    })}
+                  />
+                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-darkBlue/45">
+                    couverts
+                  </span>
+                </div>
+                {errors?.[field.name] ? (
+                  <span className="mt-2 block text-xs text-red">
+                    Saisis un nombre entier supérieur à 0.
+                  </span>
+                ) : null}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className={divider} />
+
+        <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
           <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-start midTablet:justify-between">
             <div className="min-w-0">
               <p className="font-semibold text-darkBlue">

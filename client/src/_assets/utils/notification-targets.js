@@ -62,7 +62,11 @@ export function getNotificationTargetPath(
   }
 
   if (notificationModule === "take_away") {
-    return buildPath("/dashboard/webapp/take-away", {
+    const basePath = preferWebapp
+      ? "/dashboard/webapp/take-away"
+      : "/dashboard/take-away";
+
+    return buildPath(basePath, {
       day: toDateKey(meta?.scheduledFor || data?.scheduledFor),
       orderId: meta?.orderId || data?._id || data?.orderId,
     });

@@ -214,6 +214,28 @@ function isTakeAwayDateBlocked(restaurantOrSettings, dateKey) {
 
 const DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES = 6 * 30 * 24 * 60;
 
+function getPreparationTimeMinutes(settings = {}) {
+  const minutes = Number(settings.preparationTimeMinutes);
+  return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+}
+
+function normalizePreparationTimeMinutes(value) {
+  if (typeof value === "string" && value.trim() === "") {
+    throw serviceError(
+      "Le temps de préparation doit être un entier supérieur à 0",
+    );
+  }
+
+  const minutes = Number(value);
+  if (!Number.isInteger(minutes) || minutes <= 0) {
+    throw serviceError(
+      "Le temps de préparation doit être un entier supérieur à 0",
+    );
+  }
+
+  return minutes;
+}
+
 function sanitizeTakeAwaySettingsInput(input = {}) {
   const paymentPolicy = [
     "online_required",
@@ -230,6 +252,13 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     auto_accept: input.auto_accept !== false,
     paymentPolicy,
     same_hours_as_restaurant: input.same_hours_as_restaurant !== false,
+    ...(Object.prototype.hasOwnProperty.call(input, "preparationTimeMinutes")
+      ? {
+          preparationTimeMinutes: normalizePreparationTimeMinutes(
+            input.preparationTimeMinutes,
+          ),
+        }
+      : {}),
     defaultSlotIntervalMinutes: Math.max(
       5,
       Number(input.defaultSlotIntervalMinutes || 15),
@@ -854,18 +883,26 @@ async function getAvailableSlots({
   restaurant,
   dateKey,
   respectPublicBlock = true,
+  respectPreparationTime = true,
+  now = new Date(),
 }) {
   if (respectPublicBlock && isTakeAwayDateBlocked(restaurant, dateKey)) {
     return [];
   }
-  const slots = generateSlotsForDate(restaurant, dateKey);
+  const minimumScheduledTime =
+    now.getTime() +
+    getPreparationTimeMinutes(getSettings(restaurant)) * 60 * 1000;
+  const slots = generateSlotsForDate(restaurant, dateKey).filter(
+    (slot) =>
+      !respectPreparationTime ||
+      slot.scheduledFor.getTime() >= minimumScheduledTime,
+  );
   if (!slots.length) return [];
 
   const start = parseDateKey(dateKey);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const now = new Date();
   const counts = await TakeAwayOrderModel.aggregate([
     {
       $match: {
@@ -1034,11 +1071,13 @@ async function validateSlotCapacity({
   dateKey,
   slotId,
   respectPublicBlock = true,
+  respectPreparationTime = true,
 }) {
   const availableSlots = await getAvailableSlots({
     restaurant,
     dateKey,
     respectPublicBlock,
+    respectPreparationTime,
   });
   const slot = availableSlots.find((candidate) => candidate.slotId === slotId);
   if (!slot) {
@@ -1260,7 +1299,12 @@ function assertIdempotentReplay(existing, payloadHash) {
   return existing;
 }
 
-function resolveAuthoritativeSlot({ restaurant, payload, now = new Date() }) {
+function resolveAuthoritativeSlot({
+  restaurant,
+  payload,
+  now = new Date(),
+  respectPreparationTime = true,
+}) {
   const slotId = cleanString(payload.slotId);
   const match = /^(\d{4}-\d{2}-\d{2})-(\d{2}:\d{2})$/.exec(slotId);
   if (!match) throw serviceError("slotId invalide");
@@ -1275,6 +1319,14 @@ function resolveAuthoritativeSlot({ restaurant, payload, now = new Date() }) {
   const scheduledFor = new Date(configuredSlot.scheduledFor);
   if (scheduledFor.getTime() <= now.getTime()) {
     throw serviceError("Un créneau passé ne peut pas être commandé");
+  }
+  const minimumScheduledTime =
+    now.getTime() +
+    getPreparationTimeMinutes(getSettings(restaurant)) * 60 * 1000;
+  if (respectPreparationTime && scheduledFor.getTime() < minimumScheduledTime) {
+    throw serviceError(
+      "Ce créneau ne laisse pas assez de temps de préparation",
+    );
   }
 
   if (payload.scheduledFor !== undefined && payload.scheduledFor !== null) {
@@ -1588,7 +1640,11 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
     throw serviceError("Livraison indisponible");
   }
 
-  const authoritativeSlot = resolveAuthoritativeSlot({ restaurant, payload });
+  const authoritativeSlot = resolveAuthoritativeSlot({
+    restaurant,
+    payload,
+    respectPreparationTime: source === "public",
+  });
   if (
     source === "public" &&
     isTakeAwayDateBlocked(restaurant, authoritativeSlot.dateKey)
@@ -1674,6 +1730,7 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
         dateKey: authoritativeSlot.dateKey,
         slotId: authoritativeSlot.slotId,
         respectPublicBlock: source === "public",
+        respectPreparationTime: source === "public",
       });
       if (new Date(currentSlot.scheduledFor).getTime() <= Date.now()) {
         throw serviceError("Un créneau passé ne peut pas être commandé");

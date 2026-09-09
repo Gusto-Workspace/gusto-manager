@@ -187,11 +187,6 @@ export default function PaymentsDashboardComponent(props) {
                     {payment.customer ||
                       t("payments.customerFallback", "Non renseigne")}
                   </p>
-                  {payment.type === "take_away_order" && payment.orderNumber ? (
-                    <p className="mt-0.5 text-xs font-semibold text-darkBlue/50">
-                      Commande {payment.orderNumber}
-                    </p>
-                  ) : null}
 
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 rounded-full border border-darkBlue/10 bg-darkBlue/5 px-3 py-1.5 text-xs font-medium text-darkBlue">

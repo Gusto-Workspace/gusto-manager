@@ -215,6 +215,8 @@ const reservationParametersSchema = new mongoose.Schema({
     type: [reservationSlotCoverLimitSchema],
     default: [],
   },
+  max_covers_lunch: { type: Number, min: 1, default: null },
+  max_covers_dinner: { type: Number, min: 1, default: null },
   refuse_public_reservations_during_service: {
     type: Boolean,
     default: false,
@@ -321,6 +323,14 @@ const takeAwaySettingsSchema = new mongoose.Schema(
     same_hours_as_restaurant: { type: Boolean, default: true },
     slots: { type: [takeAwaySlotSchema], default: [] },
     deliveryZones: { type: [takeAwayDeliveryZoneSchema], default: [] },
+    preparationTimeMinutes: {
+      type: Number,
+      validate: {
+        validator: (value) =>
+          value === undefined || (Number.isInteger(value) && value > 0),
+        message: "Le temps de préparation doit être un entier supérieur à 0",
+      },
+    },
     defaultSlotIntervalMinutes: { type: Number, min: 5, default: 15 },
     defaultSlotMaxOrders: { type: Number, min: 1, default: 6 },
     minimumPickupOrder: { type: Number, min: 0, default: 0 },

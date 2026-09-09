@@ -1453,6 +1453,46 @@ test("a blocked take-away date is normalized and has no public slots", async (t)
   );
 });
 
+test("public take-away slots respect the configured preparation time", async (t) => {
+  const originalAggregate = TakeAwayOrderModel.aggregate;
+  TakeAwayOrderModel.aggregate = async () => [];
+  t.after(() => {
+    TakeAwayOrderModel.aggregate = originalAggregate;
+  });
+
+  const restaurant = futureRestaurant();
+  const openDay = restaurant.takeAwaySettings.slots.find(
+    (day) => day.isClosed === false,
+  );
+  openDay.slots = [
+    {
+      start: "20:45",
+      end: "21:30",
+      intervalMinutes: 15,
+      maxOrders: 1,
+    },
+  ];
+  restaurant.takeAwaySettings.preparationTimeMinutes = 30;
+
+  const slotsAt2015 = await getAvailableSlots({
+    restaurant,
+    dateKey: "2099-09-07",
+    now: new Date(2099, 8, 7, 20, 15),
+  });
+  assert.equal(slotsAt2015[0]?.time, "20:45");
+
+  const slotsAt2044 = await getAvailableSlots({
+    restaurant,
+    dateKey: "2099-09-07",
+    now: new Date(2099, 8, 7, 20, 44),
+  });
+  assert.equal(
+    slotsAt2044.some((slot) => slot.time === "20:45"),
+    false,
+  );
+  assert.equal(slotsAt2044[0]?.time, "21:15");
+});
+
 test("a direct public create is rejected for a blocked date", async (t) => {
   const originalFindOne = TakeAwayOrderModel.findOne;
   TakeAwayOrderModel.findOne = async () => null;

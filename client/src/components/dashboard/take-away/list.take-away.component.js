@@ -268,9 +268,11 @@ export default function ListTakeAwayComponent() {
       });
       applyTakeAwayOrderUpdate?.(data.order, restaurantId);
       setSelectedOrder(data.order);
+      return true;
     } catch (error) {
       console.error(error);
       setDrawerError("Changement de statut impossible.");
+      return false;
     } finally {
       setLoading(false);
     }

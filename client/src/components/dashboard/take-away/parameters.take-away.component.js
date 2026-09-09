@@ -42,6 +42,18 @@ const DAYS = [
   { key: "hours.days.sunday", label: "Dimanche" },
 ];
 
+function getPreparationTimeValidation(value) {
+  if (value === undefined || value === null || value === "") {
+    return { valid: true, value: undefined };
+  }
+
+  const minutes = Number(value);
+  return {
+    valid: Number.isInteger(minutes) && minutes > 0,
+    value: minutes,
+  };
+}
+
 function SectionCard({
   icon,
   title,
@@ -289,6 +301,7 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
       auto_accept: enabled ? settings.auto_accept !== false : false,
       paymentPolicy: settings.paymentPolicy || "on_site",
       same_hours_as_restaurant: settings.same_hours_as_restaurant !== false,
+      preparationTimeMinutes: settings.preparationTimeMinutes ?? "",
       defaultSlotIntervalMinutes: settings.defaultSlotIntervalMinutes || 15,
       defaultSlotMaxOrders: settings.defaultSlotMaxOrders || 6,
       minimumPickupOrder: settings.minimumPickupOrder || 0,
@@ -355,8 +368,14 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
       };
     }
     if (sectionKey === "operations") {
+      const preparationTime = getPreparationTimeValidation(
+        settingsForm.preparationTimeMinutes,
+      );
       return {
         auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
+        ...(preparationTime.value === undefined
+          ? {}
+          : { preparationTimeMinutes: preparationTime.value }),
         defaultSlotIntervalMinutes: settingsForm.defaultSlotIntervalMinutes,
         defaultSlotMaxOrders: settingsForm.defaultSlotMaxOrders,
         minimumPickupOrder: settingsForm.minimumPickupOrder,
@@ -397,6 +416,19 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
 
   async function saveSection(sectionKey, { hoursOverride = null } = {}) {
     if (!settingsForm || sectionUI[sectionKey]?.saving) return false;
+    if (
+      sectionKey === "operations" &&
+      !getPreparationTimeValidation(settingsForm.preparationTimeMinutes).valid
+    ) {
+      setSectionUI((current) => ({
+        ...current,
+        operations: {
+          ...current.operations,
+          error: "Le temps de préparation doit être un entier supérieur à 0.",
+        },
+      }));
+      return false;
+    }
     if (sectionKey === "payment" && paymentRequiresStripe && !stripeReady) {
       setSectionUI((current) => ({
         ...current,
@@ -647,6 +679,31 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
                   </option>
                 ))}
               </select>
+            </FormField>
+            <FormField label="Temps de préparation">
+              <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                  value={settingsForm.preparationTimeMinutes}
+                  onKeyDown={(event) => {
+                    if (["-", ".", ",", "e", "E"].includes(event.key)) {
+                      event.preventDefault();
+                    }
+                  }}
+                  onChange={(e) =>
+                    updateSettings("operations", {
+                      preparationTimeMinutes: e.target.value,
+                    })
+                  }
+                />
+                <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                  minutes
+                </span>
+              </div>
             </FormField>
             <FormField label="Nombre maximum de commandes par créneau">
               <select

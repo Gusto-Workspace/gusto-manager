@@ -769,7 +769,11 @@ function getDailyShiftDayValue(durationMinutes) {
   return 0;
 }
 
-function buildShiftAttendanceInsights(report = {}, bounds) {
+function buildShiftAttendanceInsights(
+  report = {},
+  bounds,
+  generatedAt = new Date(),
+) {
   const profile = report?.profile || {};
   const approvedLeaves = safeArr(profile?.leaveRequests).filter(
     (leaveRequest) =>
@@ -779,6 +783,7 @@ function buildShiftAttendanceInsights(report = {}, bounds) {
   const sessionsByDate = buildDaySessionsMap(report?.range || {});
   const tardiness = [];
   const unjustifiedAbsences = [];
+  const generatedAtDate = new Date(generatedAt);
 
   safeArr(profile?.shifts)
     .filter((shift) => !isLeaveShift(shift))
@@ -793,6 +798,8 @@ function buildShiftAttendanceInsights(report = {}, bounds) {
       ) {
         return;
       }
+
+      if (shiftStart > generatedAtDate) return;
 
       const coveredByLeave = approvedLeaves.some((leaveRequest) =>
         overlapsInterval(shiftStart, shiftEnd, leaveRequest.start, leaveRequest.end),
@@ -901,7 +908,7 @@ function buildLeaveDetailRows(report = {}, leaveRequest = {}, employment = {}, b
   return rows;
 }
 
-function buildSummaryRows(reports = [], bounds) {
+function buildSummaryRows(reports = [], bounds, generatedAt = new Date()) {
   return reports.map((report) => {
     const employment = report?.profile?.employment || {};
     const range = report?.range || {};
@@ -914,7 +921,11 @@ function buildSummaryRows(reports = [], bounds) {
     );
     const overtimeMinutes = computeOvertimeMinutes(report, bounds);
     const leaveStats = computeLeaveStats(report, bounds);
-    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
+    const attendanceInsights = buildShiftAttendanceInsights(
+      report,
+      bounds,
+      generatedAt,
+    );
     const absenceMinutes =
       Number(leaveStats.totalLeaveMinutes || 0) +
       attendanceInsights.unjustifiedAbsences.reduce(
@@ -943,13 +954,22 @@ function buildSummaryRows(reports = [], bounds) {
   });
 }
 
-function buildDetailRows(reports = [], bounds, restaurantName = "") {
+function buildDetailRows(
+  reports = [],
+  bounds,
+  restaurantName = "",
+  generatedAt = new Date(),
+) {
   const rows = [];
 
   reports.forEach((report) => {
     const employment = report?.profile?.employment || {};
     const leaveRequests = safeArr(report?.profile?.leaveRequests);
-    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
+    const attendanceInsights = buildShiftAttendanceInsights(
+      report,
+      bounds,
+      generatedAt,
+    );
 
     safeArr(report?.range?.days).forEach((day) => {
       safeArr(day?.sessions).forEach((session) => {
@@ -1069,12 +1089,16 @@ function buildDetailRows(reports = [], bounds, restaurantName = "") {
   });
 }
 
-function buildLeaveRows(reports = [], bounds) {
+function buildLeaveRows(reports = [], bounds, generatedAt = new Date()) {
   const rows = [];
 
   reports.forEach((report) => {
     const employment = report?.profile?.employment || {};
-    const attendanceInsights = buildShiftAttendanceInsights(report, bounds);
+    const attendanceInsights = buildShiftAttendanceInsights(
+      report,
+      bounds,
+      generatedAt,
+    );
 
     safeArr(report?.profile?.leaveRequests)
       .filter(
@@ -1233,7 +1257,7 @@ function buildWorkbookDefinition({
         "Jours actifs",
         "Anomalies",
       ],
-      rows: buildSummaryRows(reports, bounds),
+      rows: buildSummaryRows(reports, bounds, generatedAt),
     },
     {
       name: "Profils salariés",
@@ -1282,7 +1306,7 @@ function buildWorkbookDefinition({
         "Avantages nature",
         "Repas dus",
       ],
-      rows: buildDetailRows(reports, bounds, restaurantName),
+      rows: buildDetailRows(reports, bounds, restaurantName, generatedAt),
     },
     {
       name: "Absences salariés",
@@ -1297,7 +1321,7 @@ function buildWorkbookDefinition({
         "Nb heures",
         "Nb jours",
       ],
-      rows: buildLeaveRows(reports, bounds),
+      rows: buildLeaveRows(reports, bounds, generatedAt),
     },
     {
       name: "Congés disponibles",

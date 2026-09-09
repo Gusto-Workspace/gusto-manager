@@ -64,6 +64,9 @@ function titleForNotification(n) {
     if (n?.type === "reservation_customer_canceled") {
       return "Réservation annulée par le client";
     }
+    if (n?.type === "reservation_waitlist_created") {
+      return "Nouvelle demande en liste d’attente";
+    }
 
     const st = getReservationDisplayStatus(getReservationStatus(n));
     if (st === "Pending") return "Nouvelle réservation en attente";

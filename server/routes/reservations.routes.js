@@ -1367,6 +1367,19 @@ function getActiveSlotCoverLimit(
   };
 }
 
+function getActiveServiceCoverLimit(parameters = {}, reservationTime = "") {
+  const service = getServiceBucketFromTime(reservationTime);
+  const rawValue =
+    service === "lunch"
+      ? parameters?.max_covers_lunch
+      : parameters?.max_covers_dinner;
+  const maxCovers = Math.floor(Number(rawValue || 0));
+
+  if (!Number.isFinite(maxCovers) || maxCovers <= 0) return null;
+
+  return { service, maxCovers };
+}
+
 function buildSlotCoverUsageFromReservations(
   reservations = [],
   { excludeReservationId = null } = {},
@@ -1399,6 +1412,27 @@ function buildSlotCoverUsageFromReservations(
       return { date, time, covers };
     })
     .sort((a, b) => `${a.date}|${a.time}`.localeCompare(`${b.date}|${b.time}`));
+}
+
+function buildServiceCoverUsageFromReservations(reservations = []) {
+  const usageMap = new Map();
+
+  (Array.isArray(reservations) ? reservations : []).forEach((reservation) => {
+    if (!isBlockingReservation(reservation)) return;
+
+    const date = normalizeReservationDateKey(reservation?.reservationDate);
+    const covers = Math.max(0, Number(reservation?.numberOfGuests || 0));
+    if (!date || covers <= 0) return;
+
+    const service = getServiceBucketFromTime(reservation?.reservationTime);
+    const usage = usageMap.get(date) || { date, lunch: 0, dinner: 0 };
+    usage[service] += covers;
+    usageMap.set(date, usage);
+  });
+
+  return Array.from(usageMap.values()).sort((left, right) =>
+    left.date.localeCompare(right.date),
+  );
 }
 
 async function getSlotCoverUsage({
@@ -1444,6 +1478,48 @@ async function getSlotCoverUsage({
     );
 }
 
+async function getServiceCoverUsage({
+  restaurantId,
+  reservationDateUTC,
+  reservationTime,
+  excludeReservationId = null,
+}) {
+  const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
+  if (!normalizedDay) return 0;
+
+  const formattedDate = format(normalizedDay, "yyyy-MM-dd");
+  const dayStart = new Date(`${formattedDate}T00:00:00.000Z`);
+  const dayEnd = new Date(`${formattedDate}T23:59:59.999Z`);
+  const service = getServiceBucketFromTime(reservationTime);
+  const query = {
+    restaurant_id: restaurantId,
+    reservationDate: { $gte: dayStart, $lte: dayEnd },
+    status: { $in: BLOCKING_STATUSES },
+  };
+
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+
+  const reservations = await ReservationModel.find(query)
+    .select(
+      "status numberOfGuests reservationTime pendingExpiresAt bankHold waitlistOffer",
+    )
+    .lean();
+
+  return reservations
+    .filter(
+      (reservation) =>
+        isBlockingReservation(reservation) &&
+        getServiceBucketFromTime(reservation?.reservationTime) === service,
+    )
+    .reduce(
+      (sum, reservation) =>
+        sum + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+      0,
+    );
+}
+
 async function checkSlotCoverCapacity({
   restaurantId,
   parameters,
@@ -1452,40 +1528,97 @@ async function checkSlotCoverCapacity({
   numberOfGuests,
   excludeReservationId = null,
 }) {
-  const limit = getActiveSlotCoverLimit(
+  const slotLimit = getActiveSlotCoverLimit(
     parameters,
     reservationTime,
     reservationDateUTC,
   );
+  const serviceLimit = getActiveServiceCoverLimit(
+    parameters,
+    reservationTime,
+  );
+  const requestedCovers = Math.max(0, Number(numberOfGuests || 0));
 
-  if (!limit) {
+  if (!slotLimit && !serviceLimit) {
     return {
       available: true,
       limited: false,
       usedCovers: 0,
-      requestedCovers: Number(numberOfGuests || 0),
+      requestedCovers,
       remainingCovers: null,
       maxCovers: null,
     };
   }
 
-  const usedCovers = await getSlotCoverUsage({
-    restaurantId,
-    reservationDateUTC,
-    reservationTime: limit.time,
-    excludeReservationId,
-  });
-  const requestedCovers = Math.max(0, Number(numberOfGuests || 0));
-  const nextCovers = usedCovers + requestedCovers;
+  if (slotLimit) {
+    const usedCovers = await getSlotCoverUsage({
+      restaurantId,
+      reservationDateUTC,
+      reservationTime: slotLimit.time,
+      excludeReservationId,
+    });
+    const nextCovers = usedCovers + requestedCovers;
+
+    if (nextCovers > slotLimit.maxCovers) {
+      return {
+        available: false,
+        limited: true,
+        scope: "slot",
+        usedCovers,
+        requestedCovers,
+        remainingCovers: Math.max(0, slotLimit.maxCovers - usedCovers),
+        maxCovers: slotLimit.maxCovers,
+        time: slotLimit.time,
+      };
+    }
+  }
+
+  if (serviceLimit) {
+    const usedCovers = await getServiceCoverUsage({
+      restaurantId,
+      reservationDateUTC,
+      reservationTime,
+      excludeReservationId,
+    });
+    const nextCovers = usedCovers + requestedCovers;
+
+    if (nextCovers > serviceLimit.maxCovers) {
+      return {
+        available: false,
+        limited: true,
+        scope: "service",
+        service: serviceLimit.service,
+        usedCovers,
+        requestedCovers,
+        remainingCovers: Math.max(0, serviceLimit.maxCovers - usedCovers),
+        maxCovers: serviceLimit.maxCovers,
+      };
+    }
+  }
 
   return {
-    available: nextCovers <= limit.maxCovers,
+    available: true,
     limited: true,
-    usedCovers,
+    usedCovers: 0,
     requestedCovers,
-    remainingCovers: Math.max(0, limit.maxCovers - usedCovers),
-    maxCovers: limit.maxCovers,
-    time: limit.time,
+    remainingCovers: null,
+    maxCovers: null,
+  };
+}
+
+function getCoverCapacityExceededError(coverCapacity = {}) {
+  if (coverCapacity?.scope === "service") {
+    const serviceLabel =
+      coverCapacity.service === "lunch" ? "du midi" : "du soir";
+    return {
+      code: "SERVICE_COVER_CAPACITY_EXCEEDED",
+      message: `La capacité maximale du service ${serviceLabel} est atteinte.`,
+    };
+  }
+
+  return {
+    code: "SLOT_COVER_CAPACITY_EXCEEDED",
+    message: "Ce créneau est complet en nombre de couverts.",
   };
 }
 
@@ -2528,10 +2661,11 @@ async function updateReservationDetailsInternal({
       });
 
       if (!coverCapacity.available) {
+        const capacityError = getCoverCapacityExceededError(coverCapacity);
         throw createReservationRouteError(
           409,
-          "Ce créneau est complet en nombre de couverts.",
-          "SLOT_COVER_CAPACITY_EXCEEDED",
+          capacityError.message,
+          capacityError.code,
         );
       }
     }
@@ -2862,10 +2996,11 @@ async function updateReservationStatusInternal({
       });
 
       if (!coverCapacity.available) {
+        const capacityError = getCoverCapacityExceededError(coverCapacity);
         throw createReservationRouteError(
           409,
-          "Ce créneau est complet en nombre de couverts.",
-          "SLOT_COVER_CAPACITY_EXCEEDED",
+          capacityError.message,
+          capacityError.code,
         );
       }
     }
@@ -3483,6 +3618,22 @@ async function resolveWaitlistAssignableTable({
 
   const candidateDT = buildReservationDateTime(normalizedDay, normalizedTime);
 
+  if (
+    channel === "public" &&
+    isPublicReservationBlockedByCurrentService({
+      restaurant,
+      parameters,
+      candidateDateTime: candidateDT,
+      occupancyMs: getReservationOccupancyMs(parameters, normalizedTime),
+    })
+  ) {
+    return {
+      available: false,
+      table: null,
+      reason: "current_service_full",
+    };
+  }
+
   if (isDateTimeBlocked(parameters, candidateDT)) {
     return { available: false, table: null, reason: "slot_blocked" };
   }
@@ -3500,7 +3651,10 @@ async function resolveWaitlistAssignableTable({
     return {
       available: false,
       table: null,
-      reason: "slot_cover_capacity_exceeded",
+      reason:
+        coverCapacity.scope === "service"
+          ? "service_cover_capacity_exceeded"
+          : "slot_cover_capacity_exceeded",
       coverCapacity,
     };
   }
@@ -5180,22 +5334,6 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
       guests: normalizedGuests,
       candidateDT,
     } = slotValidation;
-    const occupancyMs = getReservationOccupancyMs(parameters, normalizedTime);
-
-    if (
-      isPublicReservationBlockedByCurrentService({
-        restaurant,
-        parameters,
-        candidateDateTime: candidateDT,
-        occupancyMs,
-      })
-    ) {
-      return res.status(409).json({
-        message:
-          "Les réservations en ligne sont fermées pour le service en cours.",
-      });
-    }
-
     if (isDateTimeBlocked(parameters, candidateDT)) {
       return res.status(409).json({
         message:
@@ -5790,9 +5928,10 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
       });
 
       if (!coverCapacity.available) {
+        const capacityError = getCoverCapacityExceededError(coverCapacity);
         return res.status(409).json({
-          code: "SLOT_COVER_CAPACITY_EXCEEDED",
-          message: "Ce créneau est complet en nombre de couverts.",
+          code: capacityError.code,
+          message: capacityError.message,
           coverCapacity,
         });
       }
@@ -6217,9 +6356,10 @@ router.post(
         });
 
         if (!coverCapacity.available) {
+          const capacityError = getCoverCapacityExceededError(coverCapacity);
           return res.status(409).json({
-            code: "SLOT_COVER_CAPACITY_EXCEEDED",
-            message: "Ce créneau est complet en nombre de couverts.",
+            code: capacityError.code,
+            message: capacityError.message,
             coverCapacity,
           });
         }
@@ -6942,10 +7082,14 @@ router.get("/public/restaurants/:id/reservations", async (req, res) => {
     const slotCoverUsage = buildSlotCoverUsageFromReservations(
       availabilityReservations,
     );
+    const serviceCoverUsage = buildServiceCoverUsageFromReservations(
+      availabilityReservations,
+    );
 
     const response = res.status(200).json({
       reservations: sanitizedReservations,
       slotCoverUsage,
+      serviceCoverUsage,
       period: { from: dateRange.from, to: dateRange.to },
     });
 
