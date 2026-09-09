@@ -1,9 +1,7 @@
 import { Printer } from "lucide-react";
 import { useTranslation } from "next-i18next";
-import {
-  buildRestaurantMenuPrintUrl,
-  rememberGustoMenuPrintReturnPath,
-} from "@/_assets/utils/restaurant-menu-print";
+import { useRouter } from "next/router";
+import { buildRestaurantMenuPrintUrl } from "@/_assets/utils/restaurant-menu-print";
 
 const AMBASSADE_PRINT_ROUTE = "/dashboard/menus/print";
 const AMBASSADE_HOSTNAMES = new Set([
@@ -16,6 +14,7 @@ export default function RestaurantMenuPrintActionDashboardComponent({
   dataLoading = false,
 }) {
   const { t } = useTranslation("common");
+  const router = useRouter();
   const printUrl = buildRestaurantMenuPrintUrl(website);
   const label = t("printMenu.action");
   const className =
@@ -28,20 +27,36 @@ export default function RestaurantMenuPrintActionDashboardComponent({
       return false;
     }
   })();
-  const actionUrl = isAmbassadePrintUrl ? AMBASSADE_PRINT_ROUTE : printUrl;
-
-  const rememberPrintReturnPath = () => {
-    if (!isAmbassadePrintUrl) return;
-    rememberGustoMenuPrintReturnPath(window.location.pathname);
-  };
 
   if (printUrl && !dataLoading) {
+    if (isAmbassadePrintUrl) {
+      return (
+        <button
+          type="button"
+          disabled={!router.isReady}
+          onClick={() => {
+            // Impression temporaire dans le même document, sans ajouter d'entrée.
+            void router.replace({
+              pathname: AMBASSADE_PRINT_ROUTE,
+              query: {
+                from: router.pathname === "/dashboard/dishes" ? "dishes" : "menus",
+              },
+            });
+          }}
+          aria-label={label}
+          title={label}
+          className={className}
+        >
+          <Printer className="size-4" aria-hidden="true" />
+        </button>
+      );
+    }
+
     return (
       <a
-        href={actionUrl}
-        onClick={rememberPrintReturnPath}
-        target={isAmbassadePrintUrl ? undefined : "_blank"}
-        rel={isAmbassadePrintUrl ? undefined : "noopener noreferrer"}
+        href={printUrl}
+        target="_blank"
+        rel="noopener noreferrer"
         aria-label={label}
         title={label}
         className={className}
