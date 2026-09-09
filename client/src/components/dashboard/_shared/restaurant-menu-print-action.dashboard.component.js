@@ -31,8 +31,8 @@ export default function RestaurantMenuPrintActionDashboardComponent({
     return (
       <a
         href={actionUrl}
-        target={isAmbassadePrintUrl ? undefined : "_blank"}
-        rel={isAmbassadePrintUrl ? undefined : "noopener noreferrer"}
+        target="_blank"
+        rel="noopener noreferrer"
         aria-label={label}
         title={label}
         className={className}
