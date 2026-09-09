@@ -1,6 +1,9 @@
 import { Printer } from "lucide-react";
 import { useTranslation } from "next-i18next";
-import { buildRestaurantMenuPrintUrl } from "@/_assets/utils/restaurant-menu-print";
+import {
+  buildRestaurantMenuPrintUrl,
+  rememberGustoMenuPrintReturnPath,
+} from "@/_assets/utils/restaurant-menu-print";
 
 const AMBASSADE_PRINT_ROUTE = "/dashboard/menus/print";
 const AMBASSADE_HOSTNAMES = new Set([
@@ -26,13 +29,18 @@ export default function RestaurantMenuPrintActionDashboardComponent({
     }
   })();
   const actionUrl = isAmbassadePrintUrl ? AMBASSADE_PRINT_ROUTE : printUrl;
+  const rememberPrintReturnPath = () => {
+    if (!isAmbassadePrintUrl) return;
+    rememberGustoMenuPrintReturnPath(window.location.pathname);
+  };
 
   if (printUrl && !dataLoading) {
     return (
       <a
         href={actionUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={isAmbassadePrintUrl ? undefined : "_blank"}
+        rel={isAmbassadePrintUrl ? undefined : "noopener noreferrer"}
+        onClick={rememberPrintReturnPath}
         aria-label={label}
         title={label}
         className={className}
