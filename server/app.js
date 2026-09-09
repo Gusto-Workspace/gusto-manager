@@ -26,10 +26,6 @@ app.set("trust proxy", 1);
 
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
-app.use(
-  "/api/take-away/stripe/webhook",
-  express.raw({ type: "application/json", limit: "100kb" }),
-);
 app.use(express.json());
 
 // MONGOOSE

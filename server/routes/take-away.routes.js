@@ -5,6 +5,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 const {
   userCanAccessRestaurant,
 } = require("../middleware/authorize-restaurant-access");
+const {
+  verifyServiceSignature,
+} = require("../middleware/service-signature");
 const RestaurantModel = require("../models/restaurant.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
 const {
@@ -21,7 +24,7 @@ const {
   findPublicOrderByAttempt,
   updateOrderStatus,
   loadRestaurantForTakeAway,
-  constructTakeAwayWebhookEvent,
+  validateTakeAwayStripeEventEnvelope,
   handleTakeAwayStripeWebhookEvent,
   normalizeTakeAwayDateKey,
   getBlockedTakeAwayDates,
@@ -151,21 +154,39 @@ function serializePublicOrder(input) {
   };
 }
 
-router.post("/take-away/stripe/webhook", async (req, res) => {
-  try {
-    const { event, restaurant } = await constructTakeAwayWebhookEvent({
-      rawBody: req.body,
-      signature: req.headers["stripe-signature"],
-    });
-    const result = await handleTakeAwayStripeWebhookEvent({
-      event,
-      restaurant,
-    });
-    return res.status(200).json({ received: true, handled: result.handled });
-  } catch (error) {
-    return handleError(res, error);
-  }
-});
+router.post(
+  "/take-away/stripe-events",
+  verifyServiceSignature,
+  async (req, res) => {
+    try {
+      const restaurantId = String(req.body?.restaurantId || "").trim();
+      const event = req.body?.event;
+      const validation = validateTakeAwayStripeEventEnvelope({
+        restaurantId,
+        event,
+      });
+      if (!validation.supported) {
+        return res.status(200).json({ received: true, handled: false });
+      }
+
+      const restaurant = await loadRestaurantForTakeAway(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+      if (restaurant.options?.take_away !== true) {
+        return res.status(403).json({ message: "Take-away module unavailable" });
+      }
+
+      const result = await handleTakeAwayStripeWebhookEvent({
+        event,
+        restaurant,
+      });
+      return res.status(200).json({ received: true, handled: result.handled });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
 
 router.get(
   "/restaurants/:restaurantId/take-away/public/catalog",
