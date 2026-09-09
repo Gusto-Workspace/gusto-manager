@@ -14,6 +14,14 @@ export default function MenuPrintPage() {
   const returnLabel = fromDishes ? "Retour à La Carte" : "Retour aux Menus";
   const restaurant = restaurantContext?.restaurantData;
   const printUrl = buildRestaurantMenuPrintUrl(restaurant?.website);
+  const handleReturn = () => {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    void router.replace(returnPath);
+  };
 
   return (
     <>
@@ -40,7 +48,7 @@ export default function MenuPrintPage() {
       <button
         type="button"
         disabled={!router.isReady}
-        onClick={() => void router.replace(returnPath)}
+        onClick={handleReturn}
         aria-label={returnLabel}
         title={returnLabel}
         className="fixed left-4 top-4 z-10 inline-flex size-11 items-center justify-center rounded-full border border-darkBlue/15 bg-white text-darkBlue shadow-sm transition hover:bg-lightGrey active:scale-[0.98] print:hidden"
