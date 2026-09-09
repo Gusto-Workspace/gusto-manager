@@ -22,7 +22,7 @@ export default function RestaurantMenuPrintActionDashboardComponent({
         type="button"
         disabled={!router.isReady}
         onClick={() => {
-          void router.replace({
+          void router.push({
             pathname: RESTAURANT_MENU_PRINT_ROUTE,
             query: {
               from: router.pathname === "/dashboard/dishes" ? "dishes" : "menus",
