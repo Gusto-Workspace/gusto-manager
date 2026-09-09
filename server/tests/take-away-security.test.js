@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const Stripe = require("stripe");
 
 const TakeAwayOrderModel = require("../models/take-away-order.model");
 const TakeAwaySlotLockModel = require("../models/take-away-slot-lock.model");
@@ -58,7 +57,7 @@ const {
   updateOrderStatus,
   validateCustomerInput,
   validateDeliveryAddress,
-  verifyTakeAwayWebhookSignature,
+  validateTakeAwayStripeEventEnvelope,
 } = require("../services/take-away.service");
 const {
   authorizeRestaurantAccess,
@@ -366,6 +365,46 @@ test("a signed success event finalizes payment without the browser and is replay
   );
 });
 
+test("failed and canceled PaymentIntent webhooks reuse the existing handler", async (t) => {
+  const originalFindOne = TakeAwayOrderModel.findOne;
+  const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
+  const current = orderDocument({ stripePaymentIntentId: "pi_webhook_failure" });
+  TakeAwayOrderModel.findOne = async () => current;
+  TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
+    Object.assign(current, update.$set || {});
+    return current;
+  };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originalFindOne;
+    TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;
+  });
+
+  const paymentIntent = matchingPaymentIntent(current, {
+    id: "pi_webhook_failure",
+    status: "requires_payment_method",
+    amount_received: 0,
+  });
+  const failed = await handleTakeAwayStripeWebhookEvent({
+    restaurant: { _id: "restaurant-1" },
+    event: {
+      type: "payment_intent.payment_failed",
+      data: { object: paymentIntent },
+    },
+  });
+  assert.equal(failed.handled, true);
+  assert.equal(current.paymentStatus, "failed");
+
+  const canceled = await handleTakeAwayStripeWebhookEvent({
+    restaurant: { _id: "restaurant-1" },
+    event: {
+      type: "payment_intent.canceled",
+      data: { object: paymentIntent },
+    },
+  });
+  assert.equal(canceled.handled, true);
+  assert.equal(current.status, "canceled");
+});
+
 test("a public order cannot be loaded with its id alone", async (t) => {
   const originalFindOne = TakeAwayOrderModel.findOne;
   const token = "public_order_token_1234567890abcdefghijklmno";
@@ -614,20 +653,55 @@ test("take-away customer emails use business wording for every useful event", ()
   assert.match(delivery.htmlContent, /commande est en route/i);
 });
 
-test("the webhook rejects an invalid Stripe signature", () => {
-  const stripe = new Stripe("sk_test_take_away_signature");
-  const rawBody = Buffer.from(
-    JSON.stringify({ id: "evt_1", type: "payment_intent.succeeded" }),
-  );
+test("the signed service envelope accepts every take-away Stripe event", () => {
+  for (const eventType of [
+    "payment_intent.succeeded",
+    "payment_intent.payment_failed",
+    "payment_intent.canceled",
+    "refund.created",
+    "refund.updated",
+  ]) {
+    const metadataType = eventType.startsWith("refund.")
+      ? "takeaway_order_refund"
+      : "takeaway_order";
+    const result = validateTakeAwayStripeEventEnvelope({
+      restaurantId: "restaurant-1",
+      event: {
+        id: `evt_${eventType}`,
+        type: eventType,
+        data: {
+          object: {
+            metadata: {
+              type: metadataType,
+              restaurantId: "restaurant-1",
+            },
+          },
+        },
+      },
+    });
+    assert.equal(result.supported, true);
+  }
+});
+
+test("the signed service envelope rejects another restaurant", () => {
   assert.throws(
     () =>
-      verifyTakeAwayWebhookSignature({
-        stripe,
-        rawBody,
-        signature: "t=1,v1=invalid",
-        webhookSecret: "whsec_take_away_test",
+      validateTakeAwayStripeEventEnvelope({
+        restaurantId: "restaurant-1",
+        event: {
+          id: "evt_cross_restaurant",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              metadata: {
+                type: "takeaway_order",
+                restaurantId: "restaurant-2",
+              },
+            },
+          },
+        },
       }),
-    /Signature webhook Stripe invalide/,
+    /Restaurant webhook Stripe non correspondant/,
   );
 });
 
@@ -1211,7 +1285,7 @@ test("refund webhooks preserve the decision and reconcile the final payment stat
   await handleTakeAwayStripeWebhookEvent({
     restaurant: { _id: "restaurant-1" },
     event: {
-      type: "refund.updated",
+      type: "refund.created",
       data: { object: { ...baseRefund, status: "failed" } },
     },
   });

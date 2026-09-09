@@ -21,6 +21,13 @@ const ACTIVE_ORDER_STATUSES = [
   "ready",
   "out_for_delivery",
 ];
+const TAKE_AWAY_STRIPE_EVENT_TYPES = Object.freeze([
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "payment_intent.canceled",
+  "refund.created",
+  "refund.updated",
+]);
 const TAKE_AWAY_PAYMENT_PENDING_TTL_MINUTES = Math.max(
   5,
   Number(process.env.TAKE_AWAY_PAYMENT_PENDING_TTL_MINUTES || 15),
@@ -2665,85 +2672,38 @@ async function updateOrderStatus({
   return updated;
 }
 
-function getTakeAwayWebhookSecret(restaurantId, env = process.env) {
-  const fallback = cleanString(env.STRIPE_TAKE_AWAY_WEBHOOK_SECRET);
-  const rawMap = cleanString(env.STRIPE_TAKE_AWAY_WEBHOOK_SECRETS_JSON);
-  if (!rawMap) return fallback;
-
-  let secrets;
-  try {
-    secrets = JSON.parse(rawMap);
-  } catch {
-    throw serviceError(
-      "Configuration des secrets webhook take-away invalide",
-      500,
-    );
-  }
-  return cleanString(secrets?.[String(restaurantId)]) || fallback;
-}
-
 function getStripeObjectMetadata(object) {
   return object?.metadata || {};
 }
 
-function verifyTakeAwayWebhookSignature({
-  stripe,
-  rawBody,
-  signature,
-  webhookSecret,
-}) {
-  try {
-    return stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } catch {
-    throw serviceError("Signature webhook Stripe invalide", 400);
-  }
-}
-
-async function constructTakeAwayWebhookEvent({
-  rawBody,
-  signature,
-  env = process.env,
-}) {
-  if (!Buffer.isBuffer(rawBody) || !signature) {
-    throw serviceError("Signature webhook Stripe manquante", 400);
+function validateTakeAwayStripeEventEnvelope({ restaurantId, event }) {
+  const resolvedRestaurantId = cleanString(restaurantId);
+  const eventId = cleanString(event?.id);
+  const eventType = cleanString(event?.type);
+  if (!resolvedRestaurantId || !eventId || !eventType) {
+    throw serviceError("Événement Stripe take-away invalide", 400);
   }
 
-  let unsignedEvent;
-  try {
-    unsignedEvent = JSON.parse(rawBody.toString("utf8"));
-  } catch {
-    throw serviceError("Payload webhook Stripe invalide", 400);
-  }
-  const unsignedObject = unsignedEvent?.data?.object;
-  const restaurantId = cleanString(
-    getStripeObjectMetadata(unsignedObject).restaurantId,
-  );
-  if (!restaurantId) {
-    throw serviceError("Restaurant webhook Stripe introuvable", 400);
-  }
+  const supported = TAKE_AWAY_STRIPE_EVENT_TYPES.includes(eventType);
+  if (!supported) return { supported: false, eventId, eventType };
 
-  const webhookSecret = getTakeAwayWebhookSecret(restaurantId, env);
-  if (!webhookSecret) {
-    throw serviceError("Secret webhook take-away non configuré", 503);
+  const object = event?.data?.object;
+  if (!object || typeof object !== "object") {
+    throw serviceError("Objet Stripe take-away invalide", 400);
   }
-
-  const stripe = new Stripe("sk_test_take_away_webhook_verification");
-  const event = verifyTakeAwayWebhookSignature({
-    stripe,
-    rawBody,
-    signature,
-    webhookSecret,
-  });
-
-  const verifiedRestaurantId = cleanString(
-    getStripeObjectMetadata(event?.data?.object).restaurantId,
-  );
-  if (verifiedRestaurantId !== restaurantId) {
+  const metadata = getStripeObjectMetadata(object);
+  if (cleanString(metadata.restaurantId) !== resolvedRestaurantId) {
     throw serviceError("Restaurant webhook Stripe non correspondant", 400);
   }
-  const restaurant = await loadRestaurantForTakeAway(verifiedRestaurantId);
-  if (!restaurant) throw serviceError("Restaurant introuvable", 404);
-  return { event, restaurant };
+
+  const expectedMetadataType = eventType.startsWith("refund.")
+    ? "takeaway_order_refund"
+    : "takeaway_order";
+  if (cleanString(metadata.type) !== expectedMetadataType) {
+    throw serviceError("Type de paiement Stripe non correspondant", 400);
+  }
+
+  return { supported: true, eventId, eventType };
 }
 
 async function loadWebhookOrder(restaurant, stripeObject) {
@@ -3006,6 +2966,7 @@ async function loadRestaurantForTakeAway(restaurantId) {
 
 module.exports = {
   ACTIVE_ORDER_STATUSES,
+  TAKE_AWAY_STRIPE_EVENT_TYPES,
   STATUS_TRANSITIONS,
   TAKE_AWAY_PAYMENT_PENDING_TTL_MINUTES,
   sanitizeTakeAwaySettingsInput,
@@ -3023,12 +2984,10 @@ module.exports = {
   assertPaymentIntentMatchesOrder,
   assertStatusTransition,
   refundPaidOrder,
-  constructTakeAwayWebhookEvent,
+  validateTakeAwayStripeEventEnvelope,
   handleTakeAwayStripeWebhookEvent,
   expirePendingTakeAwayOrders,
   replayPendingTakeAwayEffects,
-  getTakeAwayWebhookSecret,
-  verifyTakeAwayWebhookSignature,
   validatePublicAccessToken,
   hashPublicAccessToken,
   publicAccessTokenMatchesHash,

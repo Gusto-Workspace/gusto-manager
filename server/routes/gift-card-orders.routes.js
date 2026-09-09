@@ -2,8 +2,8 @@ const express = require("express");
 
 const GiftCardOrderModel = require("../models/gift-card-order.model");
 const {
-  verifyGiftCardServiceSignature,
-} = require("../middleware/gift-card-service-signature");
+  verifyServiceSignature,
+} = require("../middleware/service-signature");
 const {
   bindPaymentIntent,
   createGiftCardOrder,
@@ -40,7 +40,7 @@ function handleError(req, res, error) {
   });
 }
 
-router.use("/gift-card-orders", verifyGiftCardServiceSignature);
+router.use("/gift-card-orders", verifyServiceSignature);
 
 router.post("/gift-card-orders/checkout", async (req, res) => {
   try {
