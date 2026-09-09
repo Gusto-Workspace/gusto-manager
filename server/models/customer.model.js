@@ -55,6 +55,16 @@ const customerSchema = new mongoose.Schema(
       default: [],
       select: false,
     },
+    processedTakeAwayOrderIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      default: [],
+      select: false,
+    },
+    processedTakeAwayStatusEvents: {
+      type: [String],
+      default: [],
+      select: false,
+    },
 
     // ✅ mini-historique cappé pour ton drawer (rapide)
     lastReservations: {
@@ -100,6 +110,7 @@ const customerSchema = new mongoose.Schema(
           status: { type: String },
           paymentStatus: { type: String },
           total: { type: Number },
+          itemCount: { type: Number, default: 0 },
         },
       ],
       default: [],

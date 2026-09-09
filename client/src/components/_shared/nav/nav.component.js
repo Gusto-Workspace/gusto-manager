@@ -98,6 +98,8 @@ export default function NavComponent() {
     const tabletMq = window.matchMedia("(min-width: 1024px)");
 
     const syncMedia = () => {
+      if (window.matchMedia("print").matches) return;
+
       setSupportsHover(hoverMq.matches);
       setIsTabletUp(tabletMq.matches);
 

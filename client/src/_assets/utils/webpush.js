@@ -111,17 +111,67 @@ async function parseResponseBody(response) {
 }
 
 function getPushServiceWorkerConfig(module) {
-  const isReservations = module === "reservations";
-  const swVersion = "2026-09-01-notification-settings-1";
-
-  return {
-    swUrl: isReservations
-      ? `/sw-reservations.js?v=${swVersion}`
-      : `/sw-giftcards.js?v=${swVersion}`,
-    scope: isReservations
-      ? "/dashboard/webapp/reservations/"
-      : "/dashboard/webapp/gift-cards/",
+  const swVersion = "2026-09-08-webapp-notifications-1";
+  const configurations = {
+    reservations: {
+      swUrl: `/sw-reservations.js?v=${swVersion}`,
+      scope: "/dashboard/webapp/reservations/",
+    },
+    gift_cards: {
+      swUrl: `/sw-giftcards.js?v=${swVersion}`,
+      scope: "/dashboard/webapp/gift-cards/",
+    },
+    take_away: {
+      swUrl: `/sw-take-away.js?v=${swVersion}`,
+      scope: "/dashboard/webapp/take-away/",
+    },
   };
+
+  return configurations[module] || configurations.reservations;
+}
+
+async function cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl }) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    const legacyRegistration = registrations.find((registration) => {
+      const pathname = new URL(registration.scope).pathname.replace(/\/+$/, "");
+      return pathname === "/dashboard/take-away";
+    });
+
+    if (!legacyRegistration) return;
+
+    const legacySubscription =
+      await legacyRegistration.pushManager.getSubscription();
+
+    if (legacySubscription) {
+      try {
+        await fetch(`${String(apiUrl).replace(/\/+$/, "")}/push/unsubscribe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            restaurantId,
+            module: "take_away",
+            endpoint: legacySubscription.endpoint,
+          }),
+        });
+      } catch {
+        // La souscription locale obsolète doit tout de même être supprimée.
+      }
+
+      await legacySubscription.unsubscribe();
+    }
+
+    await legacyRegistration.unregister();
+  } catch {
+    // Cette migration ne doit jamais empêcher l'activation de la webapp.
+  }
 }
 
 export async function setupPushForModule({
@@ -136,7 +186,10 @@ export async function setupPushForModule({
   try {
     const initialStatus = getPushPermissionStatus();
     if (initialStatus === "loading") {
-      throw createPushError("Le navigateur n’est pas encore prêt.", "NOT_READY");
+      throw createPushError(
+        "Le navigateur n’est pas encore prêt.",
+        "NOT_READY",
+      );
     }
     if (initialStatus === "unsupported") {
       throw createPushError(
@@ -173,6 +226,10 @@ export async function setupPushForModule({
         "La clé de notification du site est absente.",
         "MISSING_VAPID_KEY",
       );
+    }
+
+    if (module === "take_away") {
+      await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
     }
 
     // 1) register SW spécifique
@@ -253,6 +310,9 @@ export async function disablePushForModule({
   const subscription = await registration?.pushManager.getSubscription();
 
   if (!subscription) {
+    if (module === "take_away") {
+      await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
+    }
     return { status: "unsubscribed" };
   }
 
@@ -282,5 +342,8 @@ export async function disablePushForModule({
   }
 
   await subscription.unsubscribe();
+  if (module === "take_away") {
+    await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
+  }
   return { status: "unsubscribed" };
 }

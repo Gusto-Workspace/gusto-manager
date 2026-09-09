@@ -3,6 +3,9 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  markCatalogSourcesDeleted,
+} = require("../services/take-away.service");
 
 // ADD A CATEGORY
 router.post(
@@ -109,13 +112,7 @@ router.delete(
     const { restaurantId, categoryId } = req.params;
 
     try {
-      const restaurant = await RestaurantModel.findByIdAndUpdate(
-        restaurantId,
-        {
-          $pull: { dish_categories: { _id: categoryId } },
-        },
-        { new: true }
-      )
+      const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
         .populate("menus");
@@ -123,6 +120,22 @@ router.delete(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
       }
+
+      const category = restaurant.dish_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+      const deletedDishIds = [
+        ...(category.dishes || []).map((dish) => dish._id),
+        ...(category.subCategories || []).flatMap((subCategory) =>
+          (subCategory.dishes || []).map((dish) => dish._id),
+        ),
+      ];
+      markCatalogSourcesDeleted(restaurant, "dish", deletedDishIds);
+      restaurant.dish_categories = restaurant.dish_categories.filter(
+        (candidate) => String(candidate._id) !== String(categoryId),
+      );
+      await restaurant.save();
 
       res
         .status(200)
@@ -361,17 +374,7 @@ router.delete("/restaurants/:restaurantId/dishes/:dishId", async (req, res) => {
       return res.status(404).json({ message: "Dish not found." });
     }
 
-    const catalogItem = (restaurant.takeAwayCatalog || []).find(
-      (item) =>
-        item.sourceType === "dish" &&
-        String(item.sourceItemId || "") === String(dishId),
-    );
-    if (catalogItem) {
-      catalogItem.active = false;
-      catalogItem.visible = false;
-      catalogItem.sourceDeleted = true;
-      catalogItem.updatedAt = new Date();
-    }
+    markCatalogSourcesDeleted(restaurant, "dish", dishId);
 
     await restaurant.save();
 
@@ -607,17 +610,8 @@ router.delete(
         return res.status(404).json({ message: "Subcategory not found." });
       }
 
-      const deletedDishIds = new Set(
-        subCategory.dishes.map((dish) => dish._id.toString()),
-      );
-      for (const item of restaurant.takeAwayCatalog || []) {
-        if (item.sourceType === "dish" && deletedDishIds.has(String(item.sourceItemId))) {
-          item.active = false;
-          item.visible = false;
-          item.sourceDeleted = true;
-          item.updatedAt = new Date();
-        }
-      }
+      const deletedDishIds = subCategory.dishes.map((dish) => dish._id);
+      markCatalogSourcesDeleted(restaurant, "dish", deletedDishIds);
 
       category.subCategories = category.subCategories.filter(
         (candidate) => candidate._id.toString() !== subCategoryId,

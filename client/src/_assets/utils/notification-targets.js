@@ -61,10 +61,18 @@ export function getNotificationTargetPath(
     });
   }
 
-  if (
-    notificationModule === "employees" &&
-    type === "leave_request_created"
-  ) {
+  if (notificationModule === "take_away") {
+    const basePath = preferWebapp
+      ? "/dashboard/webapp/take-away"
+      : "/dashboard/take-away";
+
+    return buildPath(basePath, {
+      day: toDateKey(meta?.scheduledFor || data?.scheduledFor),
+      orderId: meta?.orderId || data?._id || data?.orderId,
+    });
+  }
+
+  if (notificationModule === "employees" && type === "leave_request_created") {
     return buildPath("/dashboard/employees/planning/days-off", {
       employeeId: meta?.employeeId || data?.employeeId,
     });

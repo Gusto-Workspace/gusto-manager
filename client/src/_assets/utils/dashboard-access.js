@@ -11,6 +11,7 @@ export const DASHBOARD_HREF_OPTION_KEYS = {
   "/dashboard/gift-cards": "gift_card",
   "/dashboard/reservations": "reservations",
   "/dashboard/take-away": "take_away",
+  "/dashboard/webapp/take-away": "take_away",
   "/dashboard/health-control-plan": "health_control_plan",
   "/dashboard/customers": "customers",
 };
@@ -29,6 +30,7 @@ const DASHBOARD_ROUTE_RULES = [
   { href: "/dashboard/wines" },
   { href: "/dashboard/news" },
   { href: "/dashboard/take-away" },
+  { href: "/dashboard/webapp/take-away" },
   { href: "/dashboard", exact: true },
 ].map((rule) => ({
   ...rule,

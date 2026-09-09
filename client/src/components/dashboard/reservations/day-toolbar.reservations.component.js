@@ -9,6 +9,7 @@ import {
   Filter,
   Users,
   PinOff,
+  Printer,
 } from "lucide-react";
 import { QuickSlotClosureActionButton } from "./quick-slot-closures.reservations.component";
 
@@ -168,6 +169,16 @@ export default function DayToolbarReservationsComponent(props) {
               ))}
             </select>
           </div>
+
+          <button
+            type="button"
+            onClick={props.onOpenPrintModal}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white shadow-sm transition hover:bg-darkBlue/5"
+            aria-label="Imprimer les réservations"
+            title="Imprimer les réservations"
+          >
+            <Printer className="size-4 text-darkBlue/70" />
+          </button>
         </div>
       </div>
 

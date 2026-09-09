@@ -9,13 +9,14 @@ import {
   ChevronRight,
   CreditCard,
   List,
+  ShoppingBag,
 } from "lucide-react";
 
 export default function SidebarReservationsWebapp({
   open,
   onClose,
-  title ,
-  module ,
+  title,
+  module,
   navItems,
 }) {
   const router = useRouter();
@@ -90,6 +91,31 @@ export default function SidebarReservationsWebapp({
         href: "/dashboard/webapp/gift-cards/parameters",
       },
     ],
+    take_away: [
+      {
+        label: "Commandes",
+        icon: ShoppingBag,
+        href: "/dashboard/webapp/take-away",
+        match: (pathname) =>
+          pathname === "/dashboard/webapp/take-away" ||
+          pathname.startsWith("/dashboard/webapp/take-away/add"),
+      },
+      {
+        label: "Catalogue",
+        icon: List,
+        href: "/dashboard/webapp/take-away/catalog",
+      },
+      {
+        label: "Fichier clients",
+        icon: Users,
+        href: "/dashboard/webapp/take-away/customers",
+      },
+      {
+        label: "Paramètres",
+        icon: Settings,
+        href: "/dashboard/webapp/take-away/parameters",
+      },
+    ],
   };
 
   const items =
@@ -155,7 +181,7 @@ export default function SidebarReservationsWebapp({
             <button
               type="button"
               onClick={handleClose}
-              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 hover:bg-darkBlue/5 active:scale-[0.98] transition p-2"
+              className="inline-flex items-center justify-center rounded-full border border-darkBlue/10 bg-white/50 canHover:hover:bg-darkBlue/5 active:scale-[0.98] transition p-2"
               aria-label="Fermer"
               title="Fermer"
             >
@@ -181,7 +207,7 @@ export default function SidebarReservationsWebapp({
                     "active:scale-[0.99]",
                     active
                       ? "bg-white/70 border-blue/20 shadow-sm"
-                      : "bg-white/35 border-darkBlue/10 hover:bg-white/55 hover:border-darkBlue/15",
+                      : "bg-white/35 border-darkBlue/10 canHover:hover:bg-white/55 canHover:hover:border-darkBlue/15",
                   ].join(" ")}
                   aria-current={active ? "page" : undefined}
                 >
@@ -200,7 +226,7 @@ export default function SidebarReservationsWebapp({
                       "inline-flex items-center justify-center size-10 rounded-2xl border transition",
                       active
                         ? "bg-blue/10 border-blue/20"
-                        : "bg-white/50 border-darkBlue/10 group-hover:bg-white/70",
+                        : "bg-white/50 border-darkBlue/10 canHover:group-hover:bg-white/70",
                     ].join(" ")}
                   >
                     <Icon
@@ -229,7 +255,7 @@ export default function SidebarReservationsWebapp({
                       "size-4 shrink-0 transition",
                       active
                         ? "text-blue"
-                        : "text-darkBlue/35 group-hover:text-darkBlue/55 group-hover:translate-x-0.5",
+                        : "text-darkBlue/35 canHover:group-hover:text-darkBlue/55 canHover:group-hover:translate-x-0.5",
                     ].join(" ")}
                   />
                 </button>

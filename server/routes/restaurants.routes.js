@@ -7,6 +7,9 @@ const authenticateToken = require("../middleware/authentificate-token");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  sanitizePublicRestaurantData,
+} = require("../services/public-restaurant-serialization.service");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
 const {
@@ -233,9 +236,7 @@ router.get("/restaurants/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const restaurant = await RestaurantModel.findById(id)
-      .populate("owner_id", "firstname")
-      .populate("menus");
+    const restaurant = await RestaurantModel.findById(id).populate("menus");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
@@ -277,7 +278,7 @@ router.get("/restaurants/:id", async (req, res) => {
       return dishId;
     };
 
-    const restaurantData = {
+    let restaurantData = {
       ...restaurant.toObject(),
       menus: restaurant.menus.map((menu) => ({
         _id: menu._id,
@@ -315,6 +316,10 @@ router.get("/restaurants/:id", async (req, res) => {
         ],
       };
     }
+
+    // Les contenus vitrine restent inchangés ; seuls les champs d'exploitation
+    // dont aucun site client n'a besoin sont retirés du contrat public.
+    restaurantData = sanitizePublicRestaurantData(restaurantData);
 
     res.status(200).json({ restaurant: restaurantData });
   } catch (error) {

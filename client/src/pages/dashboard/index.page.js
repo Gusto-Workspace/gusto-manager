@@ -13,6 +13,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import DashboardComponent from "@/components/dashboard/dashboard/dashboard.component";
+import { getEmployeeDashboardOptions } from "@/_assets/utils/dashboard-access";
 
 // SVG
 import { AnalyticsSvg } from "@/components/_shared/_svgs/analytics.svg";
@@ -23,25 +24,43 @@ export default function DashboardPage(props) {
   const restaurantId = restaurantContext?.restaurantData?._id;
   const hasReservationsModule =
     restaurantContext?.restaurantData?.options?.reservations;
+  const hasTakeAwayModule =
+    restaurantContext?.restaurantData?.options?.take_away;
   const dataLoading = restaurantContext.dataLoading;
   const ensureReservationsDay = restaurantContext.ensureReservationsDay;
   const ensureReservationsMonth = restaurantContext.ensureReservationsMonth;
-  const [dashboardReservationsReady, setDashboardReservationsReady] =
-    useState(false);
+  const ensureTakeAwayOrdersMonth = restaurantContext.ensureTakeAwayOrdersMonth;
+  const userConnected = restaurantContext.userConnected;
+  const employeeOptions =
+    userConnected?.role === "employee"
+      ? getEmployeeDashboardOptions(
+          restaurantContext.restaurantData,
+          userConnected,
+        )
+      : null;
+  const canPreloadTakeAway = Boolean(
+    hasTakeAwayModule &&
+      (userConnected?.role === "owner" ||
+        (userConnected?.role === "employee" && employeeOptions?.take_away)),
+  );
+  const [dashboardReservationsReadyFor, setDashboardReservationsReadyFor] =
+    useState("");
+  const dashboardReservationsReady =
+    String(dashboardReservationsReadyFor) === String(restaurantId || "");
 
   useEffect(() => {
     if (!restaurantId) return;
     if (!hasReservationsModule) return;
 
     let cancelled = false;
-    setDashboardReservationsReady(false);
+    setDashboardReservationsReadyFor("");
 
     Promise.resolve(
       ensureReservationsDay?.(new Date(), {
         restaurantId,
       }),
     ).finally(() => {
-      if (!cancelled) setDashboardReservationsReady(true);
+      if (!cancelled) setDashboardReservationsReadyFor(String(restaurantId));
     });
 
     return () => {
@@ -77,6 +96,38 @@ export default function DashboardPage(props) {
     ensureReservationsMonth,
     restaurantId,
     hasReservationsModule,
+  ]);
+
+  useEffect(() => {
+    if (!restaurantId || !canPreloadTakeAway || dataLoading) return;
+    if (hasReservationsModule && !dashboardReservationsReady) return;
+
+    const prefetchCurrentTakeAwayMonth = () => {
+      Promise.resolve(
+        ensureTakeAwayOrdersMonth?.(new Date(), {
+          restaurantId,
+          activate: false,
+          prefetchAdjacent: false,
+        }),
+      ).catch(() => {});
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(prefetchCurrentTakeAwayMonth, {
+        timeout: 1500,
+      });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = window.setTimeout(prefetchCurrentTakeAwayMonth, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    canPreloadTakeAway,
+    dashboardReservationsReady,
+    dataLoading,
+    ensureTakeAwayOrdersMonth,
+    hasReservationsModule,
+    restaurantId,
   ]);
 
   let title;

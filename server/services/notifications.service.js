@@ -100,7 +100,8 @@ function fmtReservationRelativeFR(reservationDate, reservationTime) {
 
 function buildNotificationContent({ type, data }) {
   switch (type) {
-    case "reservation_created": {
+    case "reservation_created":
+    case "reservation_waitlist_created": {
       const name = data?.customerName || "Nouvelle réservation";
       const guests = data?.numberOfGuests
         ? `• ${data.numberOfGuests} pers.`
@@ -112,14 +113,17 @@ function buildNotificationContent({ type, data }) {
       );
 
       const status = String(data?.status || "").toLowerCase();
+      const isWaitlistCreated = type === "reservation_waitlist_created";
       const isPending = status === "pending";
       const isConfirmed = status === "confirmed";
 
-      const title = isPending
-        ? "⏳ Nouvelle table en attente"
-        : isConfirmed
-          ? "🍽️ Nouvelle table confirmée"
-          : "🍽️ Nouvelle table";
+      const title = isWaitlistCreated
+        ? "⏳ Nouvelle demande en liste d’attente"
+        : isPending
+          ? "⏳ Nouvelle table en attente"
+          : isConfirmed
+            ? "🍽️ Nouvelle table confirmée"
+            : "🍽️ Nouvelle table";
 
       return {
         title,
@@ -207,7 +211,8 @@ function buildNotificationContent({ type, data }) {
       return {
         title: "Nouvelle commande à emporter",
         message: `${name || "Client"} • ${mode}${total ? ` • ${total}` : ""}`,
-        link: buildPath("/dashboard/take-away", {
+        link: buildPath("/dashboard/webapp/take-away", {
+          day: toDateKey(data?.scheduledFor),
           orderId: data?._id || data?.orderId || null,
         }),
       };
@@ -241,7 +246,8 @@ function buildPushLink({
   }
 
   if (module === "take_away") {
-    return buildPath("/dashboard/take-away", {
+    return buildPath("/dashboard/webapp/take-away", {
+      day: toDateKey(data?.scheduledFor),
       orderId: data?._id || data?.orderId || null,
       notificationId,
     });
@@ -259,6 +265,7 @@ function buildPushLink({
 function buildNotificationMeta({ type, data }) {
   switch (type) {
     case "reservation_created":
+    case "reservation_waitlist_created":
     case "reservation_customer_canceled":
       return {
         reservationId: data?._id || data?.reservationId || null,
@@ -294,6 +301,7 @@ function buildNotificationMeta({ type, data }) {
         fulfillmentMode: data?.fulfillmentMode || null,
         status: data?.status || null,
         paymentStatus: data?.paymentStatus || null,
+        scheduledFor: data?.scheduledFor || null,
         total: data?.total ?? null,
       };
 
@@ -385,4 +393,9 @@ async function createAndBroadcastNotification({
   return notif;
 }
 
-module.exports = { createAndBroadcastNotification };
+module.exports = {
+  createAndBroadcastNotification,
+  buildNotificationContent,
+  buildPushLink,
+  buildNotificationMeta,
+};

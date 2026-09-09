@@ -24,8 +24,43 @@ export const NEXT_STATUS = {
   pending: ["confirmed", "rejected"],
   confirmed: ["preparing", "canceled"],
   preparing: ["ready", "canceled"],
-  ready: ["completed", "out_for_delivery"],
-  out_for_delivery: ["completed"],
+  ready: ["completed", "out_for_delivery", "canceled"],
+  out_for_delivery: ["completed", "canceled"],
+};
+
+export const STATUS_UI = {
+  pending: {
+    color: "#93c5fd",
+    tone: "border-[#93c5fd] bg-[#eff6ff] text-[#2563eb]",
+  },
+  confirmed: {
+    color: "#4583ff",
+    tone: "border-blue/20 bg-blue/10 text-blue",
+  },
+  preparing: {
+    color: "#634fd2",
+    tone: "border-violet/20 bg-violet/10 text-violet",
+  },
+  ready: {
+    color: "#f59e0b",
+    tone: "border-[#f59e0b33] bg-[#f59e0b1a] text-[#b45309]",
+  },
+  out_for_delivery: {
+    color: "#0ea5e9",
+    tone: "border-[#0ea5e933] bg-[#0ea5e91a] text-[#0369a1]",
+  },
+  completed: {
+    color: "#4ead7a",
+    tone: "border-green/20 bg-green/10 text-green",
+  },
+  canceled: {
+    color: "#ff7664",
+    tone: "border-red/20 bg-red/10 text-red",
+  },
+  rejected: {
+    color: "#ff7664",
+    tone: "border-red/20 bg-red/10 text-red",
+  },
 };
 
 export const inputClass =
@@ -82,12 +117,14 @@ export function getCatalogCategoryName(item) {
 }
 
 export function getStatusTone(status) {
-  if (status === "completed") return "bg-green/10 text-green border-green/20";
-  if (status === "canceled" || status === "rejected") {
-    return "bg-red/10 text-red border-red/20";
-  }
-  if (status === "pending") return "bg-blue/10 text-blue border-blue/20";
-  return "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/10";
+  return (
+    STATUS_UI[status]?.tone ||
+    "border-darkBlue/10 bg-darkBlue/5 text-darkBlue/70"
+  );
+}
+
+export function getStatusColor(status) {
+  return STATUS_UI[status]?.color || "#131e36";
 }
 
 export function buildMonthGrid(currentMonth, orders, searchTerm = "") {

@@ -697,15 +697,25 @@ function isSlotCoverCapacityAvailableFront({
   numberOfGuests,
   excludeReservationId = null,
 }) {
-  const limit = getActiveSlotCoverLimitFront(
+  const slotLimit = getActiveSlotCoverLimitFront(
     parameters,
     reservationTime,
     reservationDate,
   );
-  if (!limit) return true;
+  const service = getServiceBucketFromTime(reservationTime);
+  const serviceMaxCovers = Math.floor(
+    Number(
+      service === "lunch"
+        ? parameters?.max_covers_lunch
+        : parameters?.max_covers_dinner,
+    ),
+  );
+  const hasServiceLimit =
+    Number.isFinite(serviceMaxCovers) && serviceMaxCovers > 0;
+  if (!slotLimit && !hasServiceLimit) return true;
 
   const formattedSelectedDate = format(reservationDate, "yyyy-MM-dd");
-  const usedCovers = (Array.isArray(reservations) ? reservations : [])
+  const dayReservations = (Array.isArray(reservations) ? reservations : [])
     .filter((reservation) => {
       if (!isBlockingReservationFront(reservation)) return false;
       if (
@@ -719,20 +729,40 @@ function isSlotCoverCapacityAvailableFront({
         new Date(reservation?.reservationDate),
         "yyyy-MM-dd",
       );
-      return (
-        reservationDay === formattedSelectedDate &&
-        String(reservation?.reservationTime || "").slice(0, 5) === limit.time
+      return reservationDay === formattedSelectedDate;
+    });
+  const requestedCovers = Math.max(0, Number(numberOfGuests || 0));
+
+  if (slotLimit) {
+    const usedSlotCovers = dayReservations
+      .filter(
+        (reservation) =>
+          String(reservation?.reservationTime || "").slice(0, 5) ===
+          slotLimit.time,
+      )
+      .reduce(
+        (sum, reservation) =>
+          sum + Math.max(0, Number(reservation?.numberOfGuests || 0)),
+        0,
       );
-    })
+
+    if (usedSlotCovers + requestedCovers > slotLimit.maxCovers) return false;
+  }
+
+  if (!hasServiceLimit) return true;
+
+  const usedServiceCovers = dayReservations
+    .filter(
+      (reservation) =>
+        getServiceBucketFromTime(reservation?.reservationTime) === service,
+    )
     .reduce(
       (sum, reservation) =>
         sum + Math.max(0, Number(reservation?.numberOfGuests || 0)),
       0,
     );
 
-  return (
-    usedCovers + Math.max(0, Number(numberOfGuests || 0)) <= limit.maxCovers
-  );
+  return usedServiceCovers + requestedCovers <= serviceMaxCovers;
 }
 
 export default function AddReservationComponent(props) {
@@ -1017,6 +1047,8 @@ export default function AddReservationComponent(props) {
     props.restaurantData?.reservationsSettings?.reservation_hours,
     props.restaurantData?.reservationsSettings?.interval,
     props.restaurantData?.reservationsSettings?.slot_cover_limits,
+    props.restaurantData?.reservationsSettings?.max_covers_lunch,
+    props.restaurantData?.reservationsSettings?.max_covers_dinner,
     props.restaurantData?.reservationsSettings?.table_blocked_ranges,
     props.restaurantData.reservationsSettings.manage_disponibilities,
     props.restaurantData.reservationsSettings.same_hours_as_restaurant,
@@ -1486,6 +1518,17 @@ export default function AddReservationComponent(props) {
         setModalTitle("Créneau complet");
         setModalMsg(
           "Ce créneau est complet en nombre de couverts. Vous pouvez proposer un autre horaire au client.",
+        );
+        setPostModalRedirect(false);
+        setModalOpen(true);
+        return;
+      }
+
+      if (code === "SERVICE_COVER_CAPACITY_EXCEEDED") {
+        setModalTitle("Service complet");
+        setModalMsg(
+          err?.response?.data?.message ||
+            "La capacité maximale de ce service est atteinte. Vous pouvez proposer un autre service ou une autre date au client.",
         );
         setPostModalRedirect(false);
         setModalOpen(true);

@@ -4,6 +4,9 @@ const router = express.Router();
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
 const MenuModel = require("../models/menu.model");
+const {
+  markCatalogSourcesDeleted,
+} = require("../services/take-away.service");
 
 function buildCustomGroupRelations(group, dishesLength) {
   const totalRelations = Math.max((dishesLength || 0) - 1, 0);
@@ -259,24 +262,24 @@ router.delete("/restaurants/:restaurantId/menus/:menuId", async (req, res) => {
   const { restaurantId, menuId } = req.params;
 
   try {
-    // Supprimer le menu par ID
+    const restaurant = await RestaurantModel.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ message: "Restaurant not found" });
+    }
+
     const menu = await MenuModel.findByIdAndDelete(menuId);
     if (!menu) {
       return res.status(404).json({ message: "Menu not found" });
     }
 
-    // Retirer la référence du menu supprimé dans le restaurant
-    const restaurant = await RestaurantModel.findByIdAndUpdate(
-      restaurantId,
-      { $pull: { menus: menuId } },
-      { new: true }
-    )
-      .populate("owner_id", "firstname").populate("employees")
-      .populate("menus");
-
-    if (!restaurant) {
-      return res.status(404).json({ message: "Restaurant not found" });
-    }
+    restaurant.menus.pull(menuId);
+    markCatalogSourcesDeleted(restaurant, "menu", menuId);
+    await restaurant.save();
+    await restaurant.populate([
+      { path: "owner_id", select: "firstname" },
+      { path: "employees" },
+      { path: "menus" },
+    ]);
 
     res.status(200).json({
       message: "Menu deleted successfully",

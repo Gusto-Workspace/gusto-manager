@@ -215,6 +215,8 @@ const reservationParametersSchema = new mongoose.Schema({
     type: [reservationSlotCoverLimitSchema],
     default: [],
   },
+  max_covers_lunch: { type: Number, min: 1, default: null },
+  max_covers_dinner: { type: Number, min: 1, default: null },
   refuse_public_reservations_during_service: {
     type: Boolean,
     default: false,
@@ -321,9 +323,18 @@ const takeAwaySettingsSchema = new mongoose.Schema(
     same_hours_as_restaurant: { type: Boolean, default: true },
     slots: { type: [takeAwaySlotSchema], default: [] },
     deliveryZones: { type: [takeAwayDeliveryZoneSchema], default: [] },
+    preparationTimeMinutes: {
+      type: Number,
+      validate: {
+        validator: (value) =>
+          value === undefined || (Number.isInteger(value) && value > 0),
+        message: "Le temps de préparation doit être un entier supérieur à 0",
+      },
+    },
     defaultSlotIntervalMinutes: { type: Number, min: 5, default: 15 },
     defaultSlotMaxOrders: { type: Number, min: 1, default: 6 },
     minimumPickupOrder: { type: Number, min: 0, default: 0 },
+    blockedDates: { type: [String], default: [] },
     completedOrderAutoDeleteEnabled: { type: Boolean, default: false },
     completedOrderAutoDeleteMinutes: { type: Number, min: 1, default: 259200 },
     completedOrderAutoDeleteDays: { type: Number, min: 0, default: 0 },
@@ -381,7 +392,8 @@ const takeAwayCatalogItemSchema = new mongoose.Schema(
     imagePublicId: { type: String, default: "" },
     sortOrder: { type: Number, default: 0 },
     options: { type: [takeAwayOptionSchema], default: [] },
-    syncedWithSource: { type: Boolean, default: true },
+    // Champ legacy conservé pour compatibilité : aucune synchronisation continue.
+    syncedWithSource: { type: Boolean, default: false },
     sourceDeleted: { type: Boolean, default: false },
     importedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },

@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Clock, CreditCard, Mail, MapPin, Phone, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  CreditCard,
+  Mail,
+  MapPin,
+  Phone,
+  RotateCcw,
+  User,
+  X,
+} from "lucide-react";
 
 import {
   NEXT_STATUS,
@@ -8,6 +18,7 @@ import {
   getStatusTone,
   toMoney,
 } from "./take-away.utils";
+import ConfirmModalTakeAwayWebapp from "../webapp/take-away/confirm-modal.take-away.webapp";
 
 const CLOSE_MS = 220;
 
@@ -20,10 +31,12 @@ export default function TakeAwayOrderDrawerComponent({
   errorMessage,
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [pendingAction, setPendingAction] = useState("");
 
   useEffect(() => {
     if (!open) {
       setIsVisible(false);
+      setPendingAction("");
       return;
     }
     const id = window.setTimeout(() => setIsVisible(true), 10);
@@ -34,32 +47,48 @@ export default function TakeAwayOrderDrawerComponent({
 
   function closeWithAnimation() {
     setIsVisible(false);
+    setPendingAction("");
     window.setTimeout(() => onClose?.(), CLOSE_MS);
   }
 
   function runAction(status) {
     const needsConfirm = ["canceled", "rejected", "completed"].includes(status);
     if (needsConfirm) {
-      const ok = window.confirm(
-        `Confirmer le passage de la commande en statut "${STATUS_LABELS[status]}" ?`,
-      );
-      if (!ok) return;
+      setPendingAction(status);
+      return;
     }
     onAction?.(order, status);
   }
 
-  const availableActions = NEXT_STATUS[order.status] || [];
+  async function confirmPendingAction() {
+    if (!pendingAction || loading) return;
+    const targetStatus =
+      pendingAction === "retry_refund" ? order.status : pendingAction;
+    const succeeded = await onAction?.(order, targetStatus);
+    if (succeeded !== false) setPendingAction("");
+  }
+
+  const availableActions = (NEXT_STATUS[order.status] || []).filter(
+    (status) =>
+      status !== "out_for_delivery" || order.fulfillmentMode === "delivery",
+  );
+  const paidTerminalOrder =
+    order.paymentMethod === "online" &&
+    order.paymentStatus === "paid" &&
+    ["canceled", "rejected"].includes(order.status);
+  const refundFailed =
+    paidTerminalOrder && order.stripeRefundStatus === "failed";
 
   function getActionButtonClass(status, index) {
     const base =
       "w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-50";
     if (index === 0) {
-      return `${base} bg-blue text-white shadow-sm hover:bg-blue/90 active:scale-[0.98]`;
+      return `${base} bg-blue text-white shadow-sm canHover:hover:bg-blue/90 active:scale-[0.98]`;
     }
     if (status === "canceled" || status === "rejected") {
-      return `${base} border border-red/20 bg-red/10 text-red hover:bg-red/15`;
+      return `${base} border border-red/20 bg-red/10 text-red canHover:hover:bg-red/15`;
     }
-    return `${base} border border-darkBlue/10 bg-white text-darkBlue hover:bg-darkBlue/5`;
+    return `${base} border border-darkBlue/10 bg-white text-darkBlue canHover:hover:bg-darkBlue/5`;
   }
 
   return (
@@ -100,7 +129,7 @@ export default function TakeAwayOrderDrawerComponent({
           <button
             type="button"
             onClick={closeWithAnimation}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-darkBlue/10 bg-white canHover:hover:bg-darkBlue/5"
             aria-label="Fermer"
             title="Fermer"
           >
@@ -116,10 +145,16 @@ export default function TakeAwayOrderDrawerComponent({
           ) : null}
 
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-            <p className="text-xs text-darkBlue/50">
-              Informations client
-            </p>
+            <p className="text-xs text-darkBlue/50">Informations client</p>
             <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
+              <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
+                <User className="size-4 shrink-0 text-darkBlue/45" />
+                <span className="min-w-0 truncate font-semibold text-darkBlue">
+                  {[order.customerFirstName, order.customerLastName]
+                    .filter(Boolean)
+                    .join(" ") || "Nom non renseigné"}
+                </span>
+              </div>
               <a
                 href={
                   order.customerPhone ? `tel:${order.customerPhone}` : undefined
@@ -144,9 +179,7 @@ export default function TakeAwayOrderDrawerComponent({
           </div>
 
           <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-            <p className="text-xs text-darkBlue/50">
-              Organisation
-            </p>
+            <p className="text-xs text-darkBlue/50">Organisation</p>
             <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
               <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
                 <Clock className="size-4 text-darkBlue/45" />
@@ -163,20 +196,53 @@ export default function TakeAwayOrderDrawerComponent({
               <div className="inline-flex items-center gap-2 rounded-xl bg-lightGrey px-3 py-2">
                 <CreditCard className="size-4 text-darkBlue/45" />
                 <span>
-                  {order.paymentStatus === "paid"
-                    ? "Payée"
-                    : order.paymentStatus === "pending"
-                      ? "Paiement en attente"
-                      : "Paiement sur place/livraison"}
+                  {order.paymentStatus === "refunded"
+                    ? "Payée · remboursée"
+                    : refundFailed
+                      ? "Payée · remboursement échoué"
+                      : paidTerminalOrder
+                        ? "Payée · remboursement en cours"
+                        : order.paymentStatus === "paid"
+                          ? "Payée"
+                          : order.paymentStatus === "pending"
+                            ? "Paiement en attente"
+                            : "Paiement sur place/livraison"}
                 </span>
               </div>
+              {refundFailed ? (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red/20 bg-red/10 px-3 py-3 text-red"
+                >
+                  <p className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    Le remboursement Stripe a échoué.
+                  </p>
+                  <p className="mt-1 text-xs leading-5">
+                    La commande reste{" "}
+                    {STATUS_LABELS[order.status]?.toLowerCase()}. Vérifiez
+                    Stripe puis relancez le remboursement.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPendingAction("retry_refund")}
+                    disabled={loading}
+                    className="mt-2 inline-flex items-center gap-2 rounded-lg border border-red/20 bg-white px-3 py-2 text-xs font-semibold transition canHover:hover:bg-red/5 disabled:opacity-50"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Réessayer le remboursement
+                  </button>
+                </div>
+              ) : paidTerminalOrder ? (
+                <div className="rounded-xl border border-blue/20 bg-blue/10 px-3 py-2 text-xs font-semibold text-blue">
+                  Remboursement Stripe en cours de confirmation.
+                </div>
+              ) : null}
             </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-            <p className="text-xs text-darkBlue/50">
-              Commande
-            </p>
+            <p className="text-xs text-darkBlue/50">Commande</p>
             <div className="mt-3 flex flex-col gap-3">
               {(order.items || []).map((item, index) => (
                 <div
@@ -234,9 +300,7 @@ export default function TakeAwayOrderDrawerComponent({
 
           {order.fulfillmentMode === "delivery" ? (
             <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-              <p className="text-xs text-darkBlue/50">
-                Livraison
-              </p>
+              <p className="text-xs text-darkBlue/50">Livraison</p>
               <div className="mt-2 text-sm text-darkBlue/70">
                 <p>{order.deliveryAddress?.line1}</p>
                 <p>{order.deliveryAddress?.line2}</p>
@@ -272,6 +336,15 @@ export default function TakeAwayOrderDrawerComponent({
           ) : null}
         </div>
       </aside>
+      <ConfirmModalTakeAwayWebapp
+        open={Boolean(pendingAction)}
+        order={order}
+        status={pendingAction}
+        processing={loading}
+        error={errorMessage}
+        onClose={() => setPendingAction("")}
+        onConfirm={confirmPendingAction}
+      />
     </div>
   );
 }

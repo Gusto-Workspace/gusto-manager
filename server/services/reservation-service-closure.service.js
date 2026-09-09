@@ -167,6 +167,7 @@ function buildPublicReservationServiceBlockedRange({
     endAt: state.currentService.endAt,
     allDay: false,
     note: "Service complet",
+    source: "service_full",
     createdAt: now,
   };
 }

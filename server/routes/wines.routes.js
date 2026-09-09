@@ -3,6 +3,9 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  markCatalogSourcesDeleted,
+} = require("../services/take-away.service");
 
 // ADD A CATEGORY
 router.post("/restaurants/:restaurantId/wines/categories", async (req, res) => {
@@ -96,13 +99,7 @@ router.delete(
     const { restaurantId, categoryId } = req.params;
 
     try {
-      const restaurant = await RestaurantModel.findByIdAndUpdate(
-        restaurantId,
-        {
-          $pull: { wine_categories: { _id: categoryId } },
-        },
-        { new: true }
-      )
+      const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
         .populate("menus");
@@ -110,6 +107,22 @@ router.delete(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
       }
+
+      const category = restaurant.wine_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+      const deletedWineIds = [
+        ...(category.wines || []).map((wine) => wine._id),
+        ...(category.subCategories || []).flatMap((subCategory) =>
+          (subCategory.wines || []).map((wine) => wine._id),
+        ),
+      ];
+      markCatalogSourcesDeleted(restaurant, "wine", deletedWineIds);
+      restaurant.wine_categories = restaurant.wine_categories.filter(
+        (candidate) => String(candidate._id) !== String(categoryId),
+      );
+      await restaurant.save();
 
       res
         .status(200)
@@ -241,6 +254,7 @@ router.put("/restaurants/:restaurantId/wines/:wineId", async (req, res) => {
       return res.status(404).json({ message: "Wine not found." });
     }
 
+    markCatalogSourcesDeleted(restaurant, "wine", wineId);
     await restaurant.save();
 
     res.status(200).json({ message: "Wine updated successfully.", restaurant });
@@ -626,7 +640,16 @@ router.delete(
         return res.status(404).json({ message: "Category not found." });
       }
 
-      // Utiliser $pull pour retirer la sous-catégorie
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
+      }
+      markCatalogSourcesDeleted(
+        restaurant,
+        "wine",
+        (subCategory.wines || []).map((wine) => wine._id),
+      );
+
       category.subCategories = category.subCategories.filter(
         (subCategory) => subCategory._id.toString() !== subCategoryId
       );

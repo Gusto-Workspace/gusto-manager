@@ -20,6 +20,7 @@ import {
   Gift,
   CreditCard,
   ExternalLink,
+  ShoppingBag,
 } from "lucide-react";
 
 function formatDateFromUnix(timestamp) {
@@ -73,6 +74,13 @@ function getStatus(payment, t) {
 }
 
 function getTransactionTypeUi(payment, t) {
+  if (payment?.type === "take_away_order") {
+    return {
+      label: "Vente à emporter",
+      icon: ShoppingBag,
+      cls: "bg-green/10 text-green border-green/25",
+    };
+  }
   if (payment?.type === "bank_hold_capture") {
     return {
       label: t(

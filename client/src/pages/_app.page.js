@@ -121,6 +121,10 @@ function WebAppNotificationBadgeSync() {
       return "gift_cards";
     }
 
+    if (pathname.startsWith("/dashboard/webapp/take-away")) {
+      return "take_away";
+    }
+
     return null;
   }, [router.pathname]);
 
@@ -173,6 +177,9 @@ function WebAppPushSubscriptionSync() {
     }
     if (pathname.startsWith("/dashboard/webapp/gift-cards")) {
       return "gift_cards";
+    }
+    if (pathname.startsWith("/dashboard/webapp/take-away")) {
+      return "take_away";
     }
     return null;
   }, [router.pathname]);
@@ -286,7 +293,10 @@ function OwnerOnlyWebAppGuard({ children }) {
 
     try {
       const decoded = jwtDecode(token);
-      if (decoded?.role === "employee") {
+      const employeeWebappAllowed = (router.pathname || "").startsWith(
+        "/dashboard/webapp/take-away",
+      );
+      if (decoded?.role === "employee" && !employeeWebappAllowed) {
         setAccessState("blocked");
         router.replace("/dashboard/my-space");
         return;
@@ -449,6 +459,8 @@ function App({ Component, pageProps }) {
       return "/manifest-reservations.webmanifest";
     if (p.startsWith("/dashboard/webapp/gift-cards"))
       return "/manifest-gift-cards.webmanifest";
+    if (p.startsWith("/dashboard/webapp/take-away"))
+      return "/manifest-take-away.webmanifest";
     if (p.startsWith("/dashboard/webapp/time-clock"))
       return "/manifest-time-clock.webmanifest";
     if (p.startsWith("/dashboard/admin")) return "/manifest-admin.webmanifest";

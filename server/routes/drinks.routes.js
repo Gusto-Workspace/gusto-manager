@@ -3,6 +3,9 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  markCatalogSourcesDeleted,
+} = require("../services/take-away.service");
 
 // ADD A CATEGORY
 router.post(
@@ -107,13 +110,7 @@ router.delete(
     const { restaurantId, categoryId } = req.params;
 
     try {
-      const restaurant = await RestaurantModel.findByIdAndUpdate(
-        restaurantId,
-        {
-          $pull: { drink_categories: { _id: categoryId } },
-        },
-        { new: true }
-      )
+      const restaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("employees")
         .populate("menus");
@@ -121,6 +118,22 @@ router.delete(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found." });
       }
+
+      const category = restaurant.drink_categories.id(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found." });
+      }
+      const deletedDrinkIds = [
+        ...(category.drinks || []).map((drink) => drink._id),
+        ...(category.subCategories || []).flatMap((subCategory) =>
+          (subCategory.drinks || []).map((drink) => drink._id),
+        ),
+      ];
+      markCatalogSourcesDeleted(restaurant, "drink", deletedDrinkIds);
+      restaurant.drink_categories = restaurant.drink_categories.filter(
+        (candidate) => String(candidate._id) !== String(categoryId),
+      );
+      await restaurant.save();
 
       res
         .status(200)
@@ -364,6 +377,7 @@ router.delete(
         return res.status(404).json({ message: "Drink not found." });
       }
 
+      markCatalogSourcesDeleted(restaurant, "drink", drinkId);
       await restaurant.save();
 
       res
@@ -618,7 +632,16 @@ router.delete(
         return res.status(404).json({ message: "Category not found." });
       }
 
-      // Utiliser $pull pour retirer la sous-catégorie
+      const subCategory = category.subCategories.id(subCategoryId);
+      if (!subCategory) {
+        return res.status(404).json({ message: "Subcategory not found." });
+      }
+      markCatalogSourcesDeleted(
+        restaurant,
+        "drink",
+        (subCategory.drinks || []).map((drink) => drink._id),
+      );
+
       category.subCategories = category.subCategories.filter(
         (subCategory) => subCategory._id.toString() !== subCategoryId
       );

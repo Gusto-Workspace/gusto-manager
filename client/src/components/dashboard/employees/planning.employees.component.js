@@ -27,6 +27,7 @@ import {
   Download,
   Send,
   UtensilsCrossed,
+  AlertTriangle,
 } from "lucide-react";
 import { getShiftMealMeta } from "./planning-meals.utils";
 
@@ -259,6 +260,55 @@ function eventIntersectsRange(event, bounds) {
   return start < bounds.endExclusive && end >= bounds.start;
 }
 
+function getEmployeeEmploymentForRestaurant(employee, restaurantId) {
+  const profile = (employee?.restaurantProfiles || []).find(
+    (item) =>
+      String(item?.restaurant?._id || item?.restaurant || "") ===
+      String(restaurantId || ""),
+  );
+  return profile?.employment || employee?.employment || {};
+}
+
+function getContractPeriodBounds(value, unit) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  if (unit === "month") {
+    return {
+      start: new Date(date.getFullYear(), date.getMonth(), 1),
+      endExclusive: new Date(date.getFullYear(), date.getMonth() + 1, 1),
+    };
+  }
+
+  const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
+  const endExclusive = new Date(start.getTime());
+  endExclusive.setDate(endExclusive.getDate() + 7);
+  return { start, endExclusive };
+}
+
+function getShiftMinutesWithinPeriod(startValue, endValue, bounds) {
+  const start = startValue instanceof Date ? startValue : new Date(startValue);
+  const end = endValue instanceof Date ? endValue : new Date(endValue);
+  if (
+    !bounds ||
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    end <= start
+  ) {
+    return 0;
+  }
+
+  const clippedStart = Math.max(start.getTime(), bounds.start.getTime());
+  const clippedEnd = Math.min(end.getTime(), bounds.endExclusive.getTime());
+  return Math.max(0, Math.round((clippedEnd - clippedStart) / 60000));
+}
+
+function formatPlannedHours(minutes) {
+  return new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 2,
+  }).format(Number(minutes || 0) / 60);
+}
+
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -345,6 +395,8 @@ export default function PlanningEmployeesComponent() {
         post: e.post,
         profilePicture: e.profilePicture,
         shifts: e.shifts || [],
+        restaurantProfiles: e.restaurantProfiles || [],
+        employment: e.employment || null,
       })) || [],
     [restaurantContext.restaurantData?.employees],
   );
@@ -358,6 +410,64 @@ export default function PlanningEmployeesComponent() {
       })),
     [allEmployees],
   );
+
+  const contractualOvertimeWarning = useMemo(() => {
+    if (
+      !modalData.employeeId ||
+      modalData.isLeave ||
+      !modalData.start ||
+      !modalData.end ||
+      modalData.end <= modalData.start
+    ) {
+      return null;
+    }
+
+    const employee = allEmployees.find(
+      (item) => String(item?._id) === String(modalData.employeeId),
+    );
+    if (!employee) return null;
+
+    const employment = getEmployeeEmploymentForRestaurant(
+      employee,
+      restaurantId,
+    );
+    const contractualHours = Number(employment?.contractualValue || 0);
+    const contractualUnit = String(employment?.contractualUnit || "");
+    if (
+      !Number.isFinite(contractualHours) ||
+      contractualHours <= 0 ||
+      !["week", "month"].includes(contractualUnit)
+    ) {
+      return null;
+    }
+
+    const bounds = getContractPeriodBounds(modalData.start, contractualUnit);
+    if (!bounds) return null;
+
+    const existingMinutes = (employee.shifts || [])
+      .filter((shift) => !isLeaveShiftRecord(shift))
+      .reduce(
+        (total, shift) =>
+          total +
+          getShiftMinutesWithinPeriod(shift?.start, shift?.end, bounds),
+        0,
+      );
+    const proposedMinutes = getShiftMinutesWithinPeriod(
+      modalData.start,
+      modalData.end,
+      bounds,
+    );
+    const plannedMinutes = existingMinutes + proposedMinutes;
+    const contractualMinutes = Math.round(contractualHours * 60);
+    if (plannedMinutes <= contractualMinutes) return null;
+
+    return {
+      planned: formatPlannedHours(plannedMinutes),
+      contractual: formatPlannedHours(contractualMinutes),
+      overtime: formatPlannedHours(plannedMinutes - contractualMinutes),
+      periodLabel: contractualUnit === "month" ? "ce mois" : "cette semaine",
+    };
+  }, [allEmployees, modalData, restaurantId]);
 
   // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
   useEffect(() => {
@@ -1499,7 +1609,7 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Modale Ajout Shift (inchangée) ───────────────────────────────────── */}
       {modalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
           <div
             onClick={() => setModalOpen(false)}
             className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
@@ -1753,6 +1863,25 @@ export default function PlanningEmployeesComponent() {
               </div>
             )}
 
+            {contractualOvertimeWarning ? (
+              <div
+                role="status"
+                className="flex items-start gap-3 rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-orange" />
+                <p>
+                  <span className="font-semibold text-darkBlue">
+                    Attention :
+                  </span>{" "}
+                  {contractualOvertimeWarning.planned} h sont planifiées{" "}
+                  {contractualOvertimeWarning.periodLabel} pour un contrat de{" "}
+                  {contractualOvertimeWarning.contractual} h (+
+                  {contractualOvertimeWarning.overtime} h). Le planning peut
+                  tout de même être enregistré.
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-2 flex justify-center gap-3">
               <button
                 onClick={handleConfirmShift}
@@ -1791,7 +1920,7 @@ export default function PlanningEmployeesComponent() {
       )}
 
       {shiftConflictModalData.isOpen && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
           <div
             onClick={closeShiftConflictModal}
             className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
@@ -1903,7 +2032,7 @@ export default function PlanningEmployeesComponent() {
 
       {/* ─── Modale Shift ─────────────────────────────────────────────────────── */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
           <div
             onClick={() => {
               if (isDeleting || isUpdatingShiftTitle) return;

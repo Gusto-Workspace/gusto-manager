@@ -18,6 +18,7 @@ import {
 const MODULE_LABELS = {
   gift_cards: "nouvelle carte cadeau achetée",
   reservations: "nouvelle réservation",
+  take_away: "nouvelle commande à emporter",
 };
 
 export default function PushNotificationsSettingsWebapp({ module }) {

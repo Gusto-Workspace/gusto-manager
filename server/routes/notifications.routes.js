@@ -2,9 +2,27 @@ const express = require("express");
 const router = express.Router();
 
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  authorizeRestaurantAccess,
+  userCanAccessRestaurant,
+} = require("../middleware/authorize-restaurant-access");
 const NotificationModel = require("../models/notification.model");
 
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
+
+async function canAccessTakeAwayNotifications(req) {
+  const restaurant = req.authorizedRestaurant;
+  if (restaurant?.options?.take_away !== true) return false;
+  return userCanAccessRestaurant(req.user, restaurant, {
+    requiredOption: "take_away",
+  });
+}
+
+router.use(
+  "/restaurants/:restaurantId/notifications",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "restaurantId" }),
+);
 
 // LIST (avec pagination simple)
 router.get(
@@ -15,9 +33,16 @@ router.get(
       const { restaurantId } = req.params;
       const { module, unreadOnly, limit, cursor } = req.query;
 
+      const canReadTakeAway = await canAccessTakeAwayNotifications(req);
+      if (module === "take_away" && !canReadTakeAway) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
       const q = { restaurantId };
       if (module) {
         q.module = module;
+      } else if (!canReadTakeAway) {
+        q.module = { $ne: "take_away" };
       }
 
       if (unreadOnly === "true") q.read = false;
@@ -56,6 +81,7 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId } = req.params;
+      const canReadTakeAway = await canAccessTakeAwayNotifications(req);
 
       const agg = await NotificationModel.aggregate([
         {
@@ -65,6 +91,7 @@ router.get(
                 String(restaurantId),
               ),
             read: false,
+            ...(canReadTakeAway ? {} : { module: { $ne: "take_away" } }),
           },
         },
         { $group: { _id: "$module", count: { $sum: 1 } } },
@@ -90,9 +117,14 @@ router.post(
   async (req, res) => {
     try {
       const { restaurantId, notifId } = req.params;
+      const canReadTakeAway = await canAccessTakeAwayNotifications(req);
 
       const updated = await NotificationModel.findOneAndUpdate(
-        { _id: notifId, restaurantId },
+        {
+          _id: notifId,
+          restaurantId,
+          ...(canReadTakeAway ? {} : { module: { $ne: "take_away" } }),
+        },
         { $set: { read: true, readAt: new Date() } },
         { new: true },
       ).lean();
@@ -122,10 +154,16 @@ router.post(
     try {
       const { restaurantId } = req.params;
       const { module } = req.query;
+      const canReadTakeAway = await canAccessTakeAwayNotifications(req);
+      if (module === "take_away" && !canReadTakeAway) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
       const q = { restaurantId, read: false };
       if (module) {
         q.module = module;
+      } else if (!canReadTakeAway) {
+        q.module = { $ne: "take_away" };
       }
 
       const r = await NotificationModel.updateMany(q, {
@@ -146,3 +184,4 @@ router.post(
 );
 
 module.exports = router;
+module.exports.canAccessTakeAwayNotifications = canAccessTakeAwayNotifications;

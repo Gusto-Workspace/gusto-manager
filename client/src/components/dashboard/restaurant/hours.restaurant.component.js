@@ -178,9 +178,9 @@ export default function HoursRestaurantComponent(props) {
   const actionBtnBase =
     "inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-semibold transition select-none";
   const actionBtnPrimary =
-    "bg-darkBlue text-white hover:opacity-90 active:scale-[0.98]";
+    "bg-darkBlue text-white canHover:hover:opacity-90 active:scale-[0.98]";
   const actionBtnDanger =
-    "bg-red text-white hover:opacity-90 active:scale-[0.98]";
+    "bg-red text-white canHover:hover:opacity-90 active:scale-[0.98]";
 
   return (
     <section className={sectionCls}>

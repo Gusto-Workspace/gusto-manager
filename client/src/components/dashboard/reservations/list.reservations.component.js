@@ -29,6 +29,10 @@ import {
 } from "./reservation-filters.reservations";
 import { countReservationCoversByService } from "@/_assets/utils/reservation-service-time";
 import { buildQuickClosureSlots } from "@/_assets/utils/reservation-quick-slot-closure";
+import ReservationsPrintSheet, {
+  getReservationsPrintTitle,
+} from "@/components/_shared/reservations/reservations-print-sheet.component";
+import ReservationPrintModal from "@/components/_shared/reservations/reservation-print-modal.component";
 
 const EMPTY_RESERVATIONS = [];
 
@@ -55,6 +59,8 @@ export default function ListReservationsComponent(props) {
   );
   const [selectedDay, setSelectedDay] = useState(null);
   const [activeDayTab, setActiveDayTab] = useState("All");
+  const [printMode, setPrintMode] = useState("day");
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const calendarSearchRef = useRef(null);
   const daySearchRef = useRef(null);
@@ -379,6 +385,7 @@ export default function ListReservationsComponent(props) {
           ...createReservationDisplayStatusCounter(),
         },
         serviceCovers: { lunch: 0, dinner: 0 },
+        reservations: [],
       };
     }
 
@@ -425,7 +432,12 @@ export default function ListReservationsComponent(props) {
       dayStatusTabs.map((s) => [s, (by[s] || []).length]),
     );
 
-    return { byStatus: by, counts, serviceCovers };
+    return {
+      byStatus: by,
+      counts,
+      serviceCovers,
+      reservations: reservationsOfDay,
+    };
   }, [activeReservations, selectedDay, searchTerm, floorPlanMinSeatsFilter]);
 
   /* =========================================================
@@ -446,6 +458,18 @@ export default function ListReservationsComponent(props) {
   }
   function handleParametersClick() {
     router.push(`/dashboard/reservations/parameters`);
+  }
+  function handlePrint(mode) {
+    setIsPrintModalOpen(false);
+    setPrintMode(mode);
+    const previousTitle = document.title;
+    document.title = getReservationsPrintTitle(selectedDay, mode);
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restoreTitle);
+    };
+    window.addEventListener("afterprint", restoreTitle);
+    window.requestAnimationFrame(() => window.print());
   }
   function handleEditClick(reservation) {
     router.push(`/dashboard/reservations/add?reservationId=${reservation._id}`);
@@ -826,6 +850,7 @@ export default function ListReservationsComponent(props) {
             seatsFilterOptions={RESERVATION_SEATS_FILTER_OPTIONS}
             onOpenQuickSlotClosures={() => setIsQuickSlotDrawerOpen(true)}
             closedSlotCount={closedSlotCount}
+            onOpenPrintModal={() => setIsPrintModalOpen(true)}
           />
           {activePeriodReady ? (
             <div
@@ -907,6 +932,20 @@ export default function ListReservationsComponent(props) {
           setFloorPlanPinnedPreference(!isFloorPlanPinned)
         }
       />
+
+      <ReservationsPrintSheet
+        selectedDay={selectedDay}
+        reservations={dayData.reservations}
+        mode={printMode}
+        tablesCatalog={props.restaurantData?.reservationsSettings?.tables}
+      />
+
+      {isPrintModalOpen ? (
+        <ReservationPrintModal
+          onClose={() => setIsPrintModalOpen(false)}
+          onSelect={handlePrint}
+        />
+      ) : null}
     </section>
   );
 }

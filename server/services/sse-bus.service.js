@@ -2,6 +2,9 @@ const clientsPerRestaurant = new Map();
 const authenticateToken = require("../middleware/authentificate-token");
 const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  userCanAccessRestaurant,
+} = require("../middleware/authorize-restaurant-access");
 const { isAccountSessionValid } = require("./account-session.service");
 
 function addClient(restaurantId, res) {
@@ -24,12 +27,37 @@ function broadcastToRestaurant(restaurantId, payload) {
   if (!set || set.size === 0) return;
   const line = `data: ${JSON.stringify(payload)}\n\n`;
   for (const res of set) {
+    if (
+      isTakeAwayPayload(payload) &&
+      res.locals?.gustoEventModules?.take_away !== true
+    ) {
+      continue;
+    }
     try {
       res.write(line);
     } catch (_error) {
       // Ignore broken SSE connections; cleanup happens on close events.
     }
   }
+}
+
+function isTakeAwayPayload(payload) {
+  return (
+    String(payload?.type || "").startsWith("takeaway_") ||
+    payload?.module === "take_away" ||
+    payload?.notification?.module === "take_away"
+  );
+}
+
+async function canAccessTakeAwayEvents(user, restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId)
+    .select("_id owner_id employees options.take_away")
+    .populate("employees", "restaurantProfiles");
+
+  if (!restaurant || restaurant.options?.take_away !== true) return false;
+  return userCanAccessRestaurant(user, restaurant, {
+    requiredOption: "take_away",
+  });
 }
 
 async function canAccessRestaurantEvents(user, restaurantId) {
@@ -84,6 +112,10 @@ function mountSseRoute(appOrRouter, opts = {}) {
       if (!(await canAccessRestaurantEvents(req.user, restaurantId))) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      res.locals.gustoEventModules = {
+        ...(res.locals.gustoEventModules || {}),
+        take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
+      };
     } catch {
       return res.status(500).json({ message: "Server error" });
     }
@@ -126,6 +158,11 @@ function mountSseRoute(appOrRouter, opts = {}) {
           return res.end();
         }
 
+        res.locals.gustoEventModules = {
+          ...(res.locals.gustoEventModules || {}),
+          take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
+        };
+
         res.write(":\n\n");
       } catch (_error) {
         close();
@@ -162,5 +199,7 @@ module.exports = {
   _removeClient: removeClient,
   _clientsPerRestaurant: clientsPerRestaurant,
   _canAccessRestaurantEvents: canAccessRestaurantEvents,
+  _canAccessTakeAwayEvents: canAccessTakeAwayEvents,
+  _isTakeAwayPayload: isTakeAwayPayload,
   _isEventSessionAuthorized: isEventSessionAuthorized,
 };

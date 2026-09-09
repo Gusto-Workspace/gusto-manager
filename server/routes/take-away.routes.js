@@ -2,10 +2,13 @@ const express = require("express");
 const router = express.Router();
 
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  userCanAccessRestaurant,
+} = require("../middleware/authorize-restaurant-access");
 const RestaurantModel = require("../models/restaurant.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
 const {
-  sanitizeTakeAwaySettingsInput,
+  mergeTakeAwaySettingsInput,
   normalizeCatalogItemInput,
   listImportableSourceItems,
   upsertCatalogItemFromSource,
@@ -14,37 +17,16 @@ const {
   createTakeAwayOrder,
   createOrderPaymentIntent,
   confirmOrderPayment,
+  findPublicOrderByAccessToken,
+  findPublicOrderByAttempt,
   updateOrderStatus,
   loadRestaurantForTakeAway,
-  cleanupCompletedTakeAwayOrders,
+  constructTakeAwayWebhookEvent,
+  handleTakeAwayStripeWebhookEvent,
+  normalizeTakeAwayDateKey,
+  getBlockedTakeAwayDates,
 } = require("../services/take-away.service");
-
-function canAccessRestaurant(req, restaurant) {
-  if (!restaurant || !req.user) return false;
-
-  if (req.user.role === "owner") {
-    return (
-      String(restaurant.owner_id?._id || restaurant.owner_id) ===
-      String(req.user.id)
-    );
-  }
-
-  if (req.user.role === "employee") {
-    if (String(req.user.restaurantId || "") !== String(restaurant._id))
-      return false;
-    if (req.user.options?.take_away === true) return true;
-
-    const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(req.user.id),
-    );
-    const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
-    );
-    return profile?.options?.take_away === true;
-  }
-
-  return false;
-}
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
 async function loadAuthorizedRestaurant(req, res) {
   const restaurant = await loadRestaurantForTakeAway(req.params.restaurantId);
@@ -52,7 +34,15 @@ async function loadAuthorizedRestaurant(req, res) {
     res.status(404).json({ message: "Restaurant not found" });
     return null;
   }
-  if (!canAccessRestaurant(req, restaurant)) {
+  if (restaurant.options?.take_away !== true) {
+    res.status(403).json({ message: "Take-away module unavailable" });
+    return null;
+  }
+  if (
+    !(await userCanAccessRestaurant(req.user, restaurant, {
+      requiredOption: "take_away",
+    }))
+  ) {
     res.status(403).json({ message: "Forbidden" });
     return null;
   }
@@ -61,7 +51,12 @@ async function loadAuthorizedRestaurant(req, res) {
 
 function serializePublicCatalog(restaurant) {
   return (restaurant.takeAwayCatalog || [])
-    .filter((item) => item.active !== false && item.visible !== false)
+    .filter(
+      (item) =>
+        item.active !== false &&
+        item.visible !== false &&
+        item.sourceDeleted !== true,
+    )
     .sort((a, b) => {
       const aOrder = Number(a.sortOrder || 0);
       const bOrder = Number(b.sortOrder || 0);
@@ -98,13 +93,87 @@ function handleError(res, error) {
   });
 }
 
+function handlePublicError(res, error) {
+  const status =
+    Number(error?.status) >= 400 && Number(error?.status) < 500
+      ? Number(error.status)
+      : 500;
+  if (status >= 500) {
+    console.error("Public take-away route error:", error);
+  }
+  return res.status(status).json({
+    message:
+      status >= 500
+        ? "Le service est momentanément indisponible. Veuillez réessayer."
+        : error?.message || "La demande n'a pas pu être traitée.",
+  });
+}
+
+function getPublicOrderToken(req) {
+  return String(req.get("X-Take-Away-Token") || "").trim();
+}
+
+function serializePublicOrder(input) {
+  const order = input?.toObject ? input.toObject() : input || {};
+  return {
+    _id: String(order._id || ""),
+    orderNumber: order.orderNumber || "",
+    fulfillmentMode: order.fulfillmentMode,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
+    scheduledFor: order.scheduledFor,
+    slotId: order.slotId,
+    items: (order.items || []).map((item) => ({
+      catalogItemId: String(item.catalogItemId || ""),
+      name: item.name,
+      description: item.description || "",
+      categoryName: item.categoryName || "",
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+      options: (item.options || []).map((option) => ({
+        name: option.name,
+        price: option.price,
+      })),
+      optionsTotal: item.optionsTotal,
+      lineTotal: item.lineTotal,
+      note: item.note || "",
+    })),
+    subtotal: order.subtotal,
+    deliveryFee: order.deliveryFee,
+    total: order.total,
+    currency: order.currency,
+    deliveryAddress:
+      order.fulfillmentMode === "delivery" ? order.deliveryAddress : undefined,
+    customerNote: order.customerNote || "",
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
+}
+
+router.post("/take-away/stripe/webhook", async (req, res) => {
+  try {
+    const { event, restaurant } = await constructTakeAwayWebhookEvent({
+      rawBody: req.body,
+      signature: req.headers["stripe-signature"],
+    });
+    const result = await handleTakeAwayStripeWebhookEvent({
+      event,
+      restaurant,
+    });
+    return res.status(200).json({ received: true, handled: result.handled });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 router.get(
   "/restaurants/:restaurantId/take-away/public/catalog",
   async (req, res) => {
     try {
       const restaurant = await loadPublicRestaurant(req.params.restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ message: "Restaurant introuvable" });
       }
 
       const settings = restaurant.takeAwaySettings || {};
@@ -132,7 +201,7 @@ router.get(
         catalog: serializePublicCatalog(restaurant),
       });
     } catch (error) {
-      return handleError(res, error);
+      return handlePublicError(res, error);
     }
   },
 );
@@ -143,13 +212,27 @@ router.get(
     try {
       const restaurant = await loadPublicRestaurant(req.params.restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ message: "Restaurant introuvable" });
+      }
+      const settings = restaurant.takeAwaySettings || {};
+      if (!restaurant.options?.take_away || !settings.enabled) {
+        return res.status(403).json({ message: "Take-away unavailable" });
+      }
+      const mode = String(req.query.mode || "pickup");
+      if (
+        (mode === "pickup" && settings.pickupEnabled === false) ||
+        (mode === "delivery" && settings.deliveryEnabled !== true) ||
+        !["pickup", "delivery"].includes(mode)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Fulfillment mode unavailable" });
       }
       const dateKey = String(req.query.date || "").trim();
       const slots = await getAvailableSlots({ restaurant, dateKey });
       return res.status(200).json({ slots });
     } catch (error) {
-      return handleError(res, error);
+      return handlePublicError(res, error);
     }
   },
 );
@@ -160,16 +243,41 @@ router.post(
     try {
       const restaurant = await loadPublicRestaurant(req.params.restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ message: "Restaurant introuvable" });
       }
       const order = await createTakeAwayOrder({
         restaurant,
-        payload: req.body || {},
+        payload: {
+          ...(req.body || {}),
+          idempotencyKey:
+            req.get("Idempotency-Key") || req.body?.idempotencyKey,
+        },
         source: "public",
       });
-      return res.status(201).json({ order });
+      return res
+        .status(order?.$locals?.idempotentReplay ? 200 : 201)
+        .json({ order: serializePublicOrder(order) });
     } catch (error) {
-      return handleError(res, error);
+      return handlePublicError(res, error);
+    }
+  },
+);
+
+router.get(
+  "/restaurants/:restaurantId/take-away/public/orders/recover",
+  async (req, res) => {
+    try {
+      const order = await findPublicOrderByAttempt({
+        restaurantId: req.params.restaurantId,
+        idempotencyKey: req.get("Idempotency-Key"),
+        token: getPublicOrderToken(req),
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Commande introuvable" });
+      }
+      return res.status(200).json({ order: serializePublicOrder(order) });
+    } catch (error) {
+      return handlePublicError(res, error);
     }
   },
 );
@@ -180,26 +288,27 @@ router.post(
     try {
       const restaurant = await loadPublicRestaurant(req.params.restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ message: "Restaurant introuvable" });
       }
-      const order = await TakeAwayOrderModel.findOne({
-        _id: req.params.orderId,
-        restaurant_id: req.params.restaurantId,
+      const order = await findPublicOrderByAccessToken({
+        restaurantId: req.params.restaurantId,
+        orderId: req.params.orderId,
+        token: getPublicOrderToken(req),
       });
       if (!order) {
-        return res.status(404).json({ message: "Order not found" });
+        return res.status(404).json({ message: "Commande introuvable" });
       }
       const paymentIntent = await createOrderPaymentIntent({
         restaurant,
         order,
       });
       return res.status(200).json({
-        order,
+        order: serializePublicOrder(order),
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
       });
     } catch (error) {
-      return handleError(res, error);
+      return handlePublicError(res, error);
     }
   },
 );
@@ -210,7 +319,15 @@ router.post(
     try {
       const restaurant = await loadPublicRestaurant(req.params.restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ message: "Restaurant introuvable" });
+      }
+      const accessibleOrder = await findPublicOrderByAccessToken({
+        restaurantId: req.params.restaurantId,
+        orderId: req.params.orderId,
+        token: getPublicOrderToken(req),
+      });
+      if (!accessibleOrder) {
+        return res.status(404).json({ message: "Commande introuvable" });
       }
       const order = await confirmOrderPayment({
         restaurant,
@@ -218,9 +335,28 @@ router.post(
         orderId: req.params.orderId,
         paymentIntentId: req.body?.paymentIntentId,
       });
-      return res.status(200).json({ order });
+      return res.status(200).json({ order: serializePublicOrder(order) });
     } catch (error) {
-      return handleError(res, error);
+      return handlePublicError(res, error);
+    }
+  },
+);
+
+router.get(
+  "/restaurants/:restaurantId/take-away/public/orders/:orderId/status",
+  async (req, res) => {
+    try {
+      const order = await findPublicOrderByAccessToken({
+        restaurantId: req.params.restaurantId,
+        orderId: req.params.orderId,
+        token: getPublicOrderToken(req),
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Commande introuvable" });
+      }
+      return res.status(200).json({ order: serializePublicOrder(order) });
+    } catch (error) {
+      return handlePublicError(res, error);
     }
   },
 );
@@ -232,9 +368,14 @@ router.get(
     try {
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
-      await cleanupCompletedTakeAwayOrders(restaurant);
-
-      const query = { restaurant_id: restaurant._id };
+      const query = {
+        restaurant_id: restaurant._id,
+        $or: [
+          { source: "dashboard" },
+          { paymentMethod: { $ne: "online" } },
+          { paymentStatus: { $in: ["paid", "refunded"] } },
+        ],
+      };
       if (req.query.status && req.query.status !== "all") {
         query.status = req.query.status;
       }
@@ -304,6 +445,32 @@ router.post(
   },
 );
 
+router.get(
+  "/restaurants/:restaurantId/take-away/orders/:orderId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const restaurant = await loadAuthorizedRestaurant(req, res);
+      if (!restaurant) return;
+      const order = await TakeAwayOrderModel.findOne({
+        _id: req.params.orderId,
+        restaurant_id: restaurant._id,
+        $or: [
+          { source: "dashboard" },
+          { paymentMethod: { $ne: "online" } },
+          { paymentStatus: { $in: ["paid", "refunded"] } },
+        ],
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      return res.status(200).json({ order });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
+
 router.patch(
   "/restaurants/:restaurantId/take-away/orders/:orderId/status",
   authenticateToken,
@@ -312,7 +479,7 @@ router.patch(
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
       const order = await updateOrderStatus({
-        restaurantId: restaurant._id,
+        restaurant,
         orderId: req.params.orderId,
         status: req.body?.status,
       });
@@ -331,13 +498,62 @@ router.put(
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
 
-      restaurant.takeAwaySettings = sanitizeTakeAwaySettingsInput(
+      restaurant.takeAwaySettings = mergeTakeAwaySettingsInput(
+        restaurant.takeAwaySettings,
         req.body?.settings || req.body || {},
       );
       await restaurant.save();
 
       const updatedRestaurant = await loadRestaurantForTakeAway(restaurant._id);
       return res.status(200).json({ restaurant: updatedRestaurant });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
+
+router.put(
+  "/restaurants/:restaurantId/take-away/blocked-dates/:date",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const restaurant = await loadAuthorizedRestaurant(req, res);
+      if (!restaurant) return;
+
+      const dateKey = normalizeTakeAwayDateKey(req.params.date);
+      if (!dateKey) {
+        return res.status(400).json({ message: "Date invalide" });
+      }
+
+      const blocked = req.body?.blocked === true;
+      const blockedDates = new Set(
+        getBlockedTakeAwayDates(restaurant.takeAwaySettings || {}),
+      );
+      if (blocked) blockedDates.add(dateKey);
+      else blockedDates.delete(dateKey);
+
+      restaurant.takeAwaySettings = mergeTakeAwaySettingsInput(
+        restaurant.takeAwaySettings,
+        { blockedDates: Array.from(blockedDates) },
+      );
+      await restaurant.save();
+
+      const updatedRestaurant = await loadRestaurantForTakeAway(restaurant._id);
+      broadcastToRestaurant(String(restaurant._id), {
+        type: "takeaway_availability_updated",
+        module: "take_away",
+        restaurantId: String(restaurant._id),
+        date: dateKey,
+        blocked,
+        blockedDates: getBlockedTakeAwayDates(
+          updatedRestaurant?.takeAwaySettings || {},
+        ),
+      });
+      return res.status(200).json({
+        restaurant: updatedRestaurant,
+        date: dateKey,
+        blocked,
+      });
     } catch (error) {
       return handleError(res, error);
     }
@@ -425,6 +641,14 @@ router.patch(
         item,
         normalizeCatalogItemInput({ ...item.toObject(), ...req.body }),
       );
+      if (item.sourceDeleted === true && req.body?.active === true) {
+        item.sourceType = "custom";
+        item.sourceCategoryId = null;
+        item.sourceSubCategoryId = null;
+        item.sourceItemId = null;
+        item.sourceDeleted = false;
+        item.syncedWithSource = false;
+      }
       item.updatedAt = new Date();
       await restaurant.save();
 

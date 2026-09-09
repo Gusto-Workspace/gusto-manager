@@ -6,6 +6,7 @@ import {
   Search,
   Users,
   X,
+  Printer,
 } from "lucide-react";
 import { QuickSlotClosureActionButton } from "../../reservations/quick-slot-closures.reservations.component";
 
@@ -56,6 +57,16 @@ export default function DayHeaderReservationsWebapp(props) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={props.onOpenPrintModal}
+              className="inline-flex shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white/70 p-3.5 shadow-sm transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue/30 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-darkBlue/5"
+              aria-label="Imprimer les réservations"
+              title="Imprimer les réservations"
+            >
+              <Printer className="size-4 text-darkBlue/70" />
+            </button>
+
             <QuickSlotClosureActionButton
               iconOnly
               onClick={props.onOpenQuickSlotClosures}

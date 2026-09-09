@@ -172,6 +172,7 @@ export default function ParametersReservationComponent(props) {
     watch,
     setValue,
     setFocus,
+    trigger,
     reset,
     formState: { errors },
   } = useForm({
@@ -184,6 +185,8 @@ export default function ParametersReservationComponent(props) {
       interval: "30",
       pending_duration_minutes: 120,
       refuse_public_reservations_during_service: false,
+      max_covers_lunch: "",
+      max_covers_dinner: "",
 
       // Empreinte bancaire
       bank_hold_enabled: false,
@@ -395,6 +398,12 @@ export default function ParametersReservationComponent(props) {
         parameters?.table_occupancy_dinner_minutes
           ? String(parameters.table_occupancy_dinner_minutes)
           : "";
+      const nextMaxCoversLunch = parameters?.max_covers_lunch
+        ? String(parameters.max_covers_lunch)
+        : "";
+      const nextMaxCoversDinner = parameters?.max_covers_dinner
+        ? String(parameters.max_covers_dinner)
+        : "";
 
       const nextAutoFinishEnabled = Boolean(
         parameters?.auto_finish_reservations,
@@ -417,6 +426,8 @@ export default function ParametersReservationComponent(props) {
         pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
         refuse_public_reservations_during_service:
           parameters.refuse_public_reservations_during_service ?? false,
+        max_covers_lunch: nextMaxCoversLunch,
+        max_covers_dinner: nextMaxCoversDinner,
 
         bank_hold_enabled: parameters?.bank_hold?.enabled ?? false,
         bank_hold_amount_per_person:
@@ -467,6 +478,8 @@ export default function ParametersReservationComponent(props) {
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
           refuse_public_reservations_during_service:
             parameters.refuse_public_reservations_during_service ?? false,
+          max_covers_lunch: nextMaxCoversLunch,
+          max_covers_dinner: nextMaxCoversDinner,
           slot_cover_limits: buildSlotCoverLimitsSnapshot(
             nextSlotCoverLimits,
           ),
@@ -531,6 +544,8 @@ export default function ParametersReservationComponent(props) {
 
   const interval = watch("interval");
   const pending_duration_minutes = watch("pending_duration_minutes");
+  const max_covers_lunch = watch("max_covers_lunch");
+  const max_covers_dinner = watch("max_covers_dinner");
   const deletion_duration_minutes = watch("deletion_duration_minutes");
   const bank_hold_enabled = watch("bank_hold_enabled");
   const bank_hold_amount_per_person = watch("bank_hold_amount_per_person");
@@ -615,6 +630,8 @@ export default function ParametersReservationComponent(props) {
       refuse_public_reservations_during_service: Boolean(
         refuse_public_reservations_during_service,
       ),
+      max_covers_lunch: String(max_covers_lunch ?? ""),
+      max_covers_dinner: String(max_covers_dinner ?? ""),
       slot_cover_limits: buildSlotCoverLimitsSnapshot(slotCoverLimits),
     };
     markSectionDirty("slots", !shallowEqual(snap, next));
@@ -624,6 +641,8 @@ export default function ParametersReservationComponent(props) {
     interval,
     pending_duration_minutes,
     refuse_public_reservations_during_service,
+    max_covers_lunch,
+    max_covers_dinner,
     slotCoverLimits,
   ]);
 
@@ -788,6 +807,15 @@ export default function ParametersReservationComponent(props) {
       }
 
       if (sectionKey === "slots") {
+        const capacitiesValid = await trigger([
+          "max_covers_lunch",
+          "max_covers_dinner",
+        ]);
+        if (!capacitiesValid) {
+          setSaving(sectionKey, false);
+          return false;
+        }
+
         const aa = Boolean(auto_accept);
         partial = {
           auto_accept: aa,
@@ -798,6 +826,14 @@ export default function ParametersReservationComponent(props) {
           refuse_public_reservations_during_service: Boolean(
             refuse_public_reservations_during_service,
           ),
+          max_covers_lunch:
+            String(max_covers_lunch ?? "").trim() === ""
+              ? null
+              : Math.floor(Number(max_covers_lunch)),
+          max_covers_dinner:
+            String(max_covers_dinner ?? "").trim() === ""
+              ? null
+              : Math.floor(Number(max_covers_dinner)),
           slot_cover_limits: buildSlotCoverLimitsPayload(slotCoverLimits),
         };
       }
@@ -960,6 +996,8 @@ export default function ParametersReservationComponent(props) {
           refuse_public_reservations_during_service: Boolean(
             refuse_public_reservations_during_service,
           ),
+          max_covers_lunch: String(max_covers_lunch ?? ""),
+          max_covers_dinner: String(max_covers_dinner ?? ""),
           slot_cover_limits: buildSlotCoverLimitsSnapshot(slotCoverLimits),
         };
       }
