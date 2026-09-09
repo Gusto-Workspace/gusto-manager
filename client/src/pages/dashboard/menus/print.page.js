@@ -1,17 +1,19 @@
+import { useContext } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { ChevronLeft } from "lucide-react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-
-const AMBASSADE_PRINT_URL =
-  "https://www.lambassade-montauban.fr/menus?gustoPrint=1";
+import { GlobalContext } from "@/contexts/global.context";
+import { buildRestaurantMenuPrintUrl } from "@/_assets/utils/restaurant-menu-print";
 
 export default function MenuPrintPage() {
   const router = useRouter();
-  // Deux destinations internes seulement, même si `from` est absent ou invalide.
+  const { restaurantContext } = useContext(GlobalContext);
   const fromDishes = router.query.from === "dishes";
   const returnPath = fromDishes ? "/dashboard/dishes" : "/dashboard/menus";
   const returnLabel = fromDishes ? "Retour à La Carte" : "Retour aux Menus";
+  const restaurant = restaurantContext?.restaurantData;
+  const printUrl = buildRestaurantMenuPrintUrl(restaurant?.website);
 
   return (
     <>
@@ -19,11 +21,21 @@ export default function MenuPrintPage() {
         <title>Imprimer la carte | Gusto Manager</title>
       </Head>
 
-      <iframe
-        src={AMBASSADE_PRINT_URL}
-        title="Carte imprimable de L’Ambassade"
-        className="fixed inset-0 h-[100dvh] w-full border-0 bg-white"
-      />
+      {printUrl ? (
+        <iframe
+          src={printUrl}
+          title={`Carte imprimable${restaurant?.name ? ` de ${restaurant.name}` : ""}`}
+          className="fixed inset-0 h-[100dvh] w-full border-0 bg-white"
+        />
+      ) : (
+        <div className="fixed inset-0 flex items-center justify-center bg-white px-6 text-center text-darkBlue">
+          <p>
+            {restaurantContext?.dataLoading
+              ? "Chargement de la carte…"
+              : "Aucune page d’impression sécurisée n’est configurée pour ce restaurant."}
+          </p>
+        </div>
+      )}
 
       <button
         type="button"

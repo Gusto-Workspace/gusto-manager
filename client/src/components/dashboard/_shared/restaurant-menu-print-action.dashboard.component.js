@@ -3,11 +3,7 @@ import { useTranslation } from "next-i18next";
 import { useRouter } from "next/router";
 import { buildRestaurantMenuPrintUrl } from "@/_assets/utils/restaurant-menu-print";
 
-const AMBASSADE_PRINT_ROUTE = "/dashboard/menus/print";
-const AMBASSADE_HOSTNAMES = new Set([
-  "lambassade-montauban.fr",
-  "www.lambassade-montauban.fr",
-]);
+const RESTAURANT_MENU_PRINT_ROUTE = "/dashboard/menus/print";
 
 export default function RestaurantMenuPrintActionDashboardComponent({
   website,
@@ -19,50 +15,26 @@ export default function RestaurantMenuPrintActionDashboardComponent({
   const label = t("printMenu.action");
   const className =
     "inline-flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-blue text-white shadow-sm transition hover:bg-blue/90 active:scale-[0.98]";
-  const isAmbassadePrintUrl = (() => {
-    if (!printUrl) return false;
-    try {
-      return AMBASSADE_HOSTNAMES.has(new URL(printUrl).hostname.toLowerCase());
-    } catch {
-      return false;
-    }
-  })();
 
   if (printUrl && !dataLoading) {
-    if (isAmbassadePrintUrl) {
-      return (
-        <button
-          type="button"
-          disabled={!router.isReady}
-          onClick={() => {
-            // Impression temporaire dans le même document, sans ajouter d'entrée.
-            void router.replace({
-              pathname: AMBASSADE_PRINT_ROUTE,
-              query: {
-                from: router.pathname === "/dashboard/dishes" ? "dishes" : "menus",
-              },
-            });
-          }}
-          aria-label={label}
-          title={label}
-          className={className}
-        >
-          <Printer className="size-4" aria-hidden="true" />
-        </button>
-      );
-    }
-
     return (
-      <a
-        href={printUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        disabled={!router.isReady}
+        onClick={() => {
+          void router.replace({
+            pathname: RESTAURANT_MENU_PRINT_ROUTE,
+            query: {
+              from: router.pathname === "/dashboard/dishes" ? "dishes" : "menus",
+            },
+          });
+        }}
         aria-label={label}
         title={label}
         className={className}
       >
         <Printer className="size-4" aria-hidden="true" />
-      </a>
+      </button>
     );
   }
 
