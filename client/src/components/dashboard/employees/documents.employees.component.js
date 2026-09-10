@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-// SVG
-import { DeleteSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
 
 // I18N
 import { useTranslation } from "next-i18next";
 import { Loader2, Trash2 } from "lucide-react";
+import EmployeeDocumentRow from "../_shared/employee-document-row.dashboard.component";
 
 export default function DocumentsEmployeeComponent(props) {
-  const { t } = useTranslation("employees");
+  const { t, i18n } = useTranslation("employees");
   const fileInputRef = useRef(null);
 
   const [titleErrors, setTitleErrors] = useState([]);
@@ -36,8 +35,15 @@ export default function DocumentsEmployeeComponent(props) {
     "w-full rounded-lg border bg-white px-3 py-2 text-base outline-none transition placeholder:text-darkBlue/40";
   const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
   const inputErrorCls = `${inputBaseCls} border-red`;
-  const badgeCls =
-    "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium";
+  const documentLabels = {
+    document: t("documents.document", "Document"),
+    uploadedOn: t("documents.uploadedOn", "Mis en ligne le"),
+    at: t("documents.at", "à"),
+    by: t("documents.by", "Par"),
+    download: t("buttons.download"),
+    delete: t("buttons.delete"),
+  };
+  const locale = i18n.resolvedLanguage?.startsWith("fr") ? "fr-FR" : "en-GB";
 
   // wrapper pour la modif du titre
   const handleTitleChange = (index, value) => {
@@ -214,56 +220,17 @@ export default function DocumentsEmployeeComponent(props) {
             {t("Documents enregistrés")}
           </h4>
 
-          <ul className="grid grid-cols-2 mobile:grid-cols-3 midTablet:grid-cols-4 tablet:grid-cols-5 gap-2">
-            {currentDocuments.map((doc, i) => (
-              <li
-                key={i}
-                className="flex flex-col justify-between gap-3 rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 shadow-sm"
-              >
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm text-center font-semibold text-darkBlue line-clamp-2 break-words">
-                    {truncate(doc.title) || truncate(doc.filename)}
-                  </p>
-                  <span
-                    className={`${badgeCls} bg-darkBlue/5 text-darkBlue/60 mt-1`}
-                  >
-                    {truncate(doc.filename)}
-                  </span>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  {/* Télécharger */}
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadDocument(doc)}
-                    className="inline-flex items-center justify-center rounded-full bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 transition-colors duration-200"
-                    title={t("Télécharger")}
-                  >
-                    <DownloadSvg
-                      width={16}
-                      height={16}
-                      strokeColor="white"
-                      fillColor="white"
-                    />
-                  </button>
-
-                  {/* Supprimer */}
-                  <button
-                    type="button"
-                    onClick={() => props.confirmDeleteDoc(doc)}
-                    disabled={isDeletingId === doc.public_id}
-                    className="inline-flex items-center justify-center rounded-full bg-[#FF766499] hover:bg-[#FF7664] p-2 transition-colors duration-200 disabled:opacity-40"
-                    title={t("buttons.delete") || "Supprimer"}
-                  >
-                    <DeleteSvg
-                      width={16}
-                      height={16}
-                      strokeColor="white"
-                      fillColor="white"
-                    />
-                  </button>
-                </div>
-              </li>
+          <ul className="flex flex-col gap-2">
+            {currentDocuments.map((doc) => (
+              <EmployeeDocumentRow
+                key={doc.public_id}
+                document={doc}
+                locale={locale}
+                labels={documentLabels}
+                onDownload={handleDownloadDocument}
+                onDelete={props.confirmDeleteDoc}
+                isDeleting={isDeletingId === doc.public_id}
+              />
             ))}
           </ul>
         </div>

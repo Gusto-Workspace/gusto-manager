@@ -1557,6 +1557,12 @@ router.post(
         return res.status(404).json({ message: "Profile not found" });
       }
 
+      const uploaderName = [req.user.firstname, req.user.lastname]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 120);
+
       for (const document of documents) {
         const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/${employeeId}/documents`;
         const publicId = createEmployeeDocumentPublicId(document.extension);
@@ -1594,6 +1600,7 @@ router.post(
           uploadedBy: {
             id: String(req.user.id || ""),
             role: req.user.role,
+            name: uploaderName,
           },
         };
 

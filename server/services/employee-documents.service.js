@@ -246,6 +246,8 @@ function buildEmployeeDocumentDownloadUrl(document, cloudinaryClient) {
 
 function serializeEmployeeDocument(document) {
   const plain = toPlainDocument(document);
+  const uploaderName = String(plain.uploadedBy?.name || "").trim();
+
   return {
     public_id: plain.public_id,
     filename: plain.filename,
@@ -255,6 +257,7 @@ function serializeEmployeeDocument(document) {
       ? { size: Number(plain.size) }
       : {}),
     ...(plain.uploadedAt ? { uploadedAt: plain.uploadedAt } : {}),
+    ...(uploaderName ? { uploadedBy: { name: uploaderName } } : {}),
   };
 }
 

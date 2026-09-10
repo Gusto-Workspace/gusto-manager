@@ -48,6 +48,7 @@ const documentSchema = new mongoose.Schema(
     uploadedBy: {
       id: { type: String, default: "" },
       role: { type: String, enum: ["owner", "employee", ""], default: "" },
+      name: { type: String, trim: true, maxlength: 120, default: "" },
     },
   },
   { _id: false },

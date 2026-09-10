@@ -44,6 +44,12 @@
     "uploadedDocuments": "Uploaded Documents",
     "assignRights": "Access Rights"
   },
+  "documents": {
+    "document": "Document",
+    "uploadedOn": "Uploaded on",
+    "at": "at",
+    "by": "By"
+  },
   "errors": {
     "required": "This field is required"
   }

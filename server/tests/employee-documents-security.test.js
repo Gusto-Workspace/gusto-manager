@@ -252,16 +252,24 @@ test("document API serialization never returns a permanent storage URL", () => {
     url: "https://res.cloudinary.com/demo/raw/upload/public.pdf",
     asset_id: "provider-asset-id",
     delivery_type: "upload",
+    uploadedBy: {
+      id: "owner-a",
+      role: "owner",
+      name: "Jean Dupont",
+    },
   });
 
   assert.deepEqual(serialized, {
     public_id: "opaque-id",
     filename: "bulletin.pdf",
     title: "Septembre",
+    uploadedBy: { name: "Jean Dupont" },
   });
   assert.equal("url" in serialized, false);
   assert.equal("asset_id" in serialized, false);
   assert.equal("delivery_type" in serialized, false);
+  assert.equal("id" in serialized.uploadedBy, false);
+  assert.equal("role" in serialized.uploadedBy, false);
 });
 
 test("employee model serialization strips documents from accidental responses", () => {
@@ -629,7 +637,12 @@ test("new uploads use authenticated Cloudinary storage with collision-resistant 
   await handler(
     {
       params: { restaurantId: "restaurant-a", employeeId: "employee-a" },
-      user: { id: "owner-a", role: "owner" },
+      user: {
+        id: "owner-a",
+        role: "owner",
+        firstname: "Jean",
+        lastname: "Dupont",
+      },
       files: [pdfFile()],
       body: { titles: "Septembre" },
     },
@@ -651,8 +664,15 @@ test("new uploads use authenticated Cloudinary storage with collision-resistant 
     employee.restaurantProfiles[0].documents[0].delivery_type,
     "authenticated",
   );
+  assert.equal(
+    employee.restaurantProfiles[0].documents[0].uploadedBy.name,
+    "Jean Dupont",
+  );
   assert.deepEqual(result.body.restaurant.employees[0].documents, []);
   assert.equal("url" in result.body.documents[0], false);
+  assert.deepEqual(result.body.documents[0].uploadedBy, {
+    name: "Jean Dupont",
+  });
 });
 
 test("delete does not call Cloudinary for a forged document ID", async (t) => {
