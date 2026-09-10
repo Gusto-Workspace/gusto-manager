@@ -108,7 +108,7 @@ export default function DocumentsEmployeeComponent(props) {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,image/*"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,.gif"
           onChange={props.onDocsChange}
           disabled={isUploading}
           className="hidden"

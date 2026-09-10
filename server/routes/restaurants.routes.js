@@ -25,6 +25,7 @@ const {
 } = require("../services/stripe-subscription-catalog.service");
 const {
   decorateRestaurantEmployees,
+  sanitizeEmployeeForRestaurants,
 } = require("../services/employee-serialization.service");
 const {
   buildPublicReservationServiceBlockedRange,
@@ -520,7 +521,13 @@ router.get("/owner/employees", authenticateToken, async (req, res) => {
       .populate("restaurants", "name _id")
       .lean();
 
-    return res.json({ employees });
+    return res.json({
+      employees: employees
+        .map((employee) =>
+          sanitizeEmployeeForRestaurants(employee, restaurantIds),
+        )
+        .filter(Boolean),
+    });
   } catch (e) {
     console.error("Error fetching owner employees:", e);
     return res.status(500).json({ message: "Internal server error" });
