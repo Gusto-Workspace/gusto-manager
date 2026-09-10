@@ -210,7 +210,12 @@ export default function ListCustomersComponent() {
   const hasGiftCardModule = !!restaurantOptions.gift_card;
   const hasReservationsModule = !!restaurantOptions.reservations;
   const hasTakeAwayModule = !!restaurantOptions.take_away;
-  const showSourceFilter = hasGiftCardModule && hasReservationsModule;
+  const availableSourceCount = [
+    hasGiftCardModule,
+    hasReservationsModule,
+    hasTakeAwayModule,
+  ].filter(Boolean).length;
+  const showSourceFilter = availableSourceCount > 1;
 
   // ✅ cache helpers from context
   const fetchCustomersCached = restaurantContext?.fetchCustomersCached;
@@ -222,7 +227,7 @@ export default function ListCustomersComponent() {
   const debouncedQuery = useDebouncedValue(query, 350);
 
   const [tagFilter, setTagFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all"); // all | reservations | gift_cards
+  const [sourceFilter, setSourceFilter] = useState("all");
 
   const [customers, setCustomers] = useState([]);
   const [pagination, setPagination] = useState({
@@ -248,7 +253,7 @@ export default function ListCustomersComponent() {
 
   const requestIdRef = useRef(0);
 
-  // ✅ si le resto n'a pas les 2 modules, on force "all"
+  // ✅ sans plusieurs sources disponibles, on force "all"
   useEffect(() => {
     if (!showSourceFilter && sourceFilter !== "all") setSourceFilter("all");
   }, [showSourceFilter, sourceFilter]);
@@ -495,7 +500,7 @@ export default function ListCustomersComponent() {
             )}
           </div>
 
-          {/* ✅ Source filter (uniquement si le resto a les 2 modules) */}
+          {/* ✅ Source filter (si plusieurs modules alimentent le CRM) */}
           {showSourceFilter ? (
             <div className="flex items-center gap-2 bg-white border border-darkBlue/10 rounded-2xl px-3 py-2 shadow-sm">
               <Filter className="size-4 text-darkBlue/40" />
@@ -505,8 +510,15 @@ export default function ListCustomersComponent() {
                 className="bg-white outline-none text-sm text-darkBlue"
               >
                 <option value="all">Tous</option>
-                <option value="reservations">Réservations</option>
-                <option value="gift_cards">Cartes cadeaux</option>
+                {hasReservationsModule ? (
+                  <option value="reservations">Réservations</option>
+                ) : null}
+                {hasGiftCardModule ? (
+                  <option value="gift_cards">Cartes cadeaux</option>
+                ) : null}
+                {hasTakeAwayModule ? (
+                  <option value="take_away">Vente à emporter</option>
+                ) : null}
               </select>
             </div>
           ) : null}
@@ -822,6 +834,8 @@ export default function ListCustomersComponent() {
         t={t}
         restaurantId={restaurantId}
         hasTakeAwayModule={hasTakeAwayModule}
+        defaultTab={sourceFilter === "take_away" ? "takeaway" : "reservations"}
+        activityScope={sourceFilter === "take_away" ? "take_away" : "all"}
         onUpdated={() => {
           // ✅ edit: invalidate + refetch current page (force, silent)
           invalidateCustomersCache?.(restaurantId);

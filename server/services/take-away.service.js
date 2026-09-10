@@ -927,7 +927,7 @@ async function getAvailableSlots({
               { paymentMethod: { $ne: "online" } },
               { paymentStatus: "paid" },
               {
-                paymentStatus: "pending",
+                paymentStatus: { $in: ["pending", "failed"] },
                 paymentExpiresAt: { $gt: now },
               },
             ],
@@ -1067,10 +1067,20 @@ function getPaymentMethod(settings, requestedPaymentMethod) {
   return requestedPaymentMethod === "online" ? "online" : "on_site";
 }
 
-function getOrderPaymentMethod(settings, requestedPaymentMethod, source) {
-  return source === "dashboard"
-    ? "on_site"
-    : getPaymentMethod(settings, requestedPaymentMethod);
+function getOrderPaymentMethod(
+  settings,
+  requestedPaymentMethod,
+  source,
+  fulfillmentMode = "pickup",
+) {
+  if (source === "dashboard") return "on_site";
+  if (fulfillmentMode === "delivery") {
+    if (requestedPaymentMethod !== "online") {
+      throw serviceError("La livraison nécessite un paiement en ligne");
+    }
+    return "online";
+  }
+  return getPaymentMethod(settings, requestedPaymentMethod);
 }
 
 async function validateSlotCapacity({
@@ -1692,6 +1702,7 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
     settings,
     payload.paymentMethod,
     source,
+    fulfillmentMode,
   );
   const status =
     source === "dashboard"
@@ -1836,7 +1847,7 @@ function getStripeForRestaurant(restaurant, stripeInstance = null) {
   if (stripeInstance) return stripeInstance;
   const stripeSecretKey = getRestaurantStripeSecretKey(restaurant);
   if (!stripeSecretKey) {
-    throw serviceError("Clé Stripe restaurant introuvable", 400);
+    throw serviceError("Le paiement en ligne est momentanément indisponible", 400);
   }
   return new Stripe(stripeSecretKey);
 }
@@ -2731,11 +2742,11 @@ async function markPaymentAttemptFailed({
   const set = {
     paymentStatus: "failed",
     paymentFailedAt: now,
-    paymentExpiresAt: now,
   };
   if (canceled) {
     set.status = "canceled";
     set.canceledAt = now;
+    set.paymentExpiresAt = now;
   }
   return (
     (await TakeAwayOrderModel.findOneAndUpdate(

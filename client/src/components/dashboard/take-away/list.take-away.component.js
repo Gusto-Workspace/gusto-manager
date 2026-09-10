@@ -310,7 +310,7 @@ export default function ListTakeAwayComponent() {
         year: "numeric",
       })
     : "Calendrier";
-  const blockDateKey = toDateKey(new Date());
+  const blockDateKey = toDateKey(selectedDay || new Date());
   const dateBlocked = (
     restaurant?.takeAwaySettings?.blockedDates || []
   ).includes(blockDateKey);
@@ -375,6 +375,20 @@ export default function ListTakeAwayComponent() {
     </>
   );
 
+  const selectedDayActions = (
+    <>
+      <TakeAwayDateBlockToggle
+        active={dateBlocked}
+        saving={blockSaving}
+        onToggle={toggleDateBlocked}
+        dateLabel="cette date"
+        roundedClassName="rounded-full"
+        heightClassName="h-10"
+      />
+      {sharedActions}
+    </>
+  );
+
   function selectCalendarDay(date) {
     const key = toDateKey(date);
     router.push(
@@ -411,7 +425,7 @@ export default function ListTakeAwayComponent() {
           subtitle={selectedDayLabel}
           onBack={backToCalendar}
           backLabel="Retour au calendrier"
-          actions={sharedActions}
+          actions={selectedDayActions}
         />
       ) : (
         <TakeAwayHeaderComponent

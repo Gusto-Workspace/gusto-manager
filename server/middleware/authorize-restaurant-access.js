@@ -69,7 +69,7 @@ function authorizeRestaurantAccess({
     try {
       const restaurantId = req.params?.[paramName];
       const restaurant = await RestaurantModel.findById(restaurantId)
-        .select("_id owner_id employees options.take_away")
+        .select("_id owner_id employees options.take_away options.customers")
         .populate("employees", "restaurantProfiles");
 
       if (!restaurant) {

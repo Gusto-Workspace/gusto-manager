@@ -871,6 +871,20 @@ export default function RestaurantContext() {
     es.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data);
+        if (
+          String(currentRestaurantIdRef.current || "") !== String(restaurantId)
+        ) {
+          return;
+        }
+        const payloadRestaurantId = String(
+          payload?.restaurantId || payload?.notification?.restaurantId || "",
+        );
+        if (
+          payloadRestaurantId &&
+          payloadRestaurantId !== String(restaurantId)
+        ) {
+          return;
+        }
 
         if (payload.type === "notification_created" && payload.notification) {
           const n = payload.notification;

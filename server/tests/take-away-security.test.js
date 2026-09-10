@@ -368,7 +368,11 @@ test("a signed success event finalizes payment without the browser and is replay
 test("failed and canceled PaymentIntent webhooks reuse the existing handler", async (t) => {
   const originalFindOne = TakeAwayOrderModel.findOne;
   const originalFindOneAndUpdate = TakeAwayOrderModel.findOneAndUpdate;
-  const current = orderDocument({ stripePaymentIntentId: "pi_webhook_failure" });
+  const initialPaymentExpiry = new Date(Date.now() + 60_000);
+  const current = orderDocument({
+    stripePaymentIntentId: "pi_webhook_failure",
+    paymentExpiresAt: initialPaymentExpiry,
+  });
   TakeAwayOrderModel.findOne = async () => current;
   TakeAwayOrderModel.findOneAndUpdate = async (_filter, update) => {
     Object.assign(current, update.$set || {});
@@ -393,6 +397,7 @@ test("failed and canceled PaymentIntent webhooks reuse the existing handler", as
   });
   assert.equal(failed.handled, true);
   assert.equal(current.paymentStatus, "failed");
+  assert.equal(current.paymentExpiresAt, initialPaymentExpiry);
 
   const canceled = await handleTakeAwayStripeWebhookEvent({
     restaurant: { _id: "restaurant-1" },
@@ -403,6 +408,7 @@ test("failed and canceled PaymentIntent webhooks reuse the existing handler", as
   });
   assert.equal(canceled.handled, true);
   assert.equal(current.status, "canceled");
+  assert.ok(current.paymentExpiresAt.getTime() <= Date.now());
 });
 
 test("a public order cannot be loaded with its id alone", async (t) => {
@@ -1480,12 +1486,41 @@ test("invalid quantity, options, contact and delivery schedule are rejected", ()
   );
 });
 
-test("dashboard orders remain on-site under an online-required public policy", () => {
+test("public delivery is online-only while pickup and dashboard policies remain intact", () => {
+  assert.equal(
+    getOrderPaymentMethod(
+      { paymentPolicy: "customer_choice" },
+      "on_site",
+      "public",
+      "pickup",
+    ),
+    "on_site",
+  );
+  assert.equal(
+    getOrderPaymentMethod(
+      { paymentPolicy: "on_site" },
+      "online",
+      "public",
+      "delivery",
+    ),
+    "online",
+  );
+  assert.throws(
+    () =>
+      getOrderPaymentMethod(
+        { paymentPolicy: "customer_choice" },
+        "on_site",
+        "public",
+        "delivery",
+      ),
+    /paiement en ligne/,
+  );
   assert.equal(
     getOrderPaymentMethod(
       { paymentPolicy: "online_required" },
       "online",
       "dashboard",
+      "delivery",
     ),
     "on_site",
   );
@@ -1565,6 +1600,34 @@ test("public take-away slots respect the configured preparation time", async (t)
     false,
   );
   assert.equal(slotsAt2044[0]?.time, "21:15");
+});
+
+test("an unexpired failed payment attempt still consumes slot capacity", async (t) => {
+  const originalAggregate = TakeAwayOrderModel.aggregate;
+  let aggregateMatch = null;
+  TakeAwayOrderModel.aggregate = async (pipeline) => {
+    aggregateMatch = pipeline[0]?.$match || null;
+    return [];
+  };
+  t.after(() => {
+    TakeAwayOrderModel.aggregate = originalAggregate;
+  });
+
+  await getAvailableSlots({
+    restaurant: futureRestaurant(),
+    dateKey: "2099-09-07",
+  });
+
+  const pendingOrderBranch = aggregateMatch?.$or?.find(
+    (branch) => branch.status === "pending",
+  );
+  const expiringPaymentBranch = pendingOrderBranch?.$or?.find(
+    (branch) => branch.paymentExpiresAt,
+  );
+  assert.deepEqual(expiringPaymentBranch?.paymentStatus?.$in, [
+    "pending",
+    "failed",
+  ]);
 });
 
 test("a direct public create is rejected for a blocked date", async (t) => {
