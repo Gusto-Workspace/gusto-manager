@@ -30,9 +30,47 @@ const {
 const transactionsRouter = require("../routes/transactions.routes");
 const pushRouter = require("../routes/push-subscription.routes");
 const notificationsRouter = require("../routes/notifications.routes");
+const customersRouter = require("../routes/customers.routes");
 const {
   sanitizePublicRestaurantData,
 } = require("../services/public-restaurant-serialization.service");
+
+test("take-away CRM access follows the subscribed module", async () => {
+  const baseRequest = {
+    user: { id: "owner-1", role: "owner" },
+    authorizedRestaurant: {
+      _id: "restaurant-1",
+      owner_id: "owner-1",
+      employees: [],
+      options: { customers: false, take_away: true },
+    },
+  };
+
+  assert.equal(
+    await customersRouter.getCustomerAccessSource(baseRequest),
+    "take_away",
+  );
+  assert.equal(
+    await customersRouter.getCustomerAccessSource({
+      ...baseRequest,
+      authorizedRestaurant: {
+        ...baseRequest.authorizedRestaurant,
+        options: { customers: true, take_away: true },
+      },
+    }),
+    "all",
+  );
+  assert.equal(
+    await customersRouter.getCustomerAccessSource({
+      ...baseRequest,
+      authorizedRestaurant: {
+        ...baseRequest.authorizedRestaurant,
+        options: { customers: false, take_away: false },
+      },
+    }),
+    "",
+  );
+});
 
 test("take-away settings sections merge without resetting unrelated values", () => {
   const current = {

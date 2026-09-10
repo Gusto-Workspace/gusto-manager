@@ -25,14 +25,37 @@ router.use(
 );
 
 async function getCustomerAccessSource(req) {
-  if (req.user?.role === "owner") return "all";
-  const hasFullCustomersAccess = await userCanAccessRestaurant(
-    req.user,
-    req.authorizedRestaurant,
-    { requiredOption: "customers" },
-  );
-  return hasFullCustomersAccess ? "all" : "take_away";
+  if (req.customerAccessSource) return req.customerAccessSource;
+  const restaurant = req.authorizedRestaurant;
+  if (
+    restaurant?.options?.customers === true &&
+    (await userCanAccessRestaurant(req.user, restaurant, {
+      requiredOption: "customers",
+    }))
+  ) {
+    return "all";
+  }
+  if (
+    restaurant?.options?.take_away === true &&
+    (await userCanAccessRestaurant(req.user, restaurant, {
+      requiredOption: "take_away",
+    }))
+  ) {
+    return "take_away";
+  }
+  return "";
 }
+
+router.use("/restaurants/:id/customers", async (req, res, next) => {
+  try {
+    const accessSource = await getCustomerAccessSource(req);
+    if (!accessSource) return res.status(403).json({ message: "Forbidden" });
+    req.customerAccessSource = accessSource;
+    return next();
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 router.use("/restaurants/:id/customers/:customerId", async (req, res, next) => {
   try {
@@ -219,6 +242,31 @@ function pickTakeAwayHistoryForCustomer(customerDoc, page, limit) {
   };
 }
 
+function serializeTakeAwayScopedCustomer(customer = {}) {
+  return {
+    _id: customer._id,
+    firstName: customer.firstName || "",
+    lastName: customer.lastName || "",
+    email: customer.email || "",
+    phone: customer.phone || "",
+    tags: Array.isArray(customer.tags) ? customer.tags : [],
+    notes: customer.notes || "",
+    stats: {
+      takeAwayOrdersTotal: Number(customer.stats?.takeAwayOrdersTotal || 0),
+      takeAwayOrdersCanceled: Number(
+        customer.stats?.takeAwayOrdersCanceled || 0,
+      ),
+    },
+    lastTakeAwayOrderAt: customer.lastTakeAwayOrderAt || null,
+    lastActivityAt: customer.lastActivityAt || null,
+    lastTakeAwayOrders: Array.isArray(customer.lastTakeAwayOrders)
+      ? customer.lastTakeAwayOrders
+      : [],
+    createdAt: customer.createdAt,
+    updatedAt: customer.updatedAt,
+  };
+}
+
 /* ---------------------------------------------------------
    GET LIST CUSTOMERS
    /restaurants/:id/customers?query=&tag=&source=&page=&limit=
@@ -401,26 +449,29 @@ router.get(
         takeAwayPage,
         takeAwayLimit,
       );
+      const takeAwayScoped = req.customerAccessSource === "take_away";
 
       return res.status(200).json({
-        customer,
+        customer: takeAwayScoped
+          ? serializeTakeAwayScopedCustomer(customer)
+          : customer,
         history: {
           reservations: {
-            items: reservations.items,
+            items: takeAwayScoped ? [] : reservations.items,
             pagination: {
-              page: reservations.page,
+              page: takeAwayScoped ? 1 : reservations.page,
               limit: resaLimit,
-              total: reservations.total,
-              totalPages: reservations.totalPages,
+              total: takeAwayScoped ? 0 : reservations.total,
+              totalPages: takeAwayScoped ? 1 : reservations.totalPages,
             },
           },
           giftCards: {
-            items: gift.items,
+            items: takeAwayScoped ? [] : gift.items,
             pagination: {
-              page: gift.page,
+              page: takeAwayScoped ? 1 : gift.page,
               limit: giftLimit,
-              total: gift.total,
-              totalPages: gift.totalPages,
+              total: takeAwayScoped ? 0 : gift.total,
+              totalPages: takeAwayScoped ? 1 : gift.totalPages,
             },
           },
           takeAwayOrders: {
@@ -565,3 +616,4 @@ router.delete(
 );
 
 module.exports = router;
+module.exports.getCustomerAccessSource = getCustomerAccessSource;
