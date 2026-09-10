@@ -86,17 +86,30 @@ export default function ListEmployeesComponent() {
 
   // filtered employees
   const restaurantId = restaurantContext.restaurantData?._id;
+  const personnel = useMemo(
+    () => [
+      ...(restaurantContext.restaurantData?.employees || []),
+      ...(restaurantContext.restaurantData?.accountants || []),
+    ],
+    [
+      restaurantContext.restaurantData?.accountants,
+      restaurantContext.restaurantData?.employees,
+    ],
+  );
 
-  const getSnapshotForRestaurant = useCallback((emp) => {
-    const profile =
-      (emp.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId),
-      ) || null;
-    return profile?.snapshot || {};
-  }, [restaurantId]);
+  const getSnapshotForRestaurant = useCallback(
+    (emp) => {
+      const profile =
+        (emp.restaurantProfiles || []).find(
+          (p) => String(p.restaurant) === String(restaurantId),
+        ) || null;
+      return profile?.snapshot || {};
+    },
+    [restaurantId],
+  );
 
   const filtered = useMemo(() => {
-    const list = restaurantContext.restaurantData?.employees || [];
+    const list = personnel;
     const selectedPost = normalize(postFilter);
     const hasSearch = Boolean(searchTerm.trim());
 
@@ -116,30 +129,24 @@ export default function ListEmployeesComponent() {
 
       return matchesSearch && matchesPost;
     });
-  }, [
-    restaurantContext.restaurantData?.employees,
-    searchTerm,
-    postFilter,
-    getSnapshotForRestaurant,
-  ]);
+  }, [searchTerm, postFilter, getSnapshotForRestaurant, personnel]);
 
   const postOptions = useMemo(() => {
     const map = new Map();
-    (restaurantContext.restaurantData?.employees || []).forEach((employee) => {
+    personnel.forEach((employee) => {
+      if (employee.accountType === "accountant") return;
       const snapshot = getSnapshotForRestaurant(employee);
       const post = String(snapshot.post ?? employee.post ?? "").trim();
       if (!post) return;
       map.set(normalize(post), post);
     });
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "fr"));
-  }, [
-    restaurantContext.restaurantData?.employees,
-    getSnapshotForRestaurant,
-  ]);
+  }, [getSnapshotForRestaurant, personnel]);
 
   const exportEmployees = useMemo(() => {
-    return (restaurantContext.restaurantData?.employees || []).map(
-      (employee) => {
+    return personnel
+      .filter((employee) => employee.accountType !== "accountant")
+      .map((employee) => {
         const snapshot = getSnapshotForRestaurant(employee);
         const firstname = snapshot.firstname ?? employee.firstname ?? "";
         const lastname = snapshot.lastname ?? employee.lastname ?? "";
@@ -150,16 +157,11 @@ export default function ListEmployeesComponent() {
           label: `${firstname} ${lastname}`.trim(),
           subtitle: post || "Poste non renseigné",
         };
-      },
-    );
-  }, [
-    restaurantContext.restaurantData?.employees,
-    getSnapshotForRestaurant,
-  ]);
+      });
+  }, [getSnapshotForRestaurant, personnel]);
 
   const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
-  const totalEmployees =
-    restaurantContext.restaurantData?.employees?.length || 0;
+  const totalEmployees = personnel.length;
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
 
@@ -182,6 +184,7 @@ export default function ListEmployeesComponent() {
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
+        accountants: response.data.restaurant.accountants || [],
       }));
     } catch (err) {
       console.error("Error deleting employee:", err);
@@ -252,9 +255,7 @@ export default function ListEmployeesComponent() {
         <CatalogHeaderDashboardComponent
           icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
           title={t("employees:titles.main")}
-          subtitle={`${totalEmployees} ${
-            totalEmployees > 1 || totalEmployees === 0 ? "employés" : "employé"
-          }`}
+          subtitle={`${totalEmployees} membre${totalEmployees > 1 || totalEmployees === 0 ? "s" : ""}`}
           actions={
             <>
               <button
@@ -270,7 +271,9 @@ export default function ListEmployeesComponent() {
                 <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
                   <Download className="size-4" />
                 </span>
-                <span className="whitespace-nowrap">Télécharger les heures</span>
+                <span className="whitespace-nowrap">
+                  Télécharger les heures
+                </span>
               </button>
 
               <button
@@ -334,7 +337,9 @@ export default function ListEmployeesComponent() {
             <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
               <Download className="size-4" />
             </span>
-            <span className="min-w-0 leading-tight">Télécharger les heures</span>
+            <span className="min-w-0 leading-tight">
+              Télécharger les heures
+            </span>
           </button>
 
           <button

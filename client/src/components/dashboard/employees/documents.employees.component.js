@@ -105,7 +105,8 @@ export default function DocumentsEmployeeComponent(props) {
             {t("labels.documents")}
           </h3>
           <p className="text-xs text-darkBlue/50">
-            {t("Ajoutez et gérez les documents liés à cet employé")}
+            {props.description ||
+              t("Ajoutez et gérez les documents liés à cet employé")}
           </p>
         </div>
 
@@ -227,6 +228,7 @@ export default function DocumentsEmployeeComponent(props) {
                 document={doc}
                 locale={locale}
                 labels={documentLabels}
+                showUploader={Boolean(props.showUploader)}
                 onDownload={handleDownloadDocument}
                 onDelete={props.confirmDeleteDoc}
                 isDeleting={isDeletingId === doc.public_id}

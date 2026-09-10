@@ -113,13 +113,15 @@ router.post("/user/login", limitLogin, async (req, res) => {
       "name _id options",
     ).lean();
 
+    const accountRole =
+      employee.accountType === "accountant" ? "accountant" : "employee";
     const token = signAccountToken(
       {
         id: employee._id,
         firstname: employee.firstname,
         lastname: employee.lastname,
         email: employee.email,
-        role: "employee",
+        role: accountRole,
         profilePictureUrl: employee.profilePicture?.url || null,
         sessionVersion: getSessionVersion(employee),
         // options seront ajoutées après sélection de restaurant
@@ -132,7 +134,24 @@ router.post("/user/login", limitLogin, async (req, res) => {
     delete plainEmployee.sessionVersion;
     plainEmployee.restaurants = restaurants;
 
-    return res.json({ token, employee: plainEmployee });
+    const accountPayload =
+      accountRole === "accountant"
+        ? {
+            _id: employee._id,
+            accountType: "accountant",
+            firstname: employee.firstname,
+            lastname: employee.lastname,
+            email: employee.email,
+            phone: employee.phone,
+            restaurants,
+          }
+        : plainEmployee;
+
+    return res.json({
+      token,
+      [accountRole === "accountant" ? "accountant" : "employee"]:
+        accountPayload,
+    });
   } catch (err) {
     console.error("user/login error:", err);
     res.status(500).json({ message: "errors.server" });
@@ -166,7 +185,7 @@ router.post("/user/select-restaurant", async (req, res) => {
     }
 
     // EMPLOYEE : on va chercher les options du profil pour ce restaurant
-    if (decoded.role === "employee") {
+    if (decoded.role === "employee" || decoded.role === "accountant") {
       const employee = await EmployeeModel.findById(decoded.id);
       if (!employee) {
         return res.status(404).json({ message: "Employee not found" });
@@ -188,9 +207,10 @@ router.post("/user/select-restaurant", async (req, res) => {
         firstname: employee.firstname,
         lastname: employee.lastname,
         email: employee.email,
-        role: "employee",
+        role: employee.accountType === "accountant" ? "accountant" : "employee",
         restaurantId,
-        options: profile.options || {},
+        options:
+          employee.accountType === "accountant" ? {} : profile.options || {},
         profilePictureUrl: employee.profilePicture?.url || null,
         sessionVersion: normalizeSessionVersion(decoded.sessionVersion),
       };

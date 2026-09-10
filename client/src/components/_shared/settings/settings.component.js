@@ -30,6 +30,7 @@ export default function SettingsComponent() {
   const [openNotificationsDrawer, setOpenNotificationsDrawer] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
+  const isAccountant = restaurantContext?.userConnected?.role === "accountant";
 
   const userMenuRef = useRef(null);
   const userNameRef = useRef(null);
@@ -132,7 +133,9 @@ export default function SettingsComponent() {
                         const targetPath =
                           role === "employee"
                             ? "/dashboard/my-space"
-                            : "/dashboard";
+                            : role === "accountant"
+                              ? "/dashboard/accountant"
+                              : "/dashboard";
 
                         router.push(targetPath);
                         setShowRestaurantList(false);
@@ -239,13 +242,15 @@ export default function SettingsComponent() {
             style={{ maxHeight: showUserMenu ? "300px" : "0" }}
           >
             <ul className="flex flex-col">
-              <li
-                className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/dashboard/settings")}
-              >
-                <SettingsSvg width={20} height={20} />
-                {t("settings.settings")}
-              </li>
+              {!isAccountant && (
+                <li
+                  className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+                  onClick={() => router.push("/dashboard/settings")}
+                >
+                  <SettingsSvg width={20} height={20} />
+                  {t("settings.settings")}
+                </li>
+              )}
 
               {restaurantContext?.userConnected?.role === "owner" && (
                 <>
@@ -260,16 +265,22 @@ export default function SettingsComponent() {
                 </>
               )}
 
-              <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
-              <li
-                className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
-                onClick={() => router.push("/dashboard/help")}
-              >
-                <HelpSvg width={20} height={20} />
-                {t("settings.help")}
-              </li>
+              {!isAccountant && (
+                <>
+                  <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+                  <li
+                    className="cursor-pointer flex gap-4 items-center hover:bg-darkBlue hover:bg-opacity-10 px-4 py-2 my-2"
+                    onClick={() => router.push("/dashboard/help")}
+                  >
+                    <HelpSvg width={20} height={20} />
+                    {t("settings.help")}
+                  </li>
+                </>
+              )}
 
-              <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+              {!isAccountant && (
+                <hr className="h-[1px] bg-darkBlue opacity-20 mx-4" />
+              )}
               <li
                 className="cursor-pointer flex gap-4 items-center px-4 py-2 my-2 text-red hover:bg-red hover:bg-opacity-10"
                 onClick={restaurantContext.logout}

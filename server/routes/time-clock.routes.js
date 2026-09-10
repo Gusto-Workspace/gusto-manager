@@ -34,6 +34,12 @@ function employeeWorksInRestaurant(employee, restaurantId) {
     : false;
 }
 
+function workforceAccountFilter() {
+  return {
+    $or: [{ accountType: "employee" }, { accountType: { $exists: false } }],
+  };
+}
+
 function findRestaurantProfile(employee, restaurantId) {
   if (!Array.isArray(employee?.restaurantProfiles)) return null;
 
@@ -70,7 +76,13 @@ function normalizeClientMutationId(value) {
   return mutationId.slice(0, 120);
 }
 
-function buildEvent({ action, now, signature, request, clientMutationId = "" }) {
+function buildEvent({
+  action,
+  now,
+  signature,
+  request,
+  clientMutationId = "",
+}) {
   return {
     type: action,
     at: now,
@@ -120,6 +132,33 @@ async function getAccessContext(request, restaurantId) {
     return { restaurant, isManager, currentEmployee };
   }
 
+  if (request.user?.role === "accountant") {
+    if (String(request.user.restaurantId || "") !== String(restaurantId)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    const currentEmployee = await EmployeeModel.findById(request.user.id);
+    const isListed = (restaurant.employees || []).some(
+      (employeeId) => String(employeeId) === String(request.user.id),
+    );
+
+    if (
+      !currentEmployee ||
+      currentEmployee.accountType !== "accountant" ||
+      !isListed ||
+      !employeeWorksInRestaurant(currentEmployee, restaurantId)
+    ) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    return {
+      restaurant,
+      isManager: false,
+      canExportHours: true,
+      currentEmployee,
+    };
+  }
+
   return { error: { status: 403, message: "Forbidden" } };
 }
 
@@ -131,7 +170,10 @@ function canAccessTargetEmployee(accessContext, employeeId) {
 }
 
 async function getTargetEmployee(employeeId, restaurantId) {
-  const employee = await EmployeeModel.findById(employeeId).lean();
+  const employee = await EmployeeModel.findOne({
+    _id: employeeId,
+    ...workforceAccountFilter(),
+  }).lean();
 
   if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
     return null;
@@ -166,7 +208,9 @@ function parseManualBreaks(value) {
       index,
     }))
     .sort((left, right) => {
-      const leftValue = left.startAt ? left.startAt.getTime() : Number.MAX_SAFE_INTEGER;
+      const leftValue = left.startAt
+        ? left.startAt.getTime()
+        : Number.MAX_SAFE_INTEGER;
       const rightValue = right.startAt
         ? right.startAt.getTime()
         : Number.MAX_SAFE_INTEGER;
@@ -184,12 +228,16 @@ function toFilenamePart(value) {
     .slice(0, 60);
 }
 
-function resolveSelectedEmployeeIds(requestedEmployeeIds = [], fallbackEmployeeIds = []) {
+function resolveSelectedEmployeeIds(
+  requestedEmployeeIds = [],
+  fallbackEmployeeIds = [],
+) {
   return Array.from(
     new Set(
-      (requestedEmployeeIds.length ? requestedEmployeeIds : fallbackEmployeeIds).map(
-        (value) => String(value),
-      ),
+      (requestedEmployeeIds.length
+        ? requestedEmployeeIds
+        : fallbackEmployeeIds
+      ).map((value) => String(value)),
     ),
   );
 }
@@ -204,6 +252,7 @@ async function buildEmployeeExportReports({
   const employees = await EmployeeModel.find({
     _id: { $in: selectedEmployeeIds },
     restaurants: restaurantId,
+    ...workforceAccountFilter(),
   }).lean();
 
   if (!employees.length) {
@@ -462,7 +511,10 @@ async function buildKioskStatesPayload({
   const overlapQuery = buildOverlapQuery(anchorDateKey, anchorDateKey);
 
   const [employees, sessions] = await Promise.all([
-    EmployeeModel.find({ _id: { $in: targetIds } }).lean(),
+    EmployeeModel.find({
+      _id: { $in: targetIds },
+      ...workforceAccountFilter(),
+    }).lean(),
     TimeClockSessionModel.find({
       restaurant: restaurantId,
       employee: { $in: targetIds },
@@ -494,8 +546,9 @@ async function buildKioskStatesPayload({
     const activeSession =
       [...employeeSessions]
         .filter((session) => ["open", "on_break"].includes(session?.status))
-        .sort((left, right) => new Date(right.clockInAt) - new Date(left.clockInAt))[0] ||
-      null;
+        .sort(
+          (left, right) => new Date(right.clockInAt) - new Date(left.clockInAt),
+        )[0] || null;
 
     const summary = buildSummaryPayload({
       employee,
@@ -554,10 +607,7 @@ router.post(
       }
 
       const now = getEffectiveActionTime(req);
-      const signature = normalizeSignaturePayload(
-        req.body?.signature,
-        now,
-      );
+      const signature = normalizeSignaturePayload(req.body?.signature, now);
       if (!signature.hasSignature) {
         return res.status(400).json({ message: "Signature is required" });
       }
@@ -761,11 +811,12 @@ router.get(
           .json({ message: accessContext.error.message });
       }
 
-      const employeeIds = accessContext.currentEmployee && !accessContext.isManager
-        ? [String(accessContext.currentEmployee._id)]
-        : (accessContext.restaurant?.employees || []).map((employeeId) =>
-            String(employeeId),
-          );
+      const employeeIds =
+        accessContext.currentEmployee && !accessContext.isManager
+          ? [String(accessContext.currentEmployee._id)]
+          : (accessContext.restaurant?.employees || []).map((employeeId) =>
+              String(employeeId),
+            );
 
       const payload = await buildKioskStatesPayload({
         restaurantId,
@@ -994,16 +1045,16 @@ router.post(
           .json({ message: accessContext.error.message });
       }
 
-      if (!accessContext.isManager) {
+      if (!accessContext.isManager && !accessContext.canExportHours) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
       const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
         ? req.body.employeeIds.map((value) => String(value))
         : [];
-      const fallbackEmployeeIds = (accessContext.restaurant?.employees || []).map(
-        (value) => String(value),
-      );
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
       const selectedEmployeeIds = resolveSelectedEmployeeIds(
         requestedEmployeeIds,
         fallbackEmployeeIds,
@@ -1075,16 +1126,16 @@ router.post(
           .json({ message: accessContext.error.message });
       }
 
-      if (!accessContext.isManager) {
+      if (!accessContext.isManager && !accessContext.canExportHours) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
       const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
         ? req.body.employeeIds.map((value) => String(value))
         : [];
-      const fallbackEmployeeIds = (accessContext.restaurant?.employees || []).map(
-        (value) => String(value),
-      );
+      const fallbackEmployeeIds = (
+        accessContext.restaurant?.employees || []
+      ).map((value) => String(value));
       const selectedEmployeeIds = resolveSelectedEmployeeIds(
         requestedEmployeeIds,
         fallbackEmployeeIds,
@@ -1131,5 +1182,10 @@ router.post(
     }
   },
 );
+
+router._timeClockSecurity = {
+  getAccessContext,
+  workforceAccountFilter,
+};
 
 module.exports = router;

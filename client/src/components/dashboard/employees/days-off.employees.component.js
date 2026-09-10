@@ -38,7 +38,9 @@ export default function DaysOffEmployeesComponent() {
   const restaurantId = restaurantContext.restaurantData?._id;
 
   // 1) Liste brute des employés
-  const allEmployees = restaurantContext.restaurantData?.employees || [];
+  const allEmployees = (
+    restaurantContext.restaurantData?.employees || []
+  ).filter((employee) => employee.accountType !== "accountant");
 
   // 2) HYDRATATION DES LEAVE-REQUESTS AU MONTAGE ──────────────────────────────
   useEffect(() => {

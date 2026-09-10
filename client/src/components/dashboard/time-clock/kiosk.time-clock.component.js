@@ -142,7 +142,9 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
   const restaurantData =
     restaurantContext?.restaurantData || offlineBootstrap?.restaurant || null;
   const restaurantId = restaurantData?._id || "";
-  const employees = restaurantData?.employees || [];
+  const employees = (restaurantData?.employees || []).filter(
+    (employee) => employee.accountType !== "accountant",
+  );
   const user =
     restaurantContext?.userConnected || offlineBootstrap?.user || null;
   const currentDateKey = toLocalDateKey(now);
@@ -681,8 +683,8 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
               Borne de pointage
             </h1>
             <p className="gm-time-clock-intro mt-2 max-w-2xl text-sm text-white/75 midTablet:text-base">
-              Sélectionnez un salarié, choisissez l&apos;action proposée, signez,
-              puis validez le pointage.
+              Sélectionnez un salarié, choisissez l&apos;action proposée,
+              signez, puis validez le pointage.
             </p>
           </div>
 
@@ -695,12 +697,12 @@ export default function TimeClockKioskComponent({ offlineBootstrap = null }) {
               {formatTime(now)}
             </p>
 
-             <span
-                className={[
-                  "absolute rounded-full border px-2 py-2 right-2 top-2 translate-x-1/2 -translate-y-1/2",
-                  getConnectionChipClasses(isOnline),
-                ].join(" ")}
-              />
+            <span
+              className={[
+                "absolute rounded-full border px-2 py-2 right-2 top-2 translate-x-1/2 -translate-y-1/2",
+                getConnectionChipClasses(isOnline),
+              ].join(" ")}
+            />
           </div>
         </div>
       </div>

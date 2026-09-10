@@ -22,6 +22,7 @@ export default function CardEmployeesComponent(props) {
   const displayFirstname = snap.firstname ?? props.employee.firstname ?? "";
   const displayLastname = snap.lastname ?? props.employee.lastname ?? "";
   const displayPost = snap.post ?? props.employee.post ?? "—";
+  const isAccountant = props.employee.accountType === "accountant";
 
   // ✅ nouveau: mode compact (style "chip") pour mobile planning
   const planningCompact = Boolean(props.planningCompact);
@@ -92,7 +93,9 @@ export default function CardEmployeesComponent(props) {
         {displayFirstname} {displayLastname}
       </h3>
 
-      <h4 className="text-sm opacity-70">{displayPost}</h4>
+      <h4 className="text-sm opacity-70">
+        {isAccountant ? "Comptable" : displayPost}
+      </h4>
 
       {!props.planning && (
         <>

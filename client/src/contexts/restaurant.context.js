@@ -863,6 +863,7 @@ export default function RestaurantContext() {
     const role = userConnected?.role;
 
     if (!restaurantId || !role) return;
+    if (role === "accountant") return;
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = createAuthenticatedEventSource(url);
@@ -1504,6 +1505,22 @@ export default function RestaurantContext() {
       });
       setNotificationsLoading(false);
 
+      if (role === "accountant") {
+        const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+        const response = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const { restaurant, restaurants } = response.data || {};
+
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
+        setUnreadCounts({
+          total: 0,
+          byModule: EMPTY_UNREAD_BY_MODULE,
+        });
+        return;
+      }
+
       if (role === "employee") {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
 
@@ -1699,6 +1716,40 @@ export default function RestaurantContext() {
       return;
     }
 
+    // ----- ACCOUNTANT -----
+    if (role === "accountant") {
+      const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+
+      axios
+        .get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          const { restaurant, restaurants } = res.data || {};
+          setRestaurantsList(restaurants || []);
+          setRestaurantData(restaurant || null);
+          setUnreadCounts({
+            total: 0,
+            byModule: EMPTY_UNREAD_BY_MODULE,
+          });
+          setIsAuth(true);
+          setDataLoading(false);
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error(
+              "Erreur lors de la récupération de l'espace comptable:",
+              error,
+            );
+            setDataLoading(false);
+          }
+        });
+
+      return;
+    }
+
     console.warn("Unknown role in token:", role);
     handleInvalidToken();
   }
@@ -1844,6 +1895,39 @@ export default function RestaurantContext() {
       return;
     }
 
+    // ----- ACCOUNTANT -----
+    if (role === "accountant") {
+      // Ne jamais laisser les données de l'ancien établissement visibles
+      // pendant la rotation du JWT et le chargement du restaurant suivant.
+      setRestaurantData(null);
+      const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/user/select-restaurant`;
+      axios
+        .post(
+          requestUrl,
+          { token, restaurantId },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        .then(async (response) => {
+          const updatedToken = response.data.token;
+          localStorage.setItem("token", updatedToken);
+          setUserConnected(jwtDecode(updatedToken));
+          await fetchRestaurantData(updatedToken, restaurantId);
+          setDataLoading(false);
+          setCloseEditing(false);
+          router.replace("/dashboard/accountant");
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error("Erreur sélection restaurant comptable:", error);
+            setDataLoading(false);
+            setCloseEditing(false);
+          }
+        });
+      return;
+    }
+
     setDataLoading(false);
 
     setCloseEditing(false);
@@ -1925,6 +2009,18 @@ export default function RestaurantContext() {
             byModule: EMPTY_UNREAD_BY_MODULE,
           });
         }
+      } else if (role === "accountant") {
+        const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+        const res = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const { restaurant, restaurants } = res.data || {};
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
+        setUnreadCounts({
+          total: 0,
+          byModule: EMPTY_UNREAD_BY_MODULE,
+        });
       }
 
       if (reconnectSSE) {

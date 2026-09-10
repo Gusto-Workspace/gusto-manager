@@ -134,13 +134,20 @@ function decorateRestaurantEmployees(
   const plainRestaurant = toPlainObject(restaurant);
   if (!plainRestaurant) return null;
 
+  const decoratedAccounts = (employees || [])
+    .map((employee) =>
+      decorateEmployeeForRestaurant(employee, restaurantId, options),
+    )
+    .filter(Boolean);
+
   return {
     ...plainRestaurant,
-    employees: (employees || [])
-      .map((employee) =>
-        decorateEmployeeForRestaurant(employee, restaurantId, options),
-      )
-      .filter(Boolean),
+    employees: decoratedAccounts.filter(
+      (employee) => employee.accountType !== "accountant",
+    ),
+    accountants: decoratedAccounts.filter(
+      (employee) => employee.accountType === "accountant",
+    ),
   };
 }
 

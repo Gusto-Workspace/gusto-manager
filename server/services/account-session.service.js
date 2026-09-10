@@ -148,10 +148,14 @@ async function isAccountSessionValid(user) {
     account = await OwnerModel.findById(user.id)
       .select(sessionProjection)
       .lean();
-  } else if (role === "employee") {
+  } else if (role === "employee" || role === "accountant") {
     account = await EmployeeModel.findById(user.id)
-      .select(sessionProjection)
+      .select({ ...sessionProjection, accountType: 1 })
       .lean();
+
+    const actualRole =
+      account?.accountType === "accountant" ? "accountant" : "employee";
+    if (actualRole !== role) return false;
   } else {
     return true;
   }

@@ -36,7 +36,7 @@ export default function FormLoginComponent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const [tempToken, setTempToken] = useState(null);
-  const [tempRole, setTempRole] = useState(null); // "owner" | "employee"
+  const [tempRole, setTempRole] = useState(null); // "owner" | "employee" | "accountant"
   const [showPassword, setShowPassword] = useState(false);
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -104,6 +104,11 @@ export default function FormLoginComponent() {
   );
 
   function goAfterLogin(role) {
+    if (role === "accountant") {
+      router.replace("/dashboard/accountant");
+      return;
+    }
+
     if (role === "employee") {
       if (redirectTo?.startsWith("/dashboard/webapp/take-away")) {
         router.replace(redirectTo);
@@ -126,7 +131,7 @@ export default function FormLoginComponent() {
         data,
       );
 
-      const { token, owner, employee } = response.data;
+      const { token, owner, employee, accountant } = response.data;
 
       // reset state selection
       restaurantContext.setRestaurantsList([]);
@@ -182,6 +187,27 @@ export default function FormLoginComponent() {
         applyAuthToken(token);
         restaurantContext.setIsAuth(true);
         goAfterLogin("employee");
+        return;
+      }
+
+      if (accountant) {
+        setTempRole("accountant");
+
+        const restaurants = accountant.restaurants || [];
+        if (restaurants.length > 1) {
+          restaurantContext.setRestaurantsList(restaurants);
+          restaurantContext.setIsAuth(true);
+          return;
+        }
+
+        if (restaurants.length === 1) {
+          await handleRestaurantSelect("accountant", restaurants[0]._id, token);
+          return;
+        }
+
+        applyAuthToken(token);
+        restaurantContext.setIsAuth(true);
+        goAfterLogin("accountant");
         return;
       }
 

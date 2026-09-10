@@ -27,7 +27,11 @@ import {
 // ICONS
 import * as icons from "@/components/_shared/_svgs/_index";
 
-export default function NavComponent() {
+export default function NavComponent({
+  items: customItems,
+  activeItemId,
+  onItemSelect,
+} = {}) {
   const { t } = useTranslation("common");
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
@@ -65,7 +69,7 @@ export default function NavComponent() {
   const logoImgCls = "max-w-[50px] opacity-70";
   const navListCls = "flex-1 flex flex-col gap-3 mt-1.5";
   const navItemBaseCls =
-    "group grid h-11 grid-cols-[64px_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-base font-medium transition-colors duration-200";
+    "group grid h-11 w-full grid-cols-[64px_minmax(0,1fr)] items-center overflow-hidden rounded-xl text-left text-base font-medium transition-colors duration-200";
   const navItemEnabledCls =
     "cursor-pointer text-darkBlue/80" +
     (supportsHover ? " hover:bg-blue/10" : "");
@@ -268,6 +272,8 @@ export default function NavComponent() {
     restaurantContext.restaurantData?.options,
   ]);
 
+  const navigationItems = customItems || sortedNavItems;
+
   return (
     <div>
       {/* Overlay mobile */}
@@ -395,10 +401,13 @@ export default function NavComponent() {
 
           {/* Items */}
           <ul className={navListCls}>
-            {sortedNavItems.map((item) => {
+            {navigationItems.map((item) => {
               const Icon = icons[item.icon];
-              const active = isActive(item.href);
-              const canClick = item.enabled;
+              const isCustomItem = Boolean(customItems);
+              const active = isCustomItem
+                ? item.id === activeItemId
+                : isActive(item.href);
+              const canClick = isCustomItem || item.enabled;
 
               const itemCls = [
                 navItemBaseCls,
@@ -409,8 +418,38 @@ export default function NavComponent() {
                 .trim();
 
               return (
-                <li key={item.href}>
-                  {canClick ? (
+                <li key={item.id || item.href}>
+                  {isCustomItem ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setNavExpanded(false);
+                        setNavHovered(false);
+                        onItemSelect?.(item.id);
+                      }}
+                      className={itemCls}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      {Icon && (
+                        <div className={iconSlotCls}>
+                          <div
+                            className={`${
+                              active ? iconChipActive : iconChipInactive
+                            } ${iconChipBase}`}
+                          >
+                            <Icon
+                              width={20}
+                              height={20}
+                              fillColor={active ? "white" : "#131E3699"}
+                              strokeColor={active ? "white" : "#131E3699"}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <span className={navLabelCls}>{t(item.label)}</span>
+                    </button>
+                  ) : canClick ? (
                     <Link
                       href={item.href}
                       onClick={(e) => handleLinkClick(e, item.href)}

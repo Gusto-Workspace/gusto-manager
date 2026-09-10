@@ -95,7 +95,9 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     const data = restaurantContext.restaurantData;
     if (!data || !restaurantId) return;
 
-    const found = data.employees.find((e) => e._id === employeeId);
+    const found = [...(data.employees || []), ...(data.accountants || [])].find(
+      (e) => e._id === employeeId,
+    );
     if (!found) {
       router.replace("/dashboard/employees");
       return;
@@ -165,7 +167,15 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   }, [docs]);
 
   useEffect(() => {
-    if (!restaurantId || !employeeId) return undefined;
+    if (
+      !restaurantId ||
+      !employeeId ||
+      !employee ||
+      employee.accountType === "accountant"
+    ) {
+      setUploadedDocuments([]);
+      return undefined;
+    }
 
     let active = true;
     setUploadedDocuments([]);
@@ -181,7 +191,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     return () => {
       active = false;
     };
-  }, [baseUrl, employeeId, restaurantId]);
+  }, [baseUrl, employee, employeeId, restaurantId]);
 
   // Sélection locale de la photo
   function handleFileSelect(e) {
@@ -208,11 +218,13 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
+        accountants: response.data.restaurant.accountants || [],
       }));
 
-      const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId,
-      );
+      const updated = [
+        ...(response.data.restaurant.employees || []),
+        ...(response.data.restaurant.accountants || []),
+      ].find((e) => e._id === employeeId);
       setEmployee(updated);
       setIsEditing(false);
     } catch (err) {
@@ -233,11 +245,13 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         restaurantContext.setRestaurantData((prev) => ({
           ...prev,
           employees: response.data.restaurant.employees,
+          accountants: response.data.restaurant.accountants || [],
         }));
 
-        const updated = response.data.restaurant.employees.find(
-          (e) => e._id === employeeId,
-        );
+        const updated = [
+          ...(response.data.restaurant.employees || []),
+          ...(response.data.restaurant.accountants || []),
+        ].find((e) => e._id === employeeId);
         setEmployee(updated);
         setOptionsSaved(true);
 
@@ -298,10 +312,12 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
+        accountants: response.data.restaurant.accountants || [],
       }));
-      const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId,
-      );
+      const updated = [
+        ...(response.data.restaurant.employees || []),
+        ...(response.data.restaurant.accountants || []),
+      ].find((e) => e._id === employeeId);
       setEmployee(updated);
       setUploadedDocuments(response.data.documents || []);
       setDocs([]);
@@ -330,10 +346,12 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
+        accountants: response.data.restaurant.accountants || [],
       }));
-      const updated = response.data.restaurant.employees.find(
-        (e) => e._id === employeeId,
-      );
+      const updated = [
+        ...(response.data.restaurant.employees || []),
+        ...(response.data.restaurant.accountants || []),
+      ].find((e) => e._id === employeeId);
       setEmployee(updated);
       setUploadedDocuments(response.data.documents || []);
       setDocToDelete(null);
@@ -359,6 +377,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   const displayFirstname = currentSnapshot.firstname || employee.firstname;
   const displayLastname = currentSnapshot.lastname || employee.lastname;
+  const employeeIsAccountant = employee.accountType === "accountant";
 
   return (
     <section className="flex flex-col gap-6">
@@ -369,7 +388,9 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         title={t("titles.main")}
         onTitleClick={() => router.push("/dashboard/employees")}
         onBack={() => router.push("/dashboard/employees")}
-        subtitle={`${displayFirstname} ${displayLastname}`.trim()}
+        subtitle={`${displayFirstname} ${displayLastname}${
+          employeeIsAccountant ? " · Comptable" : ""
+        }`.trim()}
       />
 
       {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
@@ -394,40 +415,47 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       />
 
       {/* Attribuer des droits (par restaurant) */}
-      <AccessRightsEmployeesComponent
-        handleOptionsSubmit={handleOptionsSubmit}
-        onSaveOptions={onSaveOptions}
-        employee={employee}
-        isSavingOptions={isSavingOptions}
-        isEditing={isEditing}
-        isSavingDetails={isSavingDetails}
-        optionLabels={optionLabels}
-        optionsSaved={optionsSaved}
-        optionsDirty={optionsDirty}
-        regOptions={regOptions}
-        options={currentOptions}
-      />
+      {!employeeIsAccountant ? (
+        <AccessRightsEmployeesComponent
+          handleOptionsSubmit={handleOptionsSubmit}
+          onSaveOptions={onSaveOptions}
+          employee={employee}
+          isSavingOptions={isSavingOptions}
+          isEditing={isEditing}
+          isSavingDetails={isSavingDetails}
+          optionLabels={optionLabels}
+          optionsSaved={optionsSaved}
+          optionsDirty={optionsDirty}
+          regOptions={regOptions}
+          options={currentOptions}
+        />
+      ) : null}
 
       {/* Documents (par restaurant) */}
-      <DocumentsEmployeeComponent
-        onDocsChange={onDocsChange}
-        isUploadingDocs={isUploadingDocs}
-        docs={docs}
-        onSaveDocs={onSaveDocs}
-        employee={employee}
-        restaurantId={restaurantId}
-        baseUrl={baseUrl}
-        currentDocuments={currentDocuments}
-        confirmDeleteDoc={confirmDeleteDoc}
-        isDeletingDocId={isDeletingDocId}
-        removeSelectedDoc={removeSelectedDoc}
-        onDocTitleChange={onDocTitleChange}
-      />
+      {!employeeIsAccountant ? (
+        <DocumentsEmployeeComponent
+          onDocsChange={onDocsChange}
+          isUploadingDocs={isUploadingDocs}
+          docs={docs}
+          onSaveDocs={onSaveDocs}
+          employee={employee}
+          restaurantId={restaurantId}
+          baseUrl={baseUrl}
+          currentDocuments={currentDocuments}
+          confirmDeleteDoc={confirmDeleteDoc}
+          isDeletingDocId={isDeletingDocId}
+          removeSelectedDoc={removeSelectedDoc}
+          onDocTitleChange={onDocTitleChange}
+          showUploader
+        />
+      ) : null}
 
-      <TimeClockEmployeesComponent
-        restaurantId={restaurantId}
-        employeeId={employeeId}
-      />
+      {!employeeIsAccountant ? (
+        <TimeClockEmployeesComponent
+          restaurantId={restaurantId}
+          employeeId={employeeId}
+        />
+      ) : null}
 
       {/* Modal doublon */}
       {duplicateModalOpen && (
