@@ -44,6 +44,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   // documents
   const [docs, setDocs] = useState([]);
+  const [uploadedDocuments, setUploadedDocuments] = useState([]);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const [isDeletingDocId, setIsDeletingDocId] = useState(null);
@@ -163,6 +164,25 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     }
   }, [docs]);
 
+  useEffect(() => {
+    if (!restaurantId || !employeeId) return undefined;
+
+    let active = true;
+    setUploadedDocuments([]);
+    axios
+      .get(`${baseUrl}/documents`)
+      .then(({ data }) => {
+        if (active) setUploadedDocuments(data.documents || []);
+      })
+      .catch((error) => {
+        console.error("Erreur récupération documents :", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [baseUrl, employeeId, restaurantId]);
+
   // Sélection locale de la photo
   function handleFileSelect(e) {
     const f = e.target.files[0];
@@ -241,12 +261,8 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     const selectedFiles = Array.from(e.target.files);
     const existingNames = new Set(docs.map((d) => d.file.name));
 
-    const currentProfile =
-      (employee?.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId),
-      ) || null;
     const uploadedNames = new Set(
-      currentProfile?.documents?.map((d) => d.filename) || [],
+      uploadedDocuments.map((document) => document.filename),
     );
 
     const uniqueFiles = selectedFiles.filter(
@@ -287,6 +303,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         (e) => e._id === employeeId,
       );
       setEmployee(updated);
+      setUploadedDocuments(response.data.documents || []);
       setDocs([]);
     } catch (err) {
       console.error("Erreur upload documents :", err);
@@ -307,7 +324,9 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     const { public_id } = docToDelete;
     setIsDeletingDocId(public_id);
     try {
-      const response = await axios.delete(`${baseUrl}/documents/${public_id}`);
+      const response = await axios.delete(
+        `${baseUrl}/documents/${encodeURIComponent(public_id)}`,
+      );
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
@@ -316,6 +335,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         (e) => e._id === employeeId,
       );
       setEmployee(updated);
+      setUploadedDocuments(response.data.documents || []);
       setDocToDelete(null);
     } catch (err) {
       console.error("Erreur suppression document :", err);
@@ -334,7 +354,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
   const currentSnapshot = currentProfile?.snapshot || {};
   const currentEmployment = currentProfile?.employment || {};
-  const currentDocuments = currentProfile?.documents || [];
+  const currentDocuments = uploadedDocuments;
   const currentOptions = watchOptions("options") || {};
 
   const displayFirstname = currentSnapshot.firstname || employee.firstname;

@@ -66,6 +66,9 @@ const {
   minutesFromServiceTime,
 } = require("../services/reservation-service-time.service");
 const {
+  decorateRestaurantEmployees,
+} = require("../services/employee-serialization.service");
+const {
   QUICK_SLOT_CLOSURE_SOURCE,
   QuickSlotClosureError,
   buildQuickSlotClosureRanges,
@@ -2049,7 +2052,14 @@ async function fetchRestaurantFull(restaurantId) {
     .populate("employees")
     .lean();
 
-  return restaurant || null;
+  if (!restaurant) return null;
+
+  return decorateRestaurantEmployees(
+    restaurant,
+    restaurantId,
+    restaurant.employees || [],
+    { includeDocuments: false },
+  );
 }
 
 function getCustomerFullNameFromReservation(reservation) {

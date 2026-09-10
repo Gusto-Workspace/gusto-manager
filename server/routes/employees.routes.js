@@ -6,7 +6,6 @@ const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const streamifier = require("streamifier");
 const axios = require("axios");
-const path = require("path");
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 
 // MIDDLEWARE
@@ -47,6 +46,20 @@ const {
   diffMinutes,
   toLocalDateKey,
 } = require("../services/time-clock.service");
+const {
+  EMPLOYEE_DOCUMENT_MAX_FILES,
+  EMPLOYEE_DOCUMENT_MAX_FILE_SIZE,
+  EmployeeDocumentValidationError,
+  buildEmployeeDocumentDownloadUrl,
+  createEmployeeDocumentPublicId,
+  getDocumentContentDisposition,
+  getDocumentContentType,
+  getDocumentDeliveryType,
+  getDocumentResourceType,
+  serializeEmployeeDocuments,
+  setPrivateDocumentResponseHeaders,
+  validateEmployeeDocumentUpload,
+} = require("../services/employee-documents.service");
 
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 
@@ -181,13 +194,13 @@ function broadcastEmployeeUpdate(employee) {
 
   if (!restaurants.length) return;
 
-  const payload = {
-    type: "employee_updated",
-    employee: employee?.toObject ? employee.toObject() : employee,
-  };
-
   restaurants.forEach((restaurantId) => {
-    broadcastToRestaurant(String(restaurantId), payload);
+    broadcastToRestaurant(String(restaurantId), {
+      type: "employee_updated",
+      employee: decorateEmployeeForRestaurant(employee, restaurantId, {
+        includeDocuments: false,
+      }),
+    });
   });
 }
 
@@ -210,14 +223,22 @@ async function getEmployeesAccessContext(request, restaurantId) {
 
   if (request.user?.role === "employee") {
     const currentEmployee = await EmployeeModel.findById(request.user.id);
+    const isListedByRestaurant = (restaurant.employees || []).some(
+      (employee) =>
+        String(employee?._id || employee || "") === String(request.user.id),
+    );
     if (
       !currentEmployee ||
+      !isListedByRestaurant ||
       !employeeWorksInRestaurant(currentEmployee, restaurantId)
     ) {
       return { error: { status: 403, message: "Forbidden" } };
     }
 
     const profile = findRestaurantProfile(currentEmployee, restaurantId);
+    if (!profile) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
     return {
       restaurant,
       isManager: profile?.options?.employees === true,
@@ -259,6 +280,50 @@ async function getEmployeeRouteAccess(
   }
 
   return accessContext;
+}
+
+async function getEmployeeDocumentRouteAccess(
+  request,
+  restaurantId,
+  employeeId,
+  options = {},
+) {
+  const accessContext = await getEmployeeRouteAccess(
+    request,
+    restaurantId,
+    employeeId,
+    options,
+  );
+  if (accessContext.error) return accessContext;
+
+  const employeeIsListedByRestaurant = (
+    accessContext.restaurant?.employees || []
+  ).some(
+    (employee) =>
+      String(employee?._id || employee || "") === String(employeeId),
+  );
+  if (!employeeIsListedByRestaurant) {
+    return { error: { status: 404, message: "Employee not found" } };
+  }
+
+  const employeeExists = await EmployeeModel.exists({
+    _id: employeeId,
+    restaurants: restaurantId,
+    "restaurantProfiles.restaurant": restaurantId,
+  });
+  if (!employeeExists) {
+    return { error: { status: 404, message: "Employee not found" } };
+  }
+
+  return accessContext;
+}
+
+function findEmployeeDocument(profile, publicId) {
+  return (
+    (profile?.documents || []).find(
+      (document) => document.public_id === publicId,
+    ) || null
+  );
 }
 
 function toValidDate(value) {
@@ -803,8 +868,72 @@ cloudinary.config({
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+const employeeDocumentUpload = multer({
+  storage,
+  limits: {
+    fileSize: EMPLOYEE_DOCUMENT_MAX_FILE_SIZE,
+    files: EMPLOYEE_DOCUMENT_MAX_FILES,
+    fields: EMPLOYEE_DOCUMENT_MAX_FILES,
+    parts: EMPLOYEE_DOCUMENT_MAX_FILES * 2,
+    fieldNameSize: 100,
+    fieldSize: 1024,
+  },
+}).array("documents", EMPLOYEE_DOCUMENT_MAX_FILES);
 
 router.use("/restaurants/:restaurantId/employees", authenticateToken);
+
+async function authorizeEmployeeDocumentUpload(req, res, next) {
+  try {
+    const { restaurantId, employeeId } = req.params;
+    const accessContext = await getEmployeeDocumentRouteAccess(
+      req,
+      restaurantId,
+      employeeId,
+      { managerOnly: true },
+    );
+    if (accessContext.error) {
+      return res
+        .status(accessContext.error.status)
+        .json({ message: accessContext.error.message });
+    }
+
+    return next();
+  } catch (error) {
+    console.error(
+      "Employee document upload authorization error:",
+      error?.message || error,
+    );
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+function handleEmployeeDocumentUpload(req, res, next) {
+  employeeDocumentUpload(req, res, (error) => {
+    if (!error) return next();
+
+    if (
+      error instanceof multer.MulterError &&
+      [
+        "LIMIT_FILE_SIZE",
+        "LIMIT_FILE_COUNT",
+        "LIMIT_PART_COUNT",
+        "LIMIT_FIELD_VALUE",
+      ].includes(error.code)
+    ) {
+      return res.status(413).json({ message: "Document upload is too large" });
+    }
+
+    return res.status(400).json({ message: "Invalid document upload" });
+  });
+}
+
+async function destroyEmployeeDocumentAsset(document) {
+  return cloudinary.uploader.destroy(document.public_id, {
+    resource_type: getDocumentResourceType(document),
+    type: getDocumentDeliveryType(document),
+    invalidate: true,
+  });
+}
 
 const uploadFromBuffer = (buffer, folder) => {
   return new Promise((resolve, reject) => {
@@ -1403,80 +1532,107 @@ router.patch(
 // UPLOAD DOCUMENTS
 router.post(
   "/restaurants/:restaurantId/employees/:employeeId/documents",
-  upload.array("documents"),
+  authorizeEmployeeDocumentUpload,
+  handleEmployeeDocumentUpload,
   async (req, res) => {
+    const uploadedAssets = [];
+    let metadataPersisted = false;
+
     try {
       const { restaurantId, employeeId } = req.params;
+      setPrivateDocumentResponseHeaders(res);
 
-      const accessContext = await getEmployeeRouteAccess(
-        req,
-        restaurantId,
-        employeeId,
-        { managerOnly: true },
+      const documents = validateEmployeeDocumentUpload(
+        req.files,
+        req.body.titles,
       );
-      if (accessContext.error) {
-        return res
-          .status(accessContext.error.status)
-          .json({ message: accessContext.error.message });
-      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      const profile = getOrCreateRestaurantProfile(employee, restaurantId);
-
-      let titles = [];
-      if (req.body.titles) {
-        titles = Array.isArray(req.body.titles)
-          ? req.body.titles
-          : [req.body.titles];
+      const profile = findRestaurantProfile(employee, restaurantId);
+      if (!profile) {
+        return res.status(404).json({ message: "Profile not found" });
       }
 
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
-        const title = titles[i] || "";
+      const uploaderName = [req.user.firstname, req.user.lastname]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 120);
 
-        const ext = path.extname(file.originalname);
-        const basename = path.basename(file.originalname, ext);
-        const safeName = basename
-          .replace(/\s+/g, "_")
-          .replace(/[^a-zA-Z0-9_-]/g, "");
-
-        const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/docs`;
+      for (const document of documents) {
+        const folder = `Gusto_Workspace/restaurants/${restaurantId}/employees/${employeeId}/documents`;
+        const publicId = createEmployeeDocumentPublicId(document.extension);
 
         const result = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             {
               resource_type: "raw",
+              type: "authenticated",
               folder,
-              public_id: safeName,
-              overwrite: true,
+              public_id: publicId,
+              overwrite: false,
+              use_filename: false,
+              unique_filename: false,
             },
             (err, r) => {
               if (err) return reject(err);
               resolve(r);
             },
           );
-          streamifier.createReadStream(file.buffer).pipe(uploadStream);
+          streamifier.createReadStream(document.file.buffer).pipe(uploadStream);
         });
 
-        profile.documents.push({
-          url: result.secure_url,
+        const storedDocument = {
           public_id: result.public_id,
-          filename: file.originalname,
-          title: title,
+          asset_id: result.asset_id || "",
+          resource_type: result.resource_type || "raw",
+          delivery_type: "authenticated",
+          format: document.format,
+          filename: document.filename,
+          title: document.title,
+          mimeType: document.mimeType,
+          size: document.size,
+          uploadedAt: new Date(),
+          uploadedBy: {
+            id: String(req.user.id || ""),
+            role: req.user.role,
+            name: uploaderName,
+          },
+        };
+
+        uploadedAssets.push(storedDocument);
+        profile.documents.push({
+          ...storedDocument,
         });
       }
 
       await employee.save();
+      metadataPersisted = true;
 
       const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
-      return res.json({ restaurant: updatedRestaurant });
+      return res.json({
+        restaurant: updatedRestaurant,
+        documents: serializeEmployeeDocuments(profile.documents),
+      });
     } catch (err) {
-      console.error("Error uploading documents:", err);
+      if (!metadataPersisted && uploadedAssets.length) {
+        await Promise.allSettled(
+          uploadedAssets.map((document) =>
+            destroyEmployeeDocumentAsset(document),
+          ),
+        );
+      }
+
+      if (err instanceof EmployeeDocumentValidationError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+
+      console.error("Error uploading employee documents:", err?.message || err);
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -1488,8 +1644,9 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
+      setPrivateDocumentResponseHeaders(res);
 
-      const accessContext = await getEmployeeRouteAccess(
+      const accessContext = await getEmployeeDocumentRouteAccess(
         req,
         restaurantId,
         employeeId,
@@ -1509,7 +1666,9 @@ router.get(
         (p) => String(p.restaurant) === String(restaurantId),
       );
 
-      return res.json({ documents: profile?.documents || [] });
+      return res.json({
+        documents: serializeEmployeeDocuments(profile?.documents || []),
+      });
     } catch (err) {
       console.error("Error fetching employee documents:", err);
       return res.status(500).json({ message: "Internal server error" });
@@ -1523,8 +1682,9 @@ router.get(
   async (req, res) => {
     try {
       const { restaurantId, employeeId, public_id } = req.params;
+      setPrivateDocumentResponseHeaders(res);
 
-      const accessContext = await getEmployeeRouteAccess(
+      const accessContext = await getEmployeeDocumentRouteAccess(
         req,
         restaurantId,
         employeeId,
@@ -1545,25 +1705,37 @@ router.get(
         return res.status(404).json({ message: "Profile not found" });
       }
 
-      const doc = (profile.documents || []).find(
-        (d) => d.public_id === public_id,
-      );
+      const doc = findEmployeeDocument(profile, public_id);
       if (!doc) {
         return res.status(404).json({ message: "Document not found" });
       }
 
-      const response = await axios.get(doc.url, { responseType: "stream" });
+      const storageUrl = buildEmployeeDocumentDownloadUrl(doc, cloudinary);
+      const response = await axios.get(storageUrl, {
+        responseType: "stream",
+        timeout: 15_000,
+      });
 
-      res.setHeader("Content-Type", response.headers["content-type"]);
+      res.setHeader("Content-Type", getDocumentContentType(doc));
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${doc.filename}"`,
+        getDocumentContentDisposition(doc.filename),
       );
 
-      response.data.pipe(res);
+      response.data.on("error", () => {
+        if (!res.headersSent) {
+          res.status(502).json({ message: "Document storage unavailable" });
+        } else {
+          res.destroy();
+        }
+      });
+      return response.data.pipe(res);
     } catch (err) {
-      console.error("Error in download route:", err);
-      res.status(500).json({ message: "Server error" });
+      console.error(
+        "Error downloading employee document:",
+        err?.message || err,
+      );
+      return res.status(502).json({ message: "Document storage unavailable" });
     }
   },
 );
@@ -1575,7 +1747,8 @@ router.delete(
     const { restaurantId, employeeId, public_id } = req.params;
 
     try {
-      const accessContext = await getEmployeeRouteAccess(
+      setPrivateDocumentResponseHeaders(res);
+      const accessContext = await getEmployeeDocumentRouteAccess(
         req,
         restaurantId,
         employeeId,
@@ -1597,9 +1770,20 @@ router.delete(
         return res.status(404).json({ message: "Profile not found" });
       }
 
-      await cloudinary.uploader.destroy(public_id, {
-        resource_type: "raw",
-      });
+      const document = findEmployeeDocument(profile, public_id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      const storageResult = await destroyEmployeeDocumentAsset(document);
+      if (
+        storageResult?.result &&
+        !["ok", "not found"].includes(storageResult.result)
+      ) {
+        return res
+          .status(502)
+          .json({ message: "Document storage unavailable" });
+      }
 
       profile.documents = profile.documents.filter(
         (doc) => doc.public_id !== public_id,
@@ -1609,11 +1793,13 @@ router.delete(
 
       const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
-      return res.json({ restaurant: updatedRestaurant });
+      return res.json({
+        restaurant: updatedRestaurant,
+        documents: serializeEmployeeDocuments(profile.documents),
+      });
     } catch (err) {
-      return res
-        .status(500)
-        .json({ message: "Internal server error", error: err.message });
+      console.error("Error deleting employee document:", err?.message || err);
+      return res.status(500).json({ message: "Internal server error" });
     }
   },
 );
@@ -1663,9 +1849,7 @@ router.delete(
         for (const doc of profileForRestaurant.documents) {
           if (!doc.public_id) continue;
           try {
-            await cloudinary.uploader.destroy(doc.public_id, {
-              resource_type: "raw",
-            });
+            await destroyEmployeeDocumentAsset(doc);
           } catch (err) {
             console.warn(
               `Erreur lors de la suppression du document employé ${employeeId} (resto ${restaurantId}) :`,
@@ -1715,9 +1899,7 @@ router.delete(
             for (const doc of prof.documents) {
               if (!doc.public_id) continue;
               try {
-                await cloudinary.uploader.destroy(doc.public_id, {
-                  resource_type: "raw",
-                });
+                await destroyEmployeeDocumentAsset(doc);
               } catch (err) {
                 console.warn(
                   `Erreur lors de la suppression d'un document (cleanup total employé ${employeeId}) :`,
@@ -2867,6 +3049,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     const restaurantIds = Array.isArray(emp.restaurants) ? emp.restaurants : [];
     const restaurants = await RestaurantModel.find({
       _id: { $in: restaurantIds },
+      employees: emp._id,
     })
       .select("name _id")
       .lean();
@@ -2876,7 +3059,12 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     let restaurant = null;
     let currentProfile = null;
 
-    if (restaurantIdFromToken) {
+    const tokenRestaurantIsCurrent = restaurants.some(
+      (candidate) =>
+        String(candidate?._id || candidate) === String(restaurantIdFromToken),
+    );
+
+    if (restaurantIdFromToken && tokenRestaurantIsCurrent) {
       await refreshGiftCardLifecycle(restaurantIdFromToken);
       restaurant = await RestaurantModel.findById(restaurantIdFromToken)
         .populate("owner_id", "firstname")
@@ -2912,14 +3100,18 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
         )
         .lean();
 
+      const canManageEmployees = currentProfile?.options?.employees === true;
+
       decoratedRestaurant = decorateRestaurantEmployees(
         restaurant,
         restaurant._id,
         coworkers,
-        { safe: true },
+        { safe: !canManageEmployees, includeDocuments: false },
       );
       decoratedEmployee =
-        decorateEmployeeForRestaurant(emp, restaurant._id) || emp.toObject();
+        decorateEmployeeForRestaurant(emp, restaurant._id, {
+          includeDocuments: false,
+        }) || emp.toObject();
       currentProfile = findRestaurantProfile(decoratedEmployee, restaurant._id);
     }
 
@@ -3208,5 +3400,12 @@ router.get(
     }
   },
 );
+
+router._employeeDocumentSecurity = {
+  authorizeEmployeeDocumentUpload,
+  findEmployeeDocument,
+  getEmployeeDocumentRouteAccess,
+  handleEmployeeDocumentUpload,
+};
 
 module.exports = router;

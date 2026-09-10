@@ -3,14 +3,15 @@ import axios from "axios";
 import { useTranslation } from "next-i18next";
 
 // SVG
-import { DocumentSvg, DownloadSvg } from "@/components/_shared/_svgs/_index";
+import { DocumentSvg } from "@/components/_shared/_svgs/_index";
+import EmployeeDocumentRow from "../_shared/employee-document-row.dashboard.component";
 
 export default function DocumentsMySpaceComponent({
   employeeId,
   restaurantId,
 }) {
   const [docs, setDocs] = useState([]);
-  const { t } = useTranslation("myspace");
+  const { t, i18n } = useTranslation("myspace");
 
   useEffect(() => {
     async function fetchDocs() {
@@ -28,10 +29,6 @@ export default function DocumentsMySpaceComponent({
 
     fetchDocs();
   }, [employeeId, restaurantId]);
-
-  // Fonction pour tronquer le nom de fichier
-  const truncate = (name) =>
-    name.length > 20 ? `${name.slice(0, 17)}…` : name;
 
   async function handleDownloadDocument(doc) {
     if (!doc?.public_id || !employeeId || !restaurantId) return;
@@ -60,6 +57,16 @@ export default function DocumentsMySpaceComponent({
     }
   }
 
+  const documentLabels = {
+    document: t("documents.document", "Document"),
+    uploadedOn: t("documents.uploadedOn", "Mis en ligne le"),
+    at: t("documents.at", "à"),
+    by: t("documents.by", "Par"),
+    download: t("buttons.download"),
+    delete: "",
+  };
+  const locale = i18n.resolvedLanguage?.startsWith("fr") ? "fr-FR" : "en-GB";
+
   return (
     <section className="flex flex-col gap-6">
       <div className="flex justify-between">
@@ -77,33 +84,16 @@ export default function DocumentsMySpaceComponent({
             {t("noDocuments", "Aucun document disponible pour ce restaurant.")}
           </p>
         ) : (
-          <ul className="grid grid-cols-2 mobile:grid-cols-3 midTablet:grid-cols-4 tablet:grid-cols-4 desktop:grid-cols-5 gap-4">
-            {docs.map((doc, i) => (
-              <li
-                key={i}
-                className="flex flex-col gap-4 items-center justify-between text-center p-4 bg-white rounded-lg shadow-lg"
-              >
-                <p className="text-sm">
-                  <strong>{truncate(doc.title) || doc.filename}</strong>
-                </p>
-
-                <div className="flex w-full justify-between">
-                  <div className="w-full flex flex-col items-center">
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadDocument(doc)}
-                      className="inline-flex items-center justify-center bg-[#4ead7a99] hover:bg-[#4ead7a] p-2 rounded-full transition-colors duration-300"
-                    >
-                      <DownloadSvg
-                        width={15}
-                        height={15}
-                        strokeColor="white"
-                        fillColor="white"
-                      />
-                    </button>
-                  </div>
-                </div>
-              </li>
+          <ul className="flex flex-col gap-2">
+            {docs.map((doc) => (
+              <EmployeeDocumentRow
+                key={doc.public_id}
+                document={doc}
+                locale={locale}
+                labels={documentLabels}
+                showUploader
+                onDownload={handleDownloadDocument}
+              />
             ))}
           </ul>
         )}

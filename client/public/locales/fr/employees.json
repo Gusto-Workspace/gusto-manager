@@ -44,6 +44,12 @@
     "uploadedDocuments": "Documents chargés",
     "assignRights": "Droits d'accès"
   },
+  "documents": {
+    "document": "Document",
+    "uploadedOn": "Mis en ligne le",
+    "at": "à",
+    "by": "Par"
+  },
   "errors": {
     "required": "Ce champs est requis"
   }

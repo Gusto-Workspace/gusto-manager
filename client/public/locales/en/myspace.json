@@ -8,6 +8,12 @@
     "download": "Download",
     "ask": "Request a day off"
   },
+  "documents": {
+    "document": "Document",
+    "uploadedOn": "Uploaded on",
+    "at": "at",
+    "by": "By"
+  },
   "daysOff": {
     "status": {
       "pending": "Pending",

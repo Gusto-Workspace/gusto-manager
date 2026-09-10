@@ -1,6 +1,10 @@
+const { serializeEmployeeDocuments } = require("./employee-documents.service");
+
 function toPlainObject(value) {
   if (!value) return null;
-  if (typeof value.toObject === "function") return value.toObject();
+  if (typeof value.toObject === "function") {
+    return value.toObject({ transform: false });
+  }
   return { ...value };
 }
 
@@ -16,13 +20,20 @@ function normalizeMealPeriods(periods = []) {
   return Array.from(
     new Set(
       (Array.isArray(periods) ? periods : [])
-        .map((value) => String(value || "").trim().toLowerCase())
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toLowerCase(),
+        )
         .filter((value) => value === "lunch" || value === "dinner"),
     ),
   );
 }
 
-function buildRestaurantProfileView(profile, { safe = false } = {}) {
+function buildRestaurantProfileView(
+  profile,
+  { safe = false, includeDocuments = false } = {},
+) {
   if (!profile) return null;
 
   return {
@@ -31,7 +42,10 @@ function buildRestaurantProfileView(profile, { safe = false } = {}) {
     options: { ...(profile?.options || {}) },
     snapshot: { ...(profile?.snapshot || {}) },
     employment: { ...(profile?.employment || {}) },
-    documents: safe ? [] : [...(profile?.documents || [])],
+    documents:
+      safe || !includeDocuments
+        ? []
+        : serializeEmployeeDocuments(profile?.documents || []),
     shifts: safe ? [] : [...(profile?.shifts || [])],
     leaveRequests: safe ? [] : [...(profile?.leaveRequests || [])],
   };
@@ -40,13 +54,16 @@ function buildRestaurantProfileView(profile, { safe = false } = {}) {
 function decorateEmployeeForRestaurant(
   employee,
   restaurantId,
-  { safe = false } = {},
+  { safe = false, includeDocuments = false } = {},
 ) {
   const plainEmployee = toPlainObject(employee);
   if (!plainEmployee) return null;
 
   const profile = findRestaurantProfile(plainEmployee, restaurantId);
-  const profileView = buildRestaurantProfileView(profile, { safe });
+  const profileView = buildRestaurantProfileView(profile, {
+    safe,
+    includeDocuments,
+  });
 
   const next = {
     ...plainEmployee,
@@ -56,7 +73,11 @@ function decorateEmployeeForRestaurant(
     employment: { ...(profileView?.employment || {}) },
     shifts: safe ? [] : [...(profileView?.shifts || [])],
     leaveRequests: safe ? [] : [...(profileView?.leaveRequests || [])],
-    documents: safe ? [] : [...(profileView?.documents || [])],
+    documents:
+      safe || !includeDocuments
+        ? []
+        : serializeEmployeeDocuments(profileView?.documents),
+    restaurantProfiles: profileView ? [profileView] : [],
   };
 
   if (safe) {
@@ -67,8 +88,6 @@ function decorateEmployeeForRestaurant(
     delete next.emergencyContact;
     delete next.resetCode;
     delete next.resetCodeExpires;
-
-    next.restaurantProfiles = profileView ? [profileView] : [];
   }
 
   next.shifts = (next.shifts || []).map((shift) => ({
@@ -80,7 +99,38 @@ function decorateEmployeeForRestaurant(
   return next;
 }
 
-function decorateRestaurantEmployees(restaurant, restaurantId, employees = [], options) {
+function sanitizeEmployeeForRestaurants(employee, restaurantIds = []) {
+  const plainEmployee = toPlainObject(employee);
+  if (!plainEmployee) return null;
+
+  const allowedRestaurantIds = new Set(
+    (restaurantIds || []).map((restaurantId) => String(restaurantId)),
+  );
+  const profiles = (plainEmployee.restaurantProfiles || [])
+    .filter((profile) =>
+      allowedRestaurantIds.has(
+        String(profile?.restaurant?._id || profile?.restaurant || ""),
+      ),
+    )
+    .map((profile) => buildRestaurantProfileView(profile));
+  const restaurants = (plainEmployee.restaurants || []).filter((restaurant) =>
+    allowedRestaurantIds.has(String(restaurant?._id || restaurant || "")),
+  );
+
+  return {
+    ...plainEmployee,
+    restaurants,
+    restaurantProfiles: profiles,
+    documents: [],
+  };
+}
+
+function decorateRestaurantEmployees(
+  restaurant,
+  restaurantId,
+  employees = [],
+  options,
+) {
   const plainRestaurant = toPlainObject(restaurant);
   if (!plainRestaurant) return null;
 
@@ -98,5 +148,6 @@ module.exports = {
   decorateEmployeeForRestaurant,
   decorateRestaurantEmployees,
   findRestaurantProfile,
+  sanitizeEmployeeForRestaurants,
   toPlainObject,
 };

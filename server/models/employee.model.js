@@ -31,13 +31,36 @@ const optionsSchema = new mongoose.Schema(
 
 const documentSchema = new mongoose.Schema(
   {
-    url: { type: String, required: true },
     public_id: { type: String, required: true },
+    asset_id: { type: String, default: "" },
+    resource_type: { type: String, default: "raw" },
+    delivery_type: {
+      type: String,
+      enum: ["authenticated"],
+      required: true,
+    },
+    format: { type: String, default: "" },
     filename: { type: String, required: true },
     title: { type: String, required: true },
+    mimeType: { type: String, default: "application/octet-stream" },
+    size: { type: Number, default: 0, min: 0 },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: {
+      id: { type: String, default: "" },
+      role: { type: String, enum: ["owner", "employee", ""], default: "" },
+      name: { type: String, trim: true, maxlength: 120, default: "" },
+    },
   },
   { _id: false },
 );
+
+function stripEmployeeDocumentsFromSerializedValue(_document, value) {
+  for (const profile of value?.restaurantProfiles || []) {
+    profile.documents = [];
+  }
+  delete value?.documents;
+  return value;
+}
 
 const shiftSchema = new mongoose.Schema({
   title: { type: String, default: "" },
@@ -168,6 +191,16 @@ const employeeSchema = new mongoose.Schema({
   resetCode: String,
   resetCodeExpires: Date,
   sessionVersion: { type: Number, default: 0, select: false },
+});
+
+// Défense en profondeur : une route qui sérialise un Employee directement ne
+// doit jamais exposer des métadonnées RH. Les routes dédiées passent par le
+// sérialiseur explicite, après autorisation restaurant/employé.
+employeeSchema.set("toJSON", {
+  transform: stripEmployeeDocumentsFromSerializedValue,
+});
+employeeSchema.set("toObject", {
+  transform: stripEmployeeDocumentsFromSerializedValue,
 });
 
 // Index pour des recherches optimisées
