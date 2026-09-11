@@ -56,6 +56,14 @@ body {
   scrollbar-width: none;
 }
 
+// Les anciens écrans placent leur séparateur de page juste après le header.
+// On conserve les autres <hr> utilisés à l'intérieur des contenus et modales.
+.dashboard-settings + hr.opacity-20,
+.dashboard-settings + section > hr.opacity-20:first-child,
+.dashboard-settings + div > hr.opacity-20:first-child {
+  display: none;
+}
+
 input[type="datetime-local"],
 input[type="date"],
 input[type="month"] {

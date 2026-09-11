@@ -72,6 +72,7 @@ export default function AccountantPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [documents, setDocuments] = useState([]);
+  const [documentsKey, setDocumentsKey] = useState("");
   const [pendingDocuments, setPendingDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -79,6 +80,11 @@ export default function AccountantPage() {
 
   const user = restaurantContext?.userConnected;
   const restaurant = restaurantContext?.restaurantData;
+  const {
+    peekAccountantDocumentsCache,
+    fetchAccountantDocumentsCached,
+    updateAccountantDocumentsCache,
+  } = restaurantContext;
   const restaurantId = restaurant?._id || user?.restaurantId || null;
   const employees = useMemo(
     () =>
@@ -104,6 +110,21 @@ export default function AccountantPage() {
     restaurantId && selectedEmployee?._id
       ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${selectedEmployee._id}`
       : "";
+  const activeDocumentsKey =
+    restaurantId && selectedEmployee?._id
+      ? `${String(restaurantId)}:${String(selectedEmployee._id)}`
+      : "";
+  const cachedDocuments = activeDocumentsKey
+    ? peekAccountantDocumentsCache({
+        restaurantId,
+        employeeId: selectedEmployee._id,
+        accountantId: user?.id,
+      })
+    : null;
+  const visibleDocuments =
+    activeDocumentsKey && documentsKey === activeDocumentsKey
+      ? documents
+      : cachedDocuments || [];
 
   useEffect(() => {
     setSelectedEmployeeId((current) =>
@@ -113,25 +134,47 @@ export default function AccountantPage() {
     );
     setSearchTerm("");
     setDocuments([]);
+    setDocumentsKey("");
     setPendingDocuments([]);
     setDocumentError("");
     setExportError("");
   }, [employees, restaurantId]);
 
   useEffect(() => {
-    if (!baseUrl || activeSection !== "documents") return undefined;
+    if (
+      !restaurantId ||
+      !selectedEmployee?._id ||
+      activeSection !== "documents"
+    ) {
+      return undefined;
+    }
 
     let active = true;
-    setDocuments([]);
-    setDocumentsLoading(true);
+    const employeeId = selectedEmployee._id;
+    const cacheKey = `${String(restaurantId)}:${String(employeeId)}`;
+    const existingDocuments = peekAccountantDocumentsCache({
+      restaurantId,
+      employeeId,
+      accountantId: user?.id,
+    });
+
+    setDocuments(existingDocuments || []);
+    setDocumentsKey(cacheKey);
+    setDocumentsLoading(existingDocuments === null);
     setDocumentError("");
-    axios
-      .get(`${baseUrl}/documents`)
-      .then(({ data }) => {
-        if (active) setDocuments(data.documents || []);
+    fetchAccountantDocumentsCached({
+      restaurantId,
+      employeeId,
+      accountantId: user?.id,
+    })
+      .then((nextDocuments) => {
+        if (!active) return;
+        setDocuments(nextDocuments || []);
+        setDocumentsKey(cacheKey);
       })
       .catch((error) => {
         if (!active) return;
+        if (existingDocuments !== null) return;
         setDocumentError(
           error?.response?.data?.message ||
             "Impossible de récupérer les documents.",
@@ -144,11 +187,19 @@ export default function AccountantPage() {
     return () => {
       active = false;
     };
-  }, [activeSection, baseUrl]);
+  }, [
+    activeSection,
+    restaurantId,
+    selectedEmployee?._id,
+    user?.id,
+    peekAccountantDocumentsCache,
+    fetchAccountantDocumentsCached,
+  ]);
 
   function selectEmployee(employeeId) {
     setSelectedEmployeeId(employeeId);
     setDocuments([]);
+    setDocumentsKey("");
     setPendingDocuments([]);
     setDocumentError("");
   }
@@ -156,7 +207,7 @@ export default function AccountantPage() {
   function onDocumentsChange(event) {
     const selected = Array.from(event.target.files || []);
     const knownNames = new Set([
-      ...documents.map((document) => document.filename),
+      ...visibleDocuments.map((document) => document.filename),
       ...pendingDocuments.map((document) => document.file.name),
     ]);
     const unique = selected
@@ -194,7 +245,15 @@ export default function AccountantPage() {
       const { data } = await axios.post(`${baseUrl}/documents`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setDocuments(data.documents || []);
+      const nextDocuments = data.documents || [];
+      updateAccountantDocumentsCache({
+        restaurantId,
+        employeeId: selectedEmployee._id,
+        documents: nextDocuments,
+        accountantId: user?.id,
+      });
+      setDocuments(nextDocuments);
+      setDocumentsKey(activeDocumentsKey);
       setPendingDocuments([]);
     } catch (error) {
       setDocumentError(
@@ -434,7 +493,7 @@ export default function AccountantPage() {
                         docs={pendingDocuments}
                         onSaveDocs={uploadDocuments}
                         baseUrl={baseUrl}
-                        currentDocuments={documents}
+                        currentDocuments={visibleDocuments}
                         removeSelectedDoc={(index) =>
                           setPendingDocuments((current) =>
                             current.filter(

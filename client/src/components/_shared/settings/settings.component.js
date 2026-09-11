@@ -86,7 +86,7 @@ export default function SettingsComponent() {
   const unreadCount = restaurantContext?.unreadCounts?.total || 0;
 
   return (
-    <section className="flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
+    <section className="dashboard-settings flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
       {showRestaurantList && (
         <div
           onClick={() => setShowRestaurantList(false)}
