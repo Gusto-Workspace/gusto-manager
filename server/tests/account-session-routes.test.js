@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const OwnerModel = require("../models/owner.model");
 const EmployeeModel = require("../models/employee.model");
+const RestaurantModel = require("../models/restaurant.model");
 const authRouter = require("../routes/auth.routes");
 const ownerRouter = require("../routes/owners.routes");
 const {
@@ -337,4 +338,67 @@ test("the super-admin password authenticates owners only", async (t) => {
     assert.equal(res.statusCode, 401);
     assert.equal(res.body.token, undefined);
   });
+});
+
+test("an accountant login receives a limited role and payload", async (t) => {
+  const login = getRouteHandler(authRouter, "/user/login", "post");
+  const originalOwnerFindOne = OwnerModel.findOne;
+  const originalEmployeeFindOne = EmployeeModel.findOne;
+  const originalRestaurantFind = RestaurantModel.find;
+
+  OwnerModel.findOne = () => ({
+    select: () => ({ populate: async () => null }),
+  });
+  EmployeeModel.findOne = () => ({
+    select: async () => ({
+      _id: "accountant-id",
+      accountType: "accountant",
+      firstname: "Ada",
+      lastname: "Compte",
+      email: "ada@example.com",
+      phone: "0102030405",
+      password: bcrypt.hashSync("accountant-password", 4),
+      sessionVersion: 2,
+      toObject: () => ({
+        _id: "accountant-id",
+        accountType: "accountant",
+        firstname: "Ada",
+        lastname: "Compte",
+        email: "ada@example.com",
+        phone: "0102030405",
+        secuNumber: "must-not-leak",
+        restaurantProfiles: [{ shifts: ["must-not-leak"] }],
+      }),
+    }),
+  });
+  RestaurantModel.find = () => ({
+    lean: async () => [{ _id: "restaurant-a", name: "Restaurant A" }],
+  });
+
+  t.after(() => {
+    OwnerModel.findOne = originalOwnerFindOne;
+    EmployeeModel.findOne = originalEmployeeFindOne;
+    RestaurantModel.find = originalRestaurantFind;
+  });
+
+  const res = createResponse();
+  await login(
+    {
+      body: {
+        email: "ada@example.com",
+        password: "accountant-password",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(
+    jwt.verify(res.body.token, process.env.JWT_SECRET).role,
+    "accountant",
+  );
+  assert.equal(res.body.employee, undefined);
+  assert.equal(res.body.accountant.secuNumber, undefined);
+  assert.equal(res.body.accountant.restaurantProfiles, undefined);
+  assert.equal(res.body.accountant.restaurants.length, 1);
 });

@@ -47,7 +47,11 @@ const documentSchema = new mongoose.Schema(
     uploadedAt: { type: Date, default: Date.now },
     uploadedBy: {
       id: { type: String, default: "" },
-      role: { type: String, enum: ["owner", "employee", ""], default: "" },
+      role: {
+        type: String,
+        enum: ["owner", "employee", "accountant", ""],
+        default: "",
+      },
       name: { type: String, trim: true, maxlength: 120, default: "" },
     },
   },
@@ -152,6 +156,13 @@ const restaurantProfileSchema = new mongoose.Schema(
 );
 
 const employeeSchema = new mongoose.Schema({
+  // Les anciennes fiches sans valeur restent des salariés classiques.
+  accountType: {
+    type: String,
+    enum: ["employee", "accountant"],
+    default: "employee",
+    index: true,
+  },
   // Identité globale
   firstname: { type: String, required: true },
   lastname: { type: String, required: true },

@@ -387,17 +387,19 @@ export default function PlanningEmployeesComponent() {
   // ─── Chargement des employés depuis le contexte ─────────────────────────────
   const allEmployees = useMemo(
     () =>
-      restaurantContext.restaurantData?.employees.map((e) => ({
-        _id: e._id,
-        firstname: e.firstname,
-        lastname: e.lastname,
-        name: `${e.firstname} ${e.lastname}`,
-        post: e.post,
-        profilePicture: e.profilePicture,
-        shifts: e.shifts || [],
-        restaurantProfiles: e.restaurantProfiles || [],
-        employment: e.employment || null,
-      })) || [],
+      restaurantContext.restaurantData?.employees
+        .filter((e) => e.accountType !== "accountant")
+        .map((e) => ({
+          _id: e._id,
+          firstname: e.firstname,
+          lastname: e.lastname,
+          name: `${e.firstname} ${e.lastname}`,
+          post: e.post,
+          profilePicture: e.profilePicture,
+          shifts: e.shifts || [],
+          restaurantProfiles: e.restaurantProfiles || [],
+          employment: e.employment || null,
+        })) || [],
     [restaurantContext.restaurantData?.employees],
   );
 
@@ -448,8 +450,7 @@ export default function PlanningEmployeesComponent() {
       .filter((shift) => !isLeaveShiftRecord(shift))
       .reduce(
         (total, shift) =>
-          total +
-          getShiftMinutesWithinPeriod(shift?.start, shift?.end, bounds),
+          total + getShiftMinutesWithinPeriod(shift?.start, shift?.end, bounds),
         0,
       );
     const proposedMinutes = getShiftMinutesWithinPeriod(

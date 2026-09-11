@@ -82,8 +82,11 @@ export default function AddEmployeesComponent() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitted },
-  } = useForm();
+  } = useForm({ defaultValues: { accountType: "employee" } });
+
+  const accountType = watch("accountType") || "employee";
 
   // ---------- IMPORT EMPLOYÉ EXISTANT (modale) ----------
 
@@ -158,6 +161,7 @@ export default function AddEmployeesComponent() {
   const currentRestaurantId = restaurantContext?.restaurantData?._id;
 
   const filteredEmployees = existingEmployees.filter((emp) => {
+    if (emp.accountType === "accountant") return false;
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     const fullName =
@@ -207,6 +211,7 @@ export default function AddEmployeesComponent() {
     formData.append("firstName", data.firstName);
     formData.append("email", data.email);
     formData.append("phone", data.phone);
+    formData.append("accountType", data.accountType || "employee");
     formData.append("post", data.post);
     formData.append("dateOnPost", data.dateOnPost);
     formData.append("secuNumber", data.secuNumber || "");
@@ -224,6 +229,7 @@ export default function AddEmployeesComponent() {
       restaurantContext.setRestaurantData((prev) => ({
         ...prev,
         employees: response.data.restaurant.employees,
+        accountants: response.data.restaurant.accountants || [],
       }));
       reset();
       router.replace("/dashboard/employees");
@@ -497,16 +503,18 @@ export default function AddEmployeesComponent() {
           onBack={() => router.push("/dashboard/employees")}
           subtitle={t("buttons.add", "Ajouter")}
           actions={
-            <button
-              type="button"
-              onClick={handleOpenImportModal}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue/40 bg-white/70 px-4 py-2 text-sm font-medium text-blue shadow-sm hover:bg-blue/5 transition"
-            >
-              <User className="w-4 h-4" />
-              {t("buttons.importExistingEmployeeFull", {
-                defaultValue: "Importer un employé existant",
-              })}
-            </button>
+            accountType === "employee" ? (
+              <button
+                type="button"
+                onClick={handleOpenImportModal}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue/40 bg-white/70 px-4 py-2 text-sm font-medium text-blue shadow-sm hover:bg-blue/5 transition"
+              >
+                <User className="w-4 h-4" />
+                {t("buttons.importExistingEmployeeFull", {
+                  defaultValue: "Importer un employé existant",
+                })}
+              </button>
+            ) : null
           }
         />
 
@@ -514,6 +522,52 @@ export default function AddEmployeesComponent() {
           onSubmit={handleSubmit(onSubmit)}
           className="relative flex flex-col gap-3"
         >
+          <section className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
+            <p className="text-sm font-semibold text-darkBlue">
+              Type de compte
+            </p>
+            <p className="mt-1 text-xs text-darkBlue/55">
+              Le compte comptable accède uniquement aux exports d’heures et aux
+              documents.
+            </p>
+            <div className="mt-3 grid gap-2 mobile:grid-cols-2">
+              {[
+                {
+                  value: "employee",
+                  label: "Salarié",
+                  description: "Planning, pointeuse et données RH.",
+                },
+                {
+                  value: "accountant",
+                  label: "Comptable",
+                  description: "Heures et dépôt de documents uniquement.",
+                },
+              ].map((option) => (
+                <label
+                  key={option.value}
+                  className={`cursor-pointer rounded-xl border p-3 transition ${
+                    accountType === option.value
+                      ? "border-blue/30 bg-blue/5"
+                      : "border-darkBlue/10 bg-white/70"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
+                    <input
+                      type="radio"
+                      value={option.value}
+                      {...register("accountType")}
+                      className="text-blue focus:ring-blue"
+                    />
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block pl-6 text-xs text-darkBlue/55">
+                    {option.description}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+
           <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
             {/* Prénom */}
             <div className="w-full">
@@ -591,164 +645,176 @@ export default function AddEmployeesComponent() {
               </div>
             </div>
 
-            {/* Poste */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="post" className={labelCls}>
-                  <Briefcase className="size-4" />
-                  {t("labels.post")}
-                </label>
-                <input
-                  id="post"
-                  type="text"
-                  {...register("post", { required: true })}
-                  className={
-                    errors.post && isSubmitted ? inputErrorCls : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
+            {accountType !== "accountant" ? (
+              <>
+                {/* Poste */}
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="post" className={labelCls}>
+                      <Briefcase className="size-4" />
+                      {t("labels.post")}
+                    </label>
+                    <input
+                      id="post"
+                      type="text"
+                      {...register("post", { required: true })}
+                      className={
+                        errors.post && isSubmitted
+                          ? inputErrorCls
+                          : inputNormalCls
+                      }
+                    />
+                  </div>
+                </div>
 
-            {/* Date de prise de poste */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="dateOnPost" className={labelCls}>
-                  <CalendarDays className="size-4" />
-                  {t("labels.dateOnPost")}
-                </label>
-                <input
-                  id="dateOnPost"
-                  type="date"
-                  {...register("dateOnPost")}
-                  className={
-                    errors.dateOnPost && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
+                {/* Date de prise de poste */}
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="dateOnPost" className={labelCls}>
+                      <CalendarDays className="size-4" />
+                      {t("labels.dateOnPost")}
+                    </label>
+                    <input
+                      id="dateOnPost"
+                      type="date"
+                      {...register("dateOnPost")}
+                      className={
+                        errors.dateOnPost && isSubmitted
+                          ? inputErrorCls
+                          : inputNormalCls
+                      }
+                    />
+                  </div>
+                </div>
 
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="contractType" className={labelCls}>
-                  <Briefcase className="size-4" />
-                  Type de contrat
-                </label>
-                <select
-                  id="contractType"
-                  {...register("contractType")}
-                  className={inputNormalCls}
-                >
-                  {CONTRACT_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value || "empty"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="contractType" className={labelCls}>
+                      <Briefcase className="size-4" />
+                      Type de contrat
+                    </label>
+                    <select
+                      id="contractType"
+                      {...register("contractType")}
+                      className={inputNormalCls}
+                    >
+                      {CONTRACT_TYPE_OPTIONS.map((option) => (
+                        <option
+                          key={option.value || "empty"}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="contractualValue" className={labelCls}>
-                  <CalendarDays className="size-4" />
-                  Temps contractuel
-                </label>
-                <input
-                  id="contractualValue"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  {...register("contractualValue")}
-                  className={inputNormalCls}
-                  placeholder="Ex. 35"
-                />
-              </div>
-            </div>
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="contractualValue" className={labelCls}>
+                      <CalendarDays className="size-4" />
+                      Temps contractuel
+                    </label>
+                    <input
+                      id="contractualValue"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      {...register("contractualValue")}
+                      className={inputNormalCls}
+                      placeholder="Ex. 35"
+                    />
+                  </div>
+                </div>
 
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="contractualUnit" className={labelCls}>
-                  <CalendarDays className="size-4" />
-                  Base du temps contractuel
-                </label>
-                <select
-                  id="contractualUnit"
-                  {...register("contractualUnit")}
-                  className={inputNormalCls}
-                >
-                  <option value="" disabled hidden>
-                    Sélectionner
-                  </option>
-                  {CONTRACT_UNIT_OPTIONS.map((option) => (
-                    <option key={option.value || "empty"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="contractualUnit" className={labelCls}>
+                      <CalendarDays className="size-4" />
+                      Base du temps contractuel
+                    </label>
+                    <select
+                      id="contractualUnit"
+                      {...register("contractualUnit")}
+                      className={inputNormalCls}
+                    >
+                      <option value="" disabled hidden>
+                        Sélectionner
+                      </option>
+                      {CONTRACT_UNIT_OPTIONS.map((option) => (
+                        <option
+                          key={option.value || "empty"}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            {/* Numéro de SS */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="secuNumber" className={labelCls}>
-                  <Shield className="size-4" />
-                  {t("labels.secuNumber")}
-                </label>
-                <input
-                  id="secuNumber"
-                  type="text"
-                  {...register("secuNumber")}
-                  className={
-                    errors.secuNumber && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
+                {/* Numéro de SS */}
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="secuNumber" className={labelCls}>
+                      <Shield className="size-4" />
+                      {t("labels.secuNumber")}
+                    </label>
+                    <input
+                      id="secuNumber"
+                      type="text"
+                      {...register("secuNumber")}
+                      className={
+                        errors.secuNumber && isSubmitted
+                          ? inputErrorCls
+                          : inputNormalCls
+                      }
+                    />
+                  </div>
+                </div>
 
-            {/* Adresse */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="address" className={labelCls}>
-                  <Home className="size-4" />
-                  {t("labels.address")}
-                </label>
-                <input
-                  id="address"
-                  type="text"
-                  {...register("address")}
-                  className={
-                    errors.address && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
+                {/* Adresse */}
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="address" className={labelCls}>
+                      <Home className="size-4" />
+                      {t("labels.address")}
+                    </label>
+                    <input
+                      id="address"
+                      type="text"
+                      {...register("address")}
+                      className={
+                        errors.address && isSubmitted
+                          ? inputErrorCls
+                          : inputNormalCls
+                      }
+                    />
+                  </div>
+                </div>
 
-            {/* Contact urgence */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="emergencyContact" className={labelCls}>
-                  <PhoneCall className="size-4" />
-                  {t("labels.emergencyContact")}
-                </label>
-                <input
-                  id="emergencyContact"
-                  type="text"
-                  {...register("emergencyContact")}
-                  className={
-                    errors.emergencyContact && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
+                {/* Contact urgence */}
+                <div className="w-full">
+                  <div className={fieldWrap}>
+                    <label htmlFor="emergencyContact" className={labelCls}>
+                      <PhoneCall className="size-4" />
+                      {t("labels.emergencyContact")}
+                    </label>
+                    <input
+                      id="emergencyContact"
+                      type="text"
+                      {...register("emergencyContact")}
+                      className={
+                        errors.emergencyContact && isSubmitted
+                          ? inputErrorCls
+                          : inputNormalCls
+                      }
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
 
           {/* Actions */}

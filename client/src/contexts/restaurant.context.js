@@ -17,6 +17,13 @@ const EMPTY_UNREAD_BY_MODULE = {
 
 const TAKE_AWAY_PERIOD_CACHE_LIMIT = 9;
 const TAKE_AWAY_MUTATION_OVERRIDE_LIMIT = 500;
+const ACCOUNTANT_DOCUMENTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const ACCOUNTANT_DOCUMENTS_CACHE_LIMIT = 200;
+
+function buildAccountantDocumentsCacheKey(restaurantId, employeeId) {
+  if (!restaurantId || !employeeId) return null;
+  return `${String(restaurantId)}:${String(employeeId)}`;
+}
 
 function countUnreadTotal(byModule = {}) {
   return Object.values(byModule).reduce(
@@ -156,6 +163,10 @@ export default function RestaurantContext() {
   const takeAwayMutationOverridesRef = useRef(new Map());
   const activeTakeAwayPeriodRef = useRef(null);
   const takeAwayCacheGenerationRef = useRef(0);
+  const accountantDocumentsCacheRef = useRef(new Map());
+  const accountantDocumentsRequestsRef = useRef(new Map());
+  const accountantDocumentsCacheGenerationRef = useRef(0);
+  const accountantDocumentsUserIdRef = useRef(null);
   const currentRestaurantIdRef = useRef(null);
 
   useEffect(() => {
@@ -167,6 +178,156 @@ export default function RestaurantContext() {
       ? String(restaurantData._id)
       : null;
   }, [restaurantData?._id]);
+
+  const syncAccountantDocumentsUser = useCallback((accountantId) => {
+    const nextUserId = accountantId
+      ? `accountant:${String(accountantId)}`
+      : null;
+    const previousUserId = accountantDocumentsUserIdRef.current;
+
+    if (previousUserId !== nextUserId) {
+      if (previousUserId !== null) {
+        accountantDocumentsCacheRef.current.clear();
+        accountantDocumentsRequestsRef.current.clear();
+        accountantDocumentsCacheGenerationRef.current += 1;
+      }
+      accountantDocumentsUserIdRef.current = nextUserId;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncAccountantDocumentsUser(
+      userConnected?.role === "accountant" ? userConnected.id : null,
+    );
+  }, [
+    userConnected?.id,
+    userConnected?.role,
+    syncAccountantDocumentsUser,
+  ]);
+
+  const peekAccountantDocumentsCache = useCallback(
+    ({ restaurantId, employeeId, accountantId } = {}) => {
+      const cacheKey = buildAccountantDocumentsCacheKey(
+        restaurantId,
+        employeeId,
+      );
+      if (!cacheKey) return null;
+      if (
+        accountantId &&
+        accountantDocumentsUserIdRef.current &&
+        accountantDocumentsUserIdRef.current !==
+          `accountant:${String(accountantId)}`
+      ) {
+        return null;
+      }
+
+      const cached = accountantDocumentsCacheRef.current.get(cacheKey);
+      return cached ? cached.documents : null;
+    },
+    [],
+  );
+
+  const fetchAccountantDocumentsCached = useCallback(
+    async ({ restaurantId, employeeId, accountantId, force = false } = {}) => {
+      syncAccountantDocumentsUser(accountantId);
+      const cacheKey = buildAccountantDocumentsCacheKey(
+        restaurantId,
+        employeeId,
+      );
+      if (!cacheKey) return [];
+
+      const cached = accountantDocumentsCacheRef.current.get(cacheKey);
+      if (
+        !force &&
+        cached &&
+        Date.now() - cached.updatedAt < ACCOUNTANT_DOCUMENTS_CACHE_TTL_MS
+      ) {
+        return cached.documents;
+      }
+
+      const inFlight = accountantDocumentsRequestsRef.current.get(cacheKey);
+      if (inFlight) return inFlight;
+
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const cacheGeneration = accountantDocumentsCacheGenerationRef.current;
+      const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/documents`;
+
+      const requestPromise = axios
+        .get(requestUrl, {
+          ...(token
+            ? { headers: { Authorization: `Bearer ${token}` } }
+            : {}),
+        })
+        .then(({ data }) => {
+          if (
+            cacheGeneration !== accountantDocumentsCacheGenerationRef.current
+          ) {
+            return [];
+          }
+
+          const latestCached =
+            accountantDocumentsCacheRef.current.get(cacheKey);
+
+          // Un upload terminé pendant ce GET reste prioritaire sur sa réponse.
+          if (latestCached && latestCached !== cached) {
+            return latestCached.documents;
+          }
+
+          const documents = Array.isArray(data?.documents)
+            ? data.documents
+            : [];
+          accountantDocumentsCacheRef.current.set(cacheKey, {
+            documents,
+            updatedAt: Date.now(),
+          });
+          trimOldestMapEntries(
+            accountantDocumentsCacheRef.current,
+            ACCOUNTANT_DOCUMENTS_CACHE_LIMIT,
+          );
+          return documents;
+        })
+        .finally(() => {
+          if (
+            accountantDocumentsRequestsRef.current.get(cacheKey) ===
+            requestPromise
+          ) {
+            accountantDocumentsRequestsRef.current.delete(cacheKey);
+          }
+        });
+
+      accountantDocumentsRequestsRef.current.set(cacheKey, requestPromise);
+      return requestPromise;
+    },
+    [syncAccountantDocumentsUser],
+  );
+
+  const updateAccountantDocumentsCache = useCallback(
+    ({ restaurantId, employeeId, documents, accountantId } = {}) => {
+      const cacheKey = buildAccountantDocumentsCacheKey(
+        restaurantId,
+        employeeId,
+      );
+      if (!cacheKey) return;
+      if (
+        accountantId &&
+        accountantDocumentsUserIdRef.current !==
+          `accountant:${String(accountantId)}`
+      ) {
+        return;
+      }
+
+      accountantDocumentsCacheRef.current.set(cacheKey, {
+        documents: Array.isArray(documents) ? documents : [],
+        updatedAt: Date.now(),
+      });
+      trimOldestMapEntries(
+        accountantDocumentsCacheRef.current,
+        ACCOUNTANT_DOCUMENTS_CACHE_LIMIT,
+      );
+    },
+    [],
+  );
 
   // ---------------------------
   // Notifications helpers (NEW)
@@ -863,6 +1024,7 @@ export default function RestaurantContext() {
     const role = userConnected?.role;
 
     if (!restaurantId || !role) return;
+    if (role === "accountant") return;
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = createAuthenticatedEventSource(url);
@@ -1439,6 +1601,10 @@ export default function RestaurantContext() {
     takeAwayMutationOverridesRef.current.clear();
     activeTakeAwayPeriodRef.current = null;
     takeAwayCacheGenerationRef.current += 1;
+    accountantDocumentsCacheRef.current.clear();
+    accountantDocumentsRequestsRef.current.clear();
+    accountantDocumentsCacheGenerationRef.current += 1;
+    accountantDocumentsUserIdRef.current = null;
     currentRestaurantIdRef.current = null;
     setUserConnected(null);
     setNotifications([]);
@@ -1503,6 +1669,22 @@ export default function RestaurantContext() {
         take_away: null,
       });
       setNotificationsLoading(false);
+
+      if (role === "accountant") {
+        const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+        const response = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const { restaurant, restaurants } = response.data || {};
+
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
+        setUnreadCounts({
+          total: 0,
+          byModule: EMPTY_UNREAD_BY_MODULE,
+        });
+        return;
+      }
 
       if (role === "employee") {
         const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
@@ -1699,6 +1881,40 @@ export default function RestaurantContext() {
       return;
     }
 
+    // ----- ACCOUNTANT -----
+    if (role === "accountant") {
+      const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+
+      axios
+        .get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          const { restaurant, restaurants } = res.data || {};
+          setRestaurantsList(restaurants || []);
+          setRestaurantData(restaurant || null);
+          setUnreadCounts({
+            total: 0,
+            byModule: EMPTY_UNREAD_BY_MODULE,
+          });
+          setIsAuth(true);
+          setDataLoading(false);
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error(
+              "Erreur lors de la récupération de l'espace comptable:",
+              error,
+            );
+            setDataLoading(false);
+          }
+        });
+
+      return;
+    }
+
     console.warn("Unknown role in token:", role);
     handleInvalidToken();
   }
@@ -1844,6 +2060,39 @@ export default function RestaurantContext() {
       return;
     }
 
+    // ----- ACCOUNTANT -----
+    if (role === "accountant") {
+      // Ne jamais laisser les données de l'ancien établissement visibles
+      // pendant la rotation du JWT et le chargement du restaurant suivant.
+      setRestaurantData(null);
+      const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/user/select-restaurant`;
+      axios
+        .post(
+          requestUrl,
+          { token, restaurantId },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        .then(async (response) => {
+          const updatedToken = response.data.token;
+          localStorage.setItem("token", updatedToken);
+          setUserConnected(jwtDecode(updatedToken));
+          await fetchRestaurantData(updatedToken, restaurantId);
+          setDataLoading(false);
+          setCloseEditing(false);
+          router.replace("/dashboard/accountant");
+        })
+        .catch((error) => {
+          if (error.response?.status === 403) {
+            handleInvalidToken();
+          } else {
+            console.error("Erreur sélection restaurant comptable:", error);
+            setDataLoading(false);
+            setCloseEditing(false);
+          }
+        });
+      return;
+    }
+
     setDataLoading(false);
 
     setCloseEditing(false);
@@ -1925,6 +2174,18 @@ export default function RestaurantContext() {
             byModule: EMPTY_UNREAD_BY_MODULE,
           });
         }
+      } else if (role === "accountant") {
+        const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/accountants/me`;
+        const res = await axios.get(requestUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const { restaurant, restaurants } = res.data || {};
+        setRestaurantsList(restaurants || []);
+        setRestaurantData(restaurant || null);
+        setUnreadCounts({
+          total: 0,
+          byModule: EMPTY_UNREAD_BY_MODULE,
+        });
       }
 
       if (reconnectSSE) {
@@ -2035,6 +2296,10 @@ export default function RestaurantContext() {
     takeAwayMutationOverridesRef.current.clear();
     activeTakeAwayPeriodRef.current = null;
     takeAwayCacheGenerationRef.current += 1;
+    accountantDocumentsCacheRef.current.clear();
+    accountantDocumentsRequestsRef.current.clear();
+    accountantDocumentsCacheGenerationRef.current += 1;
+    accountantDocumentsUserIdRef.current = null;
     currentRestaurantIdRef.current = null;
     setRestaurantsList([]);
     setNotifications([]);
@@ -2153,5 +2418,8 @@ export default function RestaurantContext() {
     fetchCustomerDetailsCached,
     invalidateCustomersCache,
     peekCustomersCache,
+    peekAccountantDocumentsCache,
+    fetchAccountantDocumentsCached,
+    updateAccountantDocumentsCache,
   };
 }

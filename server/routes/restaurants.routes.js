@@ -513,7 +513,7 @@ router.get("/owner/employees", authenticateToken, async (req, res) => {
     })
       .select(
         `
-        firstname lastname email phone secuNumber address emergencyContact
+        accountType firstname lastname email phone secuNumber address emergencyContact
         post dateOnPost profilePicture
         restaurants restaurantProfiles
       `,

@@ -317,6 +317,54 @@ function OwnerOnlyWebAppGuard({ children }) {
   return children;
 }
 
+function AccountantDashboardAccessGuard({ children }) {
+  const router = useRouter();
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const pathname = normalizeDashboardPath(
+      router.pathname || router.asPath || "",
+    );
+    if (!pathname.startsWith("/dashboard")) {
+      setAllowed(true);
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setAllowed(true);
+      return;
+    }
+
+    try {
+      const role = jwtDecode(token)?.role;
+      if (role === "accountant" && pathname !== "/dashboard/accountant") {
+        setAllowed(false);
+        router.replace("/dashboard/accountant");
+        return;
+      }
+
+      if (role !== "accountant" && pathname === "/dashboard/accountant") {
+        setAllowed(false);
+        router.replace(
+          role === "employee" ? "/dashboard/my-space" : "/dashboard",
+        );
+        return;
+      }
+    } catch {
+      setAllowed(true);
+      return;
+    }
+
+    setAllowed(true);
+  }, [router.asPath, router.isReady, router.pathname, router]);
+
+  if (!router.isReady || !allowed) return null;
+  return children;
+}
+
 function EmployeeDashboardAccessGuard({ children }) {
   const router = useRouter();
   const { restaurantContext } = useContext(GlobalContext);
@@ -600,11 +648,13 @@ function App({ Component, pageProps }) {
         <IosLaunchSnapshotShield enabled={isReservationsWebapp} />
         <WebAppNotificationBadgeSync />
         <WebAppPushSubscriptionSync />
-        <OwnerOnlyWebAppGuard>
-          <EmployeeDashboardAccessGuard>
-            <Component {...pageProps} />
-          </EmployeeDashboardAccessGuard>
-        </OwnerOnlyWebAppGuard>
+        <AccountantDashboardAccessGuard>
+          <OwnerOnlyWebAppGuard>
+            <EmployeeDashboardAccessGuard>
+              <Component {...pageProps} />
+            </EmployeeDashboardAccessGuard>
+          </OwnerOnlyWebAppGuard>
+        </AccountantDashboardAccessGuard>
       </GlobalProvider>
       <Analytics />
     </>

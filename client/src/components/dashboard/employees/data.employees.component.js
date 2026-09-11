@@ -62,6 +62,7 @@ export default function DataEmployeesComponent(props) {
     resetDetails,
     detailsDirty,
   } = props || {};
+  const isAccountant = employee?.accountType === "accountant";
 
   // On fusionne snapshot + global (snapshot prioritaire)
   const merged = {
@@ -75,7 +76,10 @@ export default function DataEmployeesComponent(props) {
       currentSnapshot?.emergencyContact ?? employee?.emergencyContact ?? "",
     post: currentSnapshot?.post ?? employee?.post ?? "",
     dateOnPost: currentSnapshot?.dateOnPost ?? employee?.dateOnPost ?? null,
-    contractType: currentEmployment?.contractType ?? employee?.employment?.contractType ?? "",
+    contractType:
+      currentEmployment?.contractType ??
+      employee?.employment?.contractType ??
+      "",
     contractualValue:
       currentEmployment?.contractualValue ??
       employee?.employment?.contractualValue ??
@@ -166,7 +170,7 @@ export default function DataEmployeesComponent(props) {
       required: false,
       defaultValue: merged.emergencyContact || "",
     },
-  ];
+  ].filter((field) => !isAccountant || ["email", "phone"].includes(field.key));
 
   // URL finale de l'avatar (toujours en mode vue)
   const avatarUrl = previewUrl || employee?.profilePicture?.url || null;
@@ -228,83 +232,91 @@ export default function DataEmployeesComponent(props) {
             )}
           </div>
 
-            {/* Autres champs dans une grille */}
+          {/* Autres champs dans une grille */}
           <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
-            <div className={cardWrap}>
-              <div className={labelCls}>
-                <Briefcase className="size-4" />
-                Type de contrat
-              </div>
+            {!isAccountant ? (
+              <>
+                <div className={cardWrap}>
+                  <div className={labelCls}>
+                    <Briefcase className="size-4" />
+                    Type de contrat
+                  </div>
 
-              {isEditing ? (
-                <select
-                  {...regDetails("contractType")}
-                  defaultValue={merged.contractType || ""}
-                  disabled={isSavingDetails}
-                  className={inputNormal}
-                >
-                  {CONTRACT_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value || "empty"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className={valueCls}>{merged.contractType || "—"}</p>
-              )}
-            </div>
-
-            <div className={cardWrap}>
-              <div className={labelCls}>
-                <CalendarDays className="size-4" />
-                Temps contractuel
-              </div>
-
-              {isEditing ? (
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    {...regDetails("contractualValue")}
-                    defaultValue={
-                      merged.contractualValue || merged.contractualValue === 0
-                        ? String(merged.contractualValue || "")
-                        : ""
-                    }
-                    disabled={isSavingDetails}
-                    className={inputNormal}
-                    placeholder="Ex. 35"
-                  />
-
-                  <select
-                    {...regDetails("contractualUnit")}
-                    defaultValue={merged.contractualUnit || ""}
-                    disabled={isSavingDetails}
-                    className={inputNormal}
-                  >
-                    <option value="" disabled hidden>
-                      Sélectionner
-                    </option>
-                    {CONTRACT_UNIT_OPTIONS.map((option) => (
-                      <option
-                        key={option.value || "empty"}
-                        value={option.value}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  {isEditing ? (
+                    <select
+                      {...regDetails("contractType")}
+                      defaultValue={merged.contractType || ""}
+                      disabled={isSavingDetails}
+                      className={inputNormal}
+                    >
+                      {CONTRACT_TYPE_OPTIONS.map((option) => (
+                        <option
+                          key={option.value || "empty"}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className={valueCls}>{merged.contractType || "—"}</p>
+                  )}
                 </div>
-              ) : (
-                <p className={valueCls}>
-                  {formatContractualLabel({
-                    contractualValue: merged.contractualValue,
-                    contractualUnit: merged.contractualUnit,
-                  })}
-                </p>
-              )}
-            </div>
+
+                <div className={cardWrap}>
+                  <div className={labelCls}>
+                    <CalendarDays className="size-4" />
+                    Temps contractuel
+                  </div>
+
+                  {isEditing ? (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        {...regDetails("contractualValue")}
+                        defaultValue={
+                          merged.contractualValue ||
+                          merged.contractualValue === 0
+                            ? String(merged.contractualValue || "")
+                            : ""
+                        }
+                        disabled={isSavingDetails}
+                        className={inputNormal}
+                        placeholder="Ex. 35"
+                      />
+
+                      <select
+                        {...regDetails("contractualUnit")}
+                        defaultValue={merged.contractualUnit || ""}
+                        disabled={isSavingDetails}
+                        className={inputNormal}
+                      >
+                        <option value="" disabled hidden>
+                          Sélectionner
+                        </option>
+                        {CONTRACT_UNIT_OPTIONS.map((option) => (
+                          <option
+                            key={option.value || "empty"}
+                            value={option.value}
+                          >
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p className={valueCls}>
+                      {formatContractualLabel({
+                        contractualValue: merged.contractualValue,
+                        contractualUnit: merged.contractualUnit,
+                      })}
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : null}
 
             {fields.map((f) => {
               const isRequired = f.required;

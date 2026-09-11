@@ -14,6 +14,9 @@ const RestaurantModel = require("../models/restaurant.model");
 const {
   stripeCustomerUsedByAnyRestaurant,
 } = require("../services/stripe-billing.service");
+const {
+  decorateRestaurantEmployees,
+} = require("../services/employee-serialization.service");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
@@ -194,7 +197,13 @@ router.get("/owner/get-data", authenticateToken, async (req, res) => {
       .populate("employees")
       .populate("menus");
 
-    res.status(200).json({ owner, restaurant });
+    const decoratedRestaurant = decorateRestaurantEmployees(
+      restaurant,
+      restaurant?._id,
+      restaurant?.employees || [],
+    );
+
+    res.status(200).json({ owner, restaurant: decoratedRestaurant });
   } catch (error) {
     console.error("Erreur lors de la récupération des informations :", error);
     res.status(500).json({ message: "Erreur serveur" });

@@ -78,8 +78,12 @@ mountSseRoute(app);
 // ROUTES
 const apiRoutes = "/api";
 const authRoutes = require("./routes/auth.routes");
+const {
+  restrictAccountantAccess,
+} = require("./middleware/restrict-accountant-access");
 
 app.use(apiRoutes, authRoutes);
+app.use(apiRoutes, restrictAccountantAccess);
 
 // ADMIN
 const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");

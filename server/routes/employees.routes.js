@@ -67,6 +67,35 @@ function normalizeEmail(email) {
   return (email || "").trim().toLowerCase();
 }
 
+function normalizeAccountType(value) {
+  return value === "accountant" ? "accountant" : "employee";
+}
+
+function isAccountant(employee) {
+  return employee?.accountType === "accountant";
+}
+
+function workforceAccountFilter() {
+  return {
+    $or: [{ accountType: "employee" }, { accountType: { $exists: false } }],
+  };
+}
+
+function serializeEmployeeForAccountant(employee, restaurantId) {
+  const snapshot =
+    findRestaurantProfile(employee, restaurantId)?.snapshot || {};
+
+  return {
+    _id: employee?._id,
+    firstname: snapshot.firstname || employee?.firstname || "",
+    lastname: snapshot.lastname || employee?.lastname || "",
+    post: snapshot.post || employee?.post || "",
+    profilePicture: employee?.profilePicture?.url
+      ? { url: employee.profilePicture.url }
+      : null,
+  };
+}
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(email || "").trim());
 }
@@ -246,6 +275,33 @@ async function getEmployeesAccessContext(request, restaurantId) {
     };
   }
 
+  if (request.user?.role === "accountant") {
+    if (String(request.user.restaurantId || "") !== String(restaurantId)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    const currentEmployee = await EmployeeModel.findById(request.user.id);
+    const isListedByRestaurant = (restaurant.employees || []).some(
+      (employee) =>
+        String(employee?._id || employee || "") === String(request.user.id),
+    );
+    if (
+      !currentEmployee ||
+      !isAccountant(currentEmployee) ||
+      !isListedByRestaurant ||
+      !employeeWorksInRestaurant(currentEmployee, restaurantId)
+    ) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    return {
+      restaurant,
+      isManager: false,
+      isAccountant: true,
+      currentEmployee,
+    };
+  }
+
   return { error: { status: 403, message: "Forbidden" } };
 }
 
@@ -260,10 +316,19 @@ async function getEmployeeRouteAccess(
   request,
   restaurantId,
   employeeId,
-  { managerOnly = false, allowSelf = true } = {},
+  {
+    managerOnly = false,
+    allowSelf = true,
+    allowAccountantSelf = false,
+    allowAccountantTarget = false,
+  } = {},
 ) {
   const accessContext = await getEmployeesAccessContext(request, restaurantId);
   if (accessContext.error) return accessContext;
+
+  if (accessContext.isAccountant && !allowAccountantSelf) {
+    return { error: { status: 403, message: "Forbidden" } };
+  }
 
   if (managerOnly && !accessContext.isManager) {
     return { error: { status: 403, message: "Forbidden" } };
@@ -279,6 +344,23 @@ async function getEmployeeRouteAccess(
     }
   }
 
+  if (
+    accessContext.isAccountant &&
+    String(accessContext.currentEmployee?._id || "") !==
+      String(employeeId || "")
+  ) {
+    return { error: { status: 403, message: "Forbidden" } };
+  }
+
+  if (employeeId && !allowAccountantTarget) {
+    const target = await EmployeeModel.findById(employeeId)
+      .select("accountType")
+      .lean();
+    if (isAccountant(target)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+  }
+
   return accessContext;
 }
 
@@ -288,11 +370,43 @@ async function getEmployeeDocumentRouteAccess(
   employeeId,
   options = {},
 ) {
+  if (request.user?.role === "accountant") {
+    if (options.managerOnly) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    const accessContext = await getEmployeesAccessContext(
+      request,
+      restaurantId,
+    );
+    if (accessContext.error) return accessContext;
+
+    const employeeIsListedByRestaurant = (
+      accessContext.restaurant?.employees || []
+    ).some(
+      (employee) =>
+        String(employee?._id || employee || "") === String(employeeId),
+    );
+    const targetEmployee = await EmployeeModel.findById(employeeId);
+
+    if (
+      !employeeIsListedByRestaurant ||
+      !targetEmployee ||
+      isAccountant(targetEmployee) ||
+      !employeeWorksInRestaurant(targetEmployee, restaurantId) ||
+      !findRestaurantProfile(targetEmployee, restaurantId)
+    ) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
+
+    return accessContext;
+  }
+
   const accessContext = await getEmployeeRouteAccess(
     request,
     restaurantId,
     employeeId,
-    options,
+    { ...options, allowAccountantTarget: true },
   );
   if (accessContext.error) return accessContext;
 
@@ -310,6 +424,7 @@ async function getEmployeeDocumentRouteAccess(
     _id: employeeId,
     restaurants: restaurantId,
     "restaurantProfiles.restaurant": restaurantId,
+    ...workforceAccountFilter(),
   });
   if (!employeeExists) {
     return { error: { status: 404, message: "Employee not found" } };
@@ -323,6 +438,12 @@ function findEmployeeDocument(profile, publicId) {
     (profile?.documents || []).find(
       (document) => document.public_id === publicId,
     ) || null
+  );
+}
+
+function accountantCanReadDocument(user, document) {
+  return (
+    user?.role === "accountant" && document?.uploadedBy?.role === "accountant"
   );
 }
 
@@ -889,7 +1010,7 @@ async function authorizeEmployeeDocumentUpload(req, res, next) {
       req,
       restaurantId,
       employeeId,
-      { managerOnly: true },
+      { managerOnly: req.user?.role !== "accountant" },
     );
     if (accessContext.error) {
       return res
@@ -1095,9 +1216,11 @@ router.post(
       contractType,
       contractualValue,
       contractualUnit,
+      accountType,
     } = req.body;
 
     const normalizedEmail = normalizeEmail(email);
+    const normalizedAccountType = normalizeAccountType(accountType);
     const normalizedEmployment = {
       contractType: normalizeContractType(contractType),
       contractualValue: normalizeContractualValue(contractualValue),
@@ -1105,6 +1228,21 @@ router.post(
     };
 
     try {
+      if (
+        !String(firstName || "").trim() ||
+        !String(lastName || "").trim() ||
+        !String(phone || "").trim() ||
+        (normalizedAccountType === "accountant" && !normalizedEmail)
+      ) {
+        return res.status(400).json({
+          message: "Le prénom, le nom, l'e-mail et le téléphone sont requis.",
+        });
+      }
+
+      if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+        return res.status(400).json({ message: "Invalid email" });
+      }
+
       const accessContext = await getEmployeeRouteAccess(
         req,
         restaurantId,
@@ -1162,20 +1300,40 @@ router.post(
         });
       }
 
+      if (
+        existingEmployee &&
+        normalizeAccountType(existingEmployee.accountType) !==
+          normalizedAccountType
+      ) {
+        return res.status(409).json({
+          code: "ACCOUNT_TYPE_CONFLICT",
+          message:
+            "Cette adresse mail appartient déjà à un autre type de compte.",
+        });
+      }
+
       // ---------- CAS 1 : NOUVEL EMPLOYÉ ----------
       if (!existingEmployee) {
         const temporaryPassword = generatePassword();
         const newEmployee = new EmployeeModel({
+          accountType: normalizedAccountType,
           lastname: lastName,
           firstname: firstName,
           email: normalizedEmail || undefined,
           phone: phone,
-          secuNumber: secuNumber,
-          address: address,
-          emergencyContact: emergencyContact,
+          secuNumber:
+            normalizedAccountType === "accountant" ? undefined : secuNumber,
+          address: normalizedAccountType === "accountant" ? undefined : address,
+          emergencyContact:
+            normalizedAccountType === "accountant"
+              ? undefined
+              : emergencyContact,
           password: temporaryPassword,
-          post: post,
-          dateOnPost: dateOnPost ? new Date(dateOnPost) : undefined,
+          post: normalizedAccountType === "accountant" ? "" : post,
+          dateOnPost:
+            normalizedAccountType === "accountant" || !dateOnPost
+              ? undefined
+              : new Date(dateOnPost),
           profilePicture,
           restaurants: [restaurantId],
           restaurantProfiles: [
@@ -1190,13 +1348,26 @@ router.post(
                 lastname: lastName,
                 email: normalizedEmail || undefined,
                 phone,
-                secuNumber,
-                address,
-                emergencyContact,
-                post,
-                dateOnPost: dateOnPost ? new Date(dateOnPost) : undefined,
+                secuNumber:
+                  normalizedAccountType === "accountant"
+                    ? undefined
+                    : secuNumber,
+                address:
+                  normalizedAccountType === "accountant" ? undefined : address,
+                emergencyContact:
+                  normalizedAccountType === "accountant"
+                    ? undefined
+                    : emergencyContact,
+                post: normalizedAccountType === "accountant" ? "" : post,
+                dateOnPost:
+                  normalizedAccountType === "accountant" || !dateOnPost
+                    ? undefined
+                    : new Date(dateOnPost),
               },
-              employment: normalizedEmployment,
+              employment:
+                normalizedAccountType === "accountant"
+                  ? {}
+                  : normalizedEmployment,
             },
           ],
         });
@@ -1214,19 +1385,26 @@ router.post(
                 name: newEmployee.firstname,
               },
             ],
-            subject: "Votre accès employé Gusto Manager",
+            subject:
+              normalizedAccountType === "accountant"
+                ? "Votre accès comptable Gusto Manager"
+                : "Votre accès employé Gusto Manager",
             htmlContent: `
-              <p>Bonjour ${newEmployee.firstname},</p>
-              <p>Votre compte employé a été créé avec succès.</p>
+              <p>Bonjour ${escapeHtml(newEmployee.firstname)},</p>
+              <p>Votre compte ${normalizedAccountType === "accountant" ? "comptable" : "employé"} a été créé avec succès.</p>
               <p>Connectez-vous ici : 
                 <a href="https://gusto-manager.com/dashboard/login">
                   https://gusto-manager.com/dashboard/login
                 </a>
               </p>
-              <p><strong>Identifiant :</strong> ${newEmployee.email}<br/>
-                 <strong>Mot de passe temporaire :</strong> ${temporaryPassword}
+              <p><strong>Identifiant :</strong> ${escapeHtml(newEmployee.email)}<br/>
+                 <strong>Mot de passe temporaire :</strong> ${escapeHtml(temporaryPassword)}
               </p>
-              <p>Merci de modifier votre mot de passe lors de votre première connexion.</p>
+              <p>${
+                normalizedAccountType === "accountant"
+                  ? "En cas de besoin, utilisez « Mot de passe oublié » depuis la page de connexion."
+                  : "Merci de modifier votre mot de passe lors de votre première connexion."
+              }</p>
               <p>— L’équipe Gusto Manager</p>
             `,
           };
@@ -1262,19 +1440,39 @@ router.post(
       if (typeof phone !== "undefined" && phone !== "") {
         existingEmployee.phone = phone;
       }
-      if (typeof secuNumber !== "undefined" && secuNumber !== "") {
+      if (
+        normalizedAccountType !== "accountant" &&
+        typeof secuNumber !== "undefined" &&
+        secuNumber !== ""
+      ) {
         existingEmployee.secuNumber = secuNumber;
       }
-      if (typeof address !== "undefined" && address !== "") {
+      if (
+        normalizedAccountType !== "accountant" &&
+        typeof address !== "undefined" &&
+        address !== ""
+      ) {
         existingEmployee.address = address;
       }
-      if (typeof emergencyContact !== "undefined" && emergencyContact !== "") {
+      if (
+        normalizedAccountType !== "accountant" &&
+        typeof emergencyContact !== "undefined" &&
+        emergencyContact !== ""
+      ) {
         existingEmployee.emergencyContact = emergencyContact;
       }
-      if (typeof post !== "undefined" && post !== "") {
+      if (
+        normalizedAccountType !== "accountant" &&
+        typeof post !== "undefined" &&
+        post !== ""
+      ) {
         existingEmployee.post = post;
       }
-      if (typeof dateOnPost !== "undefined" && dateOnPost !== "") {
+      if (
+        normalizedAccountType !== "accountant" &&
+        typeof dateOnPost !== "undefined" &&
+        dateOnPost !== ""
+      ) {
         existingEmployee.dateOnPost = new Date(dateOnPost);
       }
 
@@ -1293,6 +1491,10 @@ router.post(
         profile.snapshot = {};
       }
       profile.employment = profile.employment || {};
+
+      if (normalizedAccountType === "accountant") {
+        profile.options = {};
+      }
 
       // Snapshot = données figées pour CE restaurant
       profile.snapshot.firstname =
@@ -1316,34 +1518,53 @@ router.post(
           : existingEmployee.phone;
 
       profile.snapshot.secuNumber =
-        typeof secuNumber !== "undefined" && secuNumber !== ""
+        normalizedAccountType !== "accountant" &&
+        typeof secuNumber !== "undefined" &&
+        secuNumber !== ""
           ? secuNumber
-          : existingEmployee.secuNumber;
+          : normalizedAccountType === "accountant"
+            ? ""
+            : existingEmployee.secuNumber;
 
       profile.snapshot.address =
-        typeof address !== "undefined" && address !== ""
+        normalizedAccountType !== "accountant" &&
+        typeof address !== "undefined" &&
+        address !== ""
           ? address
-          : existingEmployee.address;
+          : normalizedAccountType === "accountant"
+            ? ""
+            : existingEmployee.address;
 
       profile.snapshot.emergencyContact =
-        typeof emergencyContact !== "undefined" && emergencyContact !== ""
+        normalizedAccountType !== "accountant" &&
+        typeof emergencyContact !== "undefined" &&
+        emergencyContact !== ""
           ? emergencyContact
-          : existingEmployee.emergencyContact;
+          : normalizedAccountType === "accountant"
+            ? ""
+            : existingEmployee.emergencyContact;
 
       profile.snapshot.post =
-        typeof post !== "undefined" && post !== ""
-          ? post
-          : existingEmployee.post;
+        normalizedAccountType === "accountant"
+          ? ""
+          : typeof post !== "undefined" && post !== ""
+            ? post
+            : existingEmployee.post;
 
       profile.snapshot.dateOnPost =
-        typeof dateOnPost !== "undefined" && dateOnPost !== ""
-          ? new Date(dateOnPost)
-          : existingEmployee.dateOnPost || profile.snapshot.dateOnPost;
+        normalizedAccountType === "accountant"
+          ? undefined
+          : typeof dateOnPost !== "undefined" && dateOnPost !== ""
+            ? new Date(dateOnPost)
+            : existingEmployee.dateOnPost || profile.snapshot.dateOnPost;
 
-      profile.employment.contractType = normalizedEmployment.contractType;
-      profile.employment.contractualValue =
-        normalizedEmployment.contractualValue;
-      profile.employment.contractualUnit = normalizedEmployment.contractualUnit;
+      if (normalizedAccountType !== "accountant") {
+        profile.employment.contractType = normalizedEmployment.contractType;
+        profile.employment.contractualValue =
+          normalizedEmployment.contractualValue;
+        profile.employment.contractualUnit =
+          normalizedEmployment.contractualUnit;
+      }
 
       // ✅ Important : indiquer à Mongoose que restaurantProfiles a changé
       existingEmployee.markModified("restaurantProfiles");
@@ -1397,7 +1618,7 @@ router.patch(
         req,
         restaurantId,
         employeeId,
-        { managerOnly: true },
+        { managerOnly: true, allowAccountantTarget: true },
       );
       if (accessContext.error) {
         return res
@@ -1427,6 +1648,7 @@ router.patch(
 
       // Profil spécifique à CE resto
       const profile = getOrCreateRestaurantProfile(employee, restaurantId);
+      const employeeIsAccountant = isAccountant(employee);
 
       if (!profile.snapshot) {
         profile.snapshot = {};
@@ -1444,23 +1666,23 @@ router.patch(
         employee.phone = phone;
         profile.snapshot.phone = phone;
       }
-      if (secuNumber !== undefined) {
+      if (!employeeIsAccountant && secuNumber !== undefined) {
         employee.secuNumber = secuNumber;
         profile.snapshot.secuNumber = secuNumber;
       }
-      if (address !== undefined) {
+      if (!employeeIsAccountant && address !== undefined) {
         employee.address = address;
         profile.snapshot.address = address;
       }
-      if (emergencyContact !== undefined) {
+      if (!employeeIsAccountant && emergencyContact !== undefined) {
         employee.emergencyContact = emergencyContact;
         profile.snapshot.emergencyContact = emergencyContact;
       }
-      if (post !== undefined) {
+      if (!employeeIsAccountant && post !== undefined) {
         employee.post = post;
         profile.snapshot.post = post;
       }
-      if (dateOnPost !== undefined) {
+      if (!employeeIsAccountant && dateOnPost !== undefined) {
         employee.dateOnPost = dateOnPost ? new Date(dateOnPost) : undefined;
         profile.snapshot.dateOnPost = dateOnPost
           ? new Date(dateOnPost)
@@ -1492,21 +1714,23 @@ router.patch(
         }
       }
 
-      if (options !== undefined) {
+      if (!employeeIsAccountant && options !== undefined) {
         profile.options =
           typeof options === "string" ? JSON.parse(options) : options;
+      } else if (employeeIsAccountant) {
+        profile.options = {};
       }
 
-      if (contractType !== undefined) {
+      if (!employeeIsAccountant && contractType !== undefined) {
         profile.employment.contractType = normalizeContractType(contractType);
       }
 
-      if (contractualValue !== undefined) {
+      if (!employeeIsAccountant && contractualValue !== undefined) {
         profile.employment.contractualValue =
           normalizeContractualValue(contractualValue);
       }
 
-      if (contractualUnit !== undefined) {
+      if (!employeeIsAccountant && contractualUnit !== undefined) {
         profile.employment.contractualUnit =
           normalizeContractualUnit(contractualUnit);
       }
@@ -1613,12 +1837,22 @@ router.post(
       await employee.save();
       metadataPersisted = true;
 
-      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
+      const visibleDocuments =
+        req.user?.role === "accountant"
+          ? profile.documents.filter((document) =>
+              accountantCanReadDocument(req.user, document),
+            )
+          : profile.documents;
+      const responsePayload = {
+        documents: serializeEmployeeDocuments(visibleDocuments),
+      };
 
-      return res.json({
-        restaurant: updatedRestaurant,
-        documents: serializeEmployeeDocuments(profile.documents),
-      });
+      if (req.user?.role !== "accountant") {
+        responsePayload.restaurant =
+          await buildDecoratedRestaurant(restaurantId);
+      }
+
+      return res.json(responsePayload);
     } catch (err) {
       if (!metadataPersisted && uploadedAssets.length) {
         await Promise.allSettled(
@@ -1666,8 +1900,16 @@ router.get(
         (p) => String(p.restaurant) === String(restaurantId),
       );
 
+      const documents = profile?.documents || [];
+      const visibleDocuments =
+        req.user?.role === "accountant"
+          ? documents.filter((document) =>
+              accountantCanReadDocument(req.user, document),
+            )
+          : documents;
+
       return res.json({
-        documents: serializeEmployeeDocuments(profile?.documents || []),
+        documents: serializeEmployeeDocuments(visibleDocuments),
       });
     } catch (err) {
       console.error("Error fetching employee documents:", err);
@@ -1708,6 +1950,12 @@ router.get(
       const doc = findEmployeeDocument(profile, public_id);
       if (!doc) {
         return res.status(404).json({ message: "Document not found" });
+      }
+      if (
+        req.user?.role === "accountant" &&
+        !accountantCanReadDocument(req.user, doc)
+      ) {
+        return res.status(403).json({ message: "Forbidden" });
       }
 
       const storageUrl = buildEmployeeDocumentDownloadUrl(doc, cloudinary);
@@ -1816,7 +2064,7 @@ router.delete(
         req,
         restaurantId,
         employeeId,
-        { managerOnly: true },
+        { managerOnly: true, allowAccountantTarget: true },
       );
       if (accessContext.error) {
         return res
@@ -2399,6 +2647,7 @@ router.post(
       const employees = await EmployeeModel.find({
         _id: { $in: selectedEmployeeIds },
         restaurants: restaurantId,
+        ...workforceAccountFilter(),
       }).lean();
 
       if (!employees.length) {
@@ -2496,6 +2745,7 @@ router.post(
       const employees = await EmployeeModel.find({
         _id: { $in: selectedEmployeeIds },
         restaurants: restaurantId,
+        ...workforceAccountFilter(),
       }).lean();
 
       if (!employees.length) {
@@ -2596,6 +2846,7 @@ router.post(
       const employees = await EmployeeModel.find({
         _id: { $in: selectedEmployeeIds },
         restaurants: restaurantId,
+        ...workforceAccountFilter(),
       }).lean();
 
       if (!employees.length) {
@@ -3036,6 +3287,76 @@ router.delete(
 
 // ---------- EMPLOYEE ME / UPDATE DATA / PASSWORD ----------
 
+router.get("/accountants/me", authenticateToken, async (req, res) => {
+  try {
+    if (req.user?.role !== "accountant") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const accountant = await EmployeeModel.findById(req.user.id).lean();
+    if (!accountant || !isAccountant(accountant)) {
+      return res.status(404).json({ message: "Accountant not found" });
+    }
+
+    const linkedRestaurantIds = (accountant.restaurants || []).map((id) =>
+      String(id),
+    );
+    const restaurants = await RestaurantModel.find({
+      _id: { $in: linkedRestaurantIds },
+      employees: accountant._id,
+    })
+      .select("_id name")
+      .lean();
+
+    const selectedRestaurantId = String(req.user.restaurantId || "");
+    const restaurant = await RestaurantModel.findOne({
+      _id: selectedRestaurantId,
+      employees: accountant._id,
+    })
+      .select("_id name employees")
+      .lean();
+
+    if (!restaurant) {
+      return res.status(403).json({ message: "Restaurant selection required" });
+    }
+
+    const employees = await EmployeeModel.find({
+      _id: { $in: restaurant.employees || [] },
+      restaurants: restaurant._id,
+      "restaurantProfiles.restaurant": restaurant._id,
+      ...workforceAccountFilter(),
+    })
+      .select(
+        "_id firstname lastname post profilePicture restaurantProfiles.restaurant restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.snapshot.post",
+      )
+      .lean();
+
+    const limitedEmployees = employees.map((employee) =>
+      serializeEmployeeForAccountant(employee, restaurant._id),
+    );
+
+    return res.json({
+      accountant: {
+        _id: accountant._id,
+        accountType: "accountant",
+        firstname: accountant.firstname,
+        lastname: accountant.lastname,
+        email: accountant.email,
+        phone: accountant.phone,
+      },
+      restaurant: {
+        _id: restaurant._id,
+        name: restaurant.name,
+        employees: limitedEmployees,
+      },
+      restaurants,
+    });
+  } catch (error) {
+    console.error("Error fetching accountant session:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 router.get("/employees/me", authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== "employee") {
@@ -3094,6 +3415,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       const coworkers = await EmployeeModel.find({
         _id: { $in: coworkerIds },
         restaurants: restaurant._id,
+        ...workforceAccountFilter(),
       })
         .select(
           "firstname lastname post profilePicture restaurantProfiles restaurants",
@@ -3402,10 +3724,15 @@ router.get(
 );
 
 router._employeeDocumentSecurity = {
+  accountantCanReadDocument,
   authorizeEmployeeDocumentUpload,
   findEmployeeDocument,
   getEmployeeDocumentRouteAccess,
   handleEmployeeDocumentUpload,
+};
+router._accountantSecurity = {
+  serializeEmployeeForAccountant,
+  workforceAccountFilter,
 };
 
 module.exports = router;

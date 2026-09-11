@@ -39,6 +39,9 @@ export default function LoginPage() {
 
     try {
       const decoded = jwtDecode(token);
+      if (decoded?.role === "accountant") {
+        to = "/dashboard/accountant";
+      }
       if (decoded?.role === "employee") {
         to = "/dashboard/my-space";
       }
