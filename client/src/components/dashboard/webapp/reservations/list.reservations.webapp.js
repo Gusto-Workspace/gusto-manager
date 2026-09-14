@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/router";
 
 // I18N
@@ -18,6 +19,7 @@ import QuickSlotClosuresReservationsComponent from "../../reservations/quick-slo
 import ReservationsPeriodLoadingComponent from "@/components/_shared/reservations/reservations-period-loading.component";
 import ReservationsPrintSheet, {
   getReservationsPrintTitle,
+  openReservationsPrintDialog,
 } from "@/components/_shared/reservations/reservations-print-sheet.component";
 import ReservationPrintModal from "@/components/_shared/reservations/reservation-print-modal.component";
 import {
@@ -478,8 +480,10 @@ export default function ListReservationsWebapp(props) {
     router.push(`/dashboard/webapp/reservations/parameters`);
   }
   function handlePrint(mode) {
-    setIsPrintModalOpen(false);
-    setPrintMode(mode);
+    flushSync(() => {
+      setIsPrintModalOpen(false);
+      setPrintMode(mode);
+    });
     const previousTitle = document.title;
     document.title = getReservationsPrintTitle(selectedDay, mode);
     const restoreTitle = () => {
@@ -487,7 +491,7 @@ export default function ListReservationsWebapp(props) {
       window.removeEventListener("afterprint", restoreTitle);
     };
     window.addEventListener("afterprint", restoreTitle);
-    window.requestAnimationFrame(() => window.print());
+    openReservationsPrintDialog();
   }
   function handleEditClick(reservation) {
     router.push(
