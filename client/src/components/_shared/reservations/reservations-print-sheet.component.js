@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   getReservationServiceBucket,
@@ -58,6 +59,12 @@ export default function ReservationsPrintSheet({
   mode = "day",
   tablesCatalog = [],
 }) {
+  const [portalTarget, setPortalTarget] = useState(null);
+
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
+
   const printableReservations = useMemo(() => {
     const source = Array.isArray(reservations) ? reservations : [];
     const filtered =
@@ -81,9 +88,9 @@ export default function ReservationsPrintSheet({
     });
   }, [mode, reservations]);
 
-  if (!selectedDay) return null;
+  if (!selectedDay || !portalTarget) return null;
 
-  return (
+  return createPortal(
     <>
       <div className="reservations-print-sheet hidden bg-white text-black">
         <div className="mb-6 border-b border-black pb-4">
@@ -157,19 +164,12 @@ export default function ReservationsPrintSheet({
 
       <style jsx global>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          body > * {
+            display: none !important;
           }
 
-          .reservations-print-sheet,
-          .reservations-print-sheet * {
-            visibility: visible !important;
-          }
-
-          .reservations-print-sheet {
+          body > .reservations-print-sheet {
             display: block !important;
-            position: absolute;
-            inset: 0;
             width: 100%;
             box-sizing: border-box;
             padding: 16mm;
@@ -181,6 +181,7 @@ export default function ReservationsPrintSheet({
           }
         }
       `}</style>
-    </>
+    </>,
+    portalTarget,
   );
 }
