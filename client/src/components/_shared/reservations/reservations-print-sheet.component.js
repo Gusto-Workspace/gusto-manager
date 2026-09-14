@@ -24,6 +24,14 @@ export function getReservationsPrintTitle(selectedDay, mode) {
   return `réservations ${dateLabel} - ${PRINT_MODE_LABELS[mode] || PRINT_MODE_LABELS.day}`;
 }
 
+export function openReservationsPrintDialog() {
+  try {
+    if (document.execCommand("print")) return;
+  } catch {}
+
+  window.print();
+}
+
 function getTableLabel(reservation, tablesCatalog = []) {
   const explicitName = String(reservation?.table?.name || "").trim();
   if (explicitName) return explicitName;
