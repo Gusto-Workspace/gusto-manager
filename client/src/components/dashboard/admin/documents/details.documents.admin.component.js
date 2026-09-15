@@ -21,6 +21,7 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 import {
   formatCatalogProductLabel,
+  MULTI_QUANTITY_ADDON_CODE,
   splitSubscriptionCatalogProducts,
   supportsMultipleQuantity,
 } from "../_shared/utils/subscription-catalog.utils";
@@ -133,9 +134,6 @@ function preventWheelChange(e) {
   e.currentTarget.blur();
 }
 
-const TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE = 12;
-const TABLET_RENTAL_CODE = "tab_rental";
-
 const SIGNATURE_HISTORY_LABELS = {
   SENT_FOR_SIGNATURE: "Demande envoyée",
   LINK_REPLACED: "Lien remplacé",
@@ -216,9 +214,7 @@ function formatCommercialChange(change = {}) {
   }
 
   if (Number(before?.quantity || 1) !== Number(after?.quantity || 1)) {
-    details.push(
-      `quantité ${before?.quantity || 1} → ${after?.quantity || 1}`,
-    );
+    details.push(`quantité ${before?.quantity || 1} → ${after?.quantity || 1}`);
   }
 
   return `${label} : ${details.join(" ; ") || "configuration modifiée"}`;
@@ -291,13 +287,6 @@ export default function DetailsDocumentAdminPage(props) {
     offered: false,
     _lastPaidUnitPrice: 0,
   });
-  const [hasTimeClockTerminalRental, setHasTimeClockTerminalRental] =
-    useState(false);
-  const [timeClockTerminalRentalQuantity, setTimeClockTerminalRentalQuantity] =
-    useState(1);
-  const [timeClockTerminalRentalPrice, setTimeClockTerminalRentalPrice] =
-    useState(TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE);
-
   // ✅ paiement site vitrine : 1 / 2 / 3
   const [sitePaymentSplit, setSitePaymentSplit] = useState(1);
 
@@ -316,21 +305,6 @@ export default function DetailsDocumentAdminPage(props) {
 
   // ✅ modules numeric
   const [modules, setModules] = useState([]);
-  const [timeClockTerminalRentalMeta, setTimeClockTerminalRentalMeta] =
-    useState({});
-  const customModuleEntries = useMemo(
-    () =>
-      modules
-        .map((module, index) => ({ module, index }))
-        .filter(
-          ({ module }) =>
-            module.sourceKind === "OTHER" ||
-            !catalogAddons.some((product) =>
-              catalogProductMatchesModule(product, module),
-            ),
-        ),
-    [catalogAddons, modules],
-  );
 
   const totalsPreview = useMemo(() => {
     const { subtotal, total } = computeTotals(lines, discountAmount);
@@ -491,21 +465,6 @@ export default function DetailsDocumentAdminPage(props) {
 
         if (wLine) setWebsiteLine(wLine);
 
-        setHasTimeClockTerminalRental(
-          d?.type === "CONTRACT" &&
-            Boolean(d?.timeClockTerminalRental?.enabled),
-        );
-        setTimeClockTerminalRentalQuantity(
-          Math.max(1, Number(d?.timeClockTerminalRental?.quantity || 1)),
-        );
-        setTimeClockTerminalRentalPrice(
-          Number(
-            d?.timeClockTerminalRental?.priceMonthly ||
-              TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE,
-          ),
-        );
-        setTimeClockTerminalRentalMeta({ ...d?.timeClockTerminalRental });
-
         // ✅ payment split
         setSitePaymentSplit(Number(d?.website?.paymentSplit || 1));
 
@@ -536,20 +495,46 @@ export default function DetailsDocumentAdminPage(props) {
           ),
         );
 
+        const documentModules = Array.isArray(d?.modules) ? [...d.modules] : [];
+        const legacyRental = d?.timeClockTerminalRental;
+        if (d?.type === "CONTRACT" && legacyRental?.enabled) {
+          const legacyRentalModule = {
+            name: "Location tablette",
+            offered: false,
+            priceMonthly: Number(legacyRental.priceMonthly || 0),
+            quantity: Math.max(1, Number(legacyRental.quantity || 1)),
+            code: legacyRental.code || MULTI_QUANTITY_ADDON_CODE,
+            priceId: legacyRental.priceId || "",
+            productId: legacyRental.productId || "",
+            currency: legacyRental.currency || "EUR",
+            interval: legacyRental.interval || "month",
+            intervalCount: Math.max(1, Number(legacyRental.intervalCount || 1)),
+            sourceKind: "ADDON",
+          };
+          const alreadyInModules = documentModules.some(
+            (module) =>
+              (legacyRentalModule.priceId &&
+                module.priceId === legacyRentalModule.priceId) ||
+              (legacyRentalModule.productId &&
+                module.productId === legacyRentalModule.productId) ||
+              (legacyRentalModule.code &&
+                module.code === legacyRentalModule.code),
+          );
+          if (!alreadyInModules) documentModules.push(legacyRentalModule);
+        }
+
         setModules(
-          d?.modules && d.modules.length > 0
-            ? d.modules.map((m) => {
-                const pm = toSafeNumber(m.priceMonthly, 0);
-                const offeredUi = Boolean(m.offered);
-                return {
-                  ...m,
-                  name: m.name || "",
-                  offered: offeredUi,
-                  priceMonthly: offeredUi ? "" : pm > 0 ? pm : "",
-                  _lastPaidPriceMonthly: pm > 0 ? pm : 0,
-                };
-              })
-            : [],
+          documentModules.map((m) => {
+            const pm = toSafeNumber(m.priceMonthly, 0);
+            const offeredUi = Boolean(m.offered);
+            return {
+              ...m,
+              name: m.name || "",
+              offered: offeredUi,
+              priceMonthly: offeredUi ? "" : pm > 0 ? pm : "",
+              _lastPaidPriceMonthly: pm > 0 ? pm : 0,
+            };
+          }),
         );
 
         setComments(d?.comments || "");
@@ -719,24 +704,12 @@ export default function DetailsDocumentAdminPage(props) {
     });
   }
 
-  function addModule() {
-    setModules((prev) => [
-      ...(prev || []),
-      {
-        name: "",
-        offered: false,
-        priceMonthly: "",
-        sourceKind: "OTHER",
-        _lastPaidPriceMonthly: 0,
-      },
-    ]);
-  }
-
   function catalogFields(product) {
     const price = product?.default_price || {};
     return {
       name: product?.name || "",
-      code: product?.catalogCode || product?.code || product?.metadata?.code || "",
+      code:
+        product?.catalogCode || product?.code || product?.metadata?.code || "",
       priceId: price?.id || "",
       productId: product?.id || "",
       priceMonthly: Number(price?.unit_amount || 0) / 100,
@@ -793,10 +766,6 @@ export default function DetailsDocumentAdminPage(props) {
       }),
     );
   }
-  function removeModule(i) {
-    setModules((prev) => (prev || []).filter((_, idx) => idx !== i));
-  }
-
   /**
    * ✅ Update module
    * - "Offert" UI = checkbox uniquement
@@ -923,7 +892,7 @@ export default function DetailsDocumentAdminPage(props) {
         interval: subscriptionMeta?.interval || "month",
         intervalCount: Math.max(
           1,
-            Number(subscriptionMeta?.intervalCount || 1),
+          Number(subscriptionMeta?.intervalCount || 1),
         ),
       };
       payload.engagementMonths = clampMin(engagementMonths, 1);
@@ -939,7 +908,10 @@ export default function DetailsDocumentAdminPage(props) {
             name: trimText(m.name),
             offered: offeredEffective,
             priceMonthly: offeredEffective ? 0 : clampMin(m.priceMonthly, 0),
-            quantity: Math.max(1, Number(m.quantity || 1)),
+            quantity:
+              m.sourceKind === "OTHER" || supportsMultipleQuantity(m)
+                ? Math.max(1, Number(m.quantity || 1))
+                : 1,
             code: m.code || "",
             priceId: m.priceId || "",
             productId: m.productId || "",
@@ -974,20 +946,7 @@ export default function DetailsDocumentAdminPage(props) {
               : `${clampMin(normalizedWebsiteLine.unitPrice, 0)}€`
             : "",
         };
-        payload.timeClockTerminalRental = {
-          enabled: Boolean(hasTimeClockTerminalRental),
-          priceMonthly: clampMin(timeClockTerminalRentalPrice, 0),
-          quantity: Math.max(1, Number(timeClockTerminalRentalQuantity || 1)),
-          code: timeClockTerminalRentalMeta?.code || TABLET_RENTAL_CODE,
-          priceId: timeClockTerminalRentalMeta?.priceId || "",
-          productId: timeClockTerminalRentalMeta?.productId || "",
-          currency: timeClockTerminalRentalMeta?.currency || "EUR",
-          interval: timeClockTerminalRentalMeta?.interval || "month",
-          intervalCount: Math.max(
-            1,
-            Number(timeClockTerminalRentalMeta?.intervalCount || 1),
-          ),
-        };
+        payload.timeClockTerminalRental = { enabled: false };
         if (confirmsCommercialReview) {
           payload.confirmCommercialReview = true;
         }
@@ -1920,85 +1879,6 @@ export default function DetailsDocumentAdminPage(props) {
                   </div>
                 ) : null}
 
-                {doc?.type === "CONTRACT" ? (
-                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-darkBlue">
-                          Location de terminaux de pointage
-                        </p>
-                        <p className="mt-1 text-xs text-darkBlue/60">
-                          {euro(timeClockTerminalRentalPrice)} {doc?.timeClockTerminalRental?.currency || "EUR"} par tablette / {recurrenceLabel(doc?.timeClockTerminalRental)}
-                        </p>
-                      </div>
-
-                      <label className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
-                        <input
-                          type="checkbox"
-                          disabled={isLocked}
-                          checked={hasTimeClockTerminalRental}
-                          onChange={(e) => {
-                            const enabled = e.target.checked;
-                            setHasTimeClockTerminalRental(enabled);
-                            if (enabled) {
-                              const rental = catalogAddons.find(
-                                (addon) =>
-                                  (addon?.catalogCode || addon?.code) ===
-                                  TABLET_RENTAL_CODE,
-                              );
-                              if (rental) {
-                                const fields = catalogFields(rental);
-                                setTimeClockTerminalRentalMeta(fields);
-                                setTimeClockTerminalRentalPrice(fields.priceMonthly);
-                              }
-                            }
-                          }}
-                        />
-                        Activer
-                      </label>
-                    </div>
-
-                    {hasTimeClockTerminalRental ? (
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/65">
-                          Nombre de tablettes
-                          <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            value={timeClockTerminalRentalQuantity}
-                            disabled={isLocked}
-                            onChange={(event) =>
-                              setTimeClockTerminalRentalQuantity(
-                                Math.max(1, Number(event.target.value || 1)),
-                              )
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/65">
-                          Tarif unitaire (
-                          {doc?.timeClockTerminalRental?.currency || "EUR"} /{" "}
-                          {recurrenceLabel(doc?.timeClockTerminalRental)})
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={timeClockTerminalRentalPrice}
-                            disabled={isLocked}
-                            onChange={(event) =>
-                              setTimeClockTerminalRentalPrice(
-                                clampMin(event.target.value, 0),
-                              )
-                            }
-                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue"
-                          />
-                        </label>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
                 {/* ✅ Lignes classiques */}
                 <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
@@ -2238,21 +2118,27 @@ export default function DetailsDocumentAdminPage(props) {
                           <select
                             value={subscriptionMeta?.priceId || ""}
                             disabled={isLocked}
-                            onChange={(event) => selectCatalogPlan(event.target.value)}
+                            onChange={(event) =>
+                              selectCatalogPlan(event.target.value)
+                            }
                             className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                           >
                             <option value="">Sélectionner une offre</option>
                             {subscriptionMeta?.priceId &&
                             !catalogPlans.some(
                               (plan) =>
-                                plan?.default_price?.id === subscriptionMeta.priceId,
+                                plan?.default_price?.id ===
+                                subscriptionMeta.priceId,
                             ) ? (
                               <option value={subscriptionMeta.priceId}>
                                 {subscriptionName || "Offre historique"}
                               </option>
                             ) : null}
                             {catalogPlans.map((plan) => (
-                              <option key={plan.id} value={plan?.default_price?.id || ""}>
+                              <option
+                                key={plan.id}
+                                value={plan?.default_price?.id || ""}
+                              >
                                 {formatCatalogProductLabel(plan)}
                               </option>
                             ))}
@@ -2318,19 +2204,9 @@ export default function DetailsDocumentAdminPage(props) {
                     </div>
 
                     <div className="rounded-xl w-full midTablet:w-2/3 border border-darkBlue/10 bg-white p-3 h-fit">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-darkBlue">
-                          Modules
-                        </p>
-                        <button
-                          onClick={addModule}
-                          disabled={isLocked}
-                          className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
-                        >
-                          <Plus className="size-4 text-darkBlue/60" />
-                          Ajouter une prestation libre
-                        </button>
-                      </div>
+                      <p className="text-sm font-semibold text-darkBlue">
+                        Modules
+                      </p>
 
                       {catalogAddons.length ? (
                         <div className="mt-3 grid grid-cols-1 gap-2">
@@ -2410,141 +2286,6 @@ export default function DetailsDocumentAdminPage(props) {
                           })}
                         </div>
                       ) : null}
-
-                      {customModuleEntries.length > 0 && (
-                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_70px_100px_140px_44px] gap-2">
-                          <p className="text-xs text-darkBlue/60 font-semibold">
-                            Prestation libre
-                          </p>
-                          <p className="text-xs text-darkBlue/60 font-semibold">
-                            Qté
-                          </p>
-                          <p className="text-xs text-darkBlue/60 font-semibold">
-                            Offert
-                          </p>
-                          <p className="text-xs text-darkBlue/60 font-semibold">
-                            Tarif unitaire
-                          </p>
-                          <span />
-                        </div>
-                      )}
-
-                      <div className="flex flex-col gap-6 midTablet:gap-2">
-                        {customModuleEntries.map(({ module: m, index: i }) => {
-                          const offeredUi = Boolean(m.offered);
-
-                          return (
-                            <div key={i}>
-                              <div className="grid grid-cols-1 midTablet:grid-cols-[1fr_70px_100px_140px_44px] gap-2 items-end">
-                                {/* NOM */}
-                                <div className="flex flex-col gap-1">
-                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Nom du module
-                                  </label>
-
-                                  <input
-                                    value={m.name}
-                                    disabled={isLocked}
-                                    onChange={(e) =>
-                                      updateModule(i, { name: e.target.value })
-                                    }
-                                    onBlur={(e) =>
-                                      updateModule(i, {
-                                        name: trimText(e.target.value),
-                                      })
-                                    }
-                                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
-                                    placeholder="-"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-1">
-                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Quantité
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    value={m.quantity || 1}
-                                    disabled={isLocked}
-                                    onChange={(event) =>
-                                      updateModule(i, {
-                                        quantity: Math.max(
-                                          1,
-                                          Number(event.target.value || 1),
-                                        ),
-                                      })
-                                    }
-                                    className="rounded-xl border border-darkBlue/10 bg-white px-2 py-2 text-sm w-full"
-                                  />
-                                </div>
-
-                                {/* OFFERT */}
-                                <div className="flex flex-col gap-1">
-                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Offert
-                                  </label>
-
-                                  <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/80">
-                                    <input
-                                      type="checkbox"
-                                      disabled={isLocked}
-                                      checked={offeredUi}
-                                      onChange={(e) =>
-                                        updateModule(i, {
-                                          offered: e.target.checked,
-                                        })
-                                      }
-                                    />
-                                    Offert
-                                  </label>
-                                </div>
-
-                                {/* PRIX */}
-                                <div className="flex flex-col gap-1">
-                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Tarif ({m.currency || "EUR"}
-                                    {m.sourceKind === "OTHER"
-                                      ? ""
-                                      : ` / ${recurrenceLabel(m)}`}
-                                    )
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    onWheel={preventWheelChange}
-                                    value={
-                                      offeredUi ? "" : (m.priceMonthly ?? "")
-                                    }
-                                    onChange={(e) =>
-                                      updateModule(i, {
-                                        priceMonthly: toNumberOrEmpty(
-                                          e.target.value,
-                                        ),
-                                      })
-                                    }
-                                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
-                                    placeholder="-"
-                                    disabled={offeredUi || isLocked}
-                                  />
-                                </div>
-
-                                {/* DELETE */}
-                                <button
-                                  onClick={() => removeModule(i)}
-                                  disabled={isLocked}
-                                  className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition disabled:opacity-60 h-[38px]"
-                                  title="Supprimer"
-                                >
-                                  <Trash2 className="size-4 text-red" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
                     </div>
                   </div>
                 </div>

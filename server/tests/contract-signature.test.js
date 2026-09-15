@@ -260,6 +260,13 @@ test("un brouillon d'avenant reprend la nouvelle situation commerciale complète
         label: "Cartes cadeaux",
         unitAmount: 45,
       },
+      {
+        kind: "ADDON",
+        code: "tab_rental",
+        label: "Location tablette",
+        quantity: 2,
+        unitAmount: 12,
+      },
     ],
   });
   const fields = commercialSnapshotToDocumentFields(current);
@@ -276,8 +283,10 @@ test("un brouillon d'avenant reprend la nouvelle situation commerciale complète
       ["premium", 1, 130, 130],
       ["reservations", 1, 0, 0],
       ["gift_cards", 1, 45, 45],
+      ["tab_rental", 2, 12, 24],
     ],
   );
+  assert.equal(fields.timeClockTerminalRental.enabled, false);
   assert.equal(fields.modules[0].offered, true);
   assert.equal(fields.modules[0].priceMonthly, 0);
 });
