@@ -11,9 +11,19 @@ import {
   FileSignature,
   CheckCircle2,
   Eye,
+  Copy,
+  Link2,
+  Ban,
+  RefreshCw,
+  FilePlus2,
 } from "lucide-react";
 
 import { GlobalContext } from "@/contexts/global.context";
+import {
+  formatCatalogProductLabel,
+  splitSubscriptionCatalogProducts,
+  supportsMultipleQuantity,
+} from "../_shared/utils/subscription-catalog.utils";
 
 function isQuoteOrInvoice(type) {
   return type === "QUOTE" || type === "INVOICE";
@@ -22,6 +32,18 @@ function isQuoteOrInvoice(type) {
 function euro(n) {
   const v = Number(n || 0);
   return v.toFixed(2).replace(".", ",");
+}
+
+function recurrenceLabel(value = {}) {
+  const count = Math.max(1, Number(value.intervalCount || 1));
+  const interval = value.interval || "month";
+  const labels = {
+    day: count === 1 ? "jour" : `${count} jours`,
+    week: count === 1 ? "semaine" : `${count} semaines`,
+    month: count === 1 ? "mois" : `${count} mois`,
+    year: count === 1 ? "an" : `${count} ans`,
+  };
+  return labels[interval] || (count === 1 ? interval : `${count} ${interval}`);
 }
 
 function toNumberOrEmpty(v) {
@@ -112,6 +134,39 @@ function preventWheelChange(e) {
 }
 
 const TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE = 12;
+const TABLET_RENTAL_CODE = "tab_rental";
+
+const SIGNATURE_HISTORY_LABELS = {
+  SENT_FOR_SIGNATURE: "Demande envoyée",
+  LINK_REPLACED: "Lien remplacé",
+  LINK_REVOKED: "Lien révoqué",
+  LINK_EXPIRED: "Lien expiré",
+  SIGNED: "Document signé",
+};
+
+const DOCUMENT_STATUS_LABELS = {
+  DRAFT: "Brouillon",
+  SENT: "Envoyé",
+  SIGNED: "Signé",
+};
+
+function documentTitle(document) {
+  if (document?.type === "QUOTE") return "Devis";
+  if (document?.type === "INVOICE") return "Facture";
+  return document?.contractKind === "AMENDMENT" ? "Avenant" : "Contrat";
+}
+
+function catalogProductMatchesModule(product, module) {
+  if (!product || !module) return false;
+  const productCode =
+    product.catalogCode || product.code || product.metadata?.code || "";
+  const priceId = product?.default_price?.id || "";
+  return Boolean(
+    (priceId && module.priceId === priceId) ||
+      (product.id && module.productId === product.id) ||
+      (productCode && module.code === productCode),
+  );
+}
 
 export default function DetailsDocumentAdminPage(props) {
   const router = useRouter();
@@ -124,10 +179,22 @@ export default function DetailsDocumentAdminPage(props) {
 
   const [pdfLoading, setPdfLoading] = useState(false);
   const [sendLoading, setSendLoading] = useState(false);
+  const [remoteActionLoading, setRemoteActionLoading] = useState(false);
+  const [signatureUrl, setSignatureUrl] = useState("");
+  const [commercialStatus, setCommercialStatus] = useState(null);
+  const [commercialStatusLoading, setCommercialStatusLoading] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState("");
 
   const [doc, setDoc] = useState(null);
+  const catalogProducts = useMemo(
+    () => adminContext?.subscriptionsList || [],
+    [adminContext],
+  );
+  const { plans: catalogPlans, addons: catalogAddons } = useMemo(
+    () => splitSubscriptionCatalogProducts(catalogProducts),
+    [catalogProducts],
+  );
 
   // confirmation modal
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
@@ -158,6 +225,10 @@ export default function DetailsDocumentAdminPage(props) {
   });
   const [hasTimeClockTerminalRental, setHasTimeClockTerminalRental] =
     useState(false);
+  const [timeClockTerminalRentalQuantity, setTimeClockTerminalRentalQuantity] =
+    useState(1);
+  const [timeClockTerminalRentalPrice, setTimeClockTerminalRentalPrice] =
+    useState(TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE);
 
   // ✅ paiement site vitrine : 1 / 2 / 3
   const [sitePaymentSplit, setSitePaymentSplit] = useState(1);
@@ -169,11 +240,29 @@ export default function DetailsDocumentAdminPage(props) {
   const [comments, setComments] = useState("");
 
   // ✅ subscription (name + monthly number)
+  const [subscriptionName, setSubscriptionName] = useState("");
   const [subscriptionPriceMonthly, setSubscriptionPriceMonthly] = useState("");
+  const [subscriptionQuantity, setSubscriptionQuantity] = useState(1);
+  const [subscriptionMeta, setSubscriptionMeta] = useState({});
   const [engagementMonths, setEngagementMonths] = useState(24);
 
   // ✅ modules numeric
   const [modules, setModules] = useState([]);
+  const [timeClockTerminalRentalMeta, setTimeClockTerminalRentalMeta] =
+    useState({});
+  const customModuleEntries = useMemo(
+    () =>
+      modules
+        .map((module, index) => ({ module, index }))
+        .filter(
+          ({ module }) =>
+            module.sourceKind === "OTHER" ||
+            !catalogAddons.some((product) =>
+              catalogProductMatchesModule(product, module),
+            ),
+        ),
+    [catalogAddons, modules],
+  );
 
   const totalsPreview = useMemo(() => {
     const { subtotal, total } = computeTotals(lines, discountAmount);
@@ -338,6 +427,16 @@ export default function DetailsDocumentAdminPage(props) {
           d?.type === "CONTRACT" &&
             Boolean(d?.timeClockTerminalRental?.enabled),
         );
+        setTimeClockTerminalRentalQuantity(
+          Math.max(1, Number(d?.timeClockTerminalRental?.quantity || 1)),
+        );
+        setTimeClockTerminalRentalPrice(
+          Number(
+            d?.timeClockTerminalRental?.priceMonthly ||
+              TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE,
+          ),
+        );
+        setTimeClockTerminalRentalMeta({ ...d?.timeClockTerminalRental });
 
         // ✅ payment split
         setSitePaymentSplit(Number(d?.website?.paymentSplit || 1));
@@ -356,7 +455,12 @@ export default function DetailsDocumentAdminPage(props) {
             ? parseOldPriceLabelToNumber(d.subscriptionLabel)
             : 0);
 
+        setSubscriptionName(d?.subscription?.name || "");
         setSubscriptionPriceMonthly(subPrice > 0 ? subPrice : "");
+        setSubscriptionMeta({ ...d?.subscription });
+        setSubscriptionQuantity(
+          Math.max(1, Number(d?.subscription?.quantity || 1)),
+        );
         setEngagementMonths(
           clampMin(
             d?.engagementMonths ?? (d?.type === "CONTRACT" ? 24 : 12),
@@ -370,6 +474,7 @@ export default function DetailsDocumentAdminPage(props) {
                 const pm = toSafeNumber(m.priceMonthly, 0);
                 const offeredUi = Boolean(m.offered);
                 return {
+                  ...m,
                   name: m.name || "",
                   offered: offeredUi,
                   priceMonthly: offeredUi ? "" : pm > 0 ? pm : "",
@@ -394,7 +499,43 @@ export default function DetailsDocumentAdminPage(props) {
     };
   }, [props.documentId]);
 
+  useEffect(() => {
+    if (!doc?._id || doc.type !== "CONTRACT") return;
+    let canceled = false;
+
+    async function loadCommercialStatus() {
+      setCommercialStatusLoading(true);
+      try {
+        const { data } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/commercial-status`,
+          axiosCfg(),
+        );
+        if (!canceled) setCommercialStatus(data);
+      } catch (requestError) {
+        if (!canceled) {
+          setCommercialStatus({
+            available: false,
+            reason:
+              requestError?.response?.data?.message ||
+              "La comparaison commerciale est momentanément indisponible.",
+          });
+        }
+      } finally {
+        if (!canceled) setCommercialStatusLoading(false);
+      }
+    }
+
+    loadCommercialStatus();
+    return () => {
+      canceled = true;
+    };
+  }, [doc?._id, doc?.status, doc?.type]);
+
   const isLocked = doc?.status === "SENT" || doc?.status === "SIGNED";
+  const isLegacyPhysicalSent =
+    doc?.type === "CONTRACT" &&
+    doc?.status === "SENT" &&
+    !doc?.signatureRequest?.issuedAt;
   const canResend = doc?.status === "SENT";
   const sendBtnLabel = canResend ? "Renvoyer" : "Envoyer";
   const isDiscountActive = clampMin(discountAmount, 0) > 0;
@@ -513,8 +654,76 @@ export default function DetailsDocumentAdminPage(props) {
   function addModule() {
     setModules((prev) => [
       ...(prev || []),
-      { name: "", offered: false, priceMonthly: "", _lastPaidPriceMonthly: 0 },
+      {
+        name: "",
+        offered: false,
+        priceMonthly: "",
+        sourceKind: "OTHER",
+        _lastPaidPriceMonthly: 0,
+      },
     ]);
+  }
+
+  function catalogFields(product) {
+    const price = product?.default_price || {};
+    return {
+      name: product?.name || "",
+      code: product?.catalogCode || product?.code || product?.metadata?.code || "",
+      priceId: price?.id || "",
+      productId: product?.id || "",
+      priceMonthly: Number(price?.unit_amount || 0) / 100,
+      currency: (price?.currency || "EUR").toUpperCase(),
+      interval: price?.recurring?.interval || "month",
+      intervalCount: Math.max(1, Number(price?.recurring?.interval_count || 1)),
+    };
+  }
+
+  function selectCatalogPlan(priceId) {
+    const product = catalogPlans.find(
+      (entry) => entry?.default_price?.id === priceId,
+    );
+    if (!product) return;
+    const fields = catalogFields(product);
+    setSubscriptionName(fields.name);
+    setSubscriptionPriceMonthly(fields.priceMonthly);
+    setSubscriptionMeta(fields);
+  }
+
+  function toggleCatalogAddon(product) {
+    const fields = catalogFields(product);
+    setModules((previous) => {
+      const existingIndex = previous.findIndex((module) =>
+        catalogProductMatchesModule(product, module),
+      );
+      return existingIndex >= 0
+        ? previous.filter((_module, index) => index !== existingIndex)
+        : [
+            ...previous,
+            {
+              ...fields,
+              quantity: 1,
+              offered: false,
+              sourceKind: "ADDON",
+              _lastPaidPriceMonthly: fields.priceMonthly,
+            },
+          ];
+    });
+  }
+
+  function toggleCatalogAddonOffered(product) {
+    const fields = catalogFields(product);
+    setModules((previous) =>
+      previous.map((module) => {
+        if (!catalogProductMatchesModule(product, module)) return module;
+        const offered = !Boolean(module.offered);
+        return {
+          ...module,
+          offered,
+          priceMonthly: offered ? 0 : fields.priceMonthly,
+          _lastPaidPriceMonthly: fields.priceMonthly,
+        };
+      }),
+    );
   }
   function removeModule(i) {
     setModules((prev) => (prev || []).filter((_, idx) => idx !== i));
@@ -563,6 +772,18 @@ export default function DetailsDocumentAdminPage(props) {
 
   async function handleSave() {
     if (!doc?._id) return false;
+
+    const confirmsCommercialReview = Boolean(
+      doc?.type === "CONTRACT" && doc?.commercialSnapshot?.reviewRequired,
+    );
+    if (
+      confirmsCommercialReview &&
+      !window.confirm(
+        "Certaines prestations Stripe n'ont pas pu être identifiées avec certitude. Confirmez-vous avoir vérifié leur libellé, leur prix, leur quantité et leur périodicité ?",
+      )
+    ) {
+      return false;
+    }
 
     const token = getAdminToken();
     if (!token) {
@@ -624,7 +845,18 @@ export default function DetailsDocumentAdminPage(props) {
 
       // ✅ abonnement + modules (numeric)
       payload.subscription = {
+        name: trimText(subscriptionName),
         priceMonthly: clampMin(subscriptionPriceMonthly, 0),
+        quantity: Math.max(1, Number(subscriptionQuantity || 1)),
+        code: subscriptionMeta?.code || "",
+        priceId: subscriptionMeta?.priceId || "",
+        productId: subscriptionMeta?.productId || "",
+        currency: subscriptionMeta?.currency || "EUR",
+        interval: subscriptionMeta?.interval || "month",
+        intervalCount: Math.max(
+          1,
+            Number(subscriptionMeta?.intervalCount || 1),
+        ),
       };
       payload.engagementMonths = clampMin(engagementMonths, 1);
 
@@ -639,6 +871,15 @@ export default function DetailsDocumentAdminPage(props) {
             name: trimText(m.name),
             offered: offeredEffective,
             priceMonthly: offeredEffective ? 0 : clampMin(m.priceMonthly, 0),
+            quantity: Math.max(1, Number(m.quantity || 1)),
+            code: m.code || "",
+            priceId: m.priceId || "",
+            productId: m.productId || "",
+            currency: m.currency || "EUR",
+            interval: m.interval || "month",
+            intervalCount: Math.max(1, Number(m.intervalCount || 1)),
+            sourceKind: m.sourceKind === "OTHER" ? "OTHER" : "ADDON",
+            requiresReview: Boolean(m.requiresReview),
           };
         });
 
@@ -653,6 +894,7 @@ export default function DetailsDocumentAdminPage(props) {
 
       // ✅ CONTRAT: website meta + line
       if (doc.type === "CONTRACT") {
+        payload.comments = trimText(comments);
         payload.website = {
           enabled: Boolean(hasWebsite),
           paymentSplit: Number(sitePaymentSplit || 1),
@@ -666,8 +908,21 @@ export default function DetailsDocumentAdminPage(props) {
         };
         payload.timeClockTerminalRental = {
           enabled: Boolean(hasTimeClockTerminalRental),
-          priceMonthly: TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE,
+          priceMonthly: clampMin(timeClockTerminalRentalPrice, 0),
+          quantity: Math.max(1, Number(timeClockTerminalRentalQuantity || 1)),
+          code: timeClockTerminalRentalMeta?.code || TABLET_RENTAL_CODE,
+          priceId: timeClockTerminalRentalMeta?.priceId || "",
+          productId: timeClockTerminalRentalMeta?.productId || "",
+          currency: timeClockTerminalRentalMeta?.currency || "EUR",
+          interval: timeClockTerminalRentalMeta?.interval || "month",
+          intervalCount: Math.max(
+            1,
+            Number(timeClockTerminalRentalMeta?.intervalCount || 1),
+          ),
         };
+        if (confirmsCommercialReview) {
+          payload.confirmCommercialReview = true;
+        }
       }
 
       const { data } = await axios.patch(
@@ -790,6 +1045,153 @@ export default function DetailsDocumentAdminPage(props) {
     }
   }
 
+  function syncDocument(nextDocument) {
+    if (!nextDocument?._id) return;
+    setDoc(nextDocument);
+    adminContext?.setDocumentsList?.((previous) =>
+      (previous || []).map((item) =>
+        item._id === nextDocument._id ? { ...item, ...nextDocument } : item,
+      ),
+    );
+  }
+
+  async function handleSendForSignature() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      if (doc.status === "DRAFT") {
+        const saved = await handleSave();
+        if (!saved) return;
+      }
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/send-for-signature`,
+        {},
+        axiosCfg(),
+      );
+      syncDocument(data.document);
+      setSignatureUrl(data.signatureUrl || "");
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message ||
+          "Impossible d'envoyer le contrat pour signature.",
+      );
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
+  async function handleResendSignatureRequest() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/signature-request/resend`,
+        {},
+        axiosCfg(),
+      );
+      syncDocument(data.document);
+      setSignatureUrl(data.signatureUrl || "");
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message ||
+          "Impossible de remplacer le lien de signature.",
+      );
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
+  async function handleResendSignedCopy() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/signed-copy/resend`,
+        {},
+        axiosCfg(),
+      );
+      syncDocument(data.document);
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message ||
+          "Impossible de renvoyer la copie signée.",
+      );
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
+  async function handleRevokeSignatureRequest() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/signature-request/revoke`,
+        {},
+        axiosCfg(),
+      );
+      syncDocument(data.document);
+      setSignatureUrl("");
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message ||
+          "Impossible de révoquer la demande de signature.",
+      );
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
+  async function handleCreateAmendment() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/amendments`,
+        {},
+        axiosCfg(),
+      );
+      if (data.document) {
+        adminContext?.setDocumentsList?.((previous) => [
+          data.document,
+          ...(previous || []),
+        ]);
+        router.push(`/dashboard/admin/documents/add/${data.document._id}`);
+      }
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message || "Impossible de créer l'avenant.",
+      );
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
+  async function handleRefreshCommercialData() {
+    if (!doc?._id) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/commercial-data/refresh`,
+        {},
+        axiosCfg(),
+      );
+      router.reload();
+    } catch (error) {
+      setErrorMsg(
+        error?.response?.data?.message ||
+          "Impossible d'actualiser les prestations.",
+      );
+      setRemoteActionLoading(false);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-4">
       {/* Top bar */}
@@ -854,17 +1256,54 @@ export default function DetailsDocumentAdminPage(props) {
             </button>
           ) : null}
 
-          {doc?.type === "CONTRACT" && doc?.status !== "SIGNED" && (
+          {doc?.type === "CONTRACT" &&
+            (doc?.status === "DRAFT" || isLegacyPhysicalSent) && (
+              <button
+                onClick={() =>
+                  router.push(`/dashboard/admin/documents/add/${doc?._id}/sign`)
+                }
+                className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90"
+              >
+                <FileSignature className="size-4" />
+                <span className="hidden mobile:inline">Signer sur place</span>
+              </button>
+            )}
+
+          {doc?.type === "CONTRACT" && doc?.status === "DRAFT" ? (
             <button
-              onClick={() =>
-                router.push(`/dashboard/admin/documents/add/${doc?._id}/sign`)
-              }
-              className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90"
+              type="button"
+              onClick={handleSendForSignature}
+              disabled={remoteActionLoading || saving || loading}
+              className="inline-flex items-center gap-2 rounded-xl bg-darkBlue px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-darkBlue/90 disabled:opacity-60"
             >
-              <FileSignature className="size-4" />
-              Signer
+              {remoteActionLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Link2 className="size-4" />
+              )}
+              <span className="hidden mobile:inline">
+                Envoyer pour signature
+              </span>
             </button>
-          )}
+          ) : null}
+
+          {doc?.type === "CONTRACT" &&
+          doc?.status === "SENT" &&
+          !isLegacyPhysicalSent ? (
+            <button
+              type="button"
+              onClick={handleResendSignatureRequest}
+              disabled={remoteActionLoading || loading}
+              className="inline-flex items-center gap-2 rounded-xl bg-darkBlue px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-darkBlue/90 disabled:opacity-60"
+            >
+              {remoteActionLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              <span className="hidden mobile:inline">Remplacer le lien</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -878,30 +1317,271 @@ export default function DetailsDocumentAdminPage(props) {
               <div className="h-10 rounded bg-darkBlue/5" />
               <div className="h-10 rounded bg-darkBlue/5" />
             </div>
-          ) : errorMsg ? (
+          ) : errorMsg && !doc ? (
             <div className="rounded-xl border border-red/20 bg-red/10 px-3 py-2 text-sm text-red">
               {errorMsg}
             </div>
           ) : (
             <>
+              {errorMsg ? (
+                <div className="mb-4 rounded-xl border border-red/20 bg-red/10 px-3 py-2 text-sm text-red">
+                  {errorMsg}
+                </div>
+              ) : null}
+
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h1 className="text-lg font-semibold text-darkBlue">
-                    {doc?.type === "QUOTE"
-                      ? "Devis"
-                      : doc?.type === "INVOICE"
-                        ? "Facture"
-                        : "Contrat"}{" "}
+                    {documentTitle(doc)}{" "}
                     <span className="text-darkBlue/50 font-medium">
                       {doc?.docNumber ? `• ${doc.docNumber}` : ""}
                     </span>
                   </h1>
                   <p className="text-sm text-darkBlue/60 mt-1">
                     Statut :{" "}
-                    <span className="font-semibold">{doc?.status || "-"}</span>
+                    <span className="font-semibold">
+                      {DOCUMENT_STATUS_LABELS[doc?.status] || "-"}
+                    </span>
                   </p>
                 </div>
               </div>
+
+              {doc?.type === "CONTRACT" ? (
+                <div className="mt-5 rounded-2xl border border-darkBlue/10 bg-white p-4">
+                  <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-start midTablet:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-darkBlue">
+                        {doc.contractKind === "AMENDMENT"
+                          ? `Avenant n°${Math.max(1, Number(doc.versionNumber || 2) - 1)}`
+                          : "Contrat initial"}
+                      </p>
+                      <p className="mt-1 text-xs text-darkBlue/60">
+                        {doc.status === "SIGNED"
+                          ? `Signé${doc.signature?.signedAt ? ` le ${new Date(doc.signature.signedAt).toLocaleDateString("fr-FR")}` : ""}`
+                          : doc.status === "SENT"
+                            ? doc.signatureRequest?.expiresAt &&
+                              new Date(
+                                doc.signatureRequest.expiresAt,
+                              ).getTime() <= Date.now()
+                              ? "Lien de signature expiré · remplacez-le pour relancer le client"
+                              : `En attente de signature${doc.signatureRequest?.expiresAt ? ` · lien valable jusqu’au ${new Date(doc.signatureRequest.expiresAt).toLocaleDateString("fr-FR")}` : ""}`
+                            : "Brouillon modifiable"}
+                      </p>
+                      {doc.commercialSnapshot?.reviewRequired ? (
+                        <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                          <p className="font-semibold">
+                            Vérification commerciale requise avant envoi
+                          </p>
+                          <p className="mt-1">
+                            Un ancien produit Stripe n’a pas pu être classé avec
+                            certitude. Vérifiez les prestations ci-dessous puis
+                            enregistrez le brouillon pour confirmer.
+                          </p>
+                          {doc.commercialSnapshot.reviewWarnings?.length ? (
+                            <ul className="mt-2 list-disc pl-4">
+                              {doc.commercialSnapshot.reviewWarnings.map(
+                                (warning) => (
+                                  <li key={warning}>{warning}</li>
+                                ),
+                              )}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {doc.status === "DRAFT" && doc.restaurantId ? (
+                        <button
+                          type="button"
+                          onClick={handleRefreshCommercialData}
+                          disabled={remoteActionLoading}
+                          className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 px-3 py-2 text-xs font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
+                        >
+                          <RefreshCw className="size-3.5" />
+                          Actualiser les prestations
+                        </button>
+                      ) : null}
+                      {doc.status === "SENT" && !isLegacyPhysicalSent ? (
+                        <button
+                          type="button"
+                          onClick={handleRevokeSignatureRequest}
+                          disabled={remoteActionLoading}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red/20 bg-red/5 px-3 py-2 text-xs font-semibold text-red hover:bg-red/10 disabled:opacity-60"
+                        >
+                          <Ban className="size-3.5" />
+                          Révoquer le lien
+                        </button>
+                      ) : null}
+                      {doc.status === "SIGNED" ? (
+                        <button
+                          type="button"
+                          onClick={handleResendSignedCopy}
+                          disabled={remoteActionLoading}
+                          className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 px-3 py-2 text-xs font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
+                        >
+                          <Send className="size-3.5" />
+                          Renvoyer la copie signée
+                        </button>
+                      ) : null}
+                      {doc.status === "SIGNED" &&
+                      commercialStatus?.available &&
+                      commercialStatus.hasChanges &&
+                      !commercialStatus.hasPendingAmendment ? (
+                        <button
+                          type="button"
+                          onClick={handleCreateAmendment}
+                          disabled={remoteActionLoading}
+                          className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-xs font-semibold text-white hover:bg-blue/90 disabled:opacity-60"
+                        >
+                          <FilePlus2 className="size-3.5" />
+                          Créer l’avenant
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {signatureUrl ? (
+                    <div className="mt-4 rounded-xl border border-blue/15 bg-blue/5 p-3">
+                      <p className="text-xs font-semibold text-darkBlue">
+                        Lien personnel envoyé
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          readOnly
+                          value={signatureUrl}
+                          className="min-w-0 flex-1 rounded-lg border border-darkBlue/10 bg-white px-3 py-2 text-xs text-darkBlue"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigator.clipboard?.writeText(signatureUrl)
+                          }
+                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-darkBlue text-white"
+                          aria-label="Copier le lien de signature"
+                        >
+                          <Copy className="size-4" />
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-darkBlue/55">
+                        Le lien n’est pas conservé en clair. Pour en obtenir un
+                        nouveau, utilisez « Remplacer le lien ».
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {commercialStatusLoading ? (
+                    <p className="mt-4 flex items-center gap-2 text-xs text-darkBlue/60">
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Vérification des prestations…
+                    </p>
+                  ) : commercialStatus ? (
+                    <div className="mt-4 border-t border-darkBlue/10 pt-3 text-xs text-darkBlue/70">
+                      {commercialStatus.pendingAmendment ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/admin/documents/add/${commercialStatus.pendingAmendment._id}`,
+                            )
+                          }
+                          className="mb-3 inline-flex items-center gap-2 rounded-lg border border-blue/20 bg-blue/5 px-2.5 py-1.5 font-semibold text-blue hover:bg-blue/10"
+                        >
+                          {commercialStatus.pendingAmendment.status === "DRAFT"
+                            ? "Modifier le brouillon d’avenant"
+                            : "Voir l’avenant envoyé"}
+                        </button>
+                      ) : null}
+                      {commercialStatus.available ? (
+                        commercialStatus.hasChanges ? (
+                          <div>
+                            <p className="font-semibold text-amber-700">
+                              L’abonnement actuel a évolué depuis le dernier
+                              document signé.
+                            </p>
+                            <ul className="mt-2 space-y-1 text-darkBlue/65">
+                              {commercialStatus.changes.map((change, index) => {
+                                const item =
+                                  change.after || change.before || {};
+                                return (
+                                  <li
+                                    key={`${item.code || item.label}-${index}`}
+                                  >
+                                    {change.changeType === "ADDED"
+                                      ? "Ajout"
+                                      : change.changeType === "REMOVED"
+                                        ? "Retrait"
+                                        : "Modification"}{" "}
+                                    · {item.label || item.code || "Prestation"}
+                                    {change.changeType === "UPDATED"
+                                      ? ` (${change.before?.quantity || 1} → ${change.after?.quantity || 1})`
+                                      : ""}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ) : (
+                          <p className="font-semibold text-green-700">
+                            Les prestations actuelles sont contractualisées.
+                          </p>
+                        )
+                      ) : (
+                        <p>{commercialStatus.reason}</p>
+                      )}
+
+                      {commercialStatus.history?.length > 1 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {commercialStatus.history.map((item) => (
+                            <button
+                              type="button"
+                              key={item._id}
+                              onClick={() =>
+                                router.push(
+                                  `/dashboard/admin/documents/add/${item._id}`,
+                                )
+                              }
+                              className="rounded-lg border border-darkBlue/10 bg-lightGrey px-2.5 py-1.5 text-left hover:bg-darkBlue/5"
+                            >
+                              {item.contractKind === "AMENDMENT"
+                                ? `Avenant ${item.versionNumber - 1}`
+                                : "Contrat initial"}{" "}
+                              · {DOCUMENT_STATUS_LABELS[item.status] || "-"}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {doc.signatureHistory?.length ? (
+                    <div className="mt-4 border-t border-darkBlue/10 pt-3 text-xs text-darkBlue/70">
+                      <p className="font-semibold text-darkBlue">
+                        Historique de signature
+                      </p>
+                      <ol className="mt-2 space-y-1.5">
+                        {doc.signatureHistory.map((entry, index) => (
+                          <li
+                            key={`${entry.event}-${entry.at}-${index}`}
+                            className="flex flex-wrap items-baseline justify-between gap-2"
+                          >
+                            <span>
+                              {SIGNATURE_HISTORY_LABELS[entry.event] ||
+                                entry.event}
+                              {entry.actorName ? ` · ${entry.actorName}` : ""}
+                            </span>
+                            <time className="text-darkBlue/50">
+                              {entry.at
+                                ? new Date(entry.at).toLocaleString("fr-FR")
+                                : ""}
+                            </time>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {/* Party */}
               <div className="mt-6">
@@ -1187,10 +1867,10 @@ export default function DetailsDocumentAdminPage(props) {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-darkBlue">
-                          Location d&apos;un terminal de pointage
+                          Location de terminaux de pointage
                         </p>
                         <p className="mt-1 text-xs text-darkBlue/60">
-                          {TIME_CLOCK_TERMINAL_RENTAL_MONTHLY_PRICE} € / mois
+                          {euro(timeClockTerminalRentalPrice)} {doc?.timeClockTerminalRental?.currency || "EUR"} par tablette / {recurrenceLabel(doc?.timeClockTerminalRental)}
                         </p>
                       </div>
 
@@ -1199,13 +1879,65 @@ export default function DetailsDocumentAdminPage(props) {
                           type="checkbox"
                           disabled={isLocked}
                           checked={hasTimeClockTerminalRental}
-                          onChange={(e) =>
-                            setHasTimeClockTerminalRental(e.target.checked)
-                          }
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            setHasTimeClockTerminalRental(enabled);
+                            if (enabled) {
+                              const rental = catalogAddons.find(
+                                (addon) =>
+                                  (addon?.catalogCode || addon?.code) ===
+                                  TABLET_RENTAL_CODE,
+                              );
+                              if (rental) {
+                                const fields = catalogFields(rental);
+                                setTimeClockTerminalRentalMeta(fields);
+                                setTimeClockTerminalRentalPrice(fields.priceMonthly);
+                              }
+                            }
+                          }}
                         />
                         Activer
                       </label>
                     </div>
+
+                    {hasTimeClockTerminalRental ? (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/65">
+                          Nombre de tablettes
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={timeClockTerminalRentalQuantity}
+                            disabled={isLocked}
+                            onChange={(event) =>
+                              setTimeClockTerminalRentalQuantity(
+                                Math.max(1, Number(event.target.value || 1)),
+                              )
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/65">
+                          Tarif unitaire (
+                          {doc?.timeClockTerminalRental?.currency || "EUR"} /{" "}
+                          {recurrenceLabel(doc?.timeClockTerminalRental)})
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={timeClockTerminalRentalPrice}
+                            disabled={isLocked}
+                            onChange={(event) =>
+                              setTimeClockTerminalRentalPrice(
+                                clampMin(event.target.value, 0),
+                              )
+                            }
+                            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -1443,7 +2175,36 @@ export default function DetailsDocumentAdminPage(props) {
                       <div className="mt-2 flex flex-col gap-2">
                         <div className="flex flex-col gap-1">
                           <label className="text-xs text-darkBlue/60">
-                            Prix / mois (€)
+                            Offre principale
+                          </label>
+                          <select
+                            value={subscriptionMeta?.priceId || ""}
+                            disabled={isLocked}
+                            onChange={(event) => selectCatalogPlan(event.target.value)}
+                            className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
+                          >
+                            <option value="">Sélectionner une offre</option>
+                            {subscriptionMeta?.priceId &&
+                            !catalogPlans.some(
+                              (plan) =>
+                                plan?.default_price?.id === subscriptionMeta.priceId,
+                            ) ? (
+                              <option value={subscriptionMeta.priceId}>
+                                {subscriptionName || "Offre historique"}
+                              </option>
+                            ) : null}
+                            {catalogPlans.map((plan) => (
+                              <option key={plan.id} value={plan?.default_price?.id || ""}>
+                                {formatCatalogProductLabel(plan)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-darkBlue/60">
+                            Tarif unitaire (
+                            {doc?.subscription?.currency || "EUR"} /{" "}
+                            {recurrenceLabel(doc?.subscription)})
                           </label>
                           <input
                             type="number"
@@ -1459,6 +2220,24 @@ export default function DetailsDocumentAdminPage(props) {
                             }
                             className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                             placeholder="-"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-darkBlue/60">
+                            Quantité
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            disabled={isLocked}
+                            value={subscriptionQuantity}
+                            onChange={(event) =>
+                              setSubscriptionQuantity(
+                                Math.max(1, Number(event.target.value || 1)),
+                              )
+                            }
+                            className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                           />
                         </div>
                       </div>
@@ -1491,32 +2270,112 @@ export default function DetailsDocumentAdminPage(props) {
                           className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
                         >
                           <Plus className="size-4 text-darkBlue/60" />
-                          Ajouter
+                          Ajouter une prestation libre
                         </button>
                       </div>
 
-                      {modules.length > 0 && (
-                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_110px_140px_44px] gap-2">
+                      {catalogAddons.length ? (
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          {catalogAddons.map((addon) => {
+                            const priceId = addon?.default_price?.id || "";
+                            const moduleIndex = modules.findIndex((module) =>
+                              catalogProductMatchesModule(addon, module),
+                            );
+                            const selectedModule = modules[moduleIndex];
+                            const checked = moduleIndex >= 0;
+                            const offered = Boolean(selectedModule?.offered);
+                            const canChangeQuantity =
+                              supportsMultipleQuantity(addon);
+                            return (
+                              <div
+                                key={addon.id}
+                                className="flex items-center gap-3 rounded-lg border border-darkBlue/10 bg-lightGrey/40 px-2.5 py-2 text-xs text-darkBlue/80"
+                              >
+                                <input
+                                  id={`catalog-addon-${addon.id}`}
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={isLocked || !priceId}
+                                  onChange={() => toggleCatalogAddon(addon)}
+                                />
+                                <label
+                                  htmlFor={`catalog-addon-${addon.id}`}
+                                  className="min-w-0 flex-1 cursor-pointer"
+                                >
+                                  <span className="block font-semibold text-darkBlue">
+                                    {formatCatalogProductLabel(addon)}
+                                  </span>
+                                  {offered ? (
+                                    <span className="block font-semibold text-blue">
+                                      Offert — montant contractuel 0
+                                    </span>
+                                  ) : null}
+                                </label>
+                                {checked && canChangeQuantity ? (
+                                  <label className="flex flex-col gap-1 font-semibold text-darkBlue/60">
+                                    Qté
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="100"
+                                      value={selectedModule?.quantity || 1}
+                                      disabled={isLocked}
+                                      onChange={(event) =>
+                                        updateModule(moduleIndex, {
+                                          quantity: Math.max(
+                                            1,
+                                            Number(event.target.value || 1),
+                                          ),
+                                        })
+                                      }
+                                      className="w-16 rounded-lg border border-darkBlue/10 bg-white px-2 py-1 text-sm"
+                                    />
+                                  </label>
+                                ) : null}
+                                {checked ? (
+                                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-darkBlue/10 bg-white px-2 py-1.5 font-semibold text-darkBlue/70">
+                                    <input
+                                      type="checkbox"
+                                      checked={offered}
+                                      disabled={isLocked}
+                                      onChange={() =>
+                                        toggleCatalogAddonOffered(addon)
+                                      }
+                                    />
+                                    Offert
+                                  </label>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {customModuleEntries.length > 0 && (
+                        <div className="hidden midTablet:grid mt-3 grid-cols-[1fr_70px_100px_140px_44px] gap-2">
                           <p className="text-xs text-darkBlue/60 font-semibold">
-                            Nom du module
+                            Prestation libre
+                          </p>
+                          <p className="text-xs text-darkBlue/60 font-semibold">
+                            Qté
                           </p>
                           <p className="text-xs text-darkBlue/60 font-semibold">
                             Offert
                           </p>
                           <p className="text-xs text-darkBlue/60 font-semibold">
-                            Prix / mois (€)
+                            Tarif unitaire
                           </p>
                           <span />
                         </div>
                       )}
 
                       <div className="flex flex-col gap-6 midTablet:gap-2">
-                        {modules.map((m, i) => {
+                        {customModuleEntries.map(({ module: m, index: i }) => {
                           const offeredUi = Boolean(m.offered);
 
                           return (
                             <div key={i}>
-                              <div className="grid grid-cols-1 midTablet:grid-cols-[1fr_110px_140px_44px] gap-2 items-end">
+                              <div className="grid grid-cols-1 midTablet:grid-cols-[1fr_70px_100px_140px_44px] gap-2 items-end">
                                 {/* NOM */}
                                 <div className="flex flex-col gap-1">
                                   <label className="midTablet:hidden text-xs text-darkBlue/60">
@@ -1536,6 +2395,28 @@ export default function DetailsDocumentAdminPage(props) {
                                     }
                                     className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm w-full"
                                     placeholder="-"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-1">
+                                  <label className="midTablet:hidden text-xs text-darkBlue/60">
+                                    Quantité
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={m.quantity || 1}
+                                    disabled={isLocked}
+                                    onChange={(event) =>
+                                      updateModule(i, {
+                                        quantity: Math.max(
+                                          1,
+                                          Number(event.target.value || 1),
+                                        ),
+                                      })
+                                    }
+                                    className="rounded-xl border border-darkBlue/10 bg-white px-2 py-2 text-sm w-full"
                                   />
                                 </div>
 
@@ -1563,7 +2444,8 @@ export default function DetailsDocumentAdminPage(props) {
                                 {/* PRIX */}
                                 <div className="flex flex-col gap-1">
                                   <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Prix / mois (€)
+                                    Tarif ({m.currency || "EUR"} /{" "}
+                                    {recurrenceLabel(m)})
                                   </label>
                                   <input
                                     type="number"
@@ -1604,10 +2486,12 @@ export default function DetailsDocumentAdminPage(props) {
                   </div>
                 </div>
 
-                {isQuoteOrInvoice(doc?.type) ? (
+                {doc ? (
                   <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
                     <p className="text-sm font-semibold text-darkBlue">
-                      Commentaires
+                      {doc.type === "CONTRACT"
+                        ? "Conditions particulières"
+                        : "Commentaires"}
                     </p>
 
                     <textarea

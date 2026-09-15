@@ -57,6 +57,7 @@ export default function EditSubscriptionAdminComponent() {
   const [selectedPlanPriceId, setSelectedPlanPriceId] = useState("");
   const [selectedAddonPriceIds, setSelectedAddonPriceIds] = useState([]);
   const [selectedAddonQuantities, setSelectedAddonQuantities] = useState({});
+  const [offeredAddonPriceIds, setOfferedAddonPriceIds] = useState([]);
   const [updateDone, setUpdateDone] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
@@ -79,11 +80,25 @@ export default function EditSubscriptionAdminComponent() {
         const nextPreview = response.data.preview || null;
         setPreview(nextPreview);
         setSelectedPlanPriceId(nextPreview?.subscription?.planPriceId || "");
-        setSelectedAddonPriceIds(
-          nextPreview?.subscription?.addonPriceIds || [],
+        const catalogAddonItems = (nextPreview?.subscription?.addons || [])
+          .map((item) => {
+            const catalogProduct = catalogProducts.find(
+              (product) =>
+                (product?.catalogCode || product?.code) === item.code,
+            );
+            return {
+              ...item,
+              priceId: catalogProduct?.default_price?.id || item.priceId,
+            };
+          });
+        setSelectedAddonPriceIds(catalogAddonItems.map((item) => item.priceId));
+        setOfferedAddonPriceIds(
+          catalogAddonItems
+            .filter((item) => Number(item.amount || 0) <= 0)
+            .map((item) => item.priceId),
         );
         setSelectedAddonQuantities(
-          (nextPreview?.subscription?.addons || []).reduce(
+          catalogAddonItems.reduce(
             (quantities, item) => {
               if (item.code !== "tab_rental") return quantities;
               return {
@@ -108,7 +123,7 @@ export default function EditSubscriptionAdminComponent() {
     }
 
     fetchPreview();
-  }, [router.isReady, subscriptionId]);
+  }, [router.isReady, subscriptionId, catalogProducts]);
 
   const { selectedPlan, selectedAddons, totalAmount, currency } = useMemo(
     () =>
@@ -117,12 +132,14 @@ export default function EditSubscriptionAdminComponent() {
         selectedPlanPriceId,
         selectedAddonPriceIds,
         selectedAddonQuantities,
+        offeredAddonPriceIds,
       }),
     [
       catalogProducts,
       selectedPlanPriceId,
       selectedAddonPriceIds,
       selectedAddonQuantities,
+      offeredAddonPriceIds,
     ],
   );
 
@@ -144,7 +161,7 @@ export default function EditSubscriptionAdminComponent() {
     setMessageType("info");
 
     try {
-      await axios.post(
+      const { data } = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/update-subscription-configuration`,
         {
           subscriptionId,
@@ -159,6 +176,7 @@ export default function EditSubscriptionAdminComponent() {
             )
               ? selectedAddonQuantities[priceId] || 1
               : 1,
+            offered: offeredAddonPriceIds.includes(priceId),
           })),
         },
         getAdminAuthConfig(),
@@ -167,10 +185,20 @@ export default function EditSubscriptionAdminComponent() {
       setUpdateDone(true);
       setMessageType("success");
       setMessage(
-        "La configuration de l’abonnement a été enregistrée pour la prochaine échéance.",
+        data?.amendment?.documentId
+          ? "La configuration a été enregistrée. Un brouillon d’avenant a été préparé."
+          : data?.amendmentWarning ||
+              "La configuration de l’abonnement a été enregistrée pour la prochaine échéance.",
       );
 
       adminContext.fetchOwnersSubscriptionsList();
+
+      if (data?.amendment?.documentId) {
+        router.push(
+          `/dashboard/admin/documents/add/${data.amendment.documentId}`,
+        );
+        return;
+      }
 
       setRedirecting(true);
       setTimeout(() => {
@@ -186,6 +214,34 @@ export default function EditSubscriptionAdminComponent() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleAddonToggle(priceId) {
+    const isSelected = selectedAddonPriceIds.includes(priceId);
+    setSelectedAddonPriceIds((previous) =>
+      isSelected
+        ? previous.filter((entry) => entry !== priceId)
+        : [...previous, priceId],
+    );
+    setSelectedAddonQuantities((quantities) => {
+      const next = { ...quantities };
+      if (isSelected) delete next[priceId];
+      else next[priceId] = 1;
+      return next;
+    });
+    setOfferedAddonPriceIds((previous) =>
+      isSelected ? previous.filter((entry) => entry !== priceId) : previous,
+    );
+    setUpdateDone(false);
+  }
+
+  function handleAddonOfferedToggle(priceId) {
+    setOfferedAddonPriceIds((previous) =>
+      previous.includes(priceId)
+        ? previous.filter((entry) => entry !== priceId)
+        : [...previous, priceId],
+    );
+    setUpdateDone(false);
   }
 
   const cardCls =
@@ -326,6 +382,7 @@ export default function EditSubscriptionAdminComponent() {
                         {supportsMultipleQuantity(addon)
                           ? ` × ${addon.quantity || 1}`
                           : ""}
+                        {Number(addon.amount || 0) <= 0 ? " — Offert" : ""}
                       </li>
                     ))}
                   </ul>
@@ -347,7 +404,7 @@ export default function EditSubscriptionAdminComponent() {
                     Nouvelle configuration
                   </p>
                   <p className="text-xs text-darkBlue/50">
-                    Choisir le plan et les modules qui seront facturés à la
+                    Choisir le plan et les modules qui s&apos;appliqueront à la
                     prochaine échéance.
                   </p>
                 </div>
@@ -398,6 +455,7 @@ export default function EditSubscriptionAdminComponent() {
                     const priceId = addon?.default_price?.id || "";
                     const checked = selectedAddonPriceIds.includes(priceId);
                     const canChangeQuantity = supportsMultipleQuantity(addon);
+                    const offered = offeredAddonPriceIds.includes(priceId);
 
                     return (
                       <div
@@ -410,20 +468,7 @@ export default function EditSubscriptionAdminComponent() {
                           type="checkbox"
                           checked={checked}
                           disabled={loading || redirecting}
-                          onChange={() => {
-                            setSelectedAddonPriceIds((prev) =>
-                              checked
-                                ? prev.filter((entry) => entry !== priceId)
-                                : [...prev, priceId],
-                            );
-                            setSelectedAddonQuantities((quantities) => {
-                              const next = { ...quantities };
-                              if (checked) delete next[priceId];
-                              else next[priceId] = 1;
-                              return next;
-                            });
-                            setUpdateDone(false);
-                          }}
+                          onChange={() => handleAddonToggle(priceId)}
                         />
                         <label
                           htmlFor={`addon-${priceId}`}
@@ -433,9 +478,23 @@ export default function EditSubscriptionAdminComponent() {
                             {addon.name}
                           </span>
                           <span className="block text-xs text-darkBlue/50">
-                            {formatCatalogProductLabel(addon)}
+                            {offered
+                              ? "Offert"
+                              : formatCatalogProductLabel(addon)}
                           </span>
                         </label>
+                        {checked && (
+                          <label className="flex items-center gap-1 text-xs font-semibold text-darkBlue/65">
+                            <input
+                              type="checkbox"
+                              checked={offered}
+                              disabled={loading || redirecting}
+                              onChange={() => handleAddonOfferedToggle(priceId)}
+                              className="size-3.5 accent-blue"
+                            />
+                            Offert
+                          </label>
+                        )}
                         {checked && canChangeQuantity && (
                           <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
                             Quantité
@@ -516,6 +575,11 @@ export default function EditSubscriptionAdminComponent() {
                                 addon?.default_price?.id
                               ] || 1
                             }`
+                          : ""}
+                        {offeredAddonPriceIds.includes(
+                          addon?.default_price?.id,
+                        )
+                          ? " — Offert"
                           : ""}
                       </li>
                     ))}

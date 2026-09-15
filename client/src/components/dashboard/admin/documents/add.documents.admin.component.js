@@ -13,6 +13,7 @@ export default function AddDocumentAdminPage() {
   const router = useRouter();
 
   const [type, setType] = useState("QUOTE");
+  const [restaurantId, setRestaurantId] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
   const [email, setEmail] = useState("");
 
@@ -23,7 +24,12 @@ export default function AddDocumentAdminPage() {
     e.preventDefault();
     setErrorMsg("");
 
-    if (!restaurantName.trim() || !email.trim()) {
+    if (type === "CONTRACT" && !restaurantId) {
+      setErrorMsg("Sélectionne le restaurant concerné par le contrat.");
+      return;
+    }
+
+    if (type !== "CONTRACT" && (!restaurantName.trim() || !email.trim())) {
       setErrorMsg("Nom du restaurant et email requis.");
       return;
     }
@@ -41,6 +47,7 @@ export default function AddDocumentAdminPage() {
         `${process.env.NEXT_PUBLIC_API_URL}/admin/documents`,
         {
           type,
+          restaurantId: type === "CONTRACT" ? restaurantId : undefined,
           party: { restaurantName: restaurantName.trim(), email: email.trim() },
         },
         {
@@ -82,7 +89,10 @@ export default function AddDocumentAdminPage() {
       router.push(`/dashboard/admin/documents/add/${id}`);
     } catch (err) {
       console.error(err);
-      setErrorMsg("Erreur lors de la création du document.");
+      setErrorMsg(
+        err?.response?.data?.message ||
+          "Erreur lors de la création du document.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -117,7 +127,10 @@ export default function AddDocumentAdminPage() {
               </label>
               <select
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => {
+                  setType(e.target.value);
+                  setErrorMsg("");
+                }}
                 className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
               >
                 <option value="QUOTE">Devis</option>
@@ -126,29 +139,56 @@ export default function AddDocumentAdminPage() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-semibold text-darkBlue">
-                Nom du restaurant
-              </label>
-              <input
-                value={restaurantName}
-                onChange={(e) => setRestaurantName(e.target.value)}
-                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
-                placeholder="Ex: La Coquille"
-              />
-            </div>
+            {type === "CONTRACT" ? (
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-semibold text-darkBlue">
+                  Restaurant Gusto
+                </label>
+                <select
+                  value={restaurantId}
+                  onChange={(event) => setRestaurantId(event.target.value)}
+                  className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
+                >
+                  <option value="">Sélectionner un restaurant</option>
+                  {(adminContext?.restaurantsList || []).map((restaurant) => (
+                    <option key={restaurant._id} value={restaurant._id}>
+                      {restaurant.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-darkBlue/55">
+                  Le contact est repris depuis le restaurant. Définissez les
+                  prestations contractuelles à l’étape suivante, avec ou sans
+                  abonnement Stripe existant.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-darkBlue">
+                    Nom du restaurant
+                  </label>
+                  <input
+                    value={restaurantName}
+                    onChange={(e) => setRestaurantName(e.target.value)}
+                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
+                    placeholder="Ex: La Coquille"
+                  />
+                </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-semibold text-darkBlue">
-                Email
-              </label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
-                placeholder="client@restaurant.com"
-              />
-            </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-darkBlue">
+                    Email
+                  </label>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue outline-none focus:ring-2 focus:ring-blue/30"
+                    placeholder="client@restaurant.com"
+                  />
+                </div>
+              </>
+            )}
 
             {errorMsg ? (
               <div className="rounded-xl border border-red/20 bg-red/10 px-3 py-2 text-sm text-red">

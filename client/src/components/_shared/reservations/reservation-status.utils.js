@@ -3,6 +3,7 @@ export const RESERVATION_DISPLAY_STATUS_KEYS = [
   "Pending",
   "Confirmed",
   "Finished",
+  "Expired",
   "NoShow",
   "Canceled",
 ];
@@ -20,6 +21,8 @@ export function getReservationDisplayStatus(status) {
       return "Confirmed";
     case "Finished":
       return "Finished";
+    case "Expired":
+      return "Expired";
     case "NoShow":
       return "NoShow";
     case "Canceled":
@@ -40,6 +43,8 @@ export function getReservationStatusLabel(status) {
       return "Confirmée";
     case "Finished":
       return "Terminée";
+    case "Expired":
+      return "Expirée";
     case "NoShow":
       return "No-show";
     case "Canceled":
@@ -52,13 +57,15 @@ export function getReservationStatusLabel(status) {
 export function getReservationStatusClassName(status) {
   switch (getReservationDisplayStatus(status)) {
     case "Waitlist":
-      return "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]";
+      return "bg-[#93C5FD40] text-[#2563EB] border-[#60A5FA]";
     case "Pending":
       return "bg-[#93C5FD26] text-[#1D4ED8] border-[#93C5FD]";
     case "Confirmed":
-      return "bg-blue/15 text-blue border-blue/40";
+      return "bg-[#22C55E26] text-[#16A34A] border-[#22C55E99]";
     case "Finished":
-      return "bg-darkBlue/5 text-darkBlue/70 border-darkBlue/20";
+      return "bg-[#94A3B826] text-[#64748B] border-[#94A3B899]";
+    case "Expired":
+      return "bg-[#47556926] text-[#334155] border-[#47556999]";
     case "NoShow":
       return "bg-[#F59E0B1A] text-[#B45309] border-[#F59E0B66]";
     case "Canceled":
@@ -74,6 +81,7 @@ export function createReservationDisplayStatusCounter() {
     Pending: 0,
     Confirmed: 0,
     Finished: 0,
+    Expired: 0,
     NoShow: 0,
     Canceled: 0,
   };
@@ -85,6 +93,7 @@ export function createReservationDisplayStatusBuckets() {
     Pending: [],
     Confirmed: [],
     Finished: [],
+    Expired: [],
     NoShow: [],
     Canceled: [],
   };

@@ -124,6 +124,7 @@ const ReservationSchema = new mongoose.Schema(
         "Active",
         "Late",
         "Finished",
+        "Expired",
         "Canceled",
         "Rejected",
         "NoShow",
@@ -144,6 +145,7 @@ const ReservationSchema = new mongoose.Schema(
 
     activatedAt: { type: Date, default: null },
     finishedAt: { type: Date, default: null },
+    expiredAt: { type: Date, default: null },
     canceledAt: { type: Date, default: null },
     rejectedAt: { type: Date, default: null },
     noShowAt: { type: Date, default: null },
@@ -204,6 +206,7 @@ ReservationSchema.index(
 
 [
   ["Finished", "finishedAt"],
+  ["Expired", "expiredAt"],
   ["Canceled", "canceledAt"],
   ["Rejected", "rejectedAt"],
   ["NoShow", "noShowAt"],

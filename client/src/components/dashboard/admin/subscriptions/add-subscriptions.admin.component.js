@@ -56,6 +56,7 @@ export default function AddSubscriptionsAdminComponent() {
   const [selectedPlanPriceId, setSelectedPlanPriceId] = useState("");
   const [selectedAddonPriceIds, setSelectedAddonPriceIds] = useState([]);
   const [selectedAddonQuantities, setSelectedAddonQuantities] = useState({});
+  const [offeredAddonPriceIds, setOfferedAddonPriceIds] = useState([]);
 
   const [restaurantData, setRestaurantData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -90,12 +91,14 @@ export default function AddSubscriptionsAdminComponent() {
         selectedPlanPriceId,
         selectedAddonPriceIds,
         selectedAddonQuantities,
+        offeredAddonPriceIds,
       }),
     [
       subscriptionProducts,
       selectedPlanPriceId,
       selectedAddonPriceIds,
       selectedAddonQuantities,
+      offeredAddonPriceIds,
     ],
   );
 
@@ -115,11 +118,12 @@ export default function AddSubscriptionsAdminComponent() {
     setSelectedPlanPriceId("");
     setSelectedAddonPriceIds([]);
     setSelectedAddonQuantities({});
+    setOfferedAddonPriceIds([]);
     setRestaurantData({});
     resetStripeFlow();
   }
 
-  function handleRestaurantChange(e) {
+  async function handleRestaurantChange(e) {
     const restaurantId = e.target.value;
     setSelectedRestaurantId(restaurantId);
 
@@ -136,7 +140,50 @@ export default function AddSubscriptionsAdminComponent() {
     setSelectedPlanPriceId("");
     setSelectedAddonPriceIds([]);
     setSelectedAddonQuantities({});
+    setOfferedAddonPriceIds([]);
     resetStripeFlow();
+
+    try {
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}/contract-subscription-prefill`,
+        getAdminAuthConfig(),
+      );
+      if (!data?.available) return;
+
+      const planExists = subscriptionProducts.some(
+        (product) => product?.default_price?.id === data.planPriceId,
+      );
+      const addonItems = (data.addonItems || []).filter((item) =>
+        subscriptionProducts.some(
+          (product) => product?.default_price?.id === item.priceId,
+        ),
+      );
+      setSelectedPlanPriceId(planExists ? data.planPriceId : "");
+      setSelectedAddonPriceIds(addonItems.map((item) => item.priceId));
+      setOfferedAddonPriceIds(
+        addonItems.filter((item) => item.offered).map((item) => item.priceId),
+      );
+      setSelectedAddonQuantities(
+        addonItems.reduce(
+          (quantities, item) => ({
+            ...quantities,
+            [item.priceId]: Math.max(1, Number(item.quantity || 1)),
+          }),
+          {},
+        ),
+      );
+      setMessageType("info");
+      setMessage(
+        `Prestations préremplies depuis le contrat signé ${data.documentNumber}.${
+          data.ignoredContractualItems
+            ? " Les prestations non compatibles Stripe restent uniquement contractuelles."
+            : ""
+        }`,
+      );
+    } catch (error) {
+      // Le préremplissage est une aide : il ne doit pas empêcher la création.
+      console.warn("Préremplissage du contrat indisponible:", error);
+    }
   }
 
   function handlePlanChange(e) {
@@ -157,6 +204,18 @@ export default function AddSubscriptionsAdminComponent() {
       else next[priceId] = 1;
       return next;
     });
+    setOfferedAddonPriceIds((previous) =>
+      isSelected ? previous.filter((entry) => entry !== priceId) : previous,
+    );
+    resetStripeFlow();
+  }
+
+  function handleAddonOfferedToggle(priceId) {
+    setOfferedAddonPriceIds((previous) =>
+      previous.includes(priceId)
+        ? previous.filter((entry) => entry !== priceId)
+        : [...previous, priceId],
+    );
     resetStripeFlow();
   }
 
@@ -230,6 +289,7 @@ export default function AddSubscriptionsAdminComponent() {
             )
               ? selectedAddonQuantities[priceId] || 1
               : 1,
+            offered: offeredAddonPriceIds.includes(priceId),
           })),
           paymentMethodId,
           billingAddress: restaurantData.address,
@@ -457,7 +517,8 @@ export default function AddSubscriptionsAdminComponent() {
                   Modules additionnels
                 </p>
                 <p className="text-xs text-darkBlue/50">
-                  Les modules cochés seront ajoutés au total mensuel.
+                  Les modules cochés s&apos;appliqueront au prochain abonnement ;
+                  ceux marqués Offert ne seront pas facturés.
                 </p>
               </div>
             </div>
@@ -472,6 +533,7 @@ export default function AddSubscriptionsAdminComponent() {
                   const priceId = addon?.default_price?.id || "";
                   const checked = selectedAddonPriceIds.includes(priceId);
                   const canChangeQuantity = supportsMultipleQuantity(addon);
+                  const offered = offeredAddonPriceIds.includes(priceId);
 
                   return (
                     <div
@@ -496,9 +558,21 @@ export default function AddSubscriptionsAdminComponent() {
                           {addon.name}
                         </span>
                         <span className="block text-xs text-darkBlue/50">
-                          {formatCatalogProductLabel(addon)}
+                          {offered ? "Offert" : formatCatalogProductLabel(addon)}
                         </span>
                       </label>
+                      {checked && (
+                        <label className="flex items-center gap-1 text-xs font-semibold text-darkBlue/65">
+                          <input
+                            type="checkbox"
+                            checked={offered}
+                            disabled={loading || redirecting}
+                            onChange={() => handleAddonOfferedToggle(priceId)}
+                            className="size-3.5 accent-blue"
+                          />
+                          Offert
+                        </label>
+                      )}
                       {checked && canChangeQuantity && (
                         <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
                           Quantité
@@ -536,8 +610,8 @@ export default function AddSubscriptionsAdminComponent() {
                   Récapitulatif mensuel
                 </p>
                 <p className="text-xs text-darkBlue/50">
-                  Le total facturé sur Stripe sera la somme du plan et des
-                  modules sélectionnés.
+                  Le total facturé sur Stripe exclut les modules marqués
+                  Offert.
                 </p>
               </div>
             </div>
@@ -569,6 +643,11 @@ export default function AddSubscriptionsAdminComponent() {
                                 addon?.default_price?.id
                               ] || 1
                             }`
+                          : ""}
+                        {offeredAddonPriceIds.includes(
+                          addon?.default_price?.id,
+                        )
+                          ? " — Offert"
                           : ""}
                       </li>
                     ))}

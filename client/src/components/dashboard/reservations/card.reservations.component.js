@@ -98,7 +98,7 @@ export default function CardReservationComponent(props) {
 
             <span
               className={[
-                "ml-auto shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                "ml-auto inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none",
                 badgeClass,
                 responsiveInlineLayout ? "min-[1024px]:hidden" : "",
               ].join(" ")}
@@ -153,7 +153,7 @@ export default function CardReservationComponent(props) {
 
           {responsiveInlineLayout ? (
             <span
-              className={`hidden shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold min-[1024px]:inline-flex ${badgeClass}`}
+              className={`hidden shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none min-[1024px]:inline-flex ${badgeClass}`}
             >
               {badgeLabel}
             </span>

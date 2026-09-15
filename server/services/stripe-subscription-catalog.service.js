@@ -189,12 +189,13 @@ async function resolveCatalogSelection({
     throw error;
   }
 
-  const requestedAddonItems = Array.isArray(addonItems) && addonItems.length
-    ? addonItems
-    : (Array.isArray(addonPriceIds) ? addonPriceIds : []).map((priceId) => ({
-        priceId,
-        quantity: 1,
-      }));
+  const requestedAddonItems =
+    Array.isArray(addonItems) && addonItems.length
+      ? addonItems
+      : (Array.isArray(addonPriceIds) ? addonPriceIds : []).map((priceId) => ({
+          priceId,
+          quantity: 1,
+        }));
 
   const normalizedAddonItems = requestedAddonItems
     .map((item) => {
@@ -206,6 +207,7 @@ async function resolveCatalogSelection({
           typeof item === "string" ? item : item?.priceId,
         ),
         quantity: numericQuantity,
+        offered: Boolean(typeof item === "string" ? false : item?.offered),
       };
     })
     .filter((item) => item.priceId);
@@ -237,9 +239,10 @@ async function resolveCatalogSelection({
   }
 
   const addons = await Promise.all(
-    normalizedAddonItems.map(async ({ priceId, quantity }) => ({
+    normalizedAddonItems.map(async ({ priceId, quantity, offered }) => ({
       ...(await retrieveCatalogPriceEntry(priceId)),
       quantity,
+      offered,
     })),
   );
 
@@ -299,7 +302,7 @@ async function resolveCatalogSelection({
     totalAmount:
       plan.amount +
       addons.reduce(
-        (sum, addon) => sum + addon.amount * addon.quantity,
+        (sum, addon) => sum + (addon.offered ? 0 : addon.amount * addon.quantity),
         0,
       ),
     currency: plan.currency,
@@ -351,6 +354,7 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
       const quantity = toInteger(item?.quantity, 1);
       const amount =
         typeof price.unit_amount === "number" ? price.unit_amount / 100 : 0;
+      const recurring = price?.recurring || null;
 
       return {
         index,
@@ -365,6 +369,8 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
         totalAmount: amount * quantity,
         quantity,
         currency: price.currency ? price.currency.toUpperCase() : "",
+        interval: normalizeString(recurring?.interval),
+        intervalCount: toInteger(recurring?.interval_count, 1),
         kind: metadata.kind,
         code: metadata.code,
         order: metadata.order,
@@ -424,6 +430,10 @@ function buildCatalogSelectionMetadata({ plan, addons = [] } = {}) {
       .map((addon) => normalizeString(addon?.priceId))
       .join(","),
     addonCodes: addons.map((addon) => normalizeString(addon?.code)).join(","),
+    offeredAddonCodes: addons
+      .filter((addon) => addon?.offered)
+      .map((addon) => normalizeString(addon?.code))
+      .join(","),
   };
 }
 

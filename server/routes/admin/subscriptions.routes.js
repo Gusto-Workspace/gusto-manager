@@ -5,6 +5,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 // MIDDLEWARE
 const authenticateAdmin = require("../../middleware/authenticate-admin");
 const RestaurantModel = require("../../models/restaurant.model");
+const DocumentModel = require("../../models/document.model");
 const {
   listAllStripeSubscriptions,
 } = require("../../services/stripe-admin.service");
@@ -27,8 +28,61 @@ const {
   listSubscriptionCatalogProducts,
   resolveCatalogSelection,
 } = require("../../services/stripe-subscription-catalog.service");
+const {
+  buildStripeCommercialSnapshot,
+} = require("../../services/contract-commercial.service");
+const {
+  prepareSubscriptionAmendment,
+} = require("../../services/contract-amendment.service");
 
 router.use("/admin", authenticateAdmin);
+
+router.get(
+  "/admin/restaurants/:restaurantId/contract-subscription-prefill",
+  async (req, res) => {
+    try {
+      const latestSigned = await DocumentModel.findOne({
+        type: "CONTRACT",
+        restaurantId: req.params.restaurantId,
+        status: "SIGNED",
+      }).sort({ versionNumber: -1, createdAt: -1 });
+      const snapshot =
+        latestSigned?.commercialSnapshot ||
+        latestSigned?.contractSnapshot?.commercialSnapshot;
+
+      if (!latestSigned || !Array.isArray(snapshot?.items)) {
+        return res.status(200).json({ available: false });
+      }
+
+      const plan = snapshot.items.find(
+        (item) => item.kind === "PLAN" && normalizeString(item.priceId),
+      );
+      const addons = snapshot.items.filter(
+        (item) => item.kind === "ADDON" && normalizeString(item.priceId),
+      );
+
+      return res.status(200).json({
+        available: Boolean(plan),
+        documentId: latestSigned._id,
+        documentNumber: latestSigned.docNumber,
+        planPriceId: plan?.priceId || "",
+        addonItems: addons.map((item) => ({
+          priceId: item.priceId,
+          quantity: Math.max(1, Number(item.quantity || 1)),
+          offered: Number(item.unitAmount || 0) <= 0,
+        })),
+        ignoredContractualItems: snapshot.items.filter(
+          (item) => item.kind === "OTHER" || !normalizeString(item.priceId),
+        ).length,
+      });
+    } catch (error) {
+      console.error("Erreur préremplissage contrat abonnement:", error);
+      return res.status(500).json({
+        message: "Impossible de charger les prestations du contrat signé.",
+      });
+    }
+  },
+);
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -357,6 +411,8 @@ function serializeSubscriptionLineItem(item = {}) {
     amount: Number(item?.amount || 0),
     totalAmount: Number(item?.totalAmount || 0),
     currency: item?.currency || "",
+    interval: normalizeString(item?.interval),
+    intervalCount: Number(item?.intervalCount || 1),
     quantity: Number(item?.quantity || 1),
     kind: normalizeString(item?.kind),
     code: normalizeString(item?.code),
@@ -458,6 +514,54 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
     });
 
   return operations;
+}
+
+async function resolveOfferedAddonPrice(addon) {
+  if (!addon?.offered) return addon?.priceId;
+
+  const prices = await stripe.prices.list({
+    product: addon.productId,
+    active: true,
+    limit: 100,
+  });
+  const matchingPrice = prices.data.find(
+    (price) =>
+      Number(price?.unit_amount) === 0 &&
+      normalizeString(price?.currency).toUpperCase() ===
+        normalizeString(addon.currency).toUpperCase() &&
+      normalizeString(price?.recurring?.interval) ===
+        normalizeString(addon.interval) &&
+      Number(price?.recurring?.interval_count || 1) ===
+        Number(addon.intervalCount || 1),
+  );
+  if (matchingPrice) return matchingPrice.id;
+
+  const price = await stripe.prices.create({
+    product: addon.productId,
+    currency: normalizeString(addon.currency).toLowerCase(),
+    unit_amount: 0,
+    recurring: {
+      interval: addon.interval || "month",
+      interval_count: Math.max(1, Number(addon.intervalCount || 1)),
+    },
+    metadata: {
+      offered: "true",
+      catalogCode: addon.code || "",
+    },
+  });
+  return price.id;
+}
+
+async function materializeOfferedAddonPrices(selection) {
+  const addons = await Promise.all(
+    selection.addons.map(async (addon) => ({
+      ...addon,
+      priceId: await resolveOfferedAddonPrice(addon),
+      amount: addon.offered ? 0 : addon.amount,
+      amountCents: addon.offered ? 0 : addon.amountCents,
+    })),
+  );
+  return { ...selection, addons };
 }
 
 async function findRestaurantSubscriptionOnCustomer({
@@ -947,13 +1051,14 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       addonPriceIds,
       addonItems,
     });
+    const stripeSelection = await materializeOfferedAddonPrices(selection);
 
     // Créer l'abonnement en prélèvement automatique
     const subscription = await stripe.subscriptions.create({
       customer: resolvedStripeCustomerId,
       items: [
-        { price: selection.plan.priceId },
-        ...selection.addons.map((addon) => ({
+        { price: stripeSelection.plan.priceId },
+        ...stripeSelection.addons.map((addon) => ({
           price: addon.priceId,
           quantity: addon.quantity,
         })),
@@ -964,7 +1069,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
         metadata: {
           restaurantId,
           restaurantName: resolvedRestaurantName,
-          ...buildCatalogSelectionMetadata(selection),
+          ...buildCatalogSelectionMetadata(stripeSelection),
         },
         owner: resolvedSubscriptionOwner,
       }),
@@ -1471,9 +1576,10 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
       });
     }
 
+    const stripeSelection = await materializeOfferedAddonPrices(selection);
     const items = buildSubscriptionItemUpdatePayload({
       currentSummary,
-      selection,
+      selection: stripeSelection,
     });
 
     const updatedSubscription = await stripe.subscriptions.update(
@@ -1483,19 +1589,51 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
         proration_behavior: "none",
         metadata: {
           ...(subscription.metadata || {}),
-          ...buildCatalogSelectionMetadata(selection),
+          ...buildCatalogSelectionMetadata(stripeSelection),
         },
         expand: ["items.data.price", "latest_invoice"],
       },
     );
 
     const updatedSummary = await buildSubscriptionSummary(updatedSubscription);
+    let amendment = null;
+    let amendmentWarning = "";
+    const restaurantId = normalizeString(
+      updatedSubscription?.metadata?.restaurantId || subscription?.metadata?.restaurantId,
+    );
+
+    // Stripe est déjà à jour à ce stade. La préparation de l'avenant ne doit
+    // jamais remettre en cause une modification d'abonnement réussie.
+    if (restaurantId) {
+      try {
+        amendment = await prepareSubscriptionAmendment({
+          restaurantId,
+          stripeSnapshot: buildStripeCommercialSnapshot(
+            updatedSummary,
+            updatedSubscription,
+          ),
+        });
+      } catch (amendmentError) {
+        amendmentWarning =
+          "L'abonnement a été modifié, mais le brouillon d'avenant n'a pas pu être préparé.";
+        console.error("Erreur préparation avenant automatique:", amendmentError);
+      }
+    }
 
     res.status(200).json({
       message:
         "La configuration de l'abonnement a été mise à jour pour la prochaine échéance.",
       subscription: updatedSubscription,
       summary: serializeSubscriptionSummary(updatedSummary),
+      amendment: amendment?.document
+        ? {
+            documentId: amendment.document._id,
+            status: amendment.document.status,
+            created: Boolean(amendment.created),
+            updated: Boolean(amendment.updated),
+          }
+        : null,
+      amendmentWarning,
     });
   } catch (error) {
     console.error(

@@ -26,6 +26,7 @@ app.set("trust proxy", 1);
 
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
+app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 app.use(express.json());
 
 // MONGOOSE
@@ -35,35 +36,50 @@ mongoose
   .catch((err) => console.log("MongoDB connection error:", err));
 
 // CORS
-app.use(
-  cors({
-    origin: [
-      "http://localhost:8002", // Client
-      "http://localhost:8003", // Client site restaurant
-      "http://localhost:8006", // Client module réservation
-      "http://localhost:8012", // Server
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    credentials: true,
-    allowedHeaders: [
-      "Origin",
-      "X-Requested-With",
-      "Content-Type",
-      "Accept",
-      "Authorization",
-      "Cache-Control",
-      "Pragma",
-      "x-gusto-timestamp",
-      "x-gusto-signature",
-      "X-Request-Id",
-      "X-Correlation-Id",
-      "Idempotency-Key",
-      "X-Take-Away-Token",
-    ],
-    exposedHeaders: ["X-Request-Id"],
-  }),
+const gustoManagerOrigins = new Set([
+  "https://gusto-manager.com",
+  "https://www.gusto-manager.com",
+  "http://localhost:8002", // Dashboard Gusto Manager
+  "http://localhost:8003", // Site restaurant local
+  "http://localhost:8006", // Module réservation local
+  "http://localhost:8012", // API locale
+]);
+
+[process.env.GUSTO_MANAGER_PUBLIC_URL, process.env.GUSTO_MANAGER_URL].forEach(
+  (configuredUrl) => {
+    if (!configuredUrl) return;
+    try {
+      gustoManagerOrigins.add(new URL(configuredUrl).origin);
+    } catch {
+      console.warn("[cors] URL Gusto Manager ignorée car invalide");
+    }
+  },
 );
-app.options("*", cors());
+
+const corsOptions = {
+  origin: Array.from(gustoManagerOrigins),
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+    "Cache-Control",
+    "Pragma",
+    "x-gusto-timestamp",
+    "x-gusto-signature",
+    "X-Request-Id",
+    "X-Correlation-Id",
+    "Idempotency-Key",
+    "X-Take-Away-Token",
+  ],
+  exposedHeaders: ["X-Request-Id"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // SSE BUS
 mountSseRoute(app);

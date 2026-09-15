@@ -28,14 +28,15 @@ function normalizeSearchValue(value) {
     .trim();
 }
 
-function formatType(type) {
+function formatType(type, contractKind) {
   if (type === "QUOTE") return "Devis";
   if (type === "INVOICE") return "Facture";
+  if (type === "CONTRACT" && contractKind === "AMENDMENT") return "Avenant";
   if (type === "CONTRACT") return "Contrat";
   return "Document";
 }
 
-function statusBadge(status) {
+function statusBadge(status, type, signatureRequest) {
   switch (status) {
     case "DRAFT":
       return {
@@ -43,7 +44,17 @@ function statusBadge(status) {
         className: "bg-darkBlue/5 text-darkBlue/70",
       };
     case "SENT":
-      return { label: "Envoyé", className: "bg-blue/10 text-blue" };
+      return {
+        label:
+          type === "CONTRACT" &&
+          signatureRequest?.expiresAt &&
+          new Date(signatureRequest.expiresAt).getTime() <= Date.now()
+            ? "Lien expiré"
+            : type === "CONTRACT"
+              ? "Envoyé"
+              : "Envoyé",
+        className: "bg-blue/10 text-blue",
+      };
     case "SIGNED":
       return { label: "Signé", className: "bg-green/10 text-green-700" };
     default:
@@ -184,26 +195,31 @@ export default function ListDocumentsAdminComponent(props) {
   }
 
   // ✅ Renvoi uniquement quand status === SENT
-  async function resendDocument(documentId) {
+  async function resendDocument(document) {
     const config = getAuthConfigOrRedirect();
     if (!config) return;
 
+    const documentId = document._id;
     setLoadingSendId(documentId);
     try {
-      const { data } = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${documentId}/resend`,
-        {},
-        config,
-      );
+      const endpoint =
+        document.type === "CONTRACT"
+          ? `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${documentId}/signature-request/resend`
+          : `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${documentId}/resend`;
+      const { data } = await axios.post(endpoint, {}, config);
 
       props.setDocuments?.((prev) =>
         (prev || []).map((d) =>
           d._id === documentId
             ? {
                 ...d,
-                status: data.status || d.status,
-                pdf: data.pdf || d.pdf,
-                sentAt: data.sentAt || new Date().toISOString(),
+                ...(data.document || {}),
+                status: data.status || data.document?.status || d.status,
+                pdf: data.pdf || data.document?.pdf || d.pdf,
+                sentAt:
+                  data.sentAt ||
+                  data.document?.sentAt ||
+                  new Date().toISOString(),
               }
             : d,
         ),
@@ -344,12 +360,23 @@ export default function ListDocumentsAdminComponent(props) {
               const isPreviewLoading = loadingPreviewId === doc._id;
               const isSendLoading = loadingSendId === doc._id;
 
-              const badge = statusBadge(doc.status);
+              const badge = statusBadge(
+                doc.status,
+                doc.type,
+                doc.signatureRequest,
+              );
 
+              const isLegacyPhysicalSent =
+                doc.type === "CONTRACT" &&
+                doc.status === "SENT" &&
+                !doc.signatureRequest?.issuedAt;
               const canSign =
-                doc.type === "CONTRACT" && doc.status !== "SIGNED";
+                doc.type === "CONTRACT" &&
+                (doc.status === "DRAFT" || isLegacyPhysicalSent);
 
-              const canResend = doc.status === "SENT"; // ✅ uniquement si déjà envoyé
+              const canResend = doc.status === "SENT" && !isLegacyPhysicalSent;
+              const canDelete =
+                doc.type !== "CONTRACT" || doc.status === "DRAFT";
 
               return (
                 <li
@@ -362,7 +389,7 @@ export default function ListDocumentsAdminComponent(props) {
                       <div className="flex items-center gap-2">
                         <FileText className="size-4 text-darkBlue/50" />
                         <h2 className="text-base font-semibold text-darkBlue truncate">
-                          {formatType(doc.type)}{" "}
+                          {formatType(doc.type, doc.contractKind)}{" "}
                           <span className="text-darkBlue/50 font-medium">
                             {doc.docNumber ? `• ${doc.docNumber}` : ""}
                           </span>
@@ -399,13 +426,15 @@ export default function ListDocumentsAdminComponent(props) {
                           )}
                         </button>
 
-                        <button
-                          onClick={() => setDocToDelete(doc._id)}
-                          className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2"
-                          aria-label="Supprimer"
-                        >
-                          <Trash2 className="size-4 text-red" />
-                        </button>
+                        {canDelete ? (
+                          <button
+                            onClick={() => setDocToDelete(doc._id)}
+                            className="inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 hover:bg-red/15 transition p-2"
+                            aria-label="Supprimer"
+                          >
+                            <Trash2 className="size-4 text-red" />
+                          </button>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -434,7 +463,7 @@ export default function ListDocumentsAdminComponent(props) {
                     {/* ✅ Pas de bouton Envoyer quand DRAFT */}
                     {canResend ? (
                       <button
-                        onClick={() => resendDocument(doc._id)}
+                        onClick={() => resendDocument(doc)}
                         disabled={isSendLoading}
                         className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 transition disabled:opacity-60"
                       >
@@ -446,7 +475,9 @@ export default function ListDocumentsAdminComponent(props) {
                         ) : (
                           <>
                             <RefreshCw className="size-4 text-darkBlue/60" />
-                            Renvoyer
+                            {doc.type === "CONTRACT"
+                              ? "Remplacer le lien"
+                              : "Renvoyer"}
                           </>
                         )}
                       </button>

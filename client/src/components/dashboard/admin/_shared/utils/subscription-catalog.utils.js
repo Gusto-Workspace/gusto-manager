@@ -56,6 +56,7 @@ export function computeCatalogTotal({
   selectedPlanPriceId = "",
   selectedAddonPriceIds = [],
   selectedAddonQuantities = {},
+  offeredAddonPriceIds = [],
 }) {
   const selectedPlan = getCatalogProductByPriceId(
     products,
@@ -75,7 +76,10 @@ export function computeCatalogTotal({
           ? 1
           : Math.max(1, Number(selectedAddonQuantities?.[priceId] || 1));
 
-      return sum + Number(product?.default_price?.unit_amount || 0) * quantity;
+      return sum +
+        (offeredAddonPriceIds.includes(priceId)
+          ? 0
+          : Number(product?.default_price?.unit_amount || 0) * quantity);
     },
     0,
   );

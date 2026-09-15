@@ -18,6 +18,7 @@ const {
 const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
 const TERMINAL_STATUS_DATE_FIELDS = {
   Finished: "finishedAt",
+  Expired: "expiredAt",
   Canceled: "canceledAt",
   Rejected: "rejectedAt",
   NoShow: "noShowAt",
@@ -81,6 +82,10 @@ function applyNoShowFields(reservation, nextStatus) {
   reservation.noShowAt = nextStatus === "NoShow" ? new Date() : null;
 }
 
+function applyExpiredFields(reservation, nextStatus) {
+  reservation.expiredAt = nextStatus === "Expired" ? new Date() : null;
+}
+
 async function getRestaurantCached(cache, restaurantId) {
   const key = String(restaurantId || "");
   if (cache.has(key)) return cache.get(key);
@@ -108,6 +113,7 @@ async function transitionReservationStatus({ reservation, nextStatus }) {
   reservation.status = nextStatus;
   applyActivationFields(reservation, nextStatus);
   applyNoShowFields(reservation, nextStatus);
+  applyExpiredFields(reservation, nextStatus);
   reservation.reminder24hDueAt = null;
   reservation.reminder24hSentAt = null;
   reservation.reminder24hLockedAt = null;
@@ -236,6 +242,7 @@ async function runReservationLifecycleCron() {
             "Confirmed",
             "Active",
             "Late",
+            "Waitlist",
             "Finished",
             "Canceled",
             "Rejected",
@@ -299,6 +306,26 @@ async function runReservationLifecycleCron() {
       }
     }
 
+    const expiredWaitlistReservations = await ReservationModel.find({
+      status: "Waitlist",
+      reservationDate: { $lte: getCurrentServiceDayEnd(now) },
+    }).select(
+      "_id restaurant_id customer customerFirstName customerLastName reservationDate reservationTime status activatedAt finishedAt expiredAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
+    );
+
+    for (const reservation of expiredWaitlistReservations) {
+      const reservationStart = buildReservationDateTime(
+        reservation.reservationDate,
+        reservation.reservationTime,
+      );
+      if (!reservationStart || now < reservationStart) continue;
+
+      await transitionReservationStatus({
+        reservation,
+        nextStatus: "Expired",
+      });
+    }
+
     const deletionGroups =
       groupRestaurantsByDeletionMinutes(lifecycleRestaurants);
     const dueByStatus = new Map(
@@ -323,11 +350,13 @@ async function runReservationLifecycleCron() {
       }
     }
 
-    for (const reservation of dueByStatus.get("Finished")) {
-      await deleteReservation({
-        reservation,
-        restaurantCache,
-      });
+    for (const status of ["Finished", "Expired"]) {
+      for (const reservation of dueByStatus.get(status)) {
+        await deleteReservation({
+          reservation,
+          restaurantCache,
+        });
+      }
     }
 
     for (const status of ["Canceled", "Rejected", "NoShow"]) {

@@ -20,6 +20,7 @@ const MANAGER_RESERVATION_LIST_SELECT = [
   "commentary",
   "table",
   "status",
+  "expiredAt",
   "pendingExpiresAt",
   "bankHold.enabled",
   "bankHold.status",

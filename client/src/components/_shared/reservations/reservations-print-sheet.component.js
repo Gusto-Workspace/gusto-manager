@@ -172,12 +172,11 @@ export default function ReservationsPrintSheet({
             display: block !important;
             width: 100%;
             box-sizing: border-box;
-            padding: 16mm;
           }
 
           @page {
             size: A4 portrait;
-            margin: 0;
+            margin: 16mm;
           }
         }
       `}</style>
