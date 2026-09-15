@@ -26,9 +26,15 @@ export function getReservationsPrintTitle(selectedDay, mode) {
 }
 
 export function openReservationsPrintDialog() {
-  try {
-    if (document.execCommand("print")) return;
-  } catch {}
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+
+  if (!isStandalone) {
+    try {
+      if (document.execCommand("print")) return;
+    } catch {}
+  }
 
   window.print();
 }
@@ -163,6 +169,11 @@ export default function ReservationsPrintSheet({
       </div>
 
       <style jsx global>{`
+        @page {
+          size: A4 portrait;
+          margin: 14mm;
+        }
+
         @media print {
           body > * {
             display: none !important;
@@ -174,9 +185,47 @@ export default function ReservationsPrintSheet({
             box-sizing: border-box;
           }
 
-          @page {
-            size: A4 portrait;
-            margin: 16mm;
+          .reservations-print-sheet table {
+            width: 100%;
+            table-layout: fixed;
+          }
+
+          .reservations-print-sheet thead {
+            display: table-header-group;
+          }
+
+          .reservations-print-sheet tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .reservations-print-sheet th,
+          .reservations-print-sheet td {
+            overflow-wrap: anywhere;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(1) {
+            width: 11%;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(2) {
+            width: 22%;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(3) {
+            width: 12%;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(4) {
+            width: 14%;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(5) {
+            width: 16%;
+          }
+
+          .reservations-print-sheet :is(th, td):nth-child(6) {
+            width: 25%;
           }
         }
       `}</style>

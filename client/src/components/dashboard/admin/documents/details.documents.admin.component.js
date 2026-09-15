@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import {
@@ -21,10 +21,10 @@ import {
 import { GlobalContext } from "@/contexts/global.context";
 import {
   formatCatalogProductLabel,
-  MULTI_QUANTITY_ADDON_CODE,
   splitSubscriptionCatalogProducts,
   supportsMultipleQuantity,
 } from "../_shared/utils/subscription-catalog.utils";
+import { normalizeDocumentCommercialForForm } from "../_shared/utils/legacy-document-commercial.utils";
 
 function isQuoteOrInvoice(type) {
   return type === "QUOTE" || type === "INVOICE";
@@ -128,6 +128,44 @@ function parseOldPriceLabelToNumber(priceLabel) {
   if (!m) return 0;
   const n = Number(m[1]);
   return Number.isNaN(n) ? 0 : n;
+}
+
+function documentCommercialFormState(normalizedCommercial = {}) {
+  const subscription = normalizedCommercial.subscription || {};
+  const subscriptionPrice = toSafeNumber(subscription.priceMonthly, 0);
+  const lines = (normalizedCommercial.lines || [])
+    .filter((line) => (line?.kind ? line.kind !== "WEBSITE" : true))
+    .map((line) => {
+      const unit = toSafeNumber(line?.unitPrice, 0);
+      const offeredUi = Boolean(line?.offered);
+      return {
+        label: line?.label || "",
+        qty: clampMin(line?.qty ?? 1, 1),
+        unitPrice: offeredUi ? "" : unit > 0 ? unit : "",
+        offered: offeredUi,
+        _lastPaidUnitPrice: unit > 0 ? unit : 0,
+      };
+    });
+  const modules = (normalizedCommercial.modules || []).map((module) => {
+    const price = toSafeNumber(module.priceMonthly, 0);
+    const offeredUi = Boolean(module.offered);
+    return {
+      ...module,
+      name: module.name || "",
+      offered: offeredUi,
+      priceMonthly: offeredUi ? "" : price > 0 ? price : "",
+      _lastPaidPriceMonthly: price > 0 ? price : 0,
+    };
+  });
+
+  return {
+    lines,
+    modules,
+    subscription,
+    subscriptionName: subscription.name || "",
+    subscriptionPriceMonthly: subscriptionPrice > 0 ? subscriptionPrice : "",
+    subscriptionQuantity: Math.max(1, Number(subscription.quantity || 1)),
+  };
 }
 
 function preventWheelChange(e) {
@@ -251,10 +289,16 @@ export default function DetailsDocumentAdminPage(props) {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [doc, setDoc] = useState(null);
+  const commercialInitializationRef = useRef({
+    documentId: "",
+    catalogReady: false,
+  });
   const catalogProducts = useMemo(
     () => adminContext?.subscriptionsList || [],
     [adminContext],
   );
+  const catalogProductsRef = useRef(catalogProducts);
+  catalogProductsRef.current = catalogProducts;
   const { plans: catalogPlans, addons: catalogAddons } = useMemo(
     () => splitSubscriptionCatalogProducts(catalogProducts),
     [catalogProducts],
@@ -342,6 +386,19 @@ export default function DetailsDocumentAdminPage(props) {
 
         const d = data?.document;
         setDoc(d);
+        const availableCatalogProducts = catalogProductsRef.current;
+        const normalizedCommercial = normalizeDocumentCommercialForForm(
+          d,
+          availableCatalogProducts,
+        );
+        const commercialForm =
+          documentCommercialFormState(normalizedCommercial);
+        commercialInitializationRef.current = {
+          documentId: String(d?._id || ""),
+          catalogReady:
+            availableCatalogProducts.length > 0 ||
+            !normalizedCommercial.usedLegacyFallback,
+        };
 
         // party
         setParty({
@@ -381,29 +438,7 @@ export default function DetailsDocumentAdminPage(props) {
          * - offered = valeur back (checkbox)
          * - unitPrice = "" si 0 ou vide (affiche "-")
          */
-        const mappedClassicLines =
-          d.lines && d.lines.length > 0
-            ? d.lines
-                .filter((l) => (l?.kind ? l.kind !== "WEBSITE" : true))
-                .map((l) => {
-                  const unit = toSafeNumber(l?.unitPrice, 0);
-                  const offeredUi = Boolean(l?.offered);
-
-                  return {
-                    label: l?.label || "",
-                    qty: clampMin(l?.qty ?? 1, 1),
-                    unitPrice: offeredUi ? "" : unit > 0 ? unit : "",
-                    offered: offeredUi,
-                    _lastPaidUnitPrice: unit > 0 ? unit : 0,
-                  };
-                })
-            : null;
-
-        setLines(
-          mappedClassicLines && mappedClassicLines.length > 0
-            ? mappedClassicLines
-            : [],
-        );
+        setLines(commercialForm.lines);
 
         // ✅ website enabled (back-compat)
         const websiteEnabled =
@@ -476,18 +511,10 @@ export default function DetailsDocumentAdminPage(props) {
             : "",
         );
 
-        const subPrice =
-          d?.subscription?.priceMonthly ??
-          (d?.subscriptionLabel
-            ? parseOldPriceLabelToNumber(d.subscriptionLabel)
-            : 0);
-
-        setSubscriptionName(d?.subscription?.name || "");
-        setSubscriptionPriceMonthly(subPrice > 0 ? subPrice : "");
-        setSubscriptionMeta({ ...d?.subscription });
-        setSubscriptionQuantity(
-          Math.max(1, Number(d?.subscription?.quantity || 1)),
-        );
+        setSubscriptionName(commercialForm.subscriptionName);
+        setSubscriptionPriceMonthly(commercialForm.subscriptionPriceMonthly);
+        setSubscriptionMeta(commercialForm.subscription);
+        setSubscriptionQuantity(commercialForm.subscriptionQuantity);
         setEngagementMonths(
           clampMin(
             d?.engagementMonths ?? (d?.type === "CONTRACT" ? 24 : 12),
@@ -495,47 +522,7 @@ export default function DetailsDocumentAdminPage(props) {
           ),
         );
 
-        const documentModules = Array.isArray(d?.modules) ? [...d.modules] : [];
-        const legacyRental = d?.timeClockTerminalRental;
-        if (d?.type === "CONTRACT" && legacyRental?.enabled) {
-          const legacyRentalModule = {
-            name: "Location tablette",
-            offered: false,
-            priceMonthly: Number(legacyRental.priceMonthly || 0),
-            quantity: Math.max(1, Number(legacyRental.quantity || 1)),
-            code: legacyRental.code || MULTI_QUANTITY_ADDON_CODE,
-            priceId: legacyRental.priceId || "",
-            productId: legacyRental.productId || "",
-            currency: legacyRental.currency || "EUR",
-            interval: legacyRental.interval || "month",
-            intervalCount: Math.max(1, Number(legacyRental.intervalCount || 1)),
-            sourceKind: "ADDON",
-          };
-          const alreadyInModules = documentModules.some(
-            (module) =>
-              (legacyRentalModule.priceId &&
-                module.priceId === legacyRentalModule.priceId) ||
-              (legacyRentalModule.productId &&
-                module.productId === legacyRentalModule.productId) ||
-              (legacyRentalModule.code &&
-                module.code === legacyRentalModule.code),
-          );
-          if (!alreadyInModules) documentModules.push(legacyRentalModule);
-        }
-
-        setModules(
-          documentModules.map((m) => {
-            const pm = toSafeNumber(m.priceMonthly, 0);
-            const offeredUi = Boolean(m.offered);
-            return {
-              ...m,
-              name: m.name || "",
-              offered: offeredUi,
-              priceMonthly: offeredUi ? "" : pm > 0 ? pm : "",
-              _lastPaidPriceMonthly: pm > 0 ? pm : 0,
-            };
-          }),
-        );
+        setModules(commercialForm.modules);
 
         setComments(d?.comments || "");
       } catch (err) {
@@ -551,6 +538,32 @@ export default function DetailsDocumentAdminPage(props) {
       canceled = true;
     };
   }, [props.documentId]);
+
+  useEffect(() => {
+    const initialized = commercialInitializationRef.current;
+    if (
+      !doc?._id ||
+      !catalogProducts.length ||
+      initialized.documentId !== String(doc._id) ||
+      initialized.catalogReady
+    ) {
+      return;
+    }
+
+    const commercialForm = documentCommercialFormState(
+      normalizeDocumentCommercialForForm(doc, catalogProducts),
+    );
+    setLines(commercialForm.lines);
+    setSubscriptionName(commercialForm.subscriptionName);
+    setSubscriptionPriceMonthly(commercialForm.subscriptionPriceMonthly);
+    setSubscriptionMeta(commercialForm.subscription);
+    setSubscriptionQuantity(commercialForm.subscriptionQuantity);
+    setModules(commercialForm.modules);
+    commercialInitializationRef.current = {
+      documentId: String(doc._id),
+      catalogReady: true,
+    };
+  }, [catalogProducts, doc]);
 
   useEffect(() => {
     if (!doc?._id || doc.type !== "CONTRACT") return;
@@ -2116,7 +2129,10 @@ export default function DetailsDocumentAdminPage(props) {
                             Offre principale
                           </label>
                           <select
-                            value={subscriptionMeta?.priceId || ""}
+                            value={
+                              subscriptionMeta?.priceId ||
+                              (subscriptionName ? "historical" : "")
+                            }
                             disabled={isLocked}
                             onChange={(event) =>
                               selectCatalogPlan(event.target.value)
@@ -2124,6 +2140,11 @@ export default function DetailsDocumentAdminPage(props) {
                             className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm"
                           >
                             <option value="">Sélectionner une offre</option>
+                            {!subscriptionMeta?.priceId && subscriptionName ? (
+                              <option value="historical" disabled>
+                                {subscriptionName} · Offre historique
+                              </option>
+                            ) : null}
                             {subscriptionMeta?.priceId &&
                             !catalogPlans.some(
                               (plan) =>
