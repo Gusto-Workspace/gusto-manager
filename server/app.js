@@ -26,6 +26,7 @@ app.set("trust proxy", 1);
 
 // JSON
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
+app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 app.use(express.json());
 
 // MONGOOSE
