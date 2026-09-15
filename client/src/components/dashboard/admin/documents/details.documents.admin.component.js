@@ -2262,11 +2262,6 @@ export default function DetailsDocumentAdminPage(props) {
                                       showMonthlyRecurrence: true,
                                     })}
                                   </span>
-                                  {offered ? (
-                                    <span className="block font-semibold text-blue">
-                                      Offert — montant contractuel 0
-                                    </span>
-                                  ) : null}
                                 </label>
                                 {checked && canChangeQuantity ? (
                                   <label className="flex flex-col gap-1 font-semibold text-darkBlue/60">
@@ -2289,19 +2284,24 @@ export default function DetailsDocumentAdminPage(props) {
                                     />
                                   </label>
                                 ) : null}
-                                {checked ? (
-                                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-darkBlue/10 bg-white px-2 py-1.5 font-semibold text-darkBlue/70">
-                                    <input
-                                      type="checkbox"
-                                      checked={offered}
-                                      disabled={isLocked}
-                                      onChange={() =>
-                                        toggleCatalogAddonOffered(addon)
-                                      }
-                                    />
-                                    Offert
-                                  </label>
-                                ) : null}
+                                <label
+                                  aria-hidden={!checked}
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border border-darkBlue/10 bg-white px-2 py-1.5 font-semibold text-darkBlue/70 ${
+                                    checked
+                                      ? ""
+                                      : "invisible pointer-events-none"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked && offered}
+                                    disabled={isLocked || !checked}
+                                    onChange={() =>
+                                      toggleCatalogAddonOffered(addon)
+                                    }
+                                  />
+                                  Offert
+                                </label>
                               </div>
                             );
                           })}

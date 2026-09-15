@@ -13,6 +13,27 @@ const PRINT_MODE_LABELS = {
   dinner: "soir",
 };
 
+const STANDALONE_PRINT_STYLES = `
+  @page { size: A4 portrait; margin: 14mm; }
+  html, body { margin: 0; background: #fff; color: #000; }
+  body { font-family: Arial, sans-serif; }
+  .reservations-print-sheet { display: block; width: 100%; box-sizing: border-box; }
+  .reservations-print-sheet > div { margin-bottom: 24px; border-bottom: 1px solid #000; padding-bottom: 16px; }
+  .reservations-print-sheet h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 700; }
+  .reservations-print-sheet p { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
+  .reservations-print-sheet table { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 12px; }
+  .reservations-print-sheet thead { display: table-header-group; }
+  .reservations-print-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+  .reservations-print-sheet th,
+  .reservations-print-sheet td { border: 1px solid rgba(0, 0, 0, 0.3); padding: 8px; overflow-wrap: anywhere; }
+  .reservations-print-sheet :is(th, td):nth-child(1) { width: 11%; }
+  .reservations-print-sheet :is(th, td):nth-child(2) { width: 22%; }
+  .reservations-print-sheet :is(th, td):nth-child(3) { width: 12%; }
+  .reservations-print-sheet :is(th, td):nth-child(4) { width: 14%; }
+  .reservations-print-sheet :is(th, td):nth-child(5) { width: 16%; }
+  .reservations-print-sheet :is(th, td):nth-child(6) { width: 25%; }
+`;
+
 export function getReservationsPrintTitle(selectedDay, mode) {
   if (!selectedDay) return "Gusto Manager";
 
@@ -25,16 +46,56 @@ export function getReservationsPrintTitle(selectedDay, mode) {
   return `réservations ${dateLabel} - ${PRINT_MODE_LABELS[mode] || PRINT_MODE_LABELS.day}`;
 }
 
+function shareStandaloneReservationsPrintDocument() {
+  const printSheet = document.querySelector(
+    "body > .reservations-print-sheet",
+  );
+  if (
+    !printSheet ||
+    typeof File !== "function" ||
+    typeof navigator.share !== "function"
+  ) {
+    return false;
+  }
+
+  const title = document.title || "Réservations";
+  const safeTitle = title.replace(/[\\/:*?"<>|]+/g, "-");
+  const file = new File(
+    [
+      `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>${STANDALONE_PRINT_STYLES}</style></head><body>${printSheet.outerHTML}</body></html>`,
+    ],
+    `${safeTitle}.html`,
+    { type: "text/html" },
+  );
+
+  try {
+    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+      return false;
+    }
+
+    navigator.share({ files: [file], title }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function openReservationsPrintDialog() {
   const isStandalone =
     window.matchMedia?.("(display-mode: standalone)").matches ||
     window.navigator.standalone === true;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(window.navigator.userAgent) ||
+    (window.navigator.platform === "MacIntel" &&
+      window.navigator.maxTouchPoints > 1);
 
-  if (!isStandalone) {
-    try {
-      if (document.execCommand("print")) return;
-    } catch {}
+  if (isStandalone && isIOS && shareStandaloneReservationsPrintDocument()) {
+    return;
   }
+
+  try {
+    if (document.execCommand("print")) return;
+  } catch {}
 
   window.print();
 }
