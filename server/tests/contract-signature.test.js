@@ -97,6 +97,44 @@ test("le diff commercial détecte un module ajouté et une quantité modifiée",
   );
 });
 
+test("le diff commercial distingue offert et payant sans faux changement de quantité", () => {
+  const offered = createCommercialSnapshot({
+    source: "MANUAL",
+    items: [
+      {
+        kind: "ADDON",
+        code: "reservations",
+        label: "Réservations",
+        quantity: 1,
+        unitAmount: 0,
+      },
+    ],
+  });
+  const paid = createCommercialSnapshot({
+    source: "STRIPE_SUBSCRIPTION",
+    items: [
+      {
+        kind: "ADDON",
+        code: "reservations",
+        label: "Réservations",
+        quantity: 1,
+        unitAmount: 45,
+      },
+    ],
+  });
+
+  const offeredToPaid = compareCommercialSnapshots(offered, paid).changes[0];
+  const paidToOffered = compareCommercialSnapshots(paid, offered).changes[0];
+
+  assert.equal(offeredToPaid.changeType, "UPDATED");
+  assert.equal(offeredToPaid.before.unitAmount, 0);
+  assert.equal(offeredToPaid.after.unitAmount, 45);
+  assert.equal(offeredToPaid.before.quantity, offeredToPaid.after.quantity);
+  assert.equal(paidToOffered.before.unitAmount, 45);
+  assert.equal(paidToOffered.after.unitAmount, 0);
+  assert.equal(paidToOffered.before.quantity, paidToOffered.after.quantity);
+});
+
 test("le snapshot contractuel produit un hash stable et exclut les données techniques", () => {
   const document = {
     type: "CONTRACT",

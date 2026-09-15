@@ -156,6 +156,74 @@ function documentTitle(document) {
   return document?.contractKind === "AMENDMENT" ? "Avenant" : "Contrat";
 }
 
+function commercialRate(item = {}) {
+  if (Number(item.unitAmount || 0) <= 0) return "Offert";
+
+  const amount = new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: item.currency || "EUR",
+    minimumFractionDigits: Number.isInteger(Number(item.unitAmount)) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(Number(item.unitAmount));
+  const intervalCount = Math.max(1, Number(item.intervalCount || 1));
+  const intervalLabels = {
+    day: intervalCount === 1 ? "jour" : `${intervalCount} jours`,
+    week: intervalCount === 1 ? "semaine" : `${intervalCount} semaines`,
+    month: intervalCount === 1 ? "mois" : `${intervalCount} mois`,
+    year: intervalCount === 1 ? "an" : `${intervalCount} ans`,
+  };
+  return `${amount}/${intervalLabels[item.interval] || item.interval || "mois"}`;
+}
+
+function commercialItemLabel(item = {}) {
+  if (item.kind === "PLAN") return "Offre principale";
+  if (item.kind === "ADDON") {
+    return `Module ${item.label || item.code || "sans nom"}`;
+  }
+  return item.label || item.code || "Prestation";
+}
+
+function formatCommercialChange(change = {}) {
+  const before = change.before || null;
+  const after = change.after || null;
+  const item = after || before || {};
+  const label = commercialItemLabel(item);
+
+  if (change.changeType === "ADDED") {
+    return `${label} : ajouté (${commercialRate(after)})`;
+  }
+  if (change.changeType === "REMOVED") {
+    return `${label} : retiré (${commercialRate(before)})`;
+  }
+
+  const details = [];
+  if (
+    item.kind === "PLAN" &&
+    (before?.label || before?.code) !== (after?.label || after?.code)
+  ) {
+    details.push(
+      `${before?.label || before?.code || "-"} → ${after?.label || after?.code || "-"}`,
+    );
+  }
+
+  const rateChanged =
+    Number(before?.unitAmount || 0) !== Number(after?.unitAmount || 0) ||
+    (before?.currency || "EUR") !== (after?.currency || "EUR") ||
+    (before?.interval || "month") !== (after?.interval || "month") ||
+    Number(before?.intervalCount || 1) !== Number(after?.intervalCount || 1);
+  if (rateChanged) {
+    details.push(`${commercialRate(before)} → ${commercialRate(after)}`);
+  }
+
+  if (Number(before?.quantity || 1) !== Number(after?.quantity || 1)) {
+    details.push(
+      `quantité ${before?.quantity || 1} → ${after?.quantity || 1}`,
+    );
+  }
+
+  return `${label} : ${details.join(" ; ") || "configuration modifiée"}`;
+}
+
 function catalogProductMatchesModule(product, module) {
   if (!product || !module) return false;
   const productCode =
@@ -1265,7 +1333,7 @@ export default function DetailsDocumentAdminPage(props) {
                 className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90"
               >
                 <FileSignature className="size-4" />
-                <span className="hidden mobile:inline">Signer sur place</span>
+                <span className="hidden mobile:inline">Signer</span>
               </button>
             )}
 
@@ -1477,7 +1545,8 @@ export default function DetailsDocumentAdminPage(props) {
                     </p>
                   ) : commercialStatus ? (
                     <div className="mt-4 border-t border-darkBlue/10 pt-3 text-xs text-darkBlue/70">
-                      {commercialStatus.pendingAmendment ? (
+                      {commercialStatus.pendingAmendment &&
+                      commercialStatus.pendingAmendment.status !== "DRAFT" ? (
                         <button
                           type="button"
                           onClick={() =>
@@ -1487,17 +1556,14 @@ export default function DetailsDocumentAdminPage(props) {
                           }
                           className="mb-3 inline-flex items-center gap-2 rounded-lg border border-blue/20 bg-blue/5 px-2.5 py-1.5 font-semibold text-blue hover:bg-blue/10"
                         >
-                          {commercialStatus.pendingAmendment.status === "DRAFT"
-                            ? "Modifier le brouillon d’avenant"
-                            : "Voir l’avenant envoyé"}
+                          Voir l’avenant envoyé
                         </button>
                       ) : null}
                       {commercialStatus.available ? (
                         commercialStatus.hasChanges ? (
                           <div>
-                            <p className="font-semibold text-amber-700">
-                              L’abonnement actuel a évolué depuis le dernier
-                              document signé.
+                            <p className="font-semibold text-darkBlue">
+                              Changements :
                             </p>
                             <ul className="mt-2 space-y-1 text-darkBlue/65">
                               {commercialStatus.changes.map((change, index) => {
@@ -1507,15 +1573,7 @@ export default function DetailsDocumentAdminPage(props) {
                                   <li
                                     key={`${item.code || item.label}-${index}`}
                                   >
-                                    {change.changeType === "ADDED"
-                                      ? "Ajout"
-                                      : change.changeType === "REMOVED"
-                                        ? "Retrait"
-                                        : "Modification"}{" "}
-                                    · {item.label || item.code || "Prestation"}
-                                    {change.changeType === "UPDATED"
-                                      ? ` (${change.before?.quantity || 1} → ${change.after?.quantity || 1})`
-                                      : ""}
+                                    {formatCommercialChange(change)}
                                   </li>
                                 );
                               })}
@@ -2303,7 +2361,9 @@ export default function DetailsDocumentAdminPage(props) {
                                   className="min-w-0 flex-1 cursor-pointer"
                                 >
                                   <span className="block font-semibold text-darkBlue">
-                                    {formatCatalogProductLabel(addon)}
+                                    {formatCatalogProductLabel(addon, {
+                                      showMonthlyRecurrence: true,
+                                    })}
                                   </span>
                                   {offered ? (
                                     <span className="block font-semibold text-blue">
@@ -2444,8 +2504,11 @@ export default function DetailsDocumentAdminPage(props) {
                                 {/* PRIX */}
                                 <div className="flex flex-col gap-1">
                                   <label className="midTablet:hidden text-xs text-darkBlue/60">
-                                    Tarif ({m.currency || "EUR"} /{" "}
-                                    {recurrenceLabel(m)})
+                                    Tarif ({m.currency || "EUR"}
+                                    {m.sourceKind === "OTHER"
+                                      ? ""
+                                      : ` / ${recurrenceLabel(m)}`}
+                                    )
                                   </label>
                                   <input
                                     type="number"

@@ -304,26 +304,42 @@ function commercialItemsDiffer(before, after) {
 }
 
 function compareCommercialSnapshots(previousSnapshot, currentSnapshot) {
-  const previousItems = Array.isArray(previousSnapshot?.items)
-    ? previousSnapshot.items
-    : [];
-  const currentItems = Array.isArray(currentSnapshot?.items)
-    ? currentSnapshot.items
-    : [];
+  const previousItems = (
+    Array.isArray(previousSnapshot?.items) ? previousSnapshot.items : []
+  ).map(normalizeCommercialItem);
+  const currentItems = (
+    Array.isArray(currentSnapshot?.items) ? currentSnapshot.items : []
+  ).map(normalizeCommercialItem);
+  const previousPlan = previousItems.find((item) => item.kind === "PLAN") || null;
+  const currentPlan = currentItems.find((item) => item.kind === "PLAN") || null;
   const previousByKey = new Map(
-    previousItems.map((item) => [
-      commercialItemKey(item),
-      normalizeCommercialItem(item),
-    ]),
+    previousItems
+      .filter((item) => item.kind !== "PLAN")
+      .map((item) => [commercialItemKey(item), item]),
   );
   const currentByKey = new Map(
-    currentItems.map((item) => [
-      commercialItemKey(item),
-      normalizeCommercialItem(item),
-    ]),
+    currentItems
+      .filter((item) => item.kind !== "PLAN")
+      .map((item) => [commercialItemKey(item), item]),
   );
   const keys = new Set([...previousByKey.keys(), ...currentByKey.keys()]);
   const changes = [];
+
+  if (!previousPlan && currentPlan) {
+    changes.push({ changeType: "ADDED", before: null, after: currentPlan });
+  } else if (previousPlan && !currentPlan) {
+    changes.push({ changeType: "REMOVED", before: previousPlan, after: null });
+  } else if (
+    previousPlan &&
+    currentPlan &&
+    commercialItemsDiffer(previousPlan, currentPlan)
+  ) {
+    changes.push({
+      changeType: "UPDATED",
+      before: previousPlan,
+      after: currentPlan,
+    });
+  }
 
   keys.forEach((key) => {
     const before = previousByKey.get(key) || null;

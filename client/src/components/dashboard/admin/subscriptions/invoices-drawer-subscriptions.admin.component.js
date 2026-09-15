@@ -247,7 +247,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
   };
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[160]" role="dialog" aria-modal="true">
       <div
         className={`absolute inset-0 bg-darkBlue/30 transition-opacity ease-out ${
           isVisible ? "opacity-100" : "opacity-0"
@@ -448,14 +448,22 @@ export default function InvoicesDrawerSubscriptionsComponent({
                             {t("subscriptions.list.modules", "Modules")}
                           </p>
                           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-darkBlue/80">
-                            {subscriptionAddons.map((addon) => (
-                              <li key={addon.priceId}>
-                                {addon.name}
-                                {supportsMultipleQuantity(addon)
-                                  ? ` × ${addon.quantity || 1}`
-                                  : ""}
-                              </li>
-                            ))}
+                            {subscriptionAddons.map((addon) => {
+                              const offered = Number(addon.amount || 0) <= 0;
+                              return (
+                                <li key={addon.priceId}>
+                                  {addon.name}
+                                  {supportsMultipleQuantity(addon)
+                                    ? ` × ${addon.quantity || 1}`
+                                    : ""}
+                                  {offered ? (
+                                    <span className="ml-2 inline-flex rounded-full border border-blue/20 bg-blue/10 px-2 py-0.5 text-[11px] font-semibold text-blue">
+                                      Offert
+                                    </span>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       </div>
