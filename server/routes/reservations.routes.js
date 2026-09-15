@@ -1865,6 +1865,10 @@ function applyNoShowFields(reservation, nextStatus) {
   }
 }
 
+function applyExpiredFields(reservation, nextStatus) {
+  reservation.expiredAt = nextStatus === "Expired" ? new Date() : null;
+}
+
 async function acquireReservationDayLock({ restaurantId, reservationDateUTC }) {
   const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
   if (!normalizedDay) {
@@ -2822,17 +2826,21 @@ async function updateReservationDetailsInternal({
       const tmp = {
         activatedAt: existing.activatedAt,
         finishedAt: existing.finishedAt,
+        expiredAt: existing.expiredAt,
         status: existing.status,
       };
 
       existing.status = nextUpdateData.status;
       applyActivationFields(existing, nextUpdateData.status);
+      applyExpiredFields(existing, nextUpdateData.status);
       nextUpdateData.activatedAt = existing.activatedAt;
       nextUpdateData.finishedAt = existing.finishedAt;
+      nextUpdateData.expiredAt = existing.expiredAt;
 
       existing.status = tmp.status;
       existing.activatedAt = tmp.activatedAt;
       existing.finishedAt = tmp.finishedAt;
+      existing.expiredAt = tmp.expiredAt;
     }
 
     const shouldRefreshReminder24h = touchesDateTime || statusExplicit;
@@ -3723,6 +3731,14 @@ async function triggerWaitlistAutoPromotionForSlot({
   const normalizedTime = String(reservationTime || "").slice(0, 5);
   if (!normalizedDay || !isValidHHmm(normalizedTime)) {
     return { promoted: false, reason: "invalid_slot" };
+  }
+
+  const slotDateTime = buildReservationDateTime(
+    normalizedDay,
+    normalizedTime,
+  );
+  if (!slotDateTime || slotDateTime.getTime() <= Date.now()) {
+    return { promoted: false, reason: "expired_slot" };
   }
 
   const activeOffer = await findActiveWaitlistOfferForSlot({

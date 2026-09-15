@@ -136,6 +136,7 @@ export default function ListReservationsWebapp(props) {
     Pending: t("list.status.pending", "En attente"),
     Confirmed: t("list.status.confirmed", "Confirmées"),
     Finished: t("list.status.finished", "Terminées"),
+    Expired: t("list.status.expired", "Expirées"),
     NoShow: t("list.status.noShow", "No-shows"),
     Canceled: t("list.status.canceled", "Annulées"),
   };

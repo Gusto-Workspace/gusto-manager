@@ -68,6 +68,9 @@
       "commentary": "Commentaire"
     }
   },
+  "messages": {
+    "loading": "Chargement..."
+  },
   "buttons": {
     "add": "Ajouter",
     "addTable": "Ajouter une table",

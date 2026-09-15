@@ -1,6 +1,7 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const { renderAmendmentPdf } = require("./render-amendment.service");
 
 function fmtDate(d) {
   if (!d) return "-";
@@ -22,6 +23,34 @@ function euro(n) {
   return `${Number(n || 0)
     .toFixed(2)
     .replace(".", ",")} €`;
+}
+
+function money(value, currency = "EUR") {
+  const normalizedCurrency = safeText(currency).toUpperCase() || "EUR";
+  try {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: normalizedCurrency,
+    }).format(toNumber(value));
+  } catch {
+    return `${toNumber(value).toFixed(2).replace(".", ",")} ${normalizedCurrency}`;
+  }
+}
+
+function recurrenceLabel(value = {}) {
+  const count = Math.max(1, toNumber(value.intervalCount, 1));
+  const interval = safeText(value.interval) || "month";
+  const labels = {
+    day: count === 1 ? "jour" : `${count} jours`,
+    week: count === 1 ? "semaine" : `${count} semaines`,
+    month: count === 1 ? "mois" : `${count} mois`,
+    year: count === 1 ? "an" : `${count} ans`,
+  };
+  return labels[interval] || (count === 1 ? interval : `${count} ${interval}`);
+}
+
+function recurringPrice(value, amount) {
+  return `${money(amount, value?.currency)} / ${recurrenceLabel(value)}`;
 }
 
 function isOfferedLine(x) {
@@ -59,23 +88,51 @@ function computeSiteTotal(lines) {
   }, 0);
 }
 
-function computeMonthlyAmount(documentData) {
-  const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
-  const mods = Array.isArray(documentData?.modules) ? documentData.modules : [];
-  const terminalRentalEnabled = Boolean(
-    documentData?.timeClockTerminalRental?.enabled,
+function recurringTotal(documentData) {
+  const items = [];
+  if (
+    safeText(documentData?.subscription?.name) ||
+    toNumber(documentData?.subscription?.priceMonthly) > 0
+  ) {
+    items.push({
+      ...documentData.subscription,
+      amount:
+        toNumber(documentData.subscription.priceMonthly) *
+        Math.max(1, toNumber(documentData.subscription.quantity, 1)),
+    });
+  }
+  (Array.isArray(documentData?.modules) ? documentData.modules : []).forEach(
+    (module) => {
+      if (!safeText(module?.name) || isOfferedModule(module)) return;
+      items.push({
+        ...module,
+        amount:
+          toNumber(module.priceMonthly) *
+          Math.max(1, toNumber(module.quantity, 1)),
+      });
+    },
   );
-  const terminalRentalMonthly = terminalRentalEnabled
-    ? toNumber(documentData?.timeClockTerminalRental?.priceMonthly, 12)
-    : 0;
-
-  const modsSum = mods.reduce((acc, m) => {
-    if (!safeText(m?.name)) return acc;
-    if (isOfferedModule(m)) return acc;
-    return acc + toNumber(m?.priceMonthly, 0);
-  }, 0);
-
-  return subPrice + modsSum + terminalRentalMonthly;
+  if (documentData?.timeClockTerminalRental?.enabled) {
+    const rental = documentData.timeClockTerminalRental;
+    items.push({
+      ...rental,
+      amount:
+        toNumber(rental.priceMonthly, 12) *
+        Math.max(1, toNumber(rental.quantity, 1)),
+    });
+  }
+  if (!items.length) return null;
+  const keys = new Set(
+    items.map(
+      (item) =>
+        `${safeText(item.currency).toUpperCase()}|${safeText(item.interval) || "month"}|${Math.max(1, toNumber(item.intervalCount, 1))}`,
+    ),
+  );
+  if (keys.size !== 1) return null;
+  return {
+    ...items[0],
+    amount: items.reduce((sum, item) => sum + item.amount, 0),
+  };
 }
 
 function absIfExists(p) {
@@ -85,6 +142,10 @@ function absIfExists(p) {
 }
 
 async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
+  if (documentData?.contractKind === "AMENDMENT") {
+    return renderAmendmentPdf(documentData, emitter, signatureImageBuffer);
+  }
+
   const MARGIN = 50;
 
   // Bandeau bas de page
@@ -405,6 +466,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   const timeClockTerminalRentalMonthly = hasTimeClockTerminalRental
     ? toNumber(documentData?.timeClockTerminalRental?.priceMonthly, 12)
     : 0;
+  const timeClockTerminalRentalQuantity = hasTimeClockTerminalRental
+    ? Math.max(1, toNumber(documentData?.timeClockTerminalRental?.quantity, 1))
+    : 0;
 
   // ✅ Numérotation dynamique selon sections présentes
   const N_WEBSITE = hasWebsite ? 2 : null;
@@ -543,7 +607,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   sectionTitle(`${N_SUB}. Abonnement au Dashboard et aux Modules`);
 
-  paragraph("Le Prestataire met en place un abonnement mensuel incluant :", {
+  paragraph("Le Prestataire met en place un abonnement incluant :", {
     size: 10,
     after: 0.2,
   });
@@ -572,7 +636,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
       .fillColor("#111")
       .fontSize(10)
       .text("Module", colM, modTop, { width: 340, align: "left" });
-    doc.text("Tarif mensuel", colP, modTop, { width: 120, align: "right" });
+    doc.text("Tarif récurrent", colP, modTop, { width: 120, align: "right" });
 
     doc
       .moveTo(MARGIN, modTop + 14)
@@ -583,19 +647,28 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     let my = modTop + 22;
 
     for (const m of modules) {
-      ensureSpace(30);
-
+      const moduleQuantity = Math.max(1, toNumber(m.quantity, 1));
+      const moduleUnitAmount = toNumber(m.priceMonthly, 0);
+      const moduleLabel = `${m.name || "-"}${moduleQuantity > 1 ? ` × ${moduleQuantity}` : ""}`;
       const price = isOfferedModule(m)
         ? "Offert"
-        : `${euro(toNumber(m.priceMonthly, 0))} / mois`;
+        : `${recurringPrice(m, moduleUnitAmount)}${moduleQuantity > 1 ? ` × ${moduleQuantity} = ${recurringPrice(m, moduleUnitAmount * moduleQuantity)}` : ""}`;
+      doc.y = my;
+      const rowHeight =
+        Math.max(
+          doc.heightOfString(moduleLabel, { width: 340 }),
+          doc.heightOfString(price, { width: 120 }),
+        ) + 6;
+      ensureSpace(rowHeight);
+      my = doc.y;
 
       doc
         .fillColor("#111")
         .fontSize(10)
-        .text(m.name || "-", colM, my, { width: 340, align: "left" });
+        .text(moduleLabel, colM, my, { width: 340, align: "left" });
       doc.text(price, colP, my, { width: 120, align: "right" });
 
-      my += 18;
+      my += rowHeight;
       doc.y = my;
     }
 
@@ -627,24 +700,34 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   /* ---------------- Conditions financières ---------------- */
   sectionTitle(`${N_SUB_FIN}. Conditions financières`);
 
-  const subName = safeText(documentData?.subscription?.name) || "-";
   const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
+  const subscriptionQuantity = Math.max(
+    1,
+    toNumber(documentData?.subscription?.quantity, 1),
+  );
   const engagementMonths = toNumber(documentData?.engagementMonths, 0) || "-";
-  const monthlyTotal = computeMonthlyAmount(documentData);
-  const monthlyTotalLabel = hasTimeClockTerminalRental
-    ? "Montant mensuel total (abonnement + modules + location de matériel)"
-    : "Montant mensuel total (abonnement + modules)";
+  const compatibleRecurringTotal = recurringTotal(documentData);
+  const recurringTotalLabel = hasTimeClockTerminalRental
+    ? "Montant récurrent total (abonnement + modules + location de matériel)"
+    : "Montant récurrent total (abonnement + modules)";
 
   bullet(
-    `Prix de l’abonnement mensuel : ${euro(subPrice)} / mois (exonéré de TVA)`,
+    `Prix de l’abonnement : ${recurringPrice(documentData?.subscription, subPrice)}${subscriptionQuantity > 1 ? ` × ${subscriptionQuantity}, soit ${recurringPrice(documentData?.subscription, subPrice * subscriptionQuantity)}` : ""}`,
   );
   bullet(
     `Durée d’engagement : ${engagementMonths} mois à compter du premier prélèvement effectif de l’abonnement`,
   );
-  bullet(`${monthlyTotalLabel} : ${euro(monthlyTotal)} / mois`, { after: 0.6 });
+  if (compatibleRecurringTotal) {
+    bullet(
+      `${recurringTotalLabel} : ${recurringPrice(compatibleRecurringTotal, compatibleRecurringTotal.amount)}`,
+      { after: 0.6 },
+    );
+  }
 
   paragraph("Modalités de paiement", { size: 10, after: 0.2 });
-  bullet("Le paiement est effectué par prélèvement SEPA mensuel automatique");
+  bullet(
+    "Le paiement est effectué par prélèvement SEPA automatique selon la périodicité indiquée",
+  );
   bullet(
     "En cas de changement de moyen de paiement, le Client s’engage à en informer le Prestataire avant le prochain prélèvement",
     { after: 0.8 },
@@ -653,11 +736,11 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   if (hasTimeClockTerminalRental) {
     sectionTitle(`${N_MATERIAL}. Location de matériel`);
     paragraph(
-      "Le Prestataire met à disposition du Client un terminal de pointage de type tablette destiné exclusivement à l’utilisation de la solution Gusto Manager.",
+      `Le Prestataire met à disposition du Client ${timeClockTerminalRentalQuantity} ${timeClockTerminalRentalQuantity > 1 ? "terminaux" : "terminal"} de pointage de type tablette destiné${timeClockTerminalRentalQuantity > 1 ? "s" : ""} exclusivement à l’utilisation de la solution Gusto Manager.`,
       { size: 10, after: 0.35 },
     );
     bullet(
-      `La location du terminal de pointage est facturée ${euro(timeClockTerminalRentalMonthly)} / mois tant que le Client utilise la solution Gusto Manager.`,
+      `La location est facturée ${recurringPrice(documentData?.timeClockTerminalRental, timeClockTerminalRentalMonthly)} par terminal, soit ${recurringPrice(documentData?.timeClockTerminalRental, timeClockTerminalRentalMonthly * timeClockTerminalRentalQuantity)}, tant que le Client utilise la solution Gusto Manager.`,
       { after: 0.1 },
     );
     bullet(
@@ -703,21 +786,30 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     { size: 10, after: 1.0 },
   );
 
+  if (safeText(documentData?.comments)) {
+    sectionTitle("Conditions particulières");
+    paragraph(safeText(documentData.comments), { size: 10, after: 1.0 });
+  }
+
   /* ---------------- Signatures ---------------- */
   ensureSpace(220);
 
-  const place = safeText(documentData?.placeOfSignature) || "Paris";
-  const when = documentData?.issueDate
-    ? fmtDate(documentData.issueDate)
+  const place = safeText(documentData?.placeOfSignature);
+  const when = documentData?.signatureDate || documentData?.issueDate
+    ? fmtDate(documentData.signatureDate || documentData.issueDate)
     : fmtDate(new Date());
 
-  doc
-    .fontSize(10)
-    .fillColor("#111")
-    .text(`Fait à ${place}, le ${when}`, MARGIN, doc.y, {
+  doc.fontSize(10).fillColor("#111").text(
+    place
+      ? `Fait à ${place}, le ${when}`
+      : `Lieu renseigné lors de la signature, le ${when}`,
+    MARGIN,
+    doc.y,
+    {
       width: CONTENT_W,
       align: "left",
-    });
+    },
+  );
   doc.moveDown(1);
 
   const baseY = doc.y;
@@ -770,21 +862,18 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     doc
       .fontSize(9)
       .fillColor("#666")
-      .text("Signature à compléter", 320 + 12, boxY + 35, {
+      .text(
+        "Signature du client",
+        320 + 12,
+        boxY + 30,
+        {
         width: boxW - 24,
-        align: "left",
-      });
+          align: "center",
+        },
+      );
   }
 
   doc.y = boxY + boxH + 18;
-
-  doc
-    .fontSize(9)
-    .fillColor("#444")
-    .text("TVA non applicable, art. 293 B du CGI.", MARGIN, doc.y, {
-      width: CONTENT_W,
-      align: "left",
-    });
 
   doc.end();
   await new Promise((resolve) => doc.on("end", resolve));

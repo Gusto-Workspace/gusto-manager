@@ -347,32 +347,112 @@ async function listRestaurantCandidateCustomerIds({ restaurantId }) {
   };
 }
 
-async function findRestaurantSubscription({ restaurantId }) {
+const RESTAURANT_SUBSCRIPTION_CATALOG = "restaurant_subscription";
+const SUBSCRIPTION_STATUS_PRIORITY = new Map([
+  ["active", 4],
+  ["trialing", 4],
+  ["past_due", 3],
+  ["unpaid", 3],
+  ["incomplete", 2],
+  ["paused", 2],
+  ["incomplete_expired", 1],
+]);
+
+function selectRestaurantSubscriptionCandidate(
+  subscriptions,
+  { restaurantId, preferredSubscriptionId = "" } = {},
+) {
+  const restaurantKey = String(restaurantId || "");
+  const candidates = Array.from(
+    new Map(
+      (Array.isArray(subscriptions) ? subscriptions : [])
+        .filter(
+          (subscription) =>
+            normalizeString(subscription?.metadata?.restaurantId) ===
+              restaurantKey &&
+            normalizeString(subscription?.status) !== "canceled",
+        )
+        .map((subscription) => [subscription.id, subscription]),
+    ).values(),
+  );
+
+  const preferredId = normalizeString(preferredSubscriptionId);
+  if (preferredId) {
+    const preferred = candidates.find((item) => item.id === preferredId);
+    if (preferred) return preferred;
+  }
+
+  const catalogCandidates = candidates.filter(
+    (subscription) =>
+      normalizeString(subscription?.metadata?.subscriptionCatalog) ===
+      RESTAURANT_SUBSCRIPTION_CATALOG,
+  );
+  const eligible = catalogCandidates.length ? catalogCandidates : candidates;
+  if (!eligible.length) return null;
+
+  const highestPriority = Math.max(
+    ...eligible.map(
+      (subscription) =>
+        SUBSCRIPTION_STATUS_PRIORITY.get(
+          normalizeString(subscription?.status),
+        ) || 0,
+    ),
+  );
+  const bestCandidates = eligible.filter(
+    (subscription) =>
+      (SUBSCRIPTION_STATUS_PRIORITY.get(
+        normalizeString(subscription?.status),
+      ) || 0) === highestPriority,
+  );
+
+  if (bestCandidates.length > 1) {
+    const error = new Error(
+      "Plusieurs abonnements Stripe correspondent à ce restaurant. Sélectionnez ou régularisez l'abonnement avant de poursuivre.",
+    );
+    error.statusCode = 409;
+    error.code = "AMBIGUOUS_RESTAURANT_SUBSCRIPTION";
+    error.subscriptionIds = bestCandidates.map((item) => item.id);
+    throw error;
+  }
+
+  return bestCandidates[0];
+}
+
+async function findRestaurantSubscription({
+  restaurantId,
+  preferredSubscriptionId = "",
+}) {
   const { restaurant, owner, customerIds } =
     await listRestaurantCandidateCustomerIds({
       restaurantId,
     });
 
+  const candidates = [];
+  const customerBySubscriptionId = new Map();
   for (const customerId of customerIds) {
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
+      status: "all",
       expand: ["data.items.data.price", "data.latest_invoice"],
       limit: 100,
     });
+    subscriptions.data.forEach((subscription) => {
+      candidates.push(subscription);
+      customerBySubscriptionId.set(subscription.id, customerId);
+    });
+  }
 
-    const match = subscriptions.data.find(
-      (subscription) =>
-        subscription?.metadata?.restaurantId === String(restaurantId),
-    );
-
-    if (match) {
-      return {
-        restaurant,
-        owner,
-        stripeCustomerId: customerId,
-        subscription: match,
-      };
-    }
+  const match = selectRestaurantSubscriptionCandidate(candidates, {
+    restaurantId,
+    preferredSubscriptionId,
+  });
+  if (match) {
+    return {
+      restaurant,
+      owner,
+      stripeCustomerId: customerBySubscriptionId.get(match.id) || "",
+      subscription: match,
+    };
   }
 
   return {
@@ -506,6 +586,7 @@ module.exports = {
   customerIsDedicatedToRestaurant,
   ensureRestaurantStripeCustomer,
   findRestaurantSubscription,
+  selectRestaurantSubscriptionCandidate,
   invoiceBelongsToCurrentPayerHistory,
   isStripeCustomerDedicatedToRestaurant,
   listSubscriptionInvoicesHistory,

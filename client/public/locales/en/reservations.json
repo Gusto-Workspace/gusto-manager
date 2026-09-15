@@ -67,6 +67,9 @@
       "commentary": "Comment"
     }
   },
+  "messages": {
+    "loading": "Loading..."
+  },
   "buttons": {
     "add": "Add",
     "addTable": "Add a table",

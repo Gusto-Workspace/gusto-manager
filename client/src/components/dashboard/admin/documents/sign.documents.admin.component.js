@@ -15,12 +15,15 @@ function axiosCfg() {
   return token ? { headers: { Authorization: `Bearer ${token}` } } : null;
 }
 
-function formatType(type) {
+function formatType(type, contractKind) {
   if (type === "QUOTE") return "Devis";
   if (type === "INVOICE") return "Facture";
-  if (type === "CONTRACT") return "Contrat";
+  if (type === "CONTRACT")
+    return contractKind === "AMENDMENT" ? "Avenant" : "Contrat";
   return "Document";
 }
+
+const STATUS_LABELS = { DRAFT: "Brouillon", SENT: "Envoyé", SIGNED: "Signé" };
 
 // --- local persistence helpers (NO BDD / NO CLOUD) ---
 function sigStorageKey(documentId) {
@@ -72,7 +75,13 @@ export default function SignDocumentAdminComponent({ documentId }) {
   const isSigned = signatureReady;
 
   const canDraw = useMemo(() => {
-    return doc?.type === "CONTRACT" && !isSigned;
+    const isLegacyPhysicalSent =
+      doc?.status === "SENT" && !doc?.signatureRequest?.issuedAt;
+    return (
+      doc?.type === "CONTRACT" &&
+      (doc?.status === "DRAFT" || isLegacyPhysicalSent) &&
+      !isSigned
+    );
   }, [doc, isSigned]);
 
   // ----- draw helpers (replay strokes exactly like canvas) -----
@@ -623,8 +632,8 @@ export default function SignDocumentAdminComponent({ documentId }) {
                     {doc?.party?.email ? `• ${doc.party.email}` : ""}
                   </p>
                   <p className="text-xs text-darkBlue/50 mt-1">
-                    Type : {formatType(doc?.type)} • Statut :{" "}
-                    {doc?.status || "-"}
+                    Type : {formatType(doc?.type, doc?.contractKind)} • Statut :{" "}
+                    {STATUS_LABELS[doc?.status] || "-"}
                   </p>
                 </div>
               </div>

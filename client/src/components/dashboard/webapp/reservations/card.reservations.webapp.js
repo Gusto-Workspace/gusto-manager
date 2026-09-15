@@ -91,7 +91,7 @@ export default function CardReservationWebapp(props) {
               </div>
 
               <span
-                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${badgeClass}`}
+                className={`inline-flex shrink-0 items-center px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none border ${badgeClass}`}
               >
                 {badgeLabel}
               </span>
