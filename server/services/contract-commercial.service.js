@@ -217,7 +217,7 @@ function buildManualCommercialSnapshot(documentData = {}) {
 
   if (documentData?.timeClockTerminalRental?.enabled) {
     const rental = documentData.timeClockTerminalRental;
-    items.push({
+    const legacyRentalItem = {
       kind: "ADDON",
       code: rental.code || TABLET_RENTAL_CODE,
       priceId: rental.priceId,
@@ -228,7 +228,11 @@ function buildManualCommercialSnapshot(documentData = {}) {
       currency: rental.currency,
       interval: rental.interval,
       intervalCount: rental.intervalCount,
-    });
+    };
+    const legacyRentalKey = commercialItemKey(legacyRentalItem);
+    if (!items.some((item) => commercialItemKey(item) === legacyRentalKey)) {
+      items.push(legacyRentalItem);
+    }
   }
 
   return createCommercialSnapshot({
@@ -241,11 +245,8 @@ function buildManualCommercialSnapshot(documentData = {}) {
 function commercialSnapshotToDocumentFields(snapshot = {}) {
   const items = Array.isArray(snapshot.items) ? snapshot.items : [];
   const plan = items.find((item) => item.kind === "PLAN") || null;
-  const rental =
-    items.find((item) => normalizeString(item.code) === TABLET_RENTAL_CODE) ||
-    null;
-  const modules = items.filter(
-    (item) => ["ADDON", "OTHER"].includes(item.kind) && item !== rental,
+  const modules = items.filter((item) =>
+    ["ADDON", "OTHER"].includes(item.kind),
   );
 
   return {
@@ -275,15 +276,7 @@ function commercialSnapshotToDocumentFields(snapshot = {}) {
       requiresReview: Boolean(item.requiresReview),
     })),
     timeClockTerminalRental: {
-      enabled: Boolean(rental),
-      priceMonthly: finiteNumber(rental?.unitAmount, 12),
-      quantity: positiveInteger(rental?.quantity, 1),
-      code: rental?.code || TABLET_RENTAL_CODE,
-      priceId: rental?.priceId || "",
-      productId: rental?.productId || "",
-      currency: normalizeCurrency(rental?.currency || snapshot.currency),
-      interval: rental?.interval || "month",
-      intervalCount: positiveInteger(rental?.intervalCount, 1),
+      enabled: false,
     },
   };
 }
@@ -310,7 +303,8 @@ function compareCommercialSnapshots(previousSnapshot, currentSnapshot) {
   const currentItems = (
     Array.isArray(currentSnapshot?.items) ? currentSnapshot.items : []
   ).map(normalizeCommercialItem);
-  const previousPlan = previousItems.find((item) => item.kind === "PLAN") || null;
+  const previousPlan =
+    previousItems.find((item) => item.kind === "PLAN") || null;
   const currentPlan = currentItems.find((item) => item.kind === "PLAN") || null;
   const previousByKey = new Map(
     previousItems
