@@ -29,6 +29,7 @@ import SmartParametersComponent from "./parameters/smart.parameters.component";
 import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.component";
 import BankHoldParametersComponent from "./parameters/bank-hold.parameters.component";
 import WaitlistParametersComponent from "./parameters/waitlist.parameters.component";
+import SmsRemindersReservationsComponent from "../_shared/reservations/sms-reminders.reservations.component";
 import {
   getSmartAvailabilitySetupState,
   SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
@@ -1204,6 +1205,9 @@ export default function ParametersReservationComponent(props) {
           bankHoldEnabled={Boolean(bank_hold_enabled)}
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}
+        />
+        <SmsRemindersReservationsComponent
+          restaurantData={props.restaurantData}
         />
         {/* --- Bloc: Gestion intelligente + tables --- */}
         <SmartParametersComponent

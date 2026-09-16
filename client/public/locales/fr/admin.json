@@ -4,7 +4,8 @@
     "restaurants": "Restaurants",
     "owners": "Propriétaires",
     "subscriptions": "Abonnements",
-    "documents": "Création documents"
+    "documents": "Création documents",
+    "smsReminders": "Rappels SMS"
   },
   "buttons": {
     "logout": "Déconnexion",

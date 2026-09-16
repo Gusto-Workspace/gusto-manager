@@ -1,0 +1,46 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { Loader2, RefreshCw } from "lucide-react";
+
+export default function SmsMonitoringAdminComponent() {
+  const [data, setData] = useState({ jobs: [], usage: [], policies: [], senders: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const token = localStorage.getItem("admin-token");
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const [jobs, usage, policies, senders] = await Promise.all([
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/sms/jobs`, config),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/sms/usage`, config),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/sms/destination-policies`, config),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/sms/senders`, config),
+      ]);
+      setData({ jobs: jobs.data.jobs || [], usage: usage.data.usage || [], policies: policies.data.policies || [], senders: senders.data.senders || [] });
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || "Impossible de charger le suivi SMS.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  return (
+    <section className="grid gap-6">
+      <div className="flex items-center justify-between"><div><h1 className="text-2xl font-semibold">Rappels SMS</h1><p className="text-sm text-darkBlue/60">Suivi opérationnel, consommation et politiques pays.</p></div><button type="button" onClick={load} className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/15 bg-white px-4 py-2 text-sm"><RefreshCw className="size-4" />Actualiser</button></div>
+      {loading ? <Loader2 className="size-5 animate-spin" /> : error ? <p className="text-red-600">{error}</p> : (
+        <>
+          <div className="grid gap-3 md:grid-cols-3"><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">Jobs visibles</span><strong className="block text-2xl">{data.jobs.length}</strong></div><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">Uncertain</span><strong className="block text-2xl">{data.jobs.filter((job) => job.status === "uncertain").length}</strong></div><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">Sender IDs à traiter</span><strong className="block text-2xl">{data.senders.length}</strong></div></div>
+          <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Jobs récents</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">État</th><th className="p-2">Restaurant</th><th className="p-2">Pays</th><th className="p-2">Crédits</th><th className="p-2">Stripe</th><th className="p-2">Provider ID</th><th className="p-2">Diagnostic</th></tr></thead><tbody>{data.jobs.map((job) => <tr key={job._id} className="border-b border-darkBlue/5"><td className="p-2 font-medium">{job.status}</td><td className="p-2">{job.restaurantId}</td><td className="p-2">{job.destinationCountry || "-"}</td><td className="p-2">{job.billingCredits || 0}</td><td className="p-2">{job.stripeUsageState}</td><td className="p-2">{job.providerMessageId || "-"}</td><td className="p-2">{job.skipReason || job.failureReason || job.failureCode || "-"}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Consommation par période</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Restaurant</th><th className="p-2">Période</th><th className="p-2">Réservés</th><th className="p-2">Consommés</th><th className="p-2">Inclus</th><th className="p-2">Dépassement</th></tr></thead><tbody>{data.usage.map((period) => <tr key={period._id} className="border-b border-darkBlue/5"><td className="p-2">{period.restaurantId}</td><td className="p-2">{new Date(period.periodStart).toLocaleDateString("fr-FR")} – {new Date(period.periodEnd).toLocaleDateString("fr-FR")}</td><td className="p-2">{period.reservedCredits}</td><td className="p-2">{period.consumedCredits}</td><td className="p-2">{period.includedCreditsConsumed}/{period.includedCredits}</td><td className="p-2">{period.overageCredits} · {Number(period.overageAmount || 0).toFixed(2)} €</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Sender IDs à traiter</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Restaurant</th><th className="p-2">Sender ID</th><th className="p-2">Statut</th></tr></thead><tbody>{data.senders.map((sender) => <tr key={sender.restaurantId} className="border-b border-darkBlue/5"><td className="p-2">{sender.restaurantName}</td><td className="p-2 font-medium">{sender.value}</td><td className="p-2">{sender.status}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Politiques destinations</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Pays</th><th className="p-2">Active</th><th className="p-2">Sender</th><th className="p-2">Crédits</th><th className="p-2">Tarif HT</th><th className="p-2">Revue</th></tr></thead><tbody>{data.policies.map((policy) => <tr key={policy._id} className="border-b border-darkBlue/5"><td className="p-2 font-medium">{policy.country}</td><td className="p-2">{policy.enabled ? "Oui" : "Non"}</td><td className="p-2">{policy.senderMode}</td><td className="p-2">{policy.billingCredits}</td><td className="p-2">{policy.providerRateHt}</td><td className="p-2">{policy.lastReviewedAt ? new Date(policy.lastReviewedAt).toLocaleDateString("fr-FR") : "-"}</td></tr>)}</tbody></table></div>
+        </>
+      )}
+    </section>
+  );
+}

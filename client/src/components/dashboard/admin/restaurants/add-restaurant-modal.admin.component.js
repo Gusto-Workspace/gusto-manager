@@ -177,6 +177,7 @@ export default function AddRestaurantModal(props) {
             take_away: props.restaurant.options?.take_away ?? false,
             health_control_plan:
               props.restaurant.options?.health_control_plan ?? false,
+            sms_reminders: props.restaurant.options?.sms_reminders ?? false,
           },
         },
       });
@@ -554,6 +555,7 @@ export default function AddRestaurantModal(props) {
                     key: "health_control_plan",
                     label: t("restaurants.form.options.healthControlPlan"),
                   },
+                  { key: "sms_reminders", label: "Rappels SMS" },
                 ].map((opt) => (
                   <label
                     key={opt.key}

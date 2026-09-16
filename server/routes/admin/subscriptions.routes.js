@@ -88,6 +88,240 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const SMS_ADDON_CODE = "sms_reminders";
+
+function selectionIncludesSms(selection) {
+  return (selection?.addons || []).some(
+    (addon) => normalizeString(addon?.code) === SMS_ADDON_CODE,
+  );
+}
+
+function getSmsMeteredPriceId(selection) {
+  if (!selectionIncludesSms(selection)) return "";
+  const priceId = normalizeString(process.env.STRIPE_SMS_METERED_PRICE_ID);
+  if (!priceId) {
+    const error = new Error(
+      "STRIPE_SMS_METERED_PRICE_ID est requis pour ajouter le module Rappels SMS.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  return priceId;
+}
+
+function toStripeId(value) {
+  if (typeof value === "string") return value;
+  return normalizeString(value?.id);
+}
+
+function getSubscriptionPeriodEnd(subscription) {
+  return Number(
+    subscription?.current_period_end ||
+      subscription?.items?.data?.[0]?.current_period_end ||
+      0,
+  );
+}
+
+function getSubscriptionPeriodStart(subscription) {
+  return Number(
+    subscription?.current_period_start ||
+      subscription?.items?.data?.[0]?.current_period_start ||
+      0,
+  );
+}
+
+function toSchedulePhaseItems(subscription, excludedPriceIds = new Set()) {
+  return (subscription?.items?.data || [])
+    .filter(
+      (item) =>
+        item?.price?.id && !excludedPriceIds.has(normalizeString(item.price.id)),
+    )
+    .map((item) => ({
+      price: item.price.id,
+      ...(item?.price?.recurring?.usage_type === "metered"
+        ? {}
+        : { quantity: Number(item.quantity || 1) }),
+    }));
+}
+
+function toExpandableId(value) {
+  if (typeof value === "string") return value;
+  return normalizeString(value?.id);
+}
+
+function preservedSchedulePhaseFields(phase, { preserveTrial = false } = {}) {
+  if (!phase) return {};
+  const defaultTaxRates = (phase.default_tax_rates || [])
+    .map(toExpandableId)
+    .filter(Boolean);
+  const discounts = (phase.discounts || [])
+    .map((entry) => {
+      const discount = toExpandableId(entry?.discount);
+      const promotionCode = toExpandableId(entry?.promotion_code);
+      const coupon = toExpandableId(entry?.coupon);
+      if (discount) return { discount };
+      if (promotionCode) return { promotion_code: promotionCode };
+      if (coupon) return { coupon };
+      return null;
+    })
+    .filter(Boolean);
+
+  return {
+    ...(defaultTaxRates.length ? { default_tax_rates: defaultTaxRates } : {}),
+    ...(discounts.length ? { discounts } : {}),
+    ...(phase.description ? { description: phase.description } : {}),
+    ...(preserveTrial && phase.trial_end
+      ? { trial_end: phase.trial_end }
+      : {}),
+  };
+}
+
+async function releaseGustoSmsDeactivationSchedule({
+  subscription,
+  restaurant,
+}) {
+  const scheduleId = toStripeId(subscription?.schedule);
+  if (!scheduleId) return false;
+
+  const schedule = await stripe.subscriptionSchedules.retrieve(scheduleId);
+  const storedScheduleId = normalizeString(
+    restaurant?.reservationsSettings?.smsReminder?.commercialDeactivation
+      ?.stripeScheduleId,
+  );
+  const belongsToSmsDeactivation =
+    normalizeString(schedule?.metadata?.gustoPurpose) ===
+      "sms_deactivation" || storedScheduleId === scheduleId;
+  if (!belongsToSmsDeactivation) {
+    const error = new Error(
+      "Cet abonnement est déjà géré par un autre Subscription Schedule Stripe.",
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (["active", "not_started"].includes(schedule.status)) {
+    await stripe.subscriptionSchedules.release(scheduleId, {
+      preserve_cancel_date: true,
+    });
+  }
+  return true;
+}
+
+async function scheduleSmsDeactivation({
+  subscription,
+  restaurantId,
+  targetSelection,
+}) {
+  const effectiveAt = getSubscriptionPeriodEnd(subscription);
+  const phaseStart = getSubscriptionPeriodStart(subscription);
+  if (!effectiveAt || !phaseStart || effectiveAt <= phaseStart) {
+    const error = new Error(
+      "La période Stripe courante ne permet pas de programmer la désactivation SMS.",
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const schedule = await stripe.subscriptionSchedules.create({
+    from_subscription: subscription.id,
+  });
+  const scheduledPhaseStart = Number(
+    schedule?.current_phase?.start_date || phaseStart,
+  );
+  const scheduledEffectiveAt = Number(
+    schedule?.current_phase?.end_date || effectiveAt,
+  );
+  const currentSchedulePhase = (schedule?.phases || []).find(
+    (phase) =>
+      Number(phase?.start_date) === scheduledPhaseStart &&
+      Number(phase?.end_date) === scheduledEffectiveAt,
+  );
+  const preservedCurrentPhase = preservedSchedulePhaseFields(
+    currentSchedulePhase,
+    { preserveTrial: true },
+  );
+  const preservedFuturePhase = preservedSchedulePhaseFields(
+    currentSchedulePhase,
+  );
+  const smsPriceIds = new Set(
+    [
+      process.env.STRIPE_SMS_FIXED_PRICE_ID,
+      process.env.STRIPE_SMS_METERED_PRICE_ID,
+    ]
+      .map(normalizeString)
+      .filter(Boolean),
+  );
+  const currentItems = toSchedulePhaseItems(subscription);
+  const targetItems = toSchedulePhaseItems(subscription, smsPriceIds);
+  const recurring = subscription?.items?.data?.find(
+    (item) => item?.price?.id === targetSelection?.plan?.priceId,
+  )?.price?.recurring;
+
+  if (!targetItems.length || !recurring?.interval) {
+    await stripe.subscriptionSchedules.release(schedule.id, {
+      preserve_cancel_date: true,
+    });
+    const error = new Error(
+      "Impossible de déterminer la phase Stripe suivant la désactivation SMS.",
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  try {
+    await stripe.subscriptionSchedules.update(schedule.id, {
+      end_behavior: "release",
+      proration_behavior: "none",
+      metadata: {
+        gustoPurpose: "sms_deactivation",
+        restaurantId,
+        effectiveAt: String(scheduledEffectiveAt),
+      },
+      phases: [
+        {
+          ...preservedCurrentPhase,
+          start_date: scheduledPhaseStart,
+          end_date: scheduledEffectiveAt,
+          items: currentItems,
+          proration_behavior: "none",
+          metadata: {
+            ...(subscription.metadata || {}),
+            smsDeactivationPending: "true",
+            smsDeactivationEffectiveAt: String(scheduledEffectiveAt),
+          },
+        },
+        {
+          ...preservedFuturePhase,
+          start_date: scheduledEffectiveAt,
+          duration: {
+            interval: recurring.interval,
+            interval_count: Number(recurring.interval_count || 1),
+          },
+          items: targetItems,
+          proration_behavior: "none",
+          metadata: {
+            ...(subscription.metadata || {}),
+            ...buildCatalogSelectionMetadata(targetSelection),
+            smsDeactivationPending: "",
+            smsDeactivationEffectiveAt: "",
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    try {
+      await stripe.subscriptionSchedules.release(schedule.id, {
+        preserve_cancel_date: true,
+      });
+    } catch (_) {
+      // La première erreur Stripe reste la cause utile à remonter.
+    }
+    throw error;
+  }
+
+  return { scheduleId: schedule.id, effectiveAt: scheduledEffectiveAt };
+}
+
 function toStripeCustomerId(customer) {
   if (!customer) return "";
   if (typeof customer === "string") return customer;
@@ -462,8 +696,12 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
     operations.push({ price: selection.plan.priceId });
   }
 
+  const smsMeteredPriceId = normalizeString(
+    process.env.STRIPE_SMS_METERED_PRICE_ID,
+  );
   (currentSummary?.otherItems || []).forEach((item) => {
     if (!item?.subscriptionItemId || !item?.priceId) return;
+    if (smsMeteredPriceId && item.priceId === smsMeteredPriceId) return;
     operations.push({
       id: item.subscriptionItemId,
       price: item.priceId,
@@ -475,6 +713,7 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
   (currentSummary?.addons || []).forEach((item) => {
     const priceId = normalizeString(item?.priceId);
     if (!priceId) return;
+    if (smsMeteredPriceId && priceId === smsMeteredPriceId) return;
 
     if (!currentAddonsByPriceId.has(priceId)) {
       currentAddonsByPriceId.set(priceId, []);
@@ -512,6 +751,22 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
         deleted: true,
       });
     });
+
+  const currentSmsMeteredItem = (currentSummary?.items || []).find(
+    (item) => smsMeteredPriceId && item.priceId === smsMeteredPriceId,
+  );
+  if (selectionIncludesSms(selection)) {
+    if (currentSmsMeteredItem?.subscriptionItemId) {
+      operations.push({
+        id: currentSmsMeteredItem.subscriptionItemId,
+        price: smsMeteredPriceId,
+      });
+    } else {
+      operations.push({ price: getSmsMeteredPriceId(selection) });
+    }
+  } else if (currentSmsMeteredItem?.subscriptionItemId) {
+    operations.push({ id: currentSmsMeteredItem.subscriptionItemId, deleted: true });
+  }
 
   return operations;
 }
@@ -1052,6 +1307,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       addonItems,
     });
     const stripeSelection = await materializeOfferedAddonPrices(selection);
+    const smsMeteredPriceId = getSmsMeteredPriceId(stripeSelection);
 
     // Créer l'abonnement en prélèvement automatique
     const subscription = await stripe.subscriptions.create({
@@ -1062,6 +1318,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
           price: addon.priceId,
           quantity: addon.quantity,
         })),
+        ...(smsMeteredPriceId ? [{ price: smsMeteredPriceId }] : []),
       ],
       default_payment_method: paymentMethodId,
       collection_method: "charge_automatically",
@@ -1075,6 +1332,13 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       }),
       expand: ["latest_invoice.payment_intent", "items.data.price"],
     });
+
+    if (restaurantId && selectionIncludesSms(stripeSelection)) {
+      await RestaurantModel.updateOne(
+        { _id: restaurantId },
+        { $set: { "options.sms_reminders": true } },
+      );
+    }
 
     res.status(201).json({
       message:
@@ -1577,9 +1841,67 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
     }
 
     const stripeSelection = await materializeOfferedAddonPrices(selection);
+    const subscriptionRestaurantId = normalizeString(
+      subscription?.metadata?.restaurantId,
+    );
+    const restaurant = subscriptionRestaurantId
+      ? await RestaurantModel.findById(subscriptionRestaurantId).select(
+          "reservationsSettings.smsReminder.commercialDeactivation",
+        )
+      : null;
+    const fixedSmsPriceId = normalizeString(
+      process.env.STRIPE_SMS_FIXED_PRICE_ID,
+    );
+    const currentFixedSms = (currentSummary.items || []).find(
+      (item) => normalizeString(item?.priceId) === fixedSmsPriceId,
+    );
+    const removesSms =
+      Boolean(currentFixedSms) && !selectionIncludesSms(stripeSelection);
+    if (removesSms && !restaurant) {
+      return res.status(409).json({
+        message:
+          "Le restaurant lié à l'abonnement est requis pour programmer la désactivation SMS.",
+        code: "SMS_RESTAURANT_REQUIRED",
+      });
+    }
+    if (subscription.schedule) {
+      await releaseGustoSmsDeactivationSchedule({ subscription, restaurant });
+      if (restaurant) {
+        await RestaurantModel.updateOne(
+          { _id: restaurant._id },
+          {
+            $set: {
+              "reservationsSettings.smsReminder.commercialDeactivation.status":
+                "cancelled",
+              "reservationsSettings.smsReminder.commercialDeactivation.stripeScheduleId":
+                "",
+              "reservationsSettings.smsReminder.commercialDeactivation.effectiveAt":
+                null,
+            },
+          },
+        );
+      }
+    }
+
+    let appliedSelection = stripeSelection;
+    if (removesSms) {
+      appliedSelection = {
+        ...stripeSelection,
+        addons: [
+          ...(stripeSelection.addons || []),
+          {
+            ...currentFixedSms,
+            code: SMS_ADDON_CODE,
+            priceId: fixedSmsPriceId,
+            quantity: Number(currentFixedSms.quantity || 1),
+          },
+        ],
+      };
+    }
+
     const items = buildSubscriptionItemUpdatePayload({
       currentSummary,
-      selection: stripeSelection,
+      selection: appliedSelection,
     });
 
     const updatedSubscription = await stripe.subscriptions.update(
@@ -1589,11 +1911,53 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
         proration_behavior: "none",
         metadata: {
           ...(subscription.metadata || {}),
-          ...buildCatalogSelectionMetadata(stripeSelection),
+          ...buildCatalogSelectionMetadata(appliedSelection),
         },
         expand: ["items.data.price", "latest_invoice"],
       },
     );
+
+    if (subscriptionRestaurantId && selectionIncludesSms(stripeSelection)) {
+      await RestaurantModel.updateOne(
+        { _id: subscriptionRestaurantId },
+        {
+          $set: {
+            "options.sms_reminders": true,
+            "reservationsSettings.smsReminder.commercialDeactivation.status":
+              "cancelled",
+            "reservationsSettings.smsReminder.commercialDeactivation.stripeScheduleId":
+              "",
+            "reservationsSettings.smsReminder.commercialDeactivation.effectiveAt":
+              null,
+          },
+        },
+      );
+    }
+
+    let smsDeactivation = null;
+    if (removesSms) {
+      smsDeactivation = await scheduleSmsDeactivation({
+        subscription: updatedSubscription,
+        restaurantId: subscriptionRestaurantId,
+        targetSelection: stripeSelection,
+      });
+      await RestaurantModel.updateOne(
+        { _id: subscriptionRestaurantId },
+        {
+          $set: {
+            "options.sms_reminders": true,
+            "reservationsSettings.smsReminder.commercialDeactivation.status":
+              "scheduled",
+            "reservationsSettings.smsReminder.commercialDeactivation.stripeScheduleId":
+              smsDeactivation.scheduleId,
+            "reservationsSettings.smsReminder.commercialDeactivation.effectiveAt":
+              new Date(smsDeactivation.effectiveAt * 1000),
+            "reservationsSettings.smsReminder.commercialDeactivation.requestedAt":
+              new Date(),
+          },
+        },
+      );
+    }
 
     const updatedSummary = await buildSubscriptionSummary(updatedSubscription);
     let amendment = null;
@@ -1634,6 +1998,13 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
           }
         : null,
       amendmentWarning,
+      smsDeactivation: smsDeactivation
+        ? {
+            status: "scheduled",
+            effectiveAt: smsDeactivation.effectiveAt,
+            stripeScheduleId: smsDeactivation.scheduleId,
+          }
+        : null,
     });
   } catch (error) {
     console.error(

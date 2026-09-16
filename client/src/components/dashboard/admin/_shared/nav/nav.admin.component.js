@@ -11,6 +11,7 @@ import {
   EmployeesSvg,
   InvoiceSvg,
   NewsSvg,
+  ReservationSvg,
 } from "@/components/_shared/_svgs/_index";
 
 const ADMIN_NAV_ITEMS = [
@@ -30,6 +31,11 @@ const ADMIN_NAV_ITEMS = [
     href: "/dashboard/admin/documents",
     label: "nav.documents",
     Icon: NewsSvg,
+  },
+  {
+    href: "/dashboard/admin/sms",
+    label: "nav.smsReminders",
+    Icon: ReservationSvg,
   },
 ];
 

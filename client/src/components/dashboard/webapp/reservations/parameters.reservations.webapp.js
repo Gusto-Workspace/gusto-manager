@@ -34,6 +34,7 @@ import SidebarReservationsWebapp from "../_shared/sidebar.webapp";
 import PushNotificationsSettingsWebapp from "../_shared/push-notifications-settings.webapp";
 import BankHoldParametersComponent from "../../reservations/parameters/bank-hold.parameters.component";
 import WaitlistParametersComponent from "../../reservations/parameters/waitlist.parameters.component";
+import SmsRemindersReservationsComponent from "../../_shared/reservations/sms-reminders.reservations.component";
 import {
   getSmartAvailabilitySetupState,
   SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
@@ -1223,6 +1224,10 @@ export default function ParametersReservationComponent(props) {
           saveUI={sectionUI.emails}
           onSave={() => saveSection("emails")}
           savePresentation="icon"
+        />
+
+        <SmsRemindersReservationsComponent
+          restaurantData={props.restaurantData}
         />
 
         {/* --- Bloc: Gestion intelligente + tables --- */}

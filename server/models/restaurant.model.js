@@ -175,6 +175,44 @@ const reservationWaitlistSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const smsReminderSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    delayMinutes: { type: Number, min: 1, default: 1440 },
+    deliveryMode: {
+      type: String,
+      enum: ["sms_always", "eco"],
+      default: "sms_always",
+    },
+    template: {
+      type: String,
+      default:
+        "Bonjour {firstName}, rappel de votre reservation chez {restaurantName} le {date} a {time} pour {guests} pers.",
+    },
+    internationalEnabled: { type: Boolean, default: false },
+    billingPeriodSpendingLimit: { type: Number, min: 0, default: null },
+    sender: {
+      value: { type: String, trim: true, default: "" },
+      status: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+      },
+    },
+    commercialDeactivation: {
+      status: {
+        type: String,
+        enum: ["none", "scheduled", "effective", "cancelled"],
+        default: "none",
+      },
+      stripeScheduleId: { type: String, trim: true, default: "" },
+      effectiveAt: { type: Date, default: null },
+      requestedAt: { type: Date, default: null },
+    },
+  },
+  { _id: false },
+);
+
 const reservationExceptionalOpeningSchema = new mongoose.Schema(
   {
     date: { type: String, required: true, trim: true },
@@ -255,6 +293,7 @@ const reservationParametersSchema = new mongoose.Schema({
     default: false,
   },
   waitlist: { type: reservationWaitlistSchema, default: () => ({}) },
+  smsReminder: { type: smsReminderSchema, default: () => ({}) },
 
   // Horaires & pauses
   reservation_hours: { type: [openingHoursSchema], default: [] },
@@ -415,6 +454,7 @@ const optionsSchema = new mongoose.Schema(
     employees: { type: Boolean, default: false },
     customers: { type: Boolean, default: false },
     health_control_plan: { type: Boolean, default: false },
+    sms_reminders: { type: Boolean, default: false },
   },
   { _id: false },
 );

@@ -4475,6 +4475,9 @@ router.put(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
+      if (!(await canManageRestaurantReservations(req.user, restaurant))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
       // ✅ ancien état (avant merge)
       const prevManage = Boolean(

@@ -17,6 +17,7 @@ const PRIVATE_RESERVATION_SETTINGS_FIELDS = [
   "pending_duration_minutes",
   "manual_service_full_until",
   "notify_restaurant_on_new_public_reservation",
+  "smsReminder",
 ];
 
 function sanitizePublicRestaurantData(input = {}) {
