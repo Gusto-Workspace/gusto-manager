@@ -4,7 +4,19 @@ const DEFAULT_EARLY_TERMINATION = Object.freeze({
   noticeMonths: 3,
 });
 
+// Version 1 corresponds to historical snapshots, which did not carry an
+// explicit contractual template version. Never infer a newer version from an
+// absent field: sent and signed legacy contracts must keep their original PDF.
+const CURRENT_CONTRACT_TERMS_VERSION = 2;
+const WEBSITE_OWNERSHIP_TERMS_VERSION = 2;
+
 const MAX_CONTRACT_TERM_MONTHS = 120;
+
+function hasWebsiteOwnershipTerms(documentData = {}) {
+  return (
+    Number(documentData.contractTermsVersion) >= WEBSITE_OWNERSHIP_TERMS_VERSION
+  );
+}
 
 function frenchInteger(value) {
   const number = Number(value);
@@ -221,12 +233,15 @@ function validateEarlyTermination(value, engagementMonths) {
 }
 
 module.exports = {
+  CURRENT_CONTRACT_TERMS_VERSION,
   DEFAULT_EARLY_TERMINATION,
   MAX_CONTRACT_TERM_MONTHS,
+  WEBSITE_OWNERSHIP_TERMS_VERSION,
   buildContractDurationCopy,
   earlyTerminationFromContractState,
   formatMonthsWithNumber,
   frenchInteger,
+  hasWebsiteOwnershipTerms,
   normalizeEarlyTermination,
   validateEarlyTermination,
 };
