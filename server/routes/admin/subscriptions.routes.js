@@ -25,6 +25,7 @@ const {
 const {
   buildCatalogSelectionMetadata,
   buildSubscriptionSummary,
+  getOrCreateOfferedPrice,
   listSubscriptionCatalogProducts,
   resolveCatalogSelection,
 } = require("../../services/stripe-subscription-catalog.service");
@@ -516,47 +517,11 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
   return operations;
 }
 
-async function resolveOfferedAddonPrice(addon) {
-  if (!addon?.offered) return addon?.priceId;
-
-  const prices = await stripe.prices.list({
-    product: addon.productId,
-    active: true,
-    limit: 100,
-  });
-  const matchingPrice = prices.data.find(
-    (price) =>
-      Number(price?.unit_amount) === 0 &&
-      normalizeString(price?.currency).toUpperCase() ===
-        normalizeString(addon.currency).toUpperCase() &&
-      normalizeString(price?.recurring?.interval) ===
-        normalizeString(addon.interval) &&
-      Number(price?.recurring?.interval_count || 1) ===
-        Number(addon.intervalCount || 1),
-  );
-  if (matchingPrice) return matchingPrice.id;
-
-  const price = await stripe.prices.create({
-    product: addon.productId,
-    currency: normalizeString(addon.currency).toLowerCase(),
-    unit_amount: 0,
-    recurring: {
-      interval: addon.interval || "month",
-      interval_count: Math.max(1, Number(addon.intervalCount || 1)),
-    },
-    metadata: {
-      offered: "true",
-      catalogCode: addon.code || "",
-    },
-  });
-  return price.id;
-}
-
 async function materializeOfferedAddonPrices(selection) {
   const addons = await Promise.all(
     selection.addons.map(async (addon) => ({
       ...addon,
-      priceId: await resolveOfferedAddonPrice(addon),
+      priceId: await getOrCreateOfferedPrice(addon),
       amount: addon.offered ? 0 : addon.amount,
       amountCents: addon.offered ? 0 : addon.amountCents,
     })),

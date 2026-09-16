@@ -2,6 +2,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 const SUBSCRIPTION_CATALOG_NAME = "restaurant_subscription";
 const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
+const offeredPriceRequests = new Map();
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -52,6 +53,110 @@ function isRecurringMonthlyPrice(price) {
     toInteger(price?.recurring?.interval_count, 1) === 1 &&
     typeof price?.unit_amount === "number"
   );
+}
+
+function getPriceProductId(price = {}) {
+  return typeof price?.product === "string"
+    ? price.product
+    : normalizeString(price?.product?.id);
+}
+
+function isCompatibleOfferedPrice(price, criteria) {
+  return (
+    price?.active === true &&
+    normalizeString(price?.type) === "recurring" &&
+    getPriceProductId(price) === criteria.productId &&
+    Number(price?.unit_amount) === 0 &&
+    normalizeString(price?.currency).toLowerCase() === criteria.currency &&
+    normalizeString(price?.recurring?.interval) === criteria.interval &&
+    toInteger(price?.recurring?.interval_count, 1) === criteria.intervalCount
+  );
+}
+
+function compareOfferedPrices(left, right) {
+  const createdDifference =
+    toInteger(left?.created) - toInteger(right?.created);
+  if (createdDifference !== 0) return createdDifference;
+  return normalizeString(left?.id).localeCompare(normalizeString(right?.id));
+}
+
+async function listActiveProductPrices(stripeClient, productId) {
+  const prices = [];
+  let startingAfter = null;
+
+  do {
+    const response = await stripeClient.prices.list({
+      product: productId,
+      active: true,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    const page = Array.isArray(response?.data) ? response.data : [];
+    prices.push(...page);
+    startingAfter =
+      response?.has_more && page.length ? page[page.length - 1].id : null;
+  } while (startingAfter);
+
+  return prices;
+}
+
+async function getOrCreateOfferedPrice(addon, stripeClient = stripe) {
+  if (!addon?.offered) return addon?.priceId;
+
+  const criteria = {
+    productId: normalizeString(addon?.productId),
+    currency: normalizeString(addon?.currency).toLowerCase(),
+    interval: normalizeString(addon?.interval) || "month",
+    intervalCount: Math.max(1, toInteger(addon?.intervalCount, 1)),
+  };
+  const requestKey = [
+    criteria.productId,
+    criteria.currency,
+    criteria.interval,
+    criteria.intervalCount,
+  ].join(":");
+
+  if (isCompatibleOfferedPrice(addon?.price, criteria)) {
+    return addon.price.id;
+  }
+
+  if (offeredPriceRequests.has(requestKey)) {
+    return offeredPriceRequests.get(requestKey);
+  }
+
+  const request = (async () => {
+    const prices = await listActiveProductPrices(
+      stripeClient,
+      criteria.productId,
+    );
+    const matchingPrice = prices
+      .filter((price) => isCompatibleOfferedPrice(price, criteria))
+      .sort(compareOfferedPrices)[0];
+
+    if (matchingPrice) return matchingPrice.id;
+
+    const price = await stripeClient.prices.create({
+      product: criteria.productId,
+      currency: criteria.currency,
+      unit_amount: 0,
+      recurring: {
+        interval: criteria.interval,
+        interval_count: criteria.intervalCount,
+      },
+      metadata: {
+        offered: "true",
+        catalogCode: addon.code || "",
+      },
+    });
+    return price.id;
+  })();
+
+  offeredPriceRequests.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    offeredPriceRequests.delete(requestKey);
+  }
 }
 
 function sortCatalogProducts(left, right) {
@@ -167,6 +272,8 @@ async function retrieveCatalogPriceEntry(priceId) {
     amount: typeof price.unit_amount === "number" ? price.unit_amount / 100 : 0,
     amountCents: typeof price.unit_amount === "number" ? price.unit_amount : 0,
     currency: price.currency ? price.currency.toUpperCase() : "",
+    interval: normalizeString(price?.recurring?.interval),
+    intervalCount: toInteger(price?.recurring?.interval_count, 1),
     kind: metadata.kind,
     code: metadata.code,
     order: metadata.order,
@@ -441,6 +548,7 @@ module.exports = {
   SUBSCRIPTION_CATALOG_NAME,
   buildCatalogSelectionMetadata,
   buildSubscriptionSummary,
+  getOrCreateOfferedPrice,
   isRecurringMonthlyPrice,
   listSubscriptionCatalogProducts,
   normalizeString,
