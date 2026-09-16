@@ -5,6 +5,9 @@ const {
   createCommercialSnapshot,
   normalizeCommercialItem,
 } = require("./contract-commercial.service");
+const {
+  earlyTerminationFromContractState,
+} = require("./contract-terms.service");
 
 function plain(value) {
   if (value == null) return value;
@@ -106,6 +109,7 @@ async function prepareSubscriptionAmendment({ restaurantId, stripeSnapshot }) {
     commercialReviewConfirmedAt: currentSnapshot.reviewRequired ? null : new Date(),
     website: plain(fieldSource.website) || {},
     lines: plain(fieldSource.lines) || [],
+    earlyTermination: earlyTerminationFromContractState(latestSigned),
     amendment: {
       baseContractNumber: rootContract.docNumber,
       baseContractSignedAt:

@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  DEFAULT_EARLY_TERMINATION,
+  MAX_CONTRACT_TERM_MONTHS,
+} = require("../services/contract-terms.service");
 
 const LineSchema = new mongoose.Schema(
   {
@@ -74,6 +78,30 @@ const SubscriptionSchema = new mongoose.Schema(
     currency: { type: String, default: "EUR" },
     interval: { type: String, default: "month" },
     intervalCount: { type: Number, min: 1, default: 1 },
+  },
+  { _id: false },
+);
+
+const EarlyTerminationSchema = new mongoose.Schema(
+  {
+    enabled: {
+      type: Boolean,
+      default: DEFAULT_EARLY_TERMINATION.enabled,
+    },
+    minimumCommitmentMonths: {
+      type: Number,
+      min: 1,
+      max: MAX_CONTRACT_TERM_MONTHS,
+      validate: Number.isInteger,
+      default: DEFAULT_EARLY_TERMINATION.minimumCommitmentMonths,
+    },
+    noticeMonths: {
+      type: Number,
+      min: 1,
+      max: MAX_CONTRACT_TERM_MONTHS,
+      validate: Number.isInteger,
+      default: DEFAULT_EARLY_TERMINATION.noticeMonths,
+    },
   },
   { _id: false },
 );
@@ -313,6 +341,10 @@ const DocumentSchema = new mongoose.Schema(
     placeOfSignature: { type: String, default: "" },
     subscription: { type: SubscriptionSchema, default: () => ({}) },
     engagementMonths: { type: Number, default: 12 },
+    earlyTermination: {
+      type: EarlyTerminationSchema,
+      default: () => ({ ...DEFAULT_EARLY_TERMINATION }),
+    },
     modules: { type: [ModuleSchema], default: [] },
     commercialSnapshot: {
       type: CommercialSnapshotSchema,
@@ -341,5 +373,30 @@ const DocumentSchema = new mongoose.Schema(
 
 DocumentSchema.index({ rootContractId: 1, versionNumber: 1 });
 DocumentSchema.index({ "signatureRequest.tokenHash": 1 }, { sparse: true });
+
+DocumentSchema.pre("validate", function validateEarlyTerminationWindow() {
+  if (this.type !== "CONTRACT" || this.earlyTermination?.enabled !== true) {
+    return;
+  }
+
+  const engagementMonths = Number(this.engagementMonths);
+  const minimumCommitmentMonths = Number(
+    this.earlyTermination.minimumCommitmentMonths,
+  );
+  const noticeMonths = Number(this.earlyTermination.noticeMonths);
+
+  if (minimumCommitmentMonths >= engagementMonths) {
+    this.invalidate(
+      "earlyTermination.minimumCommitmentMonths",
+      "La période minimale doit être inférieure à la durée totale d'engagement.",
+    );
+  }
+  if (minimumCommitmentMonths + noticeMonths >= engagementMonths) {
+    this.invalidate(
+      "earlyTermination.noticeMonths",
+      "La période minimale additionnée au préavis doit permettre une fin avant le terme de l'engagement.",
+    );
+  }
+});
 
 module.exports = mongoose.model("Document", DocumentSchema);

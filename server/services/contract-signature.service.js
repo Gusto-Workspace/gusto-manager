@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { normalizeEarlyTermination } = require("./contract-terms.service");
 
 const SIGNATURE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_SIGNATURE_IMAGE_BYTES = 500 * 1024;
@@ -41,6 +42,7 @@ function buildContractContentSnapshot(documentData, commercialSnapshot) {
     website: plainValue(source.website) || {},
     subscription: plainValue(source.subscription) || {},
     engagementMonths: Number(source.engagementMonths || 0),
+    earlyTermination: normalizeEarlyTermination(source.earlyTermination),
     modules: plainValue(source.modules) || [],
     timeClockTerminalRental: plainValue(source.timeClockTerminalRental) || {},
     comments: normalizeString(source.comments),
@@ -201,6 +203,9 @@ function serializePublicContract(documentData, now = new Date()) {
             website: snapshot.website || {},
             subscription: snapshot.subscription || {},
             engagementMonths: snapshot.engagementMonths || 0,
+            earlyTermination: normalizeEarlyTermination(
+              snapshot.earlyTermination,
+            ),
             modules: snapshot.modules || [],
             timeClockTerminalRental: snapshot.timeClockTerminalRental || {},
             comments: snapshot.comments || "",

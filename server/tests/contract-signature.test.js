@@ -28,6 +28,13 @@ const {
 const {
   renderContractPdf,
 } = require("../services/pdf/render-contract.service");
+const {
+  buildContractDurationCopy,
+  earlyTerminationFromContractState,
+  formatMonthsWithNumber,
+  normalizeEarlyTermination,
+  validateEarlyTermination,
+} = require("../services/contract-terms.service");
 const DocumentModel = require("../models/document.model");
 
 function countPdfPages(buffer) {
@@ -151,10 +158,157 @@ test("le snapshot contractuel produit un hash stable et exclut les données tech
 
   assert.equal(snapshot.pdf, undefined);
   assert.equal(snapshot.signature, undefined);
+  assert.deepEqual(snapshot.earlyTermination, {
+    enabled: false,
+    minimumCommitmentMonths: 12,
+    noticeMonths: 3,
+  });
   assert.equal(hashContractContent(snapshot), hashContractContent(snapshot));
   assert.equal(
     hashContractContent({ party: { email: "a", name: "b" }, lines: [] }),
     hashContractContent({ lines: [], party: { name: "b", email: "a" } }),
+  );
+});
+
+test("la résiliation anticipée est désactivée par défaut et figée dans le snapshot", () => {
+  const legacy = normalizeEarlyTermination(undefined);
+  assert.deepEqual(legacy, {
+    enabled: false,
+    minimumCommitmentMonths: 12,
+    noticeMonths: 3,
+  });
+
+  const source = {
+    type: "CONTRACT",
+    docNumber: "WD-C-EARLY",
+    issueDate: "2026-09-15T00:00:00.000Z",
+    party: { restaurantName: "Test", email: "owner@example.com" },
+    engagementMonths: 24,
+    earlyTermination: {
+      enabled: true,
+      minimumCommitmentMonths: 12,
+      noticeMonths: 3,
+    },
+  };
+  const snapshot = buildContractContentSnapshot(source, null);
+  source.earlyTermination.minimumCommitmentMonths = 18;
+
+  assert.deepEqual(snapshot.earlyTermination, {
+    enabled: true,
+    minimumCommitmentMonths: 12,
+    noticeMonths: 3,
+  });
+  assert.notEqual(
+    hashContractContent(snapshot),
+    hashContractContent(buildContractContentSnapshot(source, null)),
+  );
+});
+
+test("les conditions de sortie valident les fenêtres 12/3 et 18/2", () => {
+  assert.deepEqual(
+    validateEarlyTermination(
+      { enabled: true, minimumCommitmentMonths: 12, noticeMonths: 3 },
+      24,
+    ),
+    { enabled: true, minimumCommitmentMonths: 12, noticeMonths: 3 },
+  );
+  assert.deepEqual(
+    validateEarlyTermination(
+      { enabled: true, minimumCommitmentMonths: 18, noticeMonths: 2 },
+      24,
+    ),
+    { enabled: true, minimumCommitmentMonths: 18, noticeMonths: 2 },
+  );
+  assert.equal(formatMonthsWithNumber(15), "quinze (15) mois");
+  assert.equal(formatMonthsWithNumber(20), "vingt (20) mois");
+  assert.throws(
+    () =>
+      validateEarlyTermination(
+        { enabled: true, minimumCommitmentMonths: 23, noticeMonths: 1 },
+        24,
+      ),
+    /avant le terme/,
+  );
+});
+
+test("la rédaction conditionnelle n'accorde aucun préavis au contrat ferme", () => {
+  const firmCopy = buildContractDurationCopy({
+    engagementMonths: 24,
+    earlyTermination: {
+      enabled: false,
+      minimumCommitmentMonths: 12,
+      noticeMonths: 3,
+    },
+  });
+  const firmText = [
+    firmCopy.financialDurationText,
+    ...firmCopy.durationParagraphs,
+  ].join(" ");
+  assert.match(firmText, /durée ferme de vingt-quatre \(24\) mois/);
+  assert.equal(firmCopy.durationParagraphs.length, 1);
+  assert.doesNotMatch(
+    firmText,
+    /convenance personnelle|évolution de ses besoins professionnels/,
+  );
+  assert.doesNotMatch(firmText, /préavis de trois \(3\) mois/);
+  assert.doesNotMatch(firmText, /après douze \(12\) mois/);
+
+  const negotiatedCopy = buildContractDurationCopy({
+    engagementMonths: 24,
+    earlyTermination: {
+      enabled: true,
+      minimumCommitmentMonths: 18,
+      noticeMonths: 2,
+    },
+  });
+  const negotiatedText = [
+    negotiatedCopy.financialDurationText,
+    ...negotiatedCopy.durationParagraphs,
+  ].join(" ");
+  assert.match(negotiatedText, /dix-huit \(18\) mois/);
+  assert.match(negotiatedText, /préavis de deux \(2\) mois/);
+  assert.match(negotiatedText, /après vingt \(20\) mois/);
+  assert.doesNotMatch(negotiatedText, /douze \(12\)|trois \(3\)/);
+});
+
+test("un snapshot sans condition conserve la rédaction historique", () => {
+  const legacyCopy = buildContractDurationCopy({ engagementMonths: 24 });
+  assert.equal(legacyCopy.legacy, true);
+  assert.equal(legacyCopy.durationParagraphs.length, 1);
+  assert.match(
+    legacyCopy.durationParagraphs[0],
+    /Aucune résiliation anticipée n’est possible durant cette période/,
+  );
+  assert.doesNotMatch(
+    legacyCopy.durationParagraphs[0],
+    /cessation définitive|vente ou de cession/i,
+  );
+});
+
+test("un avenant hérite la condition du dernier snapshot signé", () => {
+  assert.deepEqual(
+    earlyTerminationFromContractState({
+      earlyTermination: { enabled: false },
+      contractSnapshot: {
+        earlyTermination: {
+          enabled: true,
+          minimumCommitmentMonths: 12,
+          noticeMonths: 3,
+        },
+      },
+    }),
+    { enabled: true, minimumCommitmentMonths: 12, noticeMonths: 3 },
+  );
+  assert.deepEqual(
+    earlyTerminationFromContractState({
+      earlyTermination: {
+        enabled: true,
+        minimumCommitmentMonths: 12,
+        noticeMonths: 3,
+      },
+      contractSnapshot: { docNumber: "WD-C-LEGACY" },
+    }),
+    { enabled: false, minimumCommitmentMonths: 12, noticeMonths: 3 },
   );
 });
 
@@ -328,6 +482,11 @@ test("les renderers produisent les PDF du contrat et de l'avenant complet", asyn
       intervalCount: 1,
     },
     engagementMonths: 12,
+    earlyTermination: {
+      enabled: false,
+      minimumCommitmentMonths: 12,
+      noticeMonths: 3,
+    },
     comments: "Tarif négocié et validé.",
   };
   const contract = await renderContractPdf(base, {}, null);
@@ -350,6 +509,54 @@ test("les renderers produisent les PDF du contrat et de l'avenant complet", asyn
   assert.equal(amendment.subarray(0, 4).toString(), "%PDF");
   assert.ok(countPdfPages(contract) >= 1);
   assert.ok(countPdfPages(amendment) >= 1);
+});
+
+test("le renderer contractuel varie selon la condition de résiliation figée", async () => {
+  const base = {
+    type: "CONTRACT",
+    docNumber: "WD-C-TERMS",
+    issueDate: "2026-09-15T00:00:00.000Z",
+    party: { restaurantName: "Restaurant Test", email: "test@example.com" },
+    subscription: { name: "Essentiel", priceMonthly: 95 },
+    engagementMonths: 24,
+    earlyTermination: {
+      enabled: false,
+      minimumCommitmentMonths: 12,
+      noticeMonths: 3,
+    },
+    modules: [],
+  };
+  const firm = await renderContractPdf(base, {}, null);
+  const twelveThree = await renderContractPdf(
+    {
+      ...base,
+      earlyTermination: {
+        enabled: true,
+        minimumCommitmentMonths: 12,
+        noticeMonths: 3,
+      },
+    },
+    {},
+    null,
+  );
+  const eighteenTwo = await renderContractPdf(
+    {
+      ...base,
+      earlyTermination: {
+        enabled: true,
+        minimumCommitmentMonths: 18,
+        noticeMonths: 2,
+      },
+    },
+    {},
+    null,
+  );
+
+  assert.notDeepEqual(firm, twelveThree);
+  assert.notDeepEqual(twelveThree, eighteenTwo);
+  assert.ok(countPdfPages(firm) >= 1);
+  assert.ok(countPdfPages(twelveThree) >= 1);
+  assert.ok(countPdfPages(eighteenTwo) >= 1);
 });
 
 test("la sélection Stripe privilégie le catalogue et refuse une ambiguïté", () => {
@@ -633,4 +840,7 @@ test("un ancien contrat signé reste valide sans les nouveaux champs", () => {
   assert.equal(legacyDocument.validateSync(), undefined);
   assert.equal(legacyDocument.status, "SIGNED");
   assert.equal(legacyDocument.contractKind, "INITIAL");
+  assert.equal(legacyDocument.earlyTermination.enabled, false);
+  assert.equal(legacyDocument.earlyTermination.minimumCommitmentMonths, 12);
+  assert.equal(legacyDocument.earlyTermination.noticeMonths, 3);
 });

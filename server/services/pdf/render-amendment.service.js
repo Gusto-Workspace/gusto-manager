@@ -1,6 +1,10 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const {
+  formatMonthsWithNumber,
+  normalizeEarlyTermination,
+} = require("../contract-terms.service");
 
 function text(value) {
   return value == null ? "" : String(value).trim();
@@ -239,14 +243,33 @@ async function renderAmendmentPdf(documentData, emitter, signatureImageBuffer) {
     }
   }
 
-  heading("2. Prise d’effet et maintien du contrat");
+  const engagementMonths = number(documentData.engagementMonths, 24) || 24;
+  const earlyTermination = normalizeEarlyTermination(
+    documentData.earlyTermination,
+  );
+  const hasExplicitEarlyTermination = Object.prototype.hasOwnProperty.call(
+    documentData,
+    "earlyTermination",
+  );
+  if (hasExplicitEarlyTermination) {
+    heading("2. Durée et conditions de résiliation");
+    paragraph(
+      earlyTermination.enabled
+        ? `La durée contractuelle demeure fixée à ${formatMonthsWithNumber(engagementMonths)} à compter du premier prélèvement effectif de l’abonnement. La faculté de résiliation anticipée reste applicable après ${formatMonthsWithNumber(earlyTermination.minimumCommitmentMonths)} révolus, sous réserve d’un préavis de ${formatMonthsWithNumber(earlyTermination.noticeMonths)}. La fin du contrat peut ainsi intervenir au plus tôt après ${formatMonthsWithNumber(earlyTermination.minimumCommitmentMonths + earlyTermination.noticeMonths)} d’abonnement.`
+        : `La durée d’engagement ferme demeure fixée à ${formatMonthsWithNumber(engagementMonths)} à compter du premier prélèvement effectif de l’abonnement. Aucune faculté de résiliation anticipée pour convenance personnelle ou évolution des besoins professionnels du Client n’est accordée.`,
+      { after: 0.8 },
+    );
+  }
+
+  const maintenanceSectionNumber = hasExplicitEarlyTermination ? 3 : 2;
+  heading(`${maintenanceSectionNumber}. Prise d’effet et maintien du contrat`);
   paragraph(
     "Les évolutions décrites dans le présent avenant prennent effet selon les modalités commerciales convenues entre les parties. Toutes les clauses du contrat initial non modifiées par cet avenant restent pleinement applicables.",
     { after: 1 },
   );
 
   if (text(documentData.comments)) {
-    heading("3. Conditions particulières");
+    heading(`${maintenanceSectionNumber + 1}. Conditions particulières`);
     paragraph(text(documentData.comments), { after: 1 });
   }
 

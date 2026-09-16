@@ -32,6 +32,11 @@ const {
   serializePublicContract,
   signatureRequestExpiresAt,
 } = require("../../services/contract-signature.service");
+const {
+  MAX_CONTRACT_TERM_MONTHS,
+  earlyTerminationFromContractState,
+  validateEarlyTermination,
+} = require("../../services/contract-terms.service");
 // PDF RENDERERS
 const {
   renderInvoiceLikePdf,
@@ -510,6 +515,7 @@ router.post("/admin/documents", authenticateToken, async (req, res) => {
         phone: resolvedParty.phone || "",
       },
       status: "DRAFT",
+      engagementMonths: type === "CONTRACT" ? 24 : undefined,
     });
 
     let commercialWarning = "";
@@ -814,8 +820,34 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
       doc.commercialReviewConfirmedAt = new Date();
     }
 
-    if (body.engagementMonths !== undefined)
-      doc.engagementMonths = Number(body.engagementMonths || 0);
+    if (body.engagementMonths !== undefined) {
+      const engagementMonths = Number(body.engagementMonths);
+      if (
+        doc.type === "CONTRACT" &&
+        (!Number.isInteger(engagementMonths) ||
+          engagementMonths <= 0 ||
+          engagementMonths > MAX_CONTRACT_TERM_MONTHS)
+      ) {
+        const error = new Error(
+          `La durée d'engagement doit être un entier compris entre 1 et ${MAX_CONTRACT_TERM_MONTHS} mois.`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+      doc.engagementMonths =
+        doc.type === "CONTRACT"
+          ? engagementMonths
+          : Number(body.engagementMonths || 0);
+    }
+
+    if (doc.type === "CONTRACT") {
+      doc.earlyTermination = validateEarlyTermination(
+        body.earlyTermination === undefined
+          ? doc.earlyTermination
+          : body.earlyTermination,
+        doc.engagementMonths,
+      );
+    }
 
     // ✅ "Fait à"
     if (body.placeOfSignature !== undefined) {
@@ -852,6 +884,7 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
           placeOfSignature: doc.placeOfSignature,
           subscription: plain(doc.subscription),
           engagementMonths: doc.engagementMonths,
+          earlyTermination: plain(doc.earlyTermination),
           modules: plain(doc.modules),
           commercialSnapshot: plain(doc.commercialSnapshot),
           commercialReviewConfirmedAt: doc.commercialReviewConfirmedAt,
@@ -870,7 +903,11 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     res.status(200).json({ document: updatedDocument });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: "Erreur serveur" });
+    res
+      .status(e?.statusCode || (e?.name === "ValidationError" ? 400 : 500))
+      .json({
+        message: e?.message || "Erreur serveur",
+      });
   }
 });
 
@@ -1297,6 +1334,7 @@ router.post(
           latestSigned.contractSnapshot?.engagementMonths ||
           latestSigned.engagementMonths ||
           12,
+        earlyTermination: earlyTerminationFromContractState(latestSigned),
         commercialSnapshot: currentSnapshot,
         commercialReviewConfirmedAt: currentSnapshot.reviewRequired
           ? null
@@ -1788,6 +1826,9 @@ router.post(
       if (isLegacyPhysicalSent) {
         commercialSnapshot = buildManualCommercialSnapshot(doc.toObject());
         snapshot = buildContractContentSnapshot(doc, commercialSnapshot);
+        // Ce document a été présenté avant l'introduction de cette condition.
+        // L'absence du champ conserve donc volontairement le renderer legacy.
+        delete snapshot.earlyTermination;
         contentHash = hashContractContent(snapshot);
       } else {
         ({ snapshot, contentHash, commercialSnapshot } =
