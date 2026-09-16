@@ -74,12 +74,12 @@ function shareStandaloneReservationsPrintDocument() {
     let cursorX = PRINT_MARGIN_MM;
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8);
-    pdf.setFillColor(242, 242, 242);
     pdf.setDrawColor(120, 120, 120);
     pdf.setLineWidth(0.2);
 
     headerCells.forEach((value, index) => {
       const width = columnWidths[index];
+      pdf.setFillColor(242, 242, 242);
       pdf.rect(cursorX, cursorY, width, headerHeight, "FD");
       pdf.text(value, cursorX + cellPadding, cursorY + 5.1);
       cursorX += width;
@@ -148,7 +148,7 @@ function shareStandaloneReservationsPrintDocument() {
     }
 
     navigator
-      .share({ files: [file], title })
+      .share({ files: [file] })
       .catch(() => {})
       .finally(() => window.dispatchEvent(new Event("afterprint")));
     return true;
