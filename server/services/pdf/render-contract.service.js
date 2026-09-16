@@ -5,6 +5,7 @@ const { renderAmendmentPdf } = require("./render-amendment.service");
 const {
   buildContractDurationCopy,
   formatMonthsWithNumber,
+  hasWebsiteOwnershipTerms,
 } = require("../contract-terms.service");
 
 function fmtDate(d) {
@@ -204,8 +205,8 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     doc.moveDown(0.55);
   }
 
-  function sectionTitle(text) {
-    ensureSpace(70);
+  function sectionTitle(text, options = {}) {
+    ensureSpace(Math.max(70, 30 + (options.minFollowingHeight || 0)));
     doc.x = MARGIN;
     doc.fontSize(12).fillColor("#111").text(text, MARGIN, doc.y, {
       width: CONTENT_W,
@@ -492,12 +493,15 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   // Abonnement : si site OU prestations existent => reste en 3, sinon devient 2
   const N_SUB = hasWebsite || hasPrestations ? 3 : 2;
 
-  // Sections suivantes (4/5/6/7) dépendent de N_SUB
+  // Les sections suivantes dépendent des blocs optionnels qui les précèdent.
   const N_MATERIAL = hasTimeClockTerminalRental ? N_SUB + 1 : null;
   const N_USE = N_SUB + (hasTimeClockTerminalRental ? 2 : 1);
-  const N_TERM = N_SUB + (hasTimeClockTerminalRental ? 3 : 2);
-  const N_LIAB = N_SUB + (hasTimeClockTerminalRental ? 4 : 3);
-  const N_PRIV = N_SUB + (hasTimeClockTerminalRental ? 5 : 4);
+  const hasWebsiteOwnershipClause =
+    hasWebsite && hasWebsiteOwnershipTerms(documentData);
+  const N_WEBSITE_OWNERSHIP = hasWebsiteOwnershipClause ? N_USE + 1 : null;
+  const N_TERM = N_USE + (hasWebsiteOwnershipClause ? 2 : 1);
+  const N_LIAB = N_USE + (hasWebsiteOwnershipClause ? 3 : 2);
+  const N_PRIV = N_USE + (hasWebsiteOwnershipClause ? 4 : 3);
 
   // ✅ Sous-numérotation Abonnement (3.x / 2.x) dynamique selon présence modules
   let subIdx = 1;
@@ -793,6 +797,50 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     "Le Client s’engage à utiliser le dashboard uniquement pour la gestion de son restaurant. Toute reproduction, modification ou diffusion non autorisée des outils du Prestataire est strictement interdite.",
     { size: 10, after: 0.8 },
   );
+
+  if (hasWebsiteOwnershipClause) {
+    const ownershipFirstParagraph =
+      "Le Client demeure propriétaire du site vitrine spécifiquement réalisé pour son établissement ainsi que de son identité visuelle et des contenus propres à son activité intégrés dans celui-ci, notamment les textes, photographies, visuels et informations commerciales lui appartenant ou fournis par lui.";
+    doc.fontSize(10);
+    const ownershipFirstParagraphHeight = doc.heightOfString(
+      ownershipFirstParagraph,
+      { width: CONTENT_W, lineGap: 2 },
+    );
+
+    sectionTitle(
+      `${N_WEBSITE_OWNERSHIP}. Propriété du site, des contenus et du nom de domaine`,
+      { minFollowingHeight: ownershipFirstParagraphHeight + 8 },
+    );
+    paragraph(ownershipFirstParagraph, { size: 10, after: 0.35 });
+    paragraph(
+      "Le Client demeure également titulaire de son nom de domaine, y compris après la résiliation ou l’expiration du présent contrat. Lorsque le nom de domaine est administré techniquement par le Prestataire pour le compte du Client, les éléments nécessaires à son transfert ou à la reprise de sa gestion sont communiqués au Client, à sa demande, dans le cadre de la fin du contrat. Le Prestataire peut cesser d’en assurer l’administration une fois le transfert effectué.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "La fin du contrat Gusto Manager n’entraîne aucun transfert de propriété du site, de ses contenus ou du nom de domaine au bénéfice du Prestataire. Le Client peut conserver son site vitrine ou le faire transférer vers un autre hébergement. L’hébergement fourni par le Prestataire est toutefois un service exclusivement lié à l’abonnement Gusto Manager : il prend fin à la date effective de fin de l’abonnement, sans obligation pour le Prestataire de poursuivre gratuitement l’hébergement. La cessation de cet hébergement ne remet pas en cause la propriété du Client sur son site.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "Certains contenus ou fonctionnalités du site sont alimentés dynamiquement par les services Gusto Manager, notamment les cartes et menus, les actualités, les informations issues du dashboard, les réservations, les cartes cadeaux et les autres données synchronisées avec la plateforme.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "À compter de la date effective de fin de l’abonnement Gusto Manager, quelle qu’en soit la cause, ces données dynamiques cessent systématiquement d’être fournies par la plateforme et ne sont plus affichées sur le site. Les appels API et les services Gusto Manager associés peuvent être coupés. Aucune copie figée ni aucun maintien automatique de ces données dynamiques ne fait partie du site conservé par le Client.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "Même lorsque le site est conservé par le Client ou transféré vers un autre hébergement, les contenus et sections dépendant des données dynamiques provenant de Gusto Manager ne sont plus affichés après la fin de l’abonnement. Le site peut continuer d’exister sans ces données dynamiques, sous réserve que le Client assure son hébergement, sa maintenance et, le cas échéant, son adaptation technique auprès du prestataire de son choix.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "La présente clause ne confère au Client aucun droit de propriété sur la plateforme Gusto Manager, son dashboard, son back-office, ses API internes, le code source de la plateforme et de ses services, ses composants génériques ou mutualisés, ses bibliothèques, ses outils internes et de gestion, ses systèmes de génération, ses services partagés, ses technologies ni, plus généralement, sur les éléments logiciels et techniques appartenant au Prestataire ou à des tiers et réutilisés pour plusieurs clients.",
+      { size: 10, after: 0.35 },
+    );
+    paragraph(
+      "Le Client conserve en revanche les éléments spécifiques constituant son site vitrine et nécessaires à son fonctionnement indépendant des services Gusto Manager, y compris le code spécifique propre à ce site dans la mesure nécessaire à sa conservation, à son fonctionnement autonome ou à son transfert vers un autre hébergement. En cas de conservation ou de transfert du site, les éléments exclusivement liés à Gusto Manager, notamment les connexions aux API, les services dynamiques et les fonctionnalités dépendant de la plateforme, doivent être exclus, supprimés, désactivés ou rendus inopérants. Le site ainsi conservé ou transféré ne peut donner accès aux services Gusto Manager après la fin de l’abonnement.",
+      { size: 10, after: 0.8 },
+    );
+  }
 
   sectionTitle(`${N_TERM}. Durée et Résiliation`);
   contractDurationCopy.durationParagraphs.forEach((value, index, values) => {

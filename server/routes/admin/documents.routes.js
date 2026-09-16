@@ -231,8 +231,19 @@ async function buildPdfBuffer(doc) {
   if (doc.type === "QUOTE" || doc.type === "INVOICE") {
     return renderInvoiceLikePdf(doc.toObject(), EMITTER);
   }
-  // contrat (preview ou envoi) sans signature
-  return renderContractPdf(doc.toObject(), EMITTER, null);
+  const documentData = doc.toObject();
+  if (doc.status === "DRAFT") {
+    const commercialSnapshot = buildManualCommercialSnapshot(documentData);
+    const snapshot = buildContractContentSnapshot(
+      documentData,
+      commercialSnapshot,
+    );
+    return renderContractPdf(snapshot, EMITTER, null);
+  }
+
+  // Un document historique sans snapshot/version reste rendu avec son ancien
+  // template. Les contrats envoyés ou signés modernes utilisent leur snapshot.
+  return renderContractPdf(doc.contractSnapshot || documentData, EMITTER, null);
 }
 
 function plain(value) {
@@ -1008,8 +1019,7 @@ router.get(
           hashPdfBuffer(pdfBuffer) !== doc.signatureRequest.previewPdf.sha256
         ) {
           return res.status(409).json({
-            message:
-              "L'intégrité du PDF présenté ne peut pas être vérifiée.",
+            message: "L'intégrité du PDF présenté ne peut pas être vérifiée.",
           });
         }
         res.setHeader("Content-Type", "application/pdf");
@@ -1829,6 +1839,7 @@ router.post(
         // Ce document a été présenté avant l'introduction de cette condition.
         // L'absence du champ conserve donc volontairement le renderer legacy.
         delete snapshot.earlyTermination;
+        delete snapshot.contractTermsVersion;
         contentHash = hashContractContent(snapshot);
       } else {
         ({ snapshot, contentHash, commercialSnapshot } =
@@ -2100,8 +2111,7 @@ router.post(
         hashPdfBuffer(pdfBuffer) !== document.pdf.sha256
       ) {
         return res.status(409).json({
-          message:
-            "L'intégrité de la copie signée ne peut pas être vérifiée.",
+          message: "L'intégrité de la copie signée ne peut pas être vérifiée.",
         });
       }
       await sendSignedContractCopy(document, pdfBuffer);

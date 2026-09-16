@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
 
 process.env.STRIPE_API_SECRET_KEY ||= "sk_test_contract_unit_tests";
@@ -39,6 +40,31 @@ const DocumentModel = require("../models/document.model");
 
 function countPdfPages(buffer) {
   return (buffer.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
+}
+
+async function capturePdfKitText(render) {
+  const originalText = PDFDocument.prototype.text;
+  const calls = [];
+
+  PDFDocument.prototype.text = function captureText(value, ...args) {
+    calls.push({
+      value: value == null ? "" : String(value),
+      page: this.page,
+      y: this.y,
+    });
+    return originalText.call(this, value, ...args);
+  };
+
+  try {
+    const buffer = await render();
+    return {
+      buffer,
+      calls,
+      text: calls.map((call) => call.value).join("\n"),
+    };
+  } finally {
+    PDFDocument.prototype.text = originalText;
+  }
 }
 
 test("le diff commercial détecte un module ajouté et une quantité modifiée", () => {
@@ -158,6 +184,7 @@ test("le snapshot contractuel produit un hash stable et exclut les données tech
 
   assert.equal(snapshot.pdf, undefined);
   assert.equal(snapshot.signature, undefined);
+  assert.equal(snapshot.contractTermsVersion, 2);
   assert.deepEqual(snapshot.earlyTermination, {
     enabled: false,
     minimumCommitmentMonths: 12,
@@ -509,6 +536,290 @@ test("les renderers produisent les PDF du contrat et de l'avenant complet", asyn
   assert.equal(amendment.subarray(0, 4).toString(), "%PDF");
   assert.ok(countPdfPages(contract) >= 1);
   assert.ok(countPdfPages(amendment) >= 1);
+});
+
+test("le stream PDFKit du nouveau contrat contient la clause de propriété dans les deux modes de résiliation", async () => {
+  const base = {
+    type: "CONTRACT",
+    docNumber: "WD-C-PROPRIETE",
+    issueDate: "2026-09-16T00:00:00.000Z",
+    party: {
+      restaurantName: "Restaurant Test",
+      ownerName: "Jean Test",
+      email: "jean@example.com",
+    },
+    lines: [
+      {
+        label: "Site internet",
+        qty: 1,
+        unitPrice: 0,
+        offered: true,
+        active: true,
+        kind: "WEBSITE",
+      },
+      {
+        label: "Frais de mise en service",
+        qty: 1,
+        unitPrice: 250,
+        active: true,
+        kind: "NORMAL",
+      },
+    ],
+    website: { enabled: true, offered: true, paymentSplit: 1 },
+    subscription: {
+      name: "Gusto Manager",
+      priceMonthly: 95,
+      quantity: 1,
+      currency: "EUR",
+      interval: "month",
+      intervalCount: 1,
+    },
+    modules: [
+      {
+        name: "Réservations",
+        offered: true,
+        priceMonthly: 0,
+        quantity: 1,
+        currency: "EUR",
+        interval: "month",
+        intervalCount: 1,
+      },
+    ],
+    timeClockTerminalRental: { enabled: false },
+    engagementMonths: 24,
+  };
+  const firmSnapshot = buildContractContentSnapshot(
+    {
+      ...base,
+      earlyTermination: {
+        enabled: false,
+        minimumCommitmentMonths: 12,
+        noticeMonths: 3,
+      },
+    },
+    buildManualCommercialSnapshot(base),
+  );
+  const earlySnapshot = buildContractContentSnapshot(
+    {
+      ...base,
+      earlyTermination: {
+        enabled: true,
+        minimumCommitmentMonths: 12,
+        noticeMonths: 3,
+      },
+    },
+    buildManualCommercialSnapshot(base),
+  );
+
+  const firm = await capturePdfKitText(() =>
+    renderContractPdf(firmSnapshot, {}, null),
+  );
+  const early = await capturePdfKitText(() =>
+    renderContractPdf(earlySnapshot, {}, null),
+  );
+
+  for (const rendered of [firm, early]) {
+    assert.equal(rendered.buffer.subarray(0, 4).toString(), "%PDF");
+    assert.match(
+      rendered.text,
+      /Propriété du site, des contenus et du nom de domaine/,
+    );
+    assert.match(
+      rendered.text,
+      /demeure également titulaire de son nom de domaine/,
+    );
+    assert.match(
+      rendered.text,
+      /sans obligation pour le Prestataire de poursuivre gratuitement l’hébergement/,
+    );
+    assert.match(
+      rendered.text,
+      /cessent systématiquement d’être fournies par la plateforme et ne sont plus affichées sur le site/,
+    );
+    assert.match(
+      rendered.text,
+      /Aucune copie figée ni aucun maintien automatique de ces données dynamiques ne fait partie du site conservé/,
+    );
+    assert.match(
+      rendered.text,
+      /ne confère au Client aucun droit de propriété sur la plateforme Gusto Manager, son dashboard, son back-office, ses API internes, le code source de la plateforme et de ses services/,
+    );
+    assert.match(
+      rendered.text,
+      /Le Client conserve en revanche les éléments spécifiques constituant son site vitrine/,
+    );
+    assert.match(
+      rendered.text,
+      /y compris le code spécifique propre à ce site dans la mesure nécessaire à sa conservation, à son fonctionnement autonome ou à son transfert vers un autre hébergement/,
+    );
+    assert.match(
+      rendered.text,
+      /les connexions aux API, les services dynamiques et les fonctionnalités dépendant de la plateforme, doivent être exclus, supprimés, désactivés ou rendus inopérants/,
+    );
+    assert.match(
+      rendered.text,
+      /ne peut donner accès aux services Gusto Manager après la fin de l’abonnement/,
+    );
+    assert.doesNotMatch(
+      rendered.text,
+      /son dashboard, ses API internes, son code source, ses composants génériques/,
+    );
+    assert.doesNotMatch(
+      rendered.text,
+      /données dynamiques[^.]*peuvent continuer à être affichées/i,
+    );
+
+    const titleCall = rendered.calls.find((call) =>
+      call.value.includes(
+        "Propriété du site, des contenus et du nom de domaine",
+      ),
+    );
+    const firstParagraphCall = rendered.calls.find((call) =>
+      call.value.startsWith("Le Client demeure propriétaire du site vitrine"),
+    );
+    assert.ok(titleCall);
+    assert.ok(firstParagraphCall);
+    assert.equal(titleCall.page, firstParagraphCall.page);
+  }
+});
+
+test("le même snapshot produit la clause dans le PDF présenté et le PDF signé", async () => {
+  const snapshot = buildContractContentSnapshot(
+    {
+      type: "CONTRACT",
+      docNumber: "WD-C-PROPRIETE-SIGNE",
+      issueDate: "2026-09-16T00:00:00.000Z",
+      party: {
+        restaurantName: "Restaurant Test",
+        email: "test@example.com",
+      },
+      lines: [
+        {
+          label: "Site internet",
+          qty: 1,
+          unitPrice: 0,
+          offered: true,
+          active: true,
+          kind: "WEBSITE",
+        },
+      ],
+      subscription: { name: "Gusto Manager", priceMonthly: 95 },
+      engagementMonths: 24,
+      earlyTermination: { enabled: false },
+    },
+    null,
+  );
+  const signature = await sharp({
+    create: {
+      width: 240,
+      height: 80,
+      channels: 4,
+      background: { r: 20, g: 30, b: 54, alpha: 1 },
+    },
+  })
+    .png()
+    .toBuffer();
+
+  const presented = await capturePdfKitText(() =>
+    renderContractPdf(snapshot, {}, null),
+  );
+  const signed = await capturePdfKitText(() =>
+    renderContractPdf(
+      {
+        ...snapshot,
+        placeOfSignature: "Paris",
+        signatureDate: "2026-09-16T12:00:00.000Z",
+      },
+      {},
+      signature,
+    ),
+  );
+  const ownershipText = (rendered) =>
+    rendered.calls
+      .map((call) => call.value)
+      .filter(
+        (value) =>
+          value.includes(
+            "Propriété du site, des contenus et du nom de domaine",
+          ) ||
+          value.startsWith("Le Client demeure propriétaire du site vitrine") ||
+          value.startsWith("Le Client demeure également titulaire") ||
+          value.startsWith("La fin du contrat Gusto Manager") ||
+          value.startsWith("Certains contenus ou fonctionnalités") ||
+          value.startsWith("À compter de la date effective") ||
+          value.startsWith("Même lorsque le site est conservé") ||
+          value.startsWith("La présente clause ne confère") ||
+          value.startsWith("Le Client conserve en revanche"),
+      );
+
+  assert.deepEqual(ownershipText(signed), ownershipText(presented));
+});
+
+test("un snapshot legacy et un avenant n’injectent pas la nouvelle clause", async () => {
+  const legacySnapshot = {
+    type: "CONTRACT",
+    docNumber: "WD-C-LEGACY-PDF",
+    issueDate: "2025-01-10T00:00:00.000Z",
+    party: {
+      restaurantName: "Restaurant historique",
+      email: "legacy@example.com",
+    },
+    lines: [
+      {
+        label: "Site internet",
+        qty: 1,
+        unitPrice: 0,
+        offered: true,
+        active: true,
+        kind: "WEBSITE",
+      },
+    ],
+    subscription: { name: "Gusto Manager", priceMonthly: 95 },
+    engagementMonths: 24,
+  };
+  const legacy = await capturePdfKitText(() =>
+    renderContractPdf(legacySnapshot, {}, null),
+  );
+  const amendment = await capturePdfKitText(() =>
+    renderContractPdf(
+      {
+        ...legacySnapshot,
+        contractKind: "AMENDMENT",
+        contractTermsVersion: 2,
+        amendment: {
+          baseContractNumber: "WD-C-LEGACY-PDF",
+          baseContractSignedAt: "2025-01-10T00:00:00.000Z",
+        },
+        commercialSnapshot: {
+          items: [
+            {
+              kind: "PLAN",
+              label: "Gusto Manager",
+              unitAmount: 95,
+              quantity: 1,
+              currency: "EUR",
+              interval: "month",
+            },
+          ],
+        },
+      },
+      {},
+      null,
+    ),
+  );
+
+  assert.doesNotMatch(
+    legacy.text,
+    /Propriété du site, des contenus et du nom de domaine/,
+  );
+  assert.doesNotMatch(
+    amendment.text,
+    /Propriété du site, des contenus et du nom de domaine/,
+  );
+  assert.match(
+    amendment.text,
+    /Toutes les clauses du contrat initial non modifiées par cet avenant restent pleinement applicables/,
+  );
 });
 
 test("le renderer contractuel varie selon la condition de résiliation figée", async () => {

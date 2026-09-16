@@ -1,5 +1,8 @@
 const crypto = require("crypto");
-const { normalizeEarlyTermination } = require("./contract-terms.service");
+const {
+  CURRENT_CONTRACT_TERMS_VERSION,
+  normalizeEarlyTermination,
+} = require("./contract-terms.service");
 
 const SIGNATURE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_SIGNATURE_IMAGE_BYTES = 500 * 1024;
@@ -35,6 +38,7 @@ function buildContractContentSnapshot(documentData, commercialSnapshot) {
     type: "CONTRACT",
     docNumber: source.docNumber || "",
     contractKind: source.contractKind === "AMENDMENT" ? "AMENDMENT" : "INITIAL",
+    contractTermsVersion: CURRENT_CONTRACT_TERMS_VERSION,
     versionNumber: Number(source.versionNumber || 1),
     issueDate: new Date(issueDate).toISOString(),
     party: plainValue(source.party) || {},
