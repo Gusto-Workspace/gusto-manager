@@ -172,6 +172,28 @@ function preventWheelChange(e) {
   e.currentTarget.blur();
 }
 
+const DEFAULT_EARLY_TERMINATION = {
+  enabled: false,
+  minimumCommitmentMonths: 12,
+  noticeMonths: 3,
+};
+
+function normalizeEarlyTerminationForForm(value) {
+  const minimumCommitmentMonths = Number(value?.minimumCommitmentMonths);
+  const noticeMonths = Number(value?.noticeMonths);
+  return {
+    enabled: value?.enabled === true,
+    minimumCommitmentMonths:
+      Number.isInteger(minimumCommitmentMonths) && minimumCommitmentMonths > 0
+        ? minimumCommitmentMonths
+        : DEFAULT_EARLY_TERMINATION.minimumCommitmentMonths,
+    noticeMonths:
+      Number.isInteger(noticeMonths) && noticeMonths > 0
+        ? noticeMonths
+        : DEFAULT_EARLY_TERMINATION.noticeMonths,
+  };
+}
+
 const SIGNATURE_HISTORY_LABELS = {
   SENT_FOR_SIGNATURE: "Demande envoyée",
   LINK_REPLACED: "Lien remplacé",
@@ -346,6 +368,9 @@ export default function DetailsDocumentAdminPage(props) {
   const [subscriptionQuantity, setSubscriptionQuantity] = useState(1);
   const [subscriptionMeta, setSubscriptionMeta] = useState({});
   const [engagementMonths, setEngagementMonths] = useState(24);
+  const [earlyTerminationEnabled, setEarlyTerminationEnabled] = useState(false);
+  const [minimumCommitmentMonths, setMinimumCommitmentMonths] = useState(12);
+  const [noticeMonths, setNoticeMonths] = useState(3);
 
   // ✅ modules numeric
   const [modules, setModules] = useState([]);
@@ -354,6 +379,9 @@ export default function DetailsDocumentAdminPage(props) {
     const { subtotal, total } = computeTotals(lines, discountAmount);
     return { subtotal, total };
   }, [lines, discountAmount]);
+
+  const earliestTerminationMonths =
+    toSafeNumber(minimumCommitmentMonths, 0) + toSafeNumber(noticeMonths, 0);
 
   // ✅ Offert UI website : UNIQUEMENT checkbox (pas auto si prix=0)
   const websiteOfferedUi = useMemo(() => {
@@ -521,6 +549,16 @@ export default function DetailsDocumentAdminPage(props) {
             1,
           ),
         );
+        const contractualTermsSource =
+          d?.status === "DRAFT"
+            ? d?.earlyTermination
+            : (d?.contractSnapshot?.earlyTermination ?? d?.earlyTermination);
+        const earlyTermination = normalizeEarlyTerminationForForm(
+          contractualTermsSource,
+        );
+        setEarlyTerminationEnabled(earlyTermination.enabled);
+        setMinimumCommitmentMonths(earlyTermination.minimumCommitmentMonths);
+        setNoticeMonths(earlyTermination.noticeMonths);
 
         setModules(commercialForm.modules);
 
@@ -823,6 +861,47 @@ export default function DetailsDocumentAdminPage(props) {
   async function handleSave() {
     if (!doc?._id) return false;
 
+    const contractualEngagement = Number(engagementMonths);
+    if (
+      doc.type === "CONTRACT" &&
+      (!Number.isInteger(contractualEngagement) ||
+        contractualEngagement <= 0 ||
+        contractualEngagement > 120)
+    ) {
+      setErrorMsg(
+        "La durée d'engagement doit être un nombre entier compris entre 1 et 120 mois.",
+      );
+      return false;
+    }
+
+    if (doc.type === "CONTRACT" && earlyTerminationEnabled) {
+      const minimumCommitment = Number(minimumCommitmentMonths);
+      const notice = Number(noticeMonths);
+      if (
+        !Number.isInteger(minimumCommitment) ||
+        minimumCommitment <= 0 ||
+        !Number.isInteger(notice) ||
+        notice <= 0
+      ) {
+        setErrorMsg(
+          "La période minimale et le préavis doivent être des nombres entiers positifs.",
+        );
+        return false;
+      }
+      if (minimumCommitment >= contractualEngagement) {
+        setErrorMsg(
+          "La période minimale doit être inférieure à la durée totale d'engagement.",
+        );
+        return false;
+      }
+      if (minimumCommitment + notice >= contractualEngagement) {
+        setErrorMsg(
+          "La période minimale additionnée au préavis doit permettre une fin de contrat avant le terme de l'engagement.",
+        );
+        return false;
+      }
+    }
+
     const confirmsCommercialReview = Boolean(
       doc?.type === "CONTRACT" && doc?.commercialSnapshot?.reviewRequired,
     );
@@ -909,6 +988,11 @@ export default function DetailsDocumentAdminPage(props) {
         ),
       };
       payload.engagementMonths = clampMin(engagementMonths, 1);
+      payload.earlyTermination = {
+        enabled: Boolean(earlyTerminationEnabled),
+        minimumCommitmentMonths: clampMin(minimumCommitmentMonths, 1),
+        noticeMonths: clampMin(noticeMonths, 1),
+      };
 
       payload.modules = (modules || [])
         .filter((m) => trimText(m.name))
@@ -1406,6 +1490,15 @@ export default function DetailsDocumentAdminPage(props) {
                               ? "Lien de signature expiré · remplacez-le pour relancer le client"
                               : `En attente de signature${doc.signatureRequest?.expiresAt ? ` · lien valable jusqu’au ${new Date(doc.signatureRequest.expiresAt).toLocaleDateString("fr-FR")}` : ""}`
                             : "Brouillon modifiable"}
+                      </p>
+                      <p className="mt-2 text-xs text-darkBlue/70">
+                        Résiliation anticipée :{" "}
+                        <span className="font-semibold text-darkBlue">
+                          {earlyTerminationEnabled ? "Oui" : "Non"}
+                        </span>
+                        {earlyTerminationEnabled
+                          ? ` · Possible après ${minimumCommitmentMonths} mois · Préavis ${noticeMonths} mois`
+                          : ""}
                       </p>
                       {doc.commercialSnapshot?.reviewRequired ? (
                         <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
@@ -2213,6 +2306,8 @@ export default function DetailsDocumentAdminPage(props) {
                       <input
                         type="number"
                         min="1"
+                        max="120"
+                        step="1"
                         onWheel={preventWheelChange}
                         disabled={isLocked}
                         value={engagementMonths ?? ""}
@@ -2310,6 +2405,98 @@ export default function DetailsDocumentAdminPage(props) {
                     </div>
                   </div>
                 </div>
+
+                {doc?.type === "CONTRACT" ? (
+                  <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">
+                    <p className="text-sm font-semibold text-darkBlue">
+                      Conditions de résiliation
+                    </p>
+
+                    <label className="mt-3 inline-flex items-center gap-2 text-sm text-darkBlue/80">
+                      <input
+                        type="checkbox"
+                        checked={earlyTerminationEnabled}
+                        disabled={isLocked}
+                        onChange={(event) =>
+                          setEarlyTerminationEnabled(event.target.checked)
+                        }
+                      />
+                      Autoriser une résiliation anticipée
+                    </label>
+
+                    {earlyTerminationEnabled ? (
+                      <div className="mt-4 grid grid-cols-1 gap-3 midTablet:grid-cols-2">
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
+                          Résiliation possible après
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max={Math.max(
+                                1,
+                                Number(engagementMonths || 24) - 2,
+                              )}
+                              step="1"
+                              value={minimumCommitmentMonths ?? ""}
+                              disabled={isLocked}
+                              onWheel={preventWheelChange}
+                              onChange={(event) =>
+                                setMinimumCommitmentMonths(
+                                  toNumberOrEmpty(event.target.value),
+                                )
+                              }
+                              className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-normal text-darkBlue"
+                            />
+                            <span className="font-normal">mois</span>
+                          </span>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-darkBlue/60">
+                          Préavis
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max={Math.max(
+                                1,
+                                Number(engagementMonths || 24) -
+                                  Number(minimumCommitmentMonths || 0) -
+                                  1,
+                              )}
+                              step="1"
+                              value={noticeMonths ?? ""}
+                              disabled={isLocked}
+                              onWheel={preventWheelChange}
+                              onChange={(event) =>
+                                setNoticeMonths(
+                                  toNumberOrEmpty(event.target.value),
+                                )
+                              }
+                              className="w-full rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-normal text-darkBlue"
+                            />
+                            <span className="font-normal">mois</span>
+                          </span>
+                        </label>
+
+                        <p className="midTablet:col-span-2 rounded-lg bg-blue/5 px-3 py-2 text-xs text-darkBlue/70">
+                          Le client pourra demander la résiliation après{" "}
+                          {minimumCommitmentMonths || 0} mois révolus. Avec un
+                          préavis de {noticeMonths || 0} mois, la fin du contrat
+                          pourra intervenir au plus tôt après{" "}
+                          <span className="font-semibold text-darkBlue">
+                            {earliestTerminationMonths} mois
+                          </span>
+                          .
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-darkBlue/55">
+                        Le contrat conserve un engagement ferme de{" "}
+                        {engagementMonths || 24} mois.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
                 {doc ? (
                   <div className="mt-6 rounded-xl border border-darkBlue/10 bg-white p-3">

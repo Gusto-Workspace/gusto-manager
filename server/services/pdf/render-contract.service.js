@@ -2,6 +2,10 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const { renderAmendmentPdf } = require("./render-amendment.service");
+const {
+  buildContractDurationCopy,
+  formatMonthsWithNumber,
+} = require("../contract-terms.service");
 
 function fmtDate(d) {
   if (!d) return "-";
@@ -191,13 +195,13 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   }
 
   function h1Centered(text) {
-    ensureSpace(50);
+    ensureSpace(42);
     doc.x = MARGIN;
     doc
-      .fontSize(20)
+      .fontSize(18)
       .fillColor("#111")
       .text(text, MARGIN, doc.y, { width: CONTENT_W, align: "center" });
-    doc.moveDown(0.8);
+    doc.moveDown(0.55);
   }
 
   function sectionTitle(text) {
@@ -256,7 +260,18 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
       .lineTo(PAGE_RIGHT, doc.y)
       .strokeColor("#e6e6e6")
       .stroke();
-    doc.moveDown(0.8);
+    doc.moveDown(0.55);
+  }
+
+  function moduleRowDisplay(module) {
+    const quantity = Math.max(1, toNumber(module.quantity, 1));
+    const unitAmount = toNumber(module.priceMonthly, 0);
+    return {
+      label: `${module.name || "-"}${quantity > 1 ? ` × ${quantity}` : ""}`,
+      price: isOfferedModule(module)
+        ? "Offert"
+        : `${recurringPrice(module, unitAmount)}${quantity > 1 ? ` × ${quantity} = ${recurringPrice(module, unitAmount * quantity)}` : ""}`,
+    };
   }
 
   // ✅ Helper table unique (site ou prestations)
@@ -370,7 +385,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     });
 
   const rightMetaBottomY = HEADER_TOP_Y + 40;
-  doc.y = Math.max(leftAfterHeaderY, rightMetaBottomY) + 18;
+  doc.y = Math.max(leftAfterHeaderY, rightMetaBottomY) + 12;
 
   /* ---------------- Title ---------------- */
   h1Centered("Contrat de Service");
@@ -620,13 +635,30 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
   /* ---------------- Modules sélectionnés (conditionnel) ---------------- */
   if (hasModules) {
+    const modulesIntro =
+      "Les modules suivants ont été choisis par le Client :";
+    const firstModule = moduleRowDisplay(modules[0]);
+    doc.fontSize(10);
+    const firstModuleRowHeight =
+      Math.max(
+        doc.heightOfString(firstModule.label, { width: 340 }),
+        doc.heightOfString(firstModule.price, { width: 120 }),
+      ) + 6;
+    const modulesIntroHeight = doc.heightOfString(modulesIntro, {
+      width: CONTENT_W,
+      lineGap: 2,
+    });
+
+    // Conserve le titre, son introduction, l'en-tête du tableau et sa
+    // première ligne sur la même page. Si cet ensemble ne tient pas, il est
+    // déplacé en bloc sur la page suivante.
+    ensureSpace(52 + modulesIntroHeight + 22 + firstModuleRowHeight);
+
     sectionTitle(`${N_SUB_MODS}. Modules sélectionnés`);
-    paragraph("Les modules suivants ont été choisis par le Client :", {
+    paragraph(modulesIntro, {
       size: 10,
       after: 0.2,
     });
-
-    ensureSpace(140);
 
     const modTop = doc.y;
     const colM = MARGIN;
@@ -647,12 +679,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     let my = modTop + 22;
 
     for (const m of modules) {
-      const moduleQuantity = Math.max(1, toNumber(m.quantity, 1));
-      const moduleUnitAmount = toNumber(m.priceMonthly, 0);
-      const moduleLabel = `${m.name || "-"}${moduleQuantity > 1 ? ` × ${moduleQuantity}` : ""}`;
-      const price = isOfferedModule(m)
-        ? "Offert"
-        : `${recurringPrice(m, moduleUnitAmount)}${moduleQuantity > 1 ? ` × ${moduleQuantity} = ${recurringPrice(m, moduleUnitAmount * moduleQuantity)}` : ""}`;
+      const { label: moduleLabel, price } = moduleRowDisplay(m);
       doc.y = my;
       const rowHeight =
         Math.max(
@@ -705,7 +732,8 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     1,
     toNumber(documentData?.subscription?.quantity, 1),
   );
-  const engagementMonths = toNumber(documentData?.engagementMonths, 0) || "-";
+  const contractDurationCopy = buildContractDurationCopy(documentData);
+  const { engagementMonths } = contractDurationCopy;
   const compatibleRecurringTotal = recurringTotal(documentData);
   const recurringTotalLabel = hasTimeClockTerminalRental
     ? "Montant récurrent total (abonnement + modules + location de matériel)"
@@ -714,9 +742,7 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   bullet(
     `Prix de l’abonnement : ${recurringPrice(documentData?.subscription, subPrice)}${subscriptionQuantity > 1 ? ` × ${subscriptionQuantity}, soit ${recurringPrice(documentData?.subscription, subPrice * subscriptionQuantity)}` : ""}`,
   );
-  bullet(
-    `Durée d’engagement : ${engagementMonths} mois à compter du premier prélèvement effectif de l’abonnement`,
-  );
+  bullet(contractDurationCopy.financialDurationText);
   if (compatibleRecurringTotal) {
     bullet(
       `${recurringTotalLabel} : ${recurringPrice(compatibleRecurringTotal, compatibleRecurringTotal.amount)}`,
@@ -769,10 +795,39 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
   );
 
   sectionTitle(`${N_TERM}. Durée et Résiliation`);
-  paragraph(
-    `Le présent contrat est conclu pour une durée ferme de ${engagementMonths} mois à compter du premier prélèvement effectif de l’abonnement. Aucune résiliation anticipée n’est possible durant cette période. À l’issue de l’engagement, le Client peut résilier à tout moment par écrit. La résiliation prendra effet à la fin du mois en cours. En cas de résiliation anticipée non autorisée, le Prestataire se réserve le droit de facturer les mensualités restantes.`,
-    { size: 10, after: 0.8 },
-  );
+  contractDurationCopy.durationParagraphs.forEach((value, index, values) => {
+    paragraph(value, {
+      size: 10,
+      after:
+        index === values.length - 1
+          ? contractDurationCopy.legacy
+            ? 0.8
+            : 0.45
+          : 0.25,
+    });
+  });
+
+  if (!contractDurationCopy.legacy) {
+    paragraph("Cessation définitive d’activité ou liquidation judiciaire", {
+      size: 10,
+      after: 0.2,
+    });
+    paragraph(
+      "En cas de cessation définitive de l’activité du restaurant ou de liquidation judiciaire du Client, le Client pourra demander la résiliation anticipée du présent contrat sans avoir à attendre l’expiration de la période d’engagement. La demande devra être adressée par écrit au Prestataire et accompagnée d’un justificatif permettant d’établir la réalité de la cessation d’activité ou de la liquidation. Les sommes échues et dues jusqu’à la date effective de résiliation resteront exigibles.",
+      { size: 10, after: 0.35 },
+    );
+
+    paragraph("Vente ou cession du restaurant", { size: 10, after: 0.2 });
+    paragraph(
+      "En cas de vente ou de cession du restaurant, le Client en informera le Prestataire par écrit. Le repreneur pourra poursuivre l’utilisation de Gusto Manager dans le cadre d’un transfert ou d’un nouveau contrat convenu avec le Prestataire. Si le repreneur ne souhaite pas poursuivre le service, le Client pourra demander la clôture du contrat sur présentation d’un justificatif de la vente ou de la cession. Les sommes échues et dues jusqu’à la date effective de clôture resteront exigibles.",
+      { size: 10, after: 0.35 },
+    );
+
+    paragraph(
+      `À l’issue de la durée contractuelle de ${formatMonthsWithNumber(engagementMonths)}, le Client peut résilier son abonnement à tout moment par écrit. La résiliation prendra effet à la fin du mois en cours. En cas de résiliation anticipée non autorisée, le Prestataire se réserve le droit de facturer les mensualités restant dues.`,
+      { size: 10, after: 0.8 },
+    );
+  }
 
   sectionTitle(`${N_LIAB}. Responsabilités`);
   paragraph(
