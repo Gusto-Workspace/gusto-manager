@@ -113,7 +113,8 @@ function isCompatibleOfferedPrice(price, criteria) {
     Number(price?.unit_amount) === 0 &&
     normalizeString(price?.currency).toLowerCase() === criteria.currency &&
     normalizeString(price?.recurring?.interval) === criteria.interval &&
-    toInteger(price?.recurring?.interval_count, 1) === criteria.intervalCount
+    toInteger(price?.recurring?.interval_count, 1) === criteria.intervalCount &&
+    normalizeString(price?.recurring?.usage_type || "licensed") !== "metered"
   );
 }
 

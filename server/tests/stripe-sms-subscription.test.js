@@ -10,8 +10,9 @@ const {
   buildSmsDeactivationPhaseItems,
   buildSubscriptionItemUpdatePayload,
   buildSubscriptionSummaryFromItems,
+  catalogCodeAllowsOffered,
+  getOrCreateOfferedPrice,
   isRecurringMonthlyPrice,
-  isReusableOfferedPrice,
   isSmsMeteredComponent,
 } = require("../services/stripe-subscription-catalog.service");
 
@@ -196,18 +197,44 @@ test("le résumé expose une seule ligne commerciale Rappels SMS à 9,90 €", (
   ]);
 });
 
-test("le Price metered SMS n'est ni sélectionnable ni réutilisable comme Offert", () => {
+test("le Price metered SMS n'est ni sélectionnable ni réutilisable comme Offert", async () => {
   const price = {
     id: "price_sms_metered",
-    unit_amount: null,
+    active: true,
+    type: "recurring",
+    product: "prod_sms",
+    unit_amount: 0,
     currency: "eur",
     recurring: { interval: "month", interval_count: 1, usage_type: "metered" },
   };
-  const addon = { currency: "EUR", interval: "month", intervalCount: 1 };
+  const addon = {
+    code: "sms_reminders",
+    offered: true,
+    price,
+    productId: "prod_sms",
+    currency: "EUR",
+    interval: "month",
+    intervalCount: 1,
+  };
+  let created = 0;
+  const stripeClient = {
+    prices: {
+      async list() { return { data: [price], has_more: false }; },
+      async create() {
+        created += 1;
+        return { id: "price_sms_offered_created" };
+      },
+    },
+  };
 
   assert.equal(isSmsMeteredComponent(price, { code: "sms_reminders" }), true);
   assert.equal(isRecurringMonthlyPrice(price), false);
-  assert.equal(isReusableOfferedPrice(price, addon), false);
+  assert.equal(catalogCodeAllowsOffered("sms_reminders"), false);
+  assert.equal(
+    await getOrCreateOfferedPrice(addon, stripeClient),
+    "price_sms_offered_created",
+  );
+  assert.equal(created, 1);
 });
 
 test("l'activation SMS ajoute exactement le fixe et le metered", () => {
@@ -280,20 +307,41 @@ test("une réactivation conserve un seul fixe et un seul metered", () => {
   );
 });
 
-test("un vrai Price gratuit licensed reste reconnu comme Offert", () => {
+test("un vrai Price gratuit licensed reste reconnu comme Offert", async () => {
   const freePrice = {
+    id: "price_offered_reusable",
+    active: true,
+    type: "recurring",
+    product: "prod_classic",
     unit_amount: 0,
     currency: "eur",
     recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
   };
+  let created = 0;
+  const stripeClient = {
+    prices: {
+      async list() { return { data: [freePrice], has_more: false }; },
+      async create() {
+        created += 1;
+        return { id: "price_should_not_be_created" };
+      },
+    },
+  };
   assert.equal(
-    isReusableOfferedPrice(freePrice, {
-      currency: "EUR",
-      interval: "month",
-      intervalCount: 1,
-    }),
-    true,
+    await getOrCreateOfferedPrice(
+      {
+        code: "classic",
+        offered: true,
+        productId: "prod_classic",
+        currency: "EUR",
+        interval: "month",
+        intervalCount: 1,
+      },
+      stripeClient,
+    ),
+    "price_offered_reusable",
   );
+  assert.equal(created, 0);
   const summary = buildSubscriptionSummaryFromItems([plan, offeredAddon]);
   assert.equal(summary.addons[0].priceId, "price_offered");
   assert.equal(summary.addons[0].amount, 0);
