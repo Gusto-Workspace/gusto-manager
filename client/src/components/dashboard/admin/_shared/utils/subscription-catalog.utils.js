@@ -4,6 +4,10 @@ function normalizeString(value) {
 
 export const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
 
+export function allowsCatalogProductOffered(product) {
+  return product?.allowOffered !== false;
+}
+
 export function supportsMultipleQuantity(product) {
   return (
     normalizeString(product?.catalogCode || product?.code) ===
@@ -92,10 +96,13 @@ export function computeCatalogTotal({
           ? 1
           : Math.max(1, Number(selectedAddonQuantities?.[priceId] || 1));
 
-      return sum +
-        (offeredAddonPriceIds.includes(priceId)
+      return (
+        sum +
+        (allowsCatalogProductOffered(product) &&
+        offeredAddonPriceIds.includes(priceId)
           ? 0
-          : Number(product?.default_price?.unit_amount || 0) * quantity);
+          : Number(product?.default_price?.unit_amount || 0) * quantity)
+      );
     },
     0,
   );

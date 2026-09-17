@@ -16,8 +16,10 @@
     "test:take-away-security": "TZ=Europe/Paris node --test tests/take-away-security.test.js",
     "test:take-away-reliability": "TZ=Europe/Paris node --test tests/take-away-reliability.test.js",
     "test:take-away": "TZ=Europe/Paris node --test tests/take-away-security.test.js tests/take-away-reliability.test.js tests/take-away-webapp.test.js",
+    "test:sms-reminders": "TZ=UTC node --test tests/sms-reminders.test.js",
     "import:customers:xlsx": "node utils/script/importCustomersFromXlsx.script.js",
-    "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js"
+    "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js",
+    "sms:seed-fr-policy": "node utils/script/seedSmsFrancePolicy.script.js"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.11",
@@ -33,6 +35,8 @@
     "express-session": "^1.18.0",
     "fflate": "^0.8.3",
     "jsonwebtoken": "^9.0.2",
+    "libphonenumber-js": "^1.13.13",
+    "luxon": "^3.7.2",
     "mongodb": "^6.16.0",
     "mongoose": "^8.3.2",
     "multer": "^1.4.5-lts.1",

@@ -5,12 +5,13 @@ const {
   normalizeDocumentCommercialForForm,
 } = require("../src/components/dashboard/admin/_shared/utils/legacy-document-commercial.utils");
 
-function catalogProduct({ id, kind, code, name, amount }) {
+function catalogProduct({ id, kind, code, name, amount, allowOffered = true }) {
   return {
     id,
     name,
     catalogKind: kind,
     catalogCode: code,
+    allowOffered,
     metadata: { kind, code },
     default_price: {
       id: `price_${code}`,
@@ -56,6 +57,14 @@ const catalog = [
     code: "gift_cards",
     name: "Module Cartes cadeaux",
     amount: 45,
+  }),
+  catalogProduct({
+    id: "prod_sms",
+    kind: "addon",
+    code: "sms_reminders",
+    name: "Rappels SMS",
+    amount: 9.9,
+    allowOffered: false,
   }),
 ];
 
@@ -219,4 +228,40 @@ test("laisse prioritaire et intact le nouveau format structuré", () => {
   assert.deepEqual(result.subscription, modernDocument.subscription);
   assert.deepEqual(result.modules, modernDocument.modules);
   assert.deepEqual(result.lines, modernDocument.lines);
+});
+
+test("normalise un brouillon SMS offert vers le tarif catalogue payant", () => {
+  const draft = {
+    commercialSnapshot: { source: "MANUAL", items: [] },
+    subscription: { name: "Standard", code: "standard", priceMonthly: 95 },
+    modules: [
+      {
+        name: "Rappels SMS",
+        code: "sms_reminders",
+        priceId: "price_sms_reminders",
+        productId: "prod_sms",
+        offered: true,
+        priceMonthly: 0,
+        sourceKind: "ADDON",
+      },
+      {
+        name: "Module Réservations",
+        code: "reservations",
+        priceId: "price_reservations",
+        productId: "prod_reservations",
+        offered: true,
+        priceMonthly: 0,
+        sourceKind: "ADDON",
+      },
+    ],
+    lines: [],
+  };
+
+  const result = normalizeDocumentCommercialForForm(draft, catalog);
+
+  assert.equal(result.modules[0].code, "sms_reminders");
+  assert.equal(result.modules[0].offered, false);
+  assert.equal(result.modules[0].priceMonthly, 9.9);
+  assert.equal(result.modules[0].allowOffered, false);
+  assert.equal(result.modules[1].offered, true);
 });

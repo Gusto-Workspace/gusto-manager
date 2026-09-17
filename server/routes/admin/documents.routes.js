@@ -20,6 +20,9 @@ const {
   loadRestaurantCommercialSnapshot,
 } = require("../../services/contract-commercial.service");
 const {
+  catalogCodeAllowsOffered,
+} = require("../../services/stripe-subscription-catalog.service");
+const {
   buildContractContentSnapshot,
   buildSignatureProofSnapshot,
   buildSignatureUrl,
@@ -803,9 +806,20 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
 
     if (body.modules) {
+      const invalidNonOfferableModule = (body.modules || []).find(
+        (module) =>
+          !catalogCodeAllowsOffered(module?.code) &&
+          Number(module?.priceMonthly || 0) <= 0,
+      );
+      if (invalidNonOfferableModule) {
+        return res.status(400).json({
+          message: `${invalidNonOfferableModule.name || "Ce module"} ne peut pas être offert.`,
+        });
+      }
       doc.modules = (body.modules || []).map((m) => ({
         name: m?.name || "",
-        offered: Boolean(m?.offered),
+        offered:
+          catalogCodeAllowsOffered(m?.code) && Boolean(m?.offered),
         priceMonthly: Number(m?.priceMonthly || 0),
         quantity: Math.max(1, Number(m?.quantity || 1)),
         code: String(m?.code || ""),

@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { findRestaurantSubscription } = require("./stripe-billing.service");
 const {
   buildSubscriptionSummary,
+  catalogCodeAllowsOffered,
 } = require("./stripe-subscription-catalog.service");
 
 const TABLET_RENTAL_CODE = "tab_rental";
@@ -87,6 +88,18 @@ function createCommercialSnapshot({
   reviewWarnings = [],
 }) {
   const normalizedItems = items.map(normalizeCommercialItem);
+  const invalidNonOfferableItem = normalizedItems.find(
+    (item) =>
+      !catalogCodeAllowsOffered(item.code) &&
+      finiteNumber(item.unitAmount) <= 0,
+  );
+  if (invalidNonOfferableItem) {
+    const error = new Error(
+      `${invalidNonOfferableItem.label || invalidNonOfferableItem.code} ne peut pas être offert.`,
+    );
+    error.statusCode = 400;
+    throw error;
+  }
 
   return {
     source,
@@ -199,7 +212,8 @@ function buildManualCommercialSnapshot(documentData = {}) {
     (module) => {
       if (!normalizeString(module?.name)) return;
       const offered =
-        Boolean(module.offered) || finiteNumber(module.priceMonthly) <= 0;
+        catalogCodeAllowsOffered(module.code) &&
+        (Boolean(module.offered) || finiteNumber(module.priceMonthly) <= 0);
       items.push({
         kind: module.sourceKind === "OTHER" ? "OTHER" : "ADDON",
         code: module.code,
@@ -263,7 +277,9 @@ function commercialSnapshotToDocumentFields(snapshot = {}) {
     },
     modules: modules.map((item) => ({
       name: item.label,
-      offered: finiteNumber(item.unitAmount) <= 0,
+      offered:
+        catalogCodeAllowsOffered(item.code) &&
+        finiteNumber(item.unitAmount) <= 0,
       priceMonthly: finiteNumber(item.unitAmount),
       quantity: positiveInteger(item.quantity, 1),
       code: item.code,
