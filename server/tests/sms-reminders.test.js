@@ -1,6 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { analyzeSingleSms, renderSmsTemplate, validateSmsTemplate } = require("../services/sms/sms-message.service");
+const {
+  DEFAULT_SMS_TEMPLATE,
+  LEGACY_DEFAULT_SMS_TEMPLATE,
+  analyzeSingleSms,
+  normalizeDefaultSmsTemplate,
+  renderSmsTemplate,
+  validateSmsTemplate,
+} = require("../services/sms/sms-message.service");
 const { computeSmsSchedule } = require("../services/sms/sms-schedule.service");
 const {
   buildStripeMeterEventParams,
@@ -39,6 +46,44 @@ test("substitue toutes les variables autorisées", () => {
 test("refuse les variables inconnues et les modèles structurellement trop longs", () => {
   assert.throws(() => validateSmsTemplate("Bonjour {unknown}"), /non autorisées/);
   assert.throws(() => validateSmsTemplate("a".repeat(161)), /dépasse un segment/);
+});
+
+test("utilise le nouveau template SMS convivial dans un seul segment", () => {
+  const message = renderSmsTemplate(DEFAULT_SMS_TEMPLATE, {
+    firstName: "Alexandre",
+    date: "31/12/2026",
+    time: "20:30",
+    guests: 12,
+    restaurantName: "Le Restaurant",
+  });
+  const analysis = analyzeSingleSms(message);
+
+  assert.equal(
+    DEFAULT_SMS_TEMPLATE,
+    "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers. A bientot !",
+  );
+  assert.equal(analysis.encoding, "gsm7");
+  assert.equal(analysis.segmentCount, 1);
+  assert.equal(analysis.valid, true);
+  assert.equal(validateSmsTemplate(DEFAULT_SMS_TEMPLATE), DEFAULT_SMS_TEMPLATE);
+
+  const compactFallback = analyzeSingleSms(
+    "Le Restaurant: Rappel reservation le 31/12/2026 a 20:30, 12 pers.",
+  );
+  assert.equal(compactFallback.segmentCount, 1);
+  assert.equal(compactFallback.valid, true);
+  assert.ok(compactFallback.units < analysis.units);
+});
+
+test("remplace uniquement l'ancien template par défaut", () => {
+  const customTemplate =
+    "Bonjour {firstName}, votre réservation chez {restaurantName} est confirmée.";
+
+  assert.equal(
+    normalizeDefaultSmsTemplate(LEGACY_DEFAULT_SMS_TEMPLATE),
+    DEFAULT_SMS_TEMPLATE,
+  );
+  assert.equal(normalizeDefaultSmsTemplate(customTemplate), customTemplate);
 });
 
 test("calcule 1440 minutes réelles à travers le passage heure d'hiver", () => {

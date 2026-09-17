@@ -20,6 +20,7 @@ import {
 
 import { GlobalContext } from "@/contexts/global.context";
 import {
+  allowsCatalogProductOffered,
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
   supportsMultipleQuantity,
@@ -729,6 +730,7 @@ export default function DetailsDocumentAdminPage(props) {
       currency: (price?.currency || "EUR").toUpperCase(),
       interval: price?.recurring?.interval || "month",
       intervalCount: Math.max(1, Number(price?.recurring?.interval_count || 1)),
+      allowOffered: allowsCatalogProductOffered(product),
     };
   }
 
@@ -765,6 +767,7 @@ export default function DetailsDocumentAdminPage(props) {
   }
 
   function toggleCatalogAddonOffered(product) {
+    if (!allowsCatalogProductOffered(product)) return;
     const fields = catalogFields(product);
     setModules((previous) =>
       previous.map((module) => {
@@ -913,10 +916,9 @@ export default function DetailsDocumentAdminPage(props) {
       payload.modules = (modules || [])
         .filter((m) => trimText(m.name))
         .map((m) => {
-          const offeredEffective = normalizeOfferedForSave(
-            m.offered,
-            m.priceMonthly,
-          );
+          const offeredEffective =
+            m.allowOffered !== false &&
+            normalizeOfferedForSave(m.offered, m.priceMonthly);
           return {
             name: trimText(m.name),
             offered: offeredEffective,
@@ -2241,6 +2243,8 @@ export default function DetailsDocumentAdminPage(props) {
                             const offered = Boolean(selectedModule?.offered);
                             const canChangeQuantity =
                               supportsMultipleQuantity(addon);
+                            const canBeOffered =
+                              allowsCatalogProductOffered(addon);
                             return (
                               <div
                                 key={addon.id}
@@ -2284,24 +2288,26 @@ export default function DetailsDocumentAdminPage(props) {
                                     />
                                   </label>
                                 ) : null}
-                                <label
-                                  aria-hidden={!checked}
-                                  className={`inline-flex items-center gap-1.5 rounded-lg border border-darkBlue/10 bg-white px-2 py-1.5 font-semibold text-darkBlue/70 ${
-                                    checked
-                                      ? ""
-                                      : "invisible pointer-events-none"
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked && offered}
-                                    disabled={isLocked || !checked}
-                                    onChange={() =>
-                                      toggleCatalogAddonOffered(addon)
-                                    }
-                                  />
-                                  Offert
-                                </label>
+                                {canBeOffered ? (
+                                  <label
+                                    aria-hidden={!checked}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border border-darkBlue/10 bg-white px-2 py-1.5 font-semibold text-darkBlue/70 ${
+                                      checked
+                                        ? ""
+                                        : "invisible pointer-events-none"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked && offered}
+                                      disabled={isLocked || !checked}
+                                      onChange={() =>
+                                        toggleCatalogAddonOffered(addon)
+                                      }
+                                    />
+                                    Offert
+                                  </label>
+                                ) : null}
                               </div>
                             );
                           })}

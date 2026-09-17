@@ -13,6 +13,7 @@ import { Elements } from "@stripe/react-stripe-js";
 // COMPONENTS
 import SepaMandateForm from "./sepa-mandate-form.admin.component";
 import {
+  allowsCatalogProductOffered,
   computeCatalogTotal,
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
@@ -534,6 +535,7 @@ export default function AddSubscriptionsAdminComponent() {
                   const checked = selectedAddonPriceIds.includes(priceId);
                   const canChangeQuantity = supportsMultipleQuantity(addon);
                   const offered = offeredAddonPriceIds.includes(priceId);
+                  const canBeOffered = allowsCatalogProductOffered(addon);
 
                   return (
                     <div
@@ -561,7 +563,7 @@ export default function AddSubscriptionsAdminComponent() {
                           {offered ? "Offert" : formatCatalogProductLabel(addon)}
                         </span>
                       </label>
-                      {checked && (
+                      {checked && canBeOffered && (
                         <label className="flex items-center gap-1 text-xs font-semibold text-darkBlue/65">
                           <input
                             type="checkbox"

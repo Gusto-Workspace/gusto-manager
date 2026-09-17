@@ -9,6 +9,15 @@ const ALLOWED_VARIABLES = new Set([
   "guests",
   "restaurantName",
 ]);
+const LEGACY_DEFAULT_SMS_TEMPLATE =
+  "Bonjour {firstName}, rappel de votre reservation chez {restaurantName} le {date} a {time} pour {guests} pers.";
+const DEFAULT_SMS_TEMPLATE =
+  "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers. A bientot !";
+
+function normalizeDefaultSmsTemplate(template) {
+  const value = String(template || "");
+  return value === LEGACY_DEFAULT_SMS_TEMPLATE ? DEFAULT_SMS_TEMPLATE : value;
+}
 
 function normalizeSmsTypography(value) {
   return String(value || "")
@@ -54,7 +63,9 @@ function analyzeSingleSms(value) {
 }
 
 function validateSmsTemplate(template) {
-  const normalized = normalizeSmsTypography(template).trim();
+  const normalized = normalizeSmsTypography(
+    normalizeDefaultSmsTemplate(template),
+  ).trim();
   if (!normalized) throw new Error("Le modèle SMS est requis.");
 
   const unknown = Array.from(normalized.matchAll(/\{([^{}]+)\}/g))
@@ -93,7 +104,10 @@ function renderSmsTemplate(template, values = {}) {
 
 module.exports = {
   ALLOWED_VARIABLES,
+  DEFAULT_SMS_TEMPLATE,
+  LEGACY_DEFAULT_SMS_TEMPLATE,
   analyzeSingleSms,
+  normalizeDefaultSmsTemplate,
   normalizeSmsTypography,
   renderSmsTemplate,
   validateSmsTemplate,

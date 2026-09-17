@@ -2,6 +2,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 const SUBSCRIPTION_CATALOG_NAME = "restaurant_subscription";
 const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
+const SMS_ADDON_CODE = "sms_reminders";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -29,8 +30,14 @@ function serializePrice(price) {
       ? {
           interval: normalizeString(price.recurring.interval),
           interval_count: toInteger(price.recurring.interval_count, 1),
+          usage_type: normalizeString(price.recurring.usage_type),
+          meter:
+            typeof price.recurring.meter === "string"
+              ? price.recurring.meter
+              : normalizeString(price.recurring.meter?.id),
         }
       : null,
+    billing_scheme: normalizeString(price.billing_scheme),
     active: price.active !== false,
   };
 }
@@ -50,7 +57,57 @@ function isRecurringMonthlyPrice(price) {
     normalizeString(price?.type || "recurring") === "recurring" &&
     normalizeString(price?.recurring?.interval) === "month" &&
     toInteger(price?.recurring?.interval_count, 1) === 1 &&
+    normalizeString(price?.recurring?.usage_type || "licensed") !== "metered" &&
     typeof price?.unit_amount === "number"
+  );
+}
+
+function selectionIncludesSms(selection) {
+  return (selection?.addons || []).some(
+    (addon) => normalizeString(addon?.code) === SMS_ADDON_CODE,
+  );
+}
+
+function catalogCodeAllowsOffered(code) {
+  return normalizeString(code) !== SMS_ADDON_CODE;
+}
+
+function getSmsMeteredPriceId(selection) {
+  if (!selectionIncludesSms(selection)) return "";
+  const priceId = normalizeString(process.env.STRIPE_SMS_METERED_PRICE_ID);
+  if (!priceId) {
+    const error = new Error(
+      "STRIPE_SMS_METERED_PRICE_ID est requis pour ajouter le module Rappels SMS.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  return priceId;
+}
+
+function isSmsMeteredComponent(price, metadata = {}) {
+  const configuredPriceId = normalizeString(
+    process.env.STRIPE_SMS_METERED_PRICE_ID,
+  );
+  return (
+    (configuredPriceId && normalizeString(price?.id) === configuredPriceId) ||
+    (normalizeString(metadata?.code) === SMS_ADDON_CODE &&
+      normalizeString(price?.recurring?.usage_type) === "metered")
+  );
+}
+
+function isReusableOfferedPrice(price, addon) {
+  return (
+    typeof price?.unit_amount === "number" &&
+    price.unit_amount === 0 &&
+    normalizeString(price?.recurring?.usage_type || "licensed") !==
+      "metered" &&
+    normalizeString(price?.currency).toUpperCase() ===
+      normalizeString(addon?.currency).toUpperCase() &&
+    normalizeString(price?.recurring?.interval) ===
+      normalizeString(addon?.interval) &&
+    toInteger(price?.recurring?.interval_count, 1) ===
+      toInteger(addon?.intervalCount, 1)
   );
 }
 
@@ -85,6 +142,7 @@ function serializeCatalogProduct(product = {}) {
     catalogKind: metadata.kind,
     catalogCode: metadata.code,
     catalogOrder: metadata.order,
+    allowOffered: catalogCodeAllowsOffered(metadata.code),
     default_price: defaultPrice,
   };
 }
@@ -92,6 +150,7 @@ function serializeCatalogProduct(product = {}) {
 async function listSubscriptionCatalogProducts({ limit = 100 } = {}) {
   const products = [];
   let startingAfter = null;
+  let smsFixedPricePromise = null;
 
   while (products.length < limit) {
     const response = await stripe.products.list({
@@ -101,13 +160,30 @@ async function listSubscriptionCatalogProducts({ limit = 100 } = {}) {
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
 
-    response.data.forEach((product) => {
+    for (const product of response.data) {
       const metadata = getCatalogMetadata(product);
-      if (metadata.catalog !== SUBSCRIPTION_CATALOG_NAME) return;
-      if (!["plan", "addon"].includes(metadata.kind)) return;
-      if (!isRecurringMonthlyPrice(product?.default_price)) return;
-      products.push(product);
-    });
+      if (metadata.catalog !== SUBSCRIPTION_CATALOG_NAME) continue;
+      if (!["plan", "addon"].includes(metadata.kind)) continue;
+
+      let commercialPrice = product?.default_price;
+      if (metadata.code === SMS_ADDON_CODE) {
+        const fixedPriceId = normalizeString(
+          process.env.STRIPE_SMS_FIXED_PRICE_ID,
+        );
+        if (!fixedPriceId) continue;
+        smsFixedPricePromise ||= stripe.prices.retrieve(fixedPriceId);
+        const fixedPrice = await smsFixedPricePromise;
+        const fixedProductId =
+          typeof fixedPrice?.product === "string"
+            ? fixedPrice.product
+            : fixedPrice?.product?.id;
+        if (fixedProductId !== product.id) continue;
+        commercialPrice = fixedPrice;
+      }
+
+      if (!isRecurringMonthlyPrice(commercialPrice)) continue;
+      products.push({ ...product, default_price: commercialPrice });
+    }
 
     if (!response.has_more || response.data.length === 0) break;
     startingAfter = response.data[response.data.length - 1].id;
@@ -239,11 +315,14 @@ async function resolveCatalogSelection({
   }
 
   const addons = await Promise.all(
-    normalizedAddonItems.map(async ({ priceId, quantity, offered }) => ({
-      ...(await retrieveCatalogPriceEntry(priceId)),
-      quantity,
-      offered,
-    })),
+    normalizedAddonItems.map(async ({ priceId, quantity, offered }) => {
+      const entry = await retrieveCatalogPriceEntry(priceId);
+      return {
+        ...entry,
+        quantity,
+        offered: catalogCodeAllowsOffered(entry.code) ? offered : false,
+      };
+    }),
   );
 
   addons.forEach((addon) => {
@@ -355,6 +434,7 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
       const amount =
         typeof price.unit_amount === "number" ? price.unit_amount / 100 : 0;
       const recurring = price?.recurring || null;
+      const technical = isSmsMeteredComponent(price, metadata);
 
       return {
         index,
@@ -371,6 +451,13 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
         currency: price.currency ? price.currency.toUpperCase() : "",
         interval: normalizeString(recurring?.interval),
         intervalCount: toInteger(recurring?.interval_count, 1),
+        usageType: normalizeString(recurring?.usage_type),
+        meterId:
+          typeof recurring?.meter === "string"
+            ? recurring.meter
+            : normalizeString(recurring?.meter?.id),
+        billingScheme: normalizeString(price?.billing_scheme),
+        technical,
         kind: metadata.kind,
         code: metadata.code,
         order: metadata.order,
@@ -393,9 +480,9 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
   });
 }
 
-async function buildSubscriptionSummary(subscriptionOrId) {
-  const subscription = await ensureExpandedSubscription(subscriptionOrId);
-  const items = await buildSubscriptionItemSummaries(subscription);
+function buildSubscriptionSummaryFromItems(allItems = [], subscription = null) {
+  const technicalItems = allItems.filter((item) => item?.technical);
+  const items = allItems.filter((item) => !item?.technical);
   const plan = items.find((item) => item.kind === "plan") || items[0] || null;
   const addons = items.filter(
     (item) =>
@@ -407,18 +494,192 @@ async function buildSubscriptionSummary(subscriptionOrId) {
       (!plan || item.subscriptionItemId !== plan.subscriptionItemId) &&
       item.kind !== "addon",
   );
-  const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
-  const currency = items[0]?.currency || "";
+  const totalAmount = items.reduce(
+    (sum, item) => sum + Number(item.totalAmount || 0),
+    0,
+  );
+  const currency = items[0]?.currency || technicalItems[0]?.currency || "";
 
   return {
     subscription,
     items,
+    technicalItems,
     plan,
     addons,
     otherItems,
     totalAmount,
     currency,
   };
+}
+
+function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
+  const operations = [];
+  const currentPlan = currentSummary?.plan || null;
+  if (currentPlan?.subscriptionItemId) {
+    operations.push({
+      id: currentPlan.subscriptionItemId,
+      price: selection.plan.priceId,
+      quantity: Number(currentPlan.quantity || 1),
+    });
+  } else {
+    operations.push({ price: selection.plan.priceId });
+  }
+
+  (currentSummary?.otherItems || []).forEach((item) => {
+    if (!item?.subscriptionItemId || !item?.priceId) return;
+    operations.push({
+      id: item.subscriptionItemId,
+      price: item.priceId,
+      quantity: Number(item.quantity || 1),
+    });
+  });
+
+  const currentAddonsByPriceId = new Map();
+  (currentSummary?.addons || []).forEach((item) => {
+    const priceId = normalizeString(item?.priceId);
+    if (!priceId) return;
+    if (!currentAddonsByPriceId.has(priceId)) {
+      currentAddonsByPriceId.set(priceId, []);
+    }
+    currentAddonsByPriceId.get(priceId).push(item);
+  });
+
+  (selection?.addons || []).forEach((addon) => {
+    const matchingQueue =
+      currentAddonsByPriceId.get(normalizeString(addon?.priceId)) || [];
+    const existingAddon = matchingQueue.shift();
+    if (existingAddon?.subscriptionItemId) {
+      operations.push({
+        id: existingAddon.subscriptionItemId,
+        price: existingAddon.priceId,
+        quantity: Number(addon.quantity || 1),
+      });
+    } else {
+      operations.push({
+        price: addon.priceId,
+        quantity: Number(addon.quantity || 1),
+      });
+    }
+  });
+
+  Array.from(currentAddonsByPriceId.values())
+    .flat()
+    .forEach((item) => {
+      if (item?.subscriptionItemId) {
+        operations.push({ id: item.subscriptionItemId, deleted: true });
+      }
+    });
+
+  const smsMeteredPriceId = normalizeString(
+    process.env.STRIPE_SMS_METERED_PRICE_ID,
+  );
+  const currentSmsMeteredItems = [
+    ...(currentSummary?.technicalItems || []),
+    ...(currentSummary?.items || []).filter(
+      (item) => normalizeString(item?.priceId) === smsMeteredPriceId,
+    ),
+  ].filter(
+    (item, index, items) =>
+      normalizeString(item?.priceId) === smsMeteredPriceId &&
+      items.findIndex(
+        (candidate) =>
+          candidate?.subscriptionItemId === item?.subscriptionItemId,
+      ) === index,
+  );
+
+  if (selectionIncludesSms(selection)) {
+    const [keptMeteredItem, ...duplicateMeteredItems] =
+      currentSmsMeteredItems;
+    if (keptMeteredItem?.subscriptionItemId) {
+      operations.push({
+        id: keptMeteredItem.subscriptionItemId,
+        price: smsMeteredPriceId,
+      });
+    } else {
+      operations.push({ price: getSmsMeteredPriceId(selection) });
+    }
+    duplicateMeteredItems.forEach((item) => {
+      if (item?.subscriptionItemId) {
+        operations.push({ id: item.subscriptionItemId, deleted: true });
+      }
+    });
+  } else {
+    currentSmsMeteredItems.forEach((item) => {
+      if (item?.subscriptionItemId) {
+        operations.push({ id: item.subscriptionItemId, deleted: true });
+      }
+    });
+  }
+
+  return operations;
+}
+
+function buildSmsDeactivationPhaseItems(subscription) {
+  const smsPriceIds = new Set(
+    [
+      process.env.STRIPE_SMS_FIXED_PRICE_ID,
+      process.env.STRIPE_SMS_METERED_PRICE_ID,
+    ]
+      .map(normalizeString)
+      .filter(Boolean),
+  );
+  return (subscription?.items?.data || [])
+    .filter((item) => !smsPriceIds.has(normalizeString(item?.price?.id)))
+    .map((item) => ({
+      price: item.price.id,
+      ...(item?.price?.recurring?.usage_type === "metered"
+        ? {}
+        : { quantity: Number(item.quantity || 1) }),
+    }));
+}
+
+function buildScheduledRemovalState({ schedule, summary } = {}) {
+  if (!schedule || !["active", "not_started"].includes(schedule.status)) {
+    return [];
+  }
+  const transitionAt = Number(schedule?.current_phase?.end_date || 0);
+  if (!transitionAt) return [];
+  const futurePhase = (schedule.phases || []).find(
+    (phase) => Number(phase?.start_date || 0) >= transitionAt,
+  );
+  if (!futurePhase) return [];
+
+  const futurePriceIds = new Set(
+    (futurePhase.items || [])
+      .map((item) =>
+        normalizeString(
+          typeof item?.price === "string" ? item.price : item?.price?.id,
+        ),
+      )
+      .filter(Boolean),
+  );
+  const smsMeteredPriceId = normalizeString(
+    process.env.STRIPE_SMS_METERED_PRICE_ID,
+  );
+
+  return (summary?.addons || [])
+    .filter((addon) => {
+      const relatedPriceIds = [normalizeString(addon?.priceId)];
+      if (normalizeString(addon?.code) === SMS_ADDON_CODE) {
+        relatedPriceIds.push(smsMeteredPriceId);
+      }
+      return relatedPriceIds.filter(Boolean).some(
+        (priceId) => !futurePriceIds.has(priceId),
+      );
+    })
+    .map((addon) => ({
+      code: normalizeString(addon?.code),
+      priceId: normalizeString(addon?.priceId),
+      name: addon?.productName || "",
+      scheduledForRemoval: true,
+      scheduledRemovalAt: transitionAt,
+    }));
+}
+
+async function buildSubscriptionSummary(subscriptionOrId) {
+  const subscription = await ensureExpandedSubscription(subscriptionOrId);
+  const allItems = await buildSubscriptionItemSummaries(subscription);
+  return buildSubscriptionSummaryFromItems(allItems, subscription);
 }
 
 function buildCatalogSelectionMetadata({ plan, addons = [] } = {}) {
@@ -438,11 +699,21 @@ function buildCatalogSelectionMetadata({ plan, addons = [] } = {}) {
 }
 
 module.exports = {
+  SMS_ADDON_CODE,
   SUBSCRIPTION_CATALOG_NAME,
+  buildScheduledRemovalState,
   buildCatalogSelectionMetadata,
+  buildSmsDeactivationPhaseItems,
+  buildSubscriptionItemUpdatePayload,
   buildSubscriptionSummary,
+  buildSubscriptionSummaryFromItems,
+  catalogCodeAllowsOffered,
+  getSmsMeteredPriceId,
+  isReusableOfferedPrice,
+  isSmsMeteredComponent,
   isRecurringMonthlyPrice,
   listSubscriptionCatalogProducts,
   normalizeString,
   resolveCatalogSelection,
+  selectionIncludesSms,
 };

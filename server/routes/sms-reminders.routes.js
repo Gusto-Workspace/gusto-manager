@@ -4,7 +4,12 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const EmployeeModel = require("../models/employee.model");
 const SmsUsagePeriodModel = require("../models/sms-usage-period.model");
-const { validateSmsTemplate } = require("../services/sms/sms-message.service");
+const SmsDestinationPolicyModel = require("../models/sms-destination-policy.model");
+const {
+  DEFAULT_SMS_TEMPLATE,
+  normalizeDefaultSmsTemplate,
+  validateSmsTemplate,
+} = require("../services/sms/sms-message.service");
 const { syncAllFutureSmsJobs } = require("../services/sms/sms-reminder.service");
 
 async function canManageSms(user, restaurant) {
@@ -21,10 +26,22 @@ function serializeSettings(settings = {}) {
     enabled: Boolean(settings.enabled),
     delayMinutes: Number(settings.delayMinutes || 1440),
     deliveryMode: settings.deliveryMode || "sms_always",
-    template: settings.template || "",
+    template: normalizeDefaultSmsTemplate(
+      settings.template || DEFAULT_SMS_TEMPLATE,
+    ),
     internationalEnabled: Boolean(settings.internationalEnabled),
     billingPeriodSpendingLimit: settings.billingPeriodSpendingLimit ?? null,
     sender: { value: settings.sender?.value || "", status: settings.sender?.status || "pending" },
+  };
+}
+
+function serializeDestinationPolicy(policy = {}) {
+  return {
+    country: policy.country || "",
+    enabled: policy.enabled === true,
+    billingCredits: Number(policy.billingCredits || 1),
+    senderMode: policy.senderMode || "provider_default",
+    fallbackSender: policy.fallbackSender || "",
   };
 }
 
@@ -33,11 +50,15 @@ router.get("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     const restaurant = await RestaurantModel.findById(req.params.id);
     if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
     if (!(await canManageSms(req.user, restaurant))) return res.status(403).json({ message: "Forbidden" });
-    const usage = await SmsUsagePeriodModel.findOne({ restaurantId: restaurant._id, periodEnd: { $gt: new Date() } }).sort({ periodEnd: 1 }).lean();
+    const [usage, destinations] = await Promise.all([
+      SmsUsagePeriodModel.findOne({ restaurantId: restaurant._id, periodEnd: { $gt: new Date() } }).sort({ periodEnd: 1 }).lean(),
+      SmsDestinationPolicyModel.find({ enabled: true }).sort({ country: 1 }).lean(),
+    ]);
     return res.json({
       subscribed: Boolean(restaurant.options?.sms_reminders),
       settings: serializeSettings(restaurant.reservationsSettings?.smsReminder),
       usage: usage || { includedCredits: 100, reservedCredits: 0, consumedCredits: 0, includedCreditsConsumed: 0, overageCredits: 0, overageAmount: 0 },
+      destinations: destinations.map(serializeDestinationPolicy),
     });
   } catch (error) {
     return res.status(500).json({ message: error?.message || "Internal server error" });
@@ -54,7 +75,9 @@ router.put("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     const delayMinutes = Math.floor(Number(input.delayMinutes));
     if (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 43200) return res.status(400).json({ message: "Délai SMS invalide." });
     if (!["sms_always", "eco"].includes(input.deliveryMode)) return res.status(400).json({ message: "Mode d'envoi invalide." });
-    const template = validateSmsTemplate(input.template);
+    const template = validateSmsTemplate(
+      normalizeDefaultSmsTemplate(input.template),
+    );
     const rawLimit = input.billingPeriodSpendingLimit;
     const spendingLimit = rawLimit === null || rawLimit === "" || rawLimit === undefined ? null : Number(rawLimit);
     if (spendingLimit !== null && (!Number.isFinite(spendingLimit) || spendingLimit < 0 || spendingLimit > 10000)) return res.status(400).json({ message: "Plafond de dépense invalide." });

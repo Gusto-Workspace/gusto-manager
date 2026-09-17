@@ -26,6 +26,9 @@ const {
   selectRestaurantSubscriptionCandidate,
 } = require("../services/stripe-billing.service");
 const {
+  catalogCodeAllowsOffered,
+} = require("../services/stripe-subscription-catalog.service");
+const {
   renderContractPdf,
 } = require("../services/pdf/render-contract.service");
 const DocumentModel = require("../models/document.model");
@@ -196,6 +199,54 @@ test("le brouillon manuel conserve le tarif, les quantités et les conditions n�
   assert.equal(commercial.items[1].unitAmount, 0);
   assert.equal(commercial.items[1].quantity, 3);
   assert.equal(snapshot.comments, "Tarif garanti pendant la première année.");
+});
+
+test("Rappels SMS reste payant dans les contrats et avenants", () => {
+  assert.equal(catalogCodeAllowsOffered("sms_reminders"), false);
+  assert.equal(catalogCodeAllowsOffered("reservations"), true);
+  assert.equal(catalogCodeAllowsOffered("gift_cards"), true);
+
+  const snapshot = buildManualCommercialSnapshot({
+    subscription: { name: "Standard", priceMonthly: 95 },
+    modules: [
+      {
+        name: "Rappels SMS",
+        code: "sms_reminders",
+        offered: true,
+        priceMonthly: 9.9,
+        currency: "EUR",
+      },
+      {
+        name: "Réservations",
+        code: "reservations",
+        offered: true,
+        priceMonthly: 45,
+        currency: "EUR",
+      },
+    ],
+  });
+  const fields = commercialSnapshotToDocumentFields(snapshot);
+
+  assert.equal(snapshot.items[1].unitAmount, 9.9);
+  assert.equal(fields.modules[0].offered, false);
+  assert.equal(fields.modules[0].priceMonthly, 9.9);
+  assert.equal(snapshot.items[2].unitAmount, 0);
+  assert.equal(fields.modules[1].offered, true);
+  assert.throws(
+    () =>
+      createCommercialSnapshot({
+        source: "MANUAL",
+        items: [
+          {
+            kind: "ADDON",
+            code: "sms_reminders",
+            label: "Rappels SMS",
+            unitAmount: 0,
+          },
+        ],
+      }),
+    /ne peut pas être offert/,
+  );
 });
 
 test("un abonnement Stripe historique conserve tous ses postes à vérifier", () => {

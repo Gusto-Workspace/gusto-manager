@@ -23,10 +23,17 @@ const {
   retrieveStripeSubscriptionOrNull,
 } = require("../../services/stripe-billing.service");
 const {
+  SMS_ADDON_CODE,
   buildCatalogSelectionMetadata,
+  buildScheduledRemovalState,
+  buildSmsDeactivationPhaseItems,
+  buildSubscriptionItemUpdatePayload,
   buildSubscriptionSummary,
+  getSmsMeteredPriceId,
+  isReusableOfferedPrice,
   listSubscriptionCatalogProducts,
   resolveCatalogSelection,
+  selectionIncludesSms,
 } = require("../../services/stripe-subscription-catalog.service");
 const {
   buildStripeCommercialSnapshot,
@@ -86,27 +93,6 @@ router.get(
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-const SMS_ADDON_CODE = "sms_reminders";
-
-function selectionIncludesSms(selection) {
-  return (selection?.addons || []).some(
-    (addon) => normalizeString(addon?.code) === SMS_ADDON_CODE,
-  );
-}
-
-function getSmsMeteredPriceId(selection) {
-  if (!selectionIncludesSms(selection)) return "";
-  const priceId = normalizeString(process.env.STRIPE_SMS_METERED_PRICE_ID);
-  if (!priceId) {
-    const error = new Error(
-      "STRIPE_SMS_METERED_PRICE_ID est requis pour ajouter le module Rappels SMS.",
-    );
-    error.statusCode = 400;
-    throw error;
-  }
-  return priceId;
 }
 
 function toStripeId(value) {
@@ -243,16 +229,8 @@ async function scheduleSmsDeactivation({
   const preservedFuturePhase = preservedSchedulePhaseFields(
     currentSchedulePhase,
   );
-  const smsPriceIds = new Set(
-    [
-      process.env.STRIPE_SMS_FIXED_PRICE_ID,
-      process.env.STRIPE_SMS_METERED_PRICE_ID,
-    ]
-      .map(normalizeString)
-      .filter(Boolean),
-  );
   const currentItems = toSchedulePhaseItems(subscription);
-  const targetItems = toSchedulePhaseItems(subscription, smsPriceIds);
+  const targetItems = buildSmsDeactivationPhaseItems(subscription);
   const recurring = subscription?.items?.data?.find(
     (item) => item?.price?.id === targetSelection?.plan?.priceId,
   )?.price?.recurring;
@@ -682,95 +660,6 @@ function serializeSubscriptionSummary(summary = {}) {
   };
 }
 
-function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
-  const operations = [];
-
-  const currentPlan = currentSummary?.plan || null;
-  if (currentPlan?.subscriptionItemId) {
-    operations.push({
-      id: currentPlan.subscriptionItemId,
-      price: selection.plan.priceId,
-      quantity: Number(currentPlan.quantity || 1),
-    });
-  } else {
-    operations.push({ price: selection.plan.priceId });
-  }
-
-  const smsMeteredPriceId = normalizeString(
-    process.env.STRIPE_SMS_METERED_PRICE_ID,
-  );
-  (currentSummary?.otherItems || []).forEach((item) => {
-    if (!item?.subscriptionItemId || !item?.priceId) return;
-    if (smsMeteredPriceId && item.priceId === smsMeteredPriceId) return;
-    operations.push({
-      id: item.subscriptionItemId,
-      price: item.priceId,
-      quantity: Number(item.quantity || 1),
-    });
-  });
-
-  const currentAddonsByPriceId = new Map();
-  (currentSummary?.addons || []).forEach((item) => {
-    const priceId = normalizeString(item?.priceId);
-    if (!priceId) return;
-    if (smsMeteredPriceId && priceId === smsMeteredPriceId) return;
-
-    if (!currentAddonsByPriceId.has(priceId)) {
-      currentAddonsByPriceId.set(priceId, []);
-    }
-
-    currentAddonsByPriceId.get(priceId).push(item);
-  });
-
-  (selection?.addons || []).forEach((addon) => {
-    const matchingQueue =
-      currentAddonsByPriceId.get(normalizeString(addon?.priceId)) || [];
-    const existingAddon = matchingQueue.shift();
-
-    if (existingAddon?.subscriptionItemId) {
-      operations.push({
-        id: existingAddon.subscriptionItemId,
-        price: existingAddon.priceId,
-        quantity: Number(addon.quantity || 1),
-      });
-      return;
-    }
-
-    operations.push({
-      price: addon.priceId,
-      quantity: Number(addon.quantity || 1),
-    });
-  });
-
-  Array.from(currentAddonsByPriceId.values())
-    .flat()
-    .forEach((item) => {
-      if (!item?.subscriptionItemId) return;
-      operations.push({
-        id: item.subscriptionItemId,
-        deleted: true,
-      });
-    });
-
-  const currentSmsMeteredItem = (currentSummary?.items || []).find(
-    (item) => smsMeteredPriceId && item.priceId === smsMeteredPriceId,
-  );
-  if (selectionIncludesSms(selection)) {
-    if (currentSmsMeteredItem?.subscriptionItemId) {
-      operations.push({
-        id: currentSmsMeteredItem.subscriptionItemId,
-        price: smsMeteredPriceId,
-      });
-    } else {
-      operations.push({ price: getSmsMeteredPriceId(selection) });
-    }
-  } else if (currentSmsMeteredItem?.subscriptionItemId) {
-    operations.push({ id: currentSmsMeteredItem.subscriptionItemId, deleted: true });
-  }
-
-  return operations;
-}
-
 async function resolveOfferedAddonPrice(addon) {
   if (!addon?.offered) return addon?.priceId;
 
@@ -779,15 +668,8 @@ async function resolveOfferedAddonPrice(addon) {
     active: true,
     limit: 100,
   });
-  const matchingPrice = prices.data.find(
-    (price) =>
-      Number(price?.unit_amount) === 0 &&
-      normalizeString(price?.currency).toUpperCase() ===
-        normalizeString(addon.currency).toUpperCase() &&
-      normalizeString(price?.recurring?.interval) ===
-        normalizeString(addon.interval) &&
-      Number(price?.recurring?.interval_count || 1) ===
-        Number(addon.intervalCount || 1),
+  const matchingPrice = prices.data.find((price) =>
+    isReusableOfferedPrice(price, addon),
   );
   if (matchingPrice) return matchingPrice.id;
 
@@ -1021,6 +903,11 @@ async function buildSubscriptionEditPreview({ subscriptionId }) {
     await loadRestaurantBillingContext(restaurantId);
   const summary = await buildSubscriptionSummary(subscription);
   const nextChargeAt = await resolveDisplayedNextChargeAt(subscription);
+  const scheduleId = toStripeId(subscription.schedule);
+  const schedule = scheduleId
+    ? await stripe.subscriptionSchedules.retrieve(scheduleId)
+    : null;
+  const scheduledRemovals = buildScheduledRemovalState({ schedule, summary });
 
   return {
     restaurant,
@@ -1028,6 +915,7 @@ async function buildSubscriptionEditPreview({ subscriptionId }) {
     subscription,
     summary,
     nextChargeAt,
+    scheduledRemovals,
   };
 }
 
@@ -1129,6 +1017,13 @@ function serializeMigrationPreview(preview) {
 }
 
 function serializeEditPreview(preview) {
+  const summary = serializeSubscriptionSummary(preview.summary);
+  const scheduledRemovalByPriceId = new Map(
+    (preview.scheduledRemovals || []).map((removal) => [
+      removal.priceId,
+      removal,
+    ]),
+  );
   return {
     restaurant: {
       id: preview.restaurant?._id?.toString?.() || "",
@@ -1153,7 +1048,15 @@ function serializeEditPreview(preview) {
       nextChargeAt:
         Number(preview.nextChargeAt || 0) ||
         toTimestamp(preview.subscription?.current_period_end),
-      ...serializeSubscriptionSummary(preview.summary),
+      ...summary,
+      addons: summary.addons.map((addon) => ({
+        ...addon,
+        ...(scheduledRemovalByPriceId.get(addon.priceId) || {
+          scheduledForRemoval: false,
+          scheduledRemovalAt: 0,
+        }),
+      })),
+      scheduledRemovals: preview.scheduledRemovals || [],
     },
   };
 }

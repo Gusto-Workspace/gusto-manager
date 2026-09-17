@@ -8,22 +8,47 @@ const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
 const { syncAllFutureSmsJobs } = require("../../services/sms/sms-reminder.service");
 
+async function withRestaurantNames(items = []) {
+  const restaurantIds = Array.from(
+    new Set(items.map((item) => String(item.restaurantId || "")).filter(Boolean)),
+  );
+  const restaurants = restaurantIds.length
+    ? await RestaurantModel.find({ _id: { $in: restaurantIds } })
+        .select("name")
+        .lean()
+    : [];
+  const namesById = new Map(
+    restaurants.map((restaurant) => [
+      String(restaurant._id),
+      restaurant.name || "Restaurant supprimé",
+    ]),
+  );
+
+  return items.map((item) => ({
+    ...item,
+    restaurantName:
+      namesById.get(String(item.restaurantId || "")) || "Restaurant supprimé",
+  }));
+}
+
 router.get("/admin/sms/jobs", authenticateAdmin, async (req, res) => {
   const query = {};
   if (req.query.status) query.status = req.query.status;
   if (req.query.restaurantId) query.restaurantId = req.query.restaurantId;
   const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt acceptedAt deliveredAt failedAt createdAt").lean();
-  return res.json({ jobs });
+  return res.json({ jobs: await withRestaurantNames(jobs) });
 });
 
 router.get("/admin/sms/usage", authenticateAdmin, async (_req, res) => {
   const usage = await SmsUsagePeriodModel.find().sort({ periodEnd: -1 }).limit(200).lean();
-  return res.json({ usage });
+  return res.json({ usage: await withRestaurantNames(usage) });
 });
 
 router.get("/admin/sms/senders", authenticateAdmin, async (_req, res) => {
   const restaurants = await RestaurantModel.find({
-    "reservationsSettings.smsReminder.sender.status": { $in: ["pending", "rejected"] },
+    "reservationsSettings.smsReminder.sender.status": {
+      $in: ["pending", "approved", "rejected"],
+    },
     "reservationsSettings.smsReminder.sender.value": { $ne: "" },
   })
     .select("name reservationsSettings.smsReminder.sender")

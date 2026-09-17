@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+const {
+  DEFAULT_SMS_TEMPLATE,
+} = require("../services/sms/sms-message.service");
 
 const addressSchema = new mongoose.Schema({
   line1: { type: String, required: true },
@@ -186,8 +189,7 @@ const smsReminderSchema = new mongoose.Schema(
     },
     template: {
       type: String,
-      default:
-        "Bonjour {firstName}, rappel de votre reservation chez {restaurantName} le {date} a {time} pour {guests} pers.",
+      default: DEFAULT_SMS_TEMPLATE,
     },
     internationalEnabled: { type: Boolean, default: false },
     billingPeriodSpendingLimit: { type: Number, min: 0, default: null },
