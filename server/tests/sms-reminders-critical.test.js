@@ -5,7 +5,11 @@ process.env.STRIPE_API_SECRET_KEY ||= "sk_test_sms_critical";
 process.env.STRIPE_SMS_FIXED_PRICE_ID ||= "price_sms_fixed";
 process.env.STRIPE_SMS_METERED_PRICE_ID ||= "price_sms_metered";
 
-const { DEFAULT_SMS_TEMPLATE, analyzeSingleSms } = require("../services/sms/sms-message.service");
+const {
+  DEFAULT_SMS_TEMPLATE,
+  analyzeSingleSms,
+  normalizeToGsm7,
+} = require("../services/sms/sms-message.service");
 const { computeSmsSchedule } = require("../services/sms/sms-schedule.service");
 const {
   applyProviderStatus,
@@ -309,6 +313,121 @@ test("mode eco sans email ou avec email invalide utilise une seule fois le chemi
   }
 });
 
+test("facture le nombre réel de segments GSM-7 du message final", async () => {
+  const cases = [
+    { units: 159, segments: 1 },
+    { units: 160, segments: 1 },
+    { units: 161, segments: 2 },
+    { units: 306, segments: 2 },
+    { units: 307, segments: 3 },
+  ];
+  for (const value of cases) {
+    const booking = reservation();
+    const venue = restaurant({
+      smsReminder: { template: "a".repeat(value.units) },
+    });
+    const currentJob = jobFor(booking, venue);
+    const usage = usageModel();
+    let sends = 0;
+    let meterValue = 0;
+    await processClaimedJob(currentJob, processDependencies({
+      reservationValue: booking,
+      restaurantValue: venue,
+      policy: frenchPolicy(),
+      usage,
+      provider: {
+        async send({ message }) {
+          sends += 1;
+          assert.equal(message, "a".repeat(value.units));
+          return { providerMessageId: `provider-${value.units}` };
+        },
+      },
+      reportUsage: async (job) => {
+        meterValue = job.billingCredits;
+        job.stripeUsageState = "reported";
+      },
+    }));
+    assert.equal(sends, 1);
+    assert.equal(currentJob.segmentCount, value.segments);
+    assert.equal(currentJob.billingCredits, value.segments);
+    assert.equal(currentJob.providerCostSnapshot, value.segments * 0.05);
+    assert.equal(usage.state.consumedCredits, value.segments);
+    assert.equal(meterValue, value.segments);
+  }
+});
+
+test("normalise les variables réelles avant segments, crédits et provider", async () => {
+  const preservedVariables = buildFinalMessage({
+    reservation: reservation({ customerFirstName: "Jörg Müller" }),
+    restaurant: restaurant({ name: "Peña" }),
+    settings: { template: "{firstName} chez {restaurantName}" },
+    prefixRequired: false,
+  });
+  assert.equal(preservedVariables.message, "Jörg Müller chez Peña");
+  assert.equal(preservedVariables.analysis.valid, true);
+
+  const booking = reservation({ customerFirstName: "Chloë" });
+  const venue = restaurant({
+    name: "Côté Ô Saveurs",
+    smsReminder: {
+      template: `Rappel ${"^".repeat(75)} {firstName} chez {restaurantName}`,
+    },
+  });
+  const currentJob = jobFor(booking, venue);
+  const usage = usageModel();
+  let providerBody = "";
+  await processClaimedJob(currentJob, processDependencies({
+    reservationValue: booking,
+    restaurantValue: venue,
+    policy: frenchPolicy(),
+    usage,
+    provider: {
+      async send({ message }) {
+        providerBody = message;
+        return { providerMessageId: "provider-normalized" };
+      },
+    },
+    reportUsage: async (job) => {
+      job.stripeUsageState = "reported";
+    },
+  }));
+
+  const expectedMessage = `Rappel ${"^".repeat(75)} Chloe chez Coté O Saveurs`;
+  const expectedAnalysis = analyzeSingleSms(expectedMessage);
+  assert.equal(normalizeToGsm7(expectedMessage).value, expectedMessage);
+  assert.equal(expectedAnalysis.segmentCount, 2);
+  assert.equal(currentJob.message, expectedMessage);
+  assert.equal(providerBody, currentJob.message);
+  assert.equal(currentJob.segmentCount, expectedAnalysis.segmentCount);
+  assert.equal(currentJob.billingCredits, expectedAnalysis.segmentCount);
+  assert.equal(usage.state.consumedCredits, expectedAnalysis.segmentCount);
+});
+
+test("un message de trois segments traverse la frontière des crédits inclus", async () => {
+  const booking = reservation();
+  const venue = restaurant({ smsReminder: { template: "a".repeat(307) } });
+  const currentJob = jobFor(booking, venue);
+  const usage = usageModel({ consumedCredits: 98 });
+  let meterValue = 0;
+  await processClaimedJob(currentJob, processDependencies({
+    reservationValue: booking,
+    restaurantValue: venue,
+    policy: frenchPolicy(),
+    usage,
+    provider: { async send() { return { providerMessageId: "provider-quota" }; } },
+    reportUsage: async (job) => {
+      meterValue = job.billingCredits;
+      job.stripeUsageState = "reported";
+    },
+  }));
+  assert.equal(currentJob.includedCreditsApplied, 2);
+  assert.equal(currentJob.overageCredits, 1);
+  assert.equal(usage.state.consumedCredits, 101);
+  assert.equal(usage.state.includedCreditsConsumed, 100);
+  assert.equal(usage.state.overageCredits, 1);
+  assert.equal(meterValue, 3);
+});
+
 test("frontière des 100 crédits et message multi-crédits", async () => {
   const cases = [
     { consumed: 99, credits: 1, included: 1, overage: 0 },
@@ -330,21 +449,26 @@ test("frontière des 100 crédits et message multi-crédits", async () => {
 });
 
 test("réservation atomique laisse un seul message atteindre le plafond", async () => {
-  const venue = restaurant({ smsReminder: { billingPeriodSpendingLimit: 0.1 } });
+  const venue = restaurant({ smsReminder: { billingPeriodSpendingLimit: 0.3 } });
   const usage = usageModel({ consumedCredits: 100 });
   const [first, second] = await Promise.all([
-    reserveUsage({ restaurant: venue, billingContext: BILLING, credits: 1, usagePeriodModel: usage }),
-    reserveUsage({ restaurant: venue, billingContext: BILLING, credits: 1, usagePeriodModel: usage }),
+    reserveUsage({ restaurant: venue, billingContext: BILLING, credits: 3, usagePeriodModel: usage }),
+    reserveUsage({ restaurant: venue, billingContext: BILLING, credits: 3, usagePeriodModel: usage }),
   ]);
   assert.equal([first, second].filter(Boolean).length, 1);
-  assert.equal(usage.state.reservedCredits, 1);
+  assert.equal(usage.state.reservedCredits, 3);
 });
 
 test("message dépassant le plafond est ignoré avant tout appel provider", async () => {
   const booking = reservation();
-  const venue = restaurant({ smsReminder: { billingPeriodSpendingLimit: 0 } });
+  const venue = restaurant({
+    smsReminder: {
+      billingPeriodSpendingLimit: 0.1,
+      template: "a".repeat(307),
+    },
+  });
   const currentJob = jobFor(booking, venue);
-  const usage = usageModel({ consumedCredits: 100 });
+  const usage = usageModel({ consumedCredits: 99 });
   let sends = 0;
   await processClaimedJob(currentJob, processDependencies({
     reservationValue: booking,
@@ -357,7 +481,7 @@ test("message dépassant le plafond est ignoré avant tout appel provider", asyn
   assert.equal(currentJob.status, "skipped");
   assert.equal(currentJob.skipReason, "budget_limit");
   assert.equal(sends, 0);
-  assert.equal(usage.state.consumedCredits, 100);
+  assert.equal(usage.state.consumedCredits, 99);
 });
 
 test("numéros et destinations non éligibles n'appellent pas le provider", async () => {
@@ -384,9 +508,11 @@ test("numéros et destinations non éligibles n'appellent pas le provider", asyn
   }
 });
 
-test("policy étrangère active respecte billingCredits sans modifier les seeds", async () => {
+test("policy étrangère multiplie billingCredits par le nombre de segments", async () => {
   const booking = reservation({ customerPhone: "+32 470 12 34 56" });
-  const venue = restaurant({ smsReminder: { internationalEnabled: true } });
+  const venue = restaurant({
+    smsReminder: { internationalEnabled: true, template: "a".repeat(307) },
+  });
   const currentJob = jobFor(booking, venue);
   const usage = usageModel({ consumedCredits: 98 });
   let sent = 0;
@@ -394,16 +520,17 @@ test("policy étrangère active respecte billingCredits sans modifier les seeds"
   await processClaimedJob(currentJob, processDependencies({
     reservationValue: booking,
     restaurantValue: venue,
-    policy: frenchPolicy({ country: "BE", billingCredits: 3 }),
+    policy: frenchPolicy({ country: "BE", billingCredits: 2 }),
     usage,
     provider: { async send() { sent += 1; return { providerMessageId: "be-1" }; } },
     reportUsage: async (job) => { meterValue = job.billingCredits; job.stripeUsageState = "reported"; },
   }));
   assert.equal(sent, 1);
-  assert.equal(currentJob.billingCredits, 3);
+  assert.equal(currentJob.segmentCount, 3);
+  assert.equal(currentJob.billingCredits, 6);
   assert.equal(currentJob.includedCreditsApplied, 2);
-  assert.equal(currentJob.overageCredits, 1);
-  assert.equal(meterValue, 3);
+  assert.equal(currentJob.overageCredits, 4);
+  assert.equal(meterValue, 6);
 });
 
 test("registered_alpha bloque les Sender IDs absents/non approuvés", async () => {
@@ -434,7 +561,7 @@ test("registered_alpha bloque les Sender IDs absents/non approuvés", async () =
 test("rejet provider libère la réservation, résultat incertain la conserve", async () => {
   for (const certain of [true, false]) {
     const booking = reservation();
-    const venue = restaurant();
+    const venue = restaurant({ smsReminder: { template: "a".repeat(161) } });
     const currentJob = jobFor(booking, venue);
     const usage = usageModel();
     await processClaimedJob(currentJob, processDependencies({
@@ -453,22 +580,60 @@ test("rejet provider libère la réservation, résultat incertain la conserve", 
     }));
     assert.equal(currentJob.status, certain ? "failed" : "uncertain");
     assert.equal(currentJob.usageState, certain ? "released" : "reserved");
-    assert.equal(usage.state.reservedCredits, certain ? 0 : 1);
+    assert.equal(currentJob.billingCredits, 2);
+    assert.equal(usage.state.reservedCredits, certain ? 0 : 2);
     assert.equal(usage.state.consumedCredits, 0);
   }
 });
 
-test("fallback compact reste GSM-7 et dans un seul segment avec des noms très longs", () => {
+test("un message GSM-7 long est conservé sans fallback compact", () => {
+  const longRestaurantName = "Restaurant extraordinairement long ".repeat(12);
   const result = buildFinalMessage({
     reservation: reservation({ customerFirstName: "Alexandre".repeat(30) }),
-    restaurant: restaurant({ name: "Restaurant extraordinairement long ".repeat(12) }),
+    restaurant: restaurant({ name: longRestaurantName }),
     settings: { template: DEFAULT_SMS_TEMPLATE },
     prefixRequired: true,
   });
   assert.equal(result.analysis.encoding, "gsm7");
   assert.equal(result.analysis.valid, true);
-  assert.equal(result.analysis.segmentCount, 1);
-  assert.ok(result.analysis.units <= 160);
+  assert.ok(result.analysis.segmentCount > 1);
+  assert.ok(result.analysis.units > 160);
+  assert.match(result.message, /pour rappel, votre table chez/);
+  assert.ok(result.message.startsWith(`${longRestaurantName}: Bonjour`));
+});
+
+test("une variable réelle non convertible bloque l'envoi avant les crédits", async () => {
+  const booking = reservation({ customerFirstName: "Alex 😊" });
+  const venue = restaurant({
+    smsReminder: { template: "Bonjour {firstName}" },
+  });
+  const result = buildFinalMessage({
+    reservation: booking,
+    restaurant: venue,
+    settings: venue.reservationsSettings.smsReminder,
+    prefixRequired: false,
+  });
+  assert.equal(result.analysis.valid, false);
+  assert.equal(result.message, "Bonjour Alex 😊");
+
+  const currentJob = jobFor(booking, venue);
+  const usage = usageModel();
+  let sends = 0;
+  let meters = 0;
+  await processClaimedJob(currentJob, processDependencies({
+    reservationValue: booking,
+    restaurantValue: venue,
+    policy: frenchPolicy(),
+    usage,
+    provider: { async send() { sends += 1; } },
+    reportUsage: async () => { meters += 1; },
+  }));
+  assert.equal(currentJob.status, "skipped");
+  assert.equal(currentJob.skipReason, "invalid_message");
+  assert.equal(sends, 0);
+  assert.equal(meters, 0);
+  assert.equal(usage.state.reservedCredits, 0);
+  assert.equal(usage.state.consumedCredits, 0);
 });
 
 test("replanification, changement de délai, désactivation et réactivation restent idempotents", async () => {

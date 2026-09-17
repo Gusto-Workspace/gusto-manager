@@ -6,8 +6,10 @@ process.env.STRIPE_API_SECRET_KEY ||= "sk_test_sms_reminders";
 const {
   DEFAULT_SMS_TEMPLATE,
   LEGACY_DEFAULT_SMS_TEMPLATE,
+  PREVIOUS_DEFAULT_SMS_TEMPLATE,
   analyzeSingleSms,
   normalizeDefaultSmsTemplate,
+  normalizeToGsm7,
   renderSmsTemplate,
   validateSmsTemplate,
 } = require("../services/sms/sms-message.service");
@@ -181,14 +183,41 @@ test("compte les caractères GSM-7 étendus comme deux septets", () => {
   assert.equal(result.valid, true);
 });
 
+test("préserve l'alphabet GSM-7 européen et translittère seulement le reste", () => {
+  for (const value of [
+    "Jörg Müller",
+    "Straße",
+    "Peña",
+    "¿Hola?",
+    "Café",
+    "ÄÖÜ äöü ß ñ Ñ ¡ ¿ é è à ù",
+  ]) {
+    const normalized = normalizeToGsm7(value);
+    assert.equal(normalized.value, value);
+    assert.equal(normalized.adapted, false);
+    assert.equal(analyzeSingleSms(normalized.value).valid, true);
+  }
+
+  assert.equal(normalizeToGsm7("bientôt").value, "bientot");
+  assert.equal(normalizeToGsm7("Chloë").value, "Chloe");
+  assert.equal(normalizeToGsm7("Côté Ô Saveurs").value, "Coté O Saveurs");
+  assert.deepEqual(
+    normalizeToGsm7("Bonjour 😊").incompatibleCharacters,
+    ["😊"],
+  );
+});
+
 test("refuse Unicode et emoji en V1", () => {
   assert.equal(analyzeSingleSms("Bonjour 😊").valid, false);
   assert.equal(analyzeSingleSms("Rappel 漢").valid, false);
 });
 
-test("refuse un message GSM-7 de plus de 160 septets", () => {
+test("autorise les messages GSM-7 multi-segments", () => {
   assert.equal(analyzeSingleSms("a".repeat(160)).valid, true);
-  assert.equal(analyzeSingleSms("a".repeat(161)).reason, "message_too_long");
+  assert.equal(analyzeSingleSms("a".repeat(161)).valid, true);
+  assert.equal(analyzeSingleSms("a".repeat(161)).segmentCount, 2);
+  assert.equal(analyzeSingleSms("a".repeat(306)).segmentCount, 2);
+  assert.equal(analyzeSingleSms("a".repeat(307)).segmentCount, 3);
 });
 
 test("substitue toutes les variables autorisées", () => {
@@ -204,9 +233,11 @@ test("substitue toutes les variables autorisées", () => {
   );
 });
 
-test("refuse les variables inconnues et les modèles structurellement trop longs", () => {
+test("refuse les variables inconnues mais accepte les modèles GSM-7 longs", () => {
   assert.throws(() => validateSmsTemplate("Bonjour {unknown}"), /non autorisées/);
-  assert.throws(() => validateSmsTemplate("a".repeat(161)), /dépasse un segment/);
+  assert.equal(validateSmsTemplate("a".repeat(307)), "a".repeat(307));
+  assert.equal(validateSmsTemplate("À bientôt"), "A bientot");
+  assert.throws(() => validateSmsTemplate("Bonjour 😊"), /format SMS standard/);
 });
 
 test("utilise le nouveau template SMS convivial dans un seul segment", () => {
@@ -221,7 +252,7 @@ test("utilise le nouveau template SMS convivial dans un seul segment", () => {
 
   assert.equal(
     DEFAULT_SMS_TEMPLATE,
-    "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers. A bientot !",
+    "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers.",
   );
   assert.equal(analysis.encoding, "gsm7");
   assert.equal(analysis.segmentCount, 1);
@@ -236,12 +267,16 @@ test("utilise le nouveau template SMS convivial dans un seul segment", () => {
   assert.ok(compactFallback.units < analysis.units);
 });
 
-test("remplace uniquement l'ancien template par défaut", () => {
+test("remplace uniquement les anciens templates par défaut", () => {
   const customTemplate =
     "Bonjour {firstName}, votre réservation chez {restaurantName} est confirmée.";
 
   assert.equal(
     normalizeDefaultSmsTemplate(LEGACY_DEFAULT_SMS_TEMPLATE),
+    DEFAULT_SMS_TEMPLATE,
+  );
+  assert.equal(
+    normalizeDefaultSmsTemplate(PREVIOUS_DEFAULT_SMS_TEMPLATE),
     DEFAULT_SMS_TEMPLATE,
   );
   assert.equal(normalizeDefaultSmsTemplate(customTemplate), customTemplate);

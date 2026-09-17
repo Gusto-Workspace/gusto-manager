@@ -7,7 +7,11 @@ const SmsJobModel = require("../../models/sms-job.model");
 const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
 const { findRestaurantSubscription } = require("../stripe-billing.service");
-const { analyzeSingleSms, renderSmsTemplate } = require("./sms-message.service");
+const {
+  analyzeSingleSms,
+  normalizeToGsm7,
+  renderSmsTemplate,
+} = require("./sms-message.service");
 const { normalizeSmsPhone } = require("./sms-phone.service");
 const { computeSmsSchedule, getRestaurantTimezone } = require("./sms-schedule.service");
 const { buildStripeMeterEventParams } = require("./sms-meter.service");
@@ -348,22 +352,10 @@ function formatMessageValues(reservation, restaurant) {
 function buildFinalMessage({ reservation, restaurant, settings, prefixRequired }) {
   const values = formatMessageValues(reservation, restaurant);
   const prefix = prefixRequired ? `${restaurant.name || "Restaurant"}: ` : "";
-  let message = prefix + renderSmsTemplate(settings.template, values);
-  let analysis = analyzeSingleSms(message);
-  if (!analysis.valid) {
-    const safeRestaurantName = String(restaurant.name || "Restaurant")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Za-z0-9 ._'&-]/g, "")
-      .trim() || "Restaurant";
-    const safePrefix = prefixRequired ? `${safeRestaurantName}: ` : "";
-    message = `${safePrefix}Rappel reservation le ${values.date} a ${values.time}, ${values.guests} pers.`;
-    analysis = analyzeSingleSms(message);
-    if (!analysis.valid) {
-      message = `Rappel reservation le ${values.date} a ${values.time}, ${values.guests} pers.`;
-      analysis = analyzeSingleSms(message);
-    }
-  }
+  const renderedMessage =
+    prefix + renderSmsTemplate(settings.template, values);
+  const message = normalizeToGsm7(renderedMessage).value;
+  const analysis = analyzeSingleSms(message);
   return { message: analysis.message, analysis };
 }
 
@@ -419,18 +411,20 @@ async function processClaimedJob(
   const supportsRestaurantSender = ["alpha", "registered_alpha"].includes(policy.senderMode) && approvedSender;
   const sender = supportsRestaurantSender ? approvedSender : policy.fallbackSender || "";
   const { message, analysis } = buildFinalMessage({ reservation, restaurant, settings, prefixRequired: !supportsRestaurantSender });
-  if (!analysis.valid || analysis.segmentCount !== 1) return skipJob(job, "message_too_long", usagePeriodModel);
+  if (!analysis.valid) return skipJob(job, "invalid_message", usagePeriodModel);
 
-  const usageReservation = await reserveUsage({ restaurant, billingContext, credits: policy.billingCredits, usagePeriodModel });
+  const billingCredits = analysis.segmentCount * policy.billingCredits;
+
+  const usageReservation = await reserveUsage({ restaurant, billingContext, credits: billingCredits, usagePeriodModel });
   if (!usageReservation) return skipJob(job, "budget_limit", usagePeriodModel);
   job.phone = phone.e164;
   job.destinationCountry = phone.country;
   job.senderId = sender;
   job.senderMode = policy.senderMode;
   job.message = message;
-  job.segmentCount = 1;
-  job.billingCredits = policy.billingCredits;
-  job.providerCostSnapshot = policy.providerRateHt;
+  job.segmentCount = analysis.segmentCount;
+  job.billingCredits = billingCredits;
+  job.providerCostSnapshot = analysis.segmentCount * policy.providerRateHt;
   job.usagePeriodId = usageReservation.period._id;
   job.usageState = "reserved";
   job.includedCreditsApplied = usageReservation.includedApplied;

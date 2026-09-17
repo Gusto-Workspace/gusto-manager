@@ -9,11 +9,21 @@ import {
   Save,
   X,
 } from "lucide-react";
-import { analyzeSingleSms, renderSmsPreview } from "./sms-message.utils";
+import {
+  analyzeSingleSms,
+  formatSmsEuro,
+  getGsm7SmsSegmentCount,
+  getSmsQuotaPresentation,
+  normalizeToGsm7,
+  renderSmsPreview,
+  smsTemplateToBackend,
+  smsTemplateToDisplay,
+} from "./sms-message.utils";
 import SmsDestinationsModalReservationsComponent from "./sms-destinations-modal.reservations.component";
 import SmsPreviewModalReservationsComponent from "./sms-preview-modal.reservations.component";
+import SmsTemplateEditorReservationsComponent from "./sms-template-editor.reservations.component";
 
-const DEFAULT_TEMPLATE = "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers. A bientot !";
+const DEFAULT_TEMPLATE = "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers.";
 
 export default function SmsRemindersReservationsComponent({
   restaurantData,
@@ -31,7 +41,7 @@ export default function SmsRemindersReservationsComponent({
   const [showDestinations, setShowDestinations] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showScheduleInfo, setShowScheduleInfo] = useState(false);
-  const [settings, setSettings] = useState({ enabled: false, delayMinutes: 1440, deliveryMode: "sms_always", template: DEFAULT_TEMPLATE, internationalEnabled: false, billingPeriodSpendingLimit: null });
+  const [settings, setSettings] = useState({ enabled: false, delayMinutes: 1440, deliveryMode: "sms_always", template: smsTemplateToDisplay(DEFAULT_TEMPLATE), internationalEnabled: false, billingPeriodSpendingLimit: null });
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -56,6 +66,9 @@ export default function SmsRemindersReservationsComponent({
           internationalEnabled:
             hasInternationalDestination &&
             Boolean(data.settings?.internationalEnabled),
+          template: smsTemplateToDisplay(
+            data.settings?.template || current.template,
+          ),
         }));
         setUsage(data.usage || { includedCredits: 100 });
         setDestinations(activeDestinations);
@@ -66,14 +79,38 @@ export default function SmsRemindersReservationsComponent({
     return () => { active = false; };
   }, [restaurantId]);
 
-  const preview = useMemo(() => renderSmsPreview(settings.template, { firstName: "Camille", date: "24/09/2026", time: "20:00", guests: "4", restaurantName: restaurantData?.name || "Le Restaurant" }), [settings.template, restaurantData?.name]);
+  const backendTemplate = useMemo(
+    () => smsTemplateToBackend(settings.template),
+    [settings.template],
+  );
+  const preview = useMemo(
+    () =>
+      normalizeToGsm7(
+        renderSmsPreview(backendTemplate, {
+          firstName: "Camille",
+          date: "24/09/2026",
+          time: "20:00",
+          guests: "4",
+          restaurantName: restaurantData?.name || "Le Restaurant",
+        }),
+      ).value,
+    [backendTemplate, restaurantData?.name],
+  );
   const analysis = useMemo(() => analyzeSingleSms(preview), [preview]);
-  const messageExceedsLimit =
-    analysis.encoding === "gsm7" && analysis.units > analysis.maxUnits;
+  const messageIsNotGsm7 = analysis.encoding !== "gsm7";
+  const smsSegmentCount = analysis.segmentCount || getGsm7SmsSegmentCount(analysis.units);
   const hasInternationalDestination = destinations.some(
     (destination) => destination.country !== "FR",
   );
   const smsEnabled = subscribed && Boolean(settings.enabled);
+  const {
+    included: includedCredits,
+    includedUsed: includedCreditsUsed,
+    remaining: includedCreditsRemaining,
+    percentage: includedCreditsPercentage,
+    overageCredits,
+    overageAmount,
+  } = getSmsQuotaPresentation(usage);
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -104,8 +141,17 @@ export default function SmsRemindersReservationsComponent({
     setError("");
     setSaved(false);
     try {
-      const { data } = await axios.put(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/sms-reminders`, settings);
-      setSettings((current) => ({ ...current, ...(data.settings || {}) }));
+      const { data } = await axios.put(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/sms-reminders`,
+        { ...settings, template: smsTemplateToBackend(settings.template) },
+      );
+      setSettings((current) => ({
+        ...current,
+        ...(data.settings || {}),
+        template: smsTemplateToDisplay(
+          data.settings?.template || current.template,
+        ),
+      }));
       setDirty(false);
       setSaved(true);
     } catch (requestError) {
@@ -257,7 +303,12 @@ export default function SmsRemindersReservationsComponent({
           </div>
           <div className="grid gap-1 text-sm">
             <div className="inline-flex w-fit items-center gap-1.5">
-              <label htmlFor="sms_reminder_template">Modèle de message</label>
+              <label
+                id="sms_reminder_template_label"
+                htmlFor="sms_reminder_template"
+              >
+                Modèle de message
+              </label>
               <button
                 type="button"
                 aria-label="Afficher l’aperçu du SMS"
@@ -267,23 +318,29 @@ export default function SmsRemindersReservationsComponent({
                 <Info className="size-3.5" />
               </button>
             </div>
-            <textarea
-              id="sms_reminder_template"
-              rows={4}
+            <SmsTemplateEditorReservationsComponent
               value={settings.template}
-              onChange={(event) => update("template", event.target.value)}
-              className={`rounded-xl border px-3 py-2 ${
-                messageExceedsLimit
-                  ? "border-red-300 bg-red-50/40 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
-                  : "border-darkBlue/15"
-              }`}
+              onChange={(value) => update("template", value)}
+              invalid={messageIsNotGsm7}
+              compact={savePresentation === "icon"}
             />
-            <span className="text-xs text-darkBlue/55">Variables : {"{firstName} {date} {time} {guests} {restaurantName}"}</span>
-            {messageExceedsLimit ? (
-              <span className="flex items-start gap-1.5 text-xs text-red-600">
+            {!messageIsNotGsm7 ? (
+              <div
+                className={`text-xs ${smsSegmentCount > 1 ? "text-red" : "text-darkBlue/60"}`}
+              >
+                <p>Coût estimé : {smsSegmentCount} SMS</p>
+                {smsSegmentCount > 1 ? (
+                  <p>
+                    Le message reste utilisable, mais chaque envoi consommera{" "}
+                    {smsSegmentCount} SMS.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {messageIsNotGsm7 ? (
+              <span className="flex items-start gap-1.5 text-xs text-red">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                Le message dépasse la limite d&apos;un SMS : {analysis.units}/
-                {analysis.maxUnits} unités.
+                Un caractère n’est pas compatible avec le format SMS standard.
               </span>
             ) : null}
           </div>
@@ -326,22 +383,92 @@ export default function SmsRemindersReservationsComponent({
                 crédit.
               </p>
             </div>
-            <div className="grid gap-4">
-              <label className="grid gap-1 text-sm">Plafond de dépassement par période (€)<input type="number" min="0" step="0.1" value={settings.billingPeriodSpendingLimit ?? ""} placeholder="Sans plafond" onChange={(event) => update("billingPeriodSpendingLimit", event.target.value === "" ? null : Number(event.target.value))} className="rounded-xl border border-darkBlue/15 px-3 py-2" /></label>
-              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-                <div className="rounded-xl bg-slate-50 p-3"><span className="block text-darkBlue/55">Inclus</span><strong>{usage.includedCredits || 100}</strong></div>
-                <div className="rounded-xl bg-slate-50 p-3"><span className="block text-darkBlue/55">Consommés</span><strong>{Number(usage.consumedCredits || 0)}</strong></div>
-                <div className="rounded-xl bg-slate-50 p-3"><span className="block text-darkBlue/55">Inclus utilisés</span><strong>{Number(usage.includedCreditsConsumed || 0)}</strong></div>
-                <div className="rounded-xl bg-slate-50 p-3"><span className="block text-darkBlue/55">Supplément</span><strong>{Number(usage.overageCredits || 0)} · {Number(usage.overageAmount || 0).toFixed(2)} €</strong></div>
+            <div className="grid gap-3">
+              <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-darkBlue/65">
+                      Crédits inclus utilisés
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-darkBlue">
+                      {includedCreditsUsed} / {includedCredits} crédit
+                      {includedCredits > 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-darkBlue/60">
+                    {includedCreditsPercentage} %
+                  </p>
+                </div>
+                <div
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-darkBlue/10"
+                  role="progressbar"
+                  aria-label="Crédits inclus utilisés"
+                  aria-valuemin={0}
+                  aria-valuemax={includedCredits}
+                  aria-valuenow={Math.min(
+                    includedCreditsUsed,
+                    includedCredits,
+                  )}
+                >
+                  <div
+                    className="h-full rounded-full bg-blue transition-[width]"
+                    style={{ width: `${includedCreditsPercentage}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-darkBlue/55">
+                  {includedCreditsRemaining} crédit
+                  {includedCreditsRemaining > 1 ? "s" : ""} restant
+                  {includedCreditsRemaining > 1 ? "s" : ""}
+                </p>
+              </div>
+
+              <div
+                className={`grid gap-3 ${
+                  savePresentation === "icon" ? "" : "desktop:grid-cols-2"
+                }`}
+              >
+                <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4">
+                  <p className="text-sm font-medium text-darkBlue/65">
+                    Hors forfait
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-darkBlue">
+                    {overageCredits} crédit
+                    {overageCredits > 1 ? "s" : ""}
+                  </p>
+                  <p className="text-sm text-darkBlue/60">
+                    {formatSmsEuro(overageAmount)}
+                  </p>
+                </div>
+                <label className="grid gap-2 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 text-sm">
+                  <span className="font-medium text-darkBlue/65">
+                    Plafond de dépassement
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={settings.billingPeriodSpendingLimit ?? ""}
+                    placeholder="Sans plafond"
+                    onChange={(event) =>
+                      update(
+                        "billingPeriodSpendingLimit",
+                        event.target.value === ""
+                          ? null
+                          : Number(event.target.value),
+                      )
+                    }
+                    className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2"
+                  />
+                </label>
               </div>
             </div>
           </div>
               </div>
             ) : null}
             {subscribed && error ? (
-              <p className="mt-5 text-sm text-red-600">{error}</p>
+              <p className="mt-5 text-sm text-red">{error}</p>
             ) : !subscribed && error ? (
-              <p className="mt-3 text-sm text-red-600">{error}</p>
+              <p className="mt-3 text-sm text-red">{error}</p>
             ) : null}
           </>
         )}

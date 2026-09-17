@@ -11,12 +11,18 @@ const ALLOWED_VARIABLES = new Set([
 ]);
 const LEGACY_DEFAULT_SMS_TEMPLATE =
   "Bonjour {firstName}, rappel de votre reservation chez {restaurantName} le {date} a {time} pour {guests} pers.";
-const DEFAULT_SMS_TEMPLATE =
+const PREVIOUS_DEFAULT_SMS_TEMPLATE =
   "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers. A bientot !";
+const DEFAULT_SMS_TEMPLATE =
+  "Bonjour {firstName}, pour rappel, votre table chez {restaurantName} est réservée le {date} à {time} pour {guests} pers.";
 
 function normalizeDefaultSmsTemplate(template) {
   const value = String(template || "");
-  return value === LEGACY_DEFAULT_SMS_TEMPLATE ? DEFAULT_SMS_TEMPLATE : value;
+  return [LEGACY_DEFAULT_SMS_TEMPLATE, PREVIOUS_DEFAULT_SMS_TEMPLATE].includes(
+    value,
+  )
+    ? DEFAULT_SMS_TEMPLATE
+    : value;
 }
 
 function normalizeSmsTypography(value) {
@@ -27,6 +33,51 @@ function normalizeSmsTypography(value) {
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
     .replace(/\u00a0/g, " ");
+}
+
+function isGsm7Text(value) {
+  return Array.from(value).every(
+    (character) =>
+      GSM_BASIC.has(character) || GSM_EXTENSION.has(character),
+  );
+}
+
+function normalizeToGsm7(value) {
+  const original = String(value || "");
+  const source = normalizeSmsTypography(original);
+  let adapted = source !== original;
+  const incompatibleCharacters = new Set();
+  const normalized = Array.from(source)
+    .map((character) => {
+      if (isGsm7Text(character)) return character;
+
+      const ascii = character
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (
+        ascii !== character &&
+        /^[\x20-\x7E]+$/.test(ascii) &&
+        isGsm7Text(ascii)
+      ) {
+        adapted = true;
+        return ascii;
+      }
+
+      incompatibleCharacters.add(character);
+      return character;
+    })
+    .join("");
+
+  return {
+    value: normalized,
+    adapted,
+    incompatibleCharacters: Array.from(incompatibleCharacters),
+  };
+}
+
+function getGsm7SmsSegmentCount(units) {
+  const normalizedUnits = Math.max(0, Number(units) || 0);
+  return normalizedUnits <= 160 ? 1 : Math.ceil(normalizedUnits / 153);
 }
 
 function analyzeSingleSms(value) {
@@ -56,16 +107,15 @@ function analyzeSingleSms(value) {
     encoding: "gsm7",
     units: septets,
     maxUnits: 160,
-    segmentCount: septets <= 160 ? 1 : 2,
-    valid: septets <= 160,
-    reason: septets <= 160 ? "" : "message_too_long",
+    segmentCount: getGsm7SmsSegmentCount(septets),
+    valid: true,
+    reason: "",
   };
 }
 
 function validateSmsTemplate(template) {
-  const normalized = normalizeSmsTypography(
-    normalizeDefaultSmsTemplate(template),
-  ).trim();
+  const normalization = normalizeToGsm7(normalizeDefaultSmsTemplate(template));
+  const normalized = normalization.value.trim();
   if (!normalized) throw new Error("Le modèle SMS est requis.");
 
   const unknown = Array.from(normalized.matchAll(/\{([^{}]+)\}/g))
@@ -83,11 +133,9 @@ function validateSmsTemplate(template) {
     .replace(/\{guests\}/g, "12")
     .replace(/\{restaurantName\}/g, "Le Restaurant");
   const analysis = analyzeSingleSms(preview);
-  if (!analysis.valid) {
+  if (normalization.incompatibleCharacters.length || !analysis.valid) {
     const error = new Error(
-      analysis.reason === "message_too_long"
-        ? "Le modèle SMS dépasse un segment avec les valeurs d'aperçu."
-        : "Le modèle doit utiliser uniquement des caractères GSM-7 et aucun emoji.",
+      "Le modèle contient un caractère incompatible avec le format SMS standard.",
     );
     error.statusCode = 400;
     throw error;
@@ -106,9 +154,12 @@ module.exports = {
   ALLOWED_VARIABLES,
   DEFAULT_SMS_TEMPLATE,
   LEGACY_DEFAULT_SMS_TEMPLATE,
+  PREVIOUS_DEFAULT_SMS_TEMPLATE,
   analyzeSingleSms,
+  getGsm7SmsSegmentCount,
   normalizeDefaultSmsTemplate,
   normalizeSmsTypography,
+  normalizeToGsm7,
   renderSmsTemplate,
   validateSmsTemplate,
 };

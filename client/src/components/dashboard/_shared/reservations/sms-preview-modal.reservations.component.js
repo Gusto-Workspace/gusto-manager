@@ -32,8 +32,9 @@ export default function SmsPreviewModalReservationsComponent({
                 Aperçu du SMS
               </h2>
               <p className="mt-1 text-sm text-darkBlue/60">
-                {analysis.units}/{analysis.maxUnits} unités ·{" "}
-                {analysis.encoding === "gsm7" ? "GSM-7" : "Unicode refusé"}
+                {analysis.encoding === "gsm7"
+                  ? `${analysis.units} caractères · ${analysis.segmentCount} SMS`
+                  : `${analysis.units} caractères · Caractère incompatible`}
               </p>
             </div>
           </div>
