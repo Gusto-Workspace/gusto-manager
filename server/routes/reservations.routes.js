@@ -4475,6 +4475,9 @@ router.put(
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
+      if (!(await canManageRestaurantReservations(req.user, restaurant))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
       // ✅ ancien état (avant merge)
       const prevManage = Boolean(
@@ -4583,6 +4586,18 @@ router.put(
         email_templates: nextEmailTemplates,
         waitlist: nextWaitlist,
       };
+
+      if (Object.prototype.hasOwnProperty.call(parameters, "smsReminder")) {
+        nextReservationSettings.smsReminder =
+          parameters.smsReminder &&
+          typeof parameters.smsReminder === "object"
+            ? {
+                ...(existing.smsReminder || {}),
+                ...parameters.smsReminder,
+                sender: existing.smsReminder?.sender,
+              }
+            : existing.smsReminder;
+      }
 
       if (
         Object.prototype.hasOwnProperty.call(

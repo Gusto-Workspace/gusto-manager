@@ -1,0 +1,63 @@
+const mongoose = require("mongoose");
+
+const smsJobSchema = new mongoose.Schema(
+  {
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
+    reservationId: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", required: true, index: true },
+    type: { type: String, enum: ["reservation_reminder"], default: "reservation_reminder" },
+    occurrenceKey: { type: String, required: true },
+    reservationStartsAt: { type: Date, required: true },
+    reservationDateSnapshot: { type: Date, required: true },
+    reservationTimeSnapshot: { type: String, required: true },
+    phone: { type: String, default: "" },
+    destinationCountry: { type: String, default: "" },
+    senderId: { type: String, default: "" },
+    senderMode: { type: String, default: "" },
+    message: { type: String, default: "" },
+    scheduledAt: { type: Date, required: true, index: true },
+    status: {
+      type: String,
+      enum: ["scheduled", "processing", "uncertain", "accepted", "delivered", "failed", "cancelled", "skipped"],
+      default: "scheduled",
+      index: true,
+    },
+    attempts: { type: Number, default: 0 },
+    lastAttemptAt: { type: Date, default: null },
+    nextAttemptAt: { type: Date, default: null, index: true },
+    processingStartedAt: { type: Date, default: null },
+    lockedAt: { type: Date, default: null },
+    lockExpiresAt: { type: Date, default: null, index: true },
+    providerSubmissionStartedAt: { type: Date, default: null },
+    provider: { type: String, default: "smsmode" },
+    providerMessageId: { type: String, default: "", index: true },
+    providerReference: { type: String, required: true, index: true },
+    providerStatusLastCheckedAt: { type: Date, default: null, index: true },
+    segmentCount: { type: Number, min: 0, default: 0 },
+    billingCredits: { type: Number, min: 0, default: 0 },
+    providerCostSnapshot: { type: Number, min: 0, default: null },
+    includedCreditsApplied: { type: Number, min: 0, default: 0 },
+    overageCredits: { type: Number, min: 0, default: 0 },
+    overageUnitPriceSnapshot: { type: Number, min: 0, default: 0.1 },
+    overageAmountSnapshot: { type: Number, min: 0, default: 0 },
+    usagePeriodId: { type: mongoose.Schema.Types.ObjectId, ref: "SmsUsagePeriod", default: null },
+    usageState: { type: String, enum: ["none", "reserved", "consumed", "released"], default: "none" },
+    stripeUsageState: { type: String, enum: ["not_required", "pending", "reported", "uncertain", "failed"], default: "not_required" },
+    stripeUsageIdentifier: { type: String, default: "", index: true },
+    stripeUsageFirstAttemptAt: { type: Date, default: null },
+    stripeUsageReportedAt: { type: Date, default: null },
+    stripeUsageEventId: { type: String, default: "" },
+    sentAt: { type: Date, default: null },
+    acceptedAt: { type: Date, default: null },
+    deliveredAt: { type: Date, default: null },
+    failedAt: { type: Date, default: null },
+    failureCode: { type: String, default: "" },
+    failureReason: { type: String, default: "" },
+    skipReason: { type: String, default: "" },
+  },
+  { timestamps: true },
+);
+
+smsJobSchema.index({ reservationId: 1, type: 1, occurrenceKey: 1 }, { unique: true });
+smsJobSchema.index({ status: 1, scheduledAt: 1, nextAttemptAt: 1 });
+
+module.exports = mongoose.model("SmsJob", smsJobSchema);

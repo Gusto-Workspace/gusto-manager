@@ -2,6 +2,7 @@ require("dotenv").config();
 require("./services/cron-job/backup.service");
 require("./services/cron-job/customer-tags.service");
 require("./services/cron-job/reservation-reminders.service");
+require("./services/cron-job/sms-reminders.service");
 require("./services/cron-job/reservation-bank-hold-authorization.service");
 require("./services/cron-job/reservation-bank-hold-expiration.service");
 require("./services/cron-job/reservation-lifecycle.service");
@@ -24,10 +25,14 @@ const server = http.createServer(app);
 // Render/reverse proxy: req.ip doit refléter le client pour le rate limiting.
 app.set("trust proxy", 1);
 
-// JSON
+// SMS - WEBHOOK
+const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
+app.use("/api", smsmodeWebhookRoutes);
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
-app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
+
+// JSON
 app.use(express.json());
+app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 
 // MONGOOSE
 mongoose
@@ -60,6 +65,7 @@ app.use(
       "X-Correlation-Id",
       "Idempotency-Key",
       "X-Take-Away-Token",
+      "X-Smsmode-256",
     ],
     exposedHeaders: ["X-Request-Id"],
   }),
@@ -85,12 +91,14 @@ const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
 const ownersAdminRoutes = require("./routes/admin/owners.routes");
 const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
 const documentsAdminRoutes = require("./routes/admin/documents.routes");
+const smsRemindersAdminRoutes = require("./routes/admin/sms-reminders.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
 app.use(apiRoutes, ownersAdminRoutes);
 app.use(apiRoutes, subscriptionsAdminRoutes);
 app.use(apiRoutes, documentsAdminRoutes);
+app.use(apiRoutes, smsRemindersAdminRoutes);
 
 // OWNER
 const restaurantsRoutes = require("./routes/restaurants.routes");
@@ -113,6 +121,7 @@ const customersRoutes = require("./routes/customers.routes");
 const floorplansRoutes = require("./routes/floorplans.routes");
 const timeClockRoutes = require("./routes/time-clock.routes");
 const takeAwayRoutes = require("./routes/take-away.routes");
+const smsRemindersRoutes = require("./routes/sms-reminders.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -134,6 +143,7 @@ app.use(apiRoutes, customersRoutes);
 app.use(apiRoutes, floorplansRoutes);
 app.use(apiRoutes, timeClockRoutes);
 app.use(apiRoutes, takeAwayRoutes);
+app.use(apiRoutes, smsRemindersRoutes);
 
 // HACCP
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");

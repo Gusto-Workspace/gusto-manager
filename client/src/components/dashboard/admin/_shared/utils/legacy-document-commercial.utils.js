@@ -142,6 +142,7 @@ function catalogCommercialFields(product = {}) {
     currency: String(price.currency || "EUR").toUpperCase(),
     interval: price.recurring?.interval || "month",
     intervalCount: Math.max(1, Number(price.recurring?.interval_count || 1)),
+    allowOffered: product.allowOffered !== false,
   };
 }
 
@@ -182,7 +183,7 @@ function legacyModuleToLine(module = {}) {
 }
 
 function legacyModuleToCatalogModule(module, product) {
-  const offered = module?.offered === true;
+  const offered = product?.allowOffered !== false && module?.offered === true;
   const legacyPrice = numericPrice(module, "priceMonthly");
   return {
     ...catalogCommercialFields(product),
@@ -239,8 +240,23 @@ function normalizeDocumentCommercialForForm(
   const addons = products.filter((product) => catalogKind(product) === "addon");
 
   if (usesStructuredCommercialFormat(document)) {
-    normalizeLegacyRental(document, addons, modules, lines);
-    return { subscription, modules, lines, usedLegacyFallback: false };
+    const normalizedModules = modules.map((module) => {
+      const product = findLegacyAddon(module, addons);
+      if (!product || product.allowOffered !== false) return module;
+      return {
+        ...module,
+        ...catalogCommercialFields(product),
+        offered: false,
+        priceMonthly: catalogPrice(product) ?? module.priceMonthly,
+      };
+    });
+    normalizeLegacyRental(document, addons, normalizedModules, lines);
+    return {
+      subscription,
+      modules: normalizedModules,
+      lines,
+      usedLegacyFallback: false,
+    };
   }
 
   const plan = findLegacyPlan(subscription, plans);

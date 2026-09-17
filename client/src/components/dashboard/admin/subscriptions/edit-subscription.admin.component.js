@@ -7,6 +7,7 @@ import { useTranslation } from "next-i18next";
 import { GlobalContext } from "@/contexts/global.context";
 
 import {
+  allowsCatalogProductOffered,
   computeCatalogTotal,
   formatCatalogProductLabel,
   splitSubscriptionCatalogProducts,
@@ -81,6 +82,7 @@ export default function EditSubscriptionAdminComponent() {
         setPreview(nextPreview);
         setSelectedPlanPriceId(nextPreview?.subscription?.planPriceId || "");
         const catalogAddonItems = (nextPreview?.subscription?.addons || [])
+          .filter((item) => !item.scheduledForRemoval)
           .map((item) => {
             const catalogProduct = catalogProducts.find(
               (product) =>
@@ -392,6 +394,18 @@ export default function EditSubscriptionAdminComponent() {
                   </p>
                 )}
               </div>
+
+              {preview.subscription?.scheduledRemovals?.length ? (
+                <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
+                  {preview.subscription.scheduledRemovals.map((removal) => (
+                    <p key={removal.priceId || removal.code}>
+                      {removal.name || "Module"} : résiliation programmée le {" "}
+                      {formatStripeDate(removal.scheduledRemovalAt)}. Le module
+                      reste actif jusqu&apos;à cette date.
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className={cardCls}>
@@ -456,6 +470,7 @@ export default function EditSubscriptionAdminComponent() {
                     const checked = selectedAddonPriceIds.includes(priceId);
                     const canChangeQuantity = supportsMultipleQuantity(addon);
                     const offered = offeredAddonPriceIds.includes(priceId);
+                    const canBeOffered = allowsCatalogProductOffered(addon);
 
                     return (
                       <div
@@ -483,7 +498,7 @@ export default function EditSubscriptionAdminComponent() {
                               : formatCatalogProductLabel(addon)}
                           </span>
                         </label>
-                        {checked && (
+                        {checked && canBeOffered && (
                           <label className="flex items-center gap-1 text-xs font-semibold text-darkBlue/65">
                             <input
                               type="checkbox"
