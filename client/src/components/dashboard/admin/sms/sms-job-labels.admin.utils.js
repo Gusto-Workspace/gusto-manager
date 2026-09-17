@@ -30,6 +30,7 @@ const DIAGNOSTIC_LABELS = {
   international_disabled: "Envoi international désactivé",
   unsupported_destination: "Destination non prise en charge",
   subscription_inactive: "Abonnement SMS inactif",
+  sender_not_approved: "Sender ID non approuvé",
   message_too_long: "Message trop long",
   budget_limit: "Plafond atteint",
   sending_disabled: "Envoi désactivé",

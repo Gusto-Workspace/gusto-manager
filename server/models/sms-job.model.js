@@ -31,6 +31,7 @@ const smsJobSchema = new mongoose.Schema(
     provider: { type: String, default: "smsmode" },
     providerMessageId: { type: String, default: "", index: true },
     providerReference: { type: String, required: true, index: true },
+    providerStatusLastCheckedAt: { type: Date, default: null, index: true },
     segmentCount: { type: Number, min: 0, default: 0 },
     billingCredits: { type: Number, min: 0, default: 0 },
     providerCostSnapshot: { type: Number, min: 0, default: null },

@@ -35,6 +35,9 @@ export default function SmsRemindersReservationsComponent({ restaurantData }) {
         setSettings((current) => ({
           ...current,
           ...(data.settings || {}),
+          delayMinutes: [5, 10].includes(Number(data.settings?.delayMinutes))
+            ? 1440
+            : Number(data.settings?.delayMinutes || 1440),
           internationalEnabled:
             hasInternationalDestination &&
             Boolean(data.settings?.internationalEnabled),
@@ -86,7 +89,7 @@ export default function SmsRemindersReservationsComponent({ restaurantData }) {
         <div className="grid gap-5">
           <label className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4 text-sm"><span><strong>Activer les rappels</strong><br /><span className="text-darkBlue/60">Uniquement pour les réservations confirmées.</span></span><input type="checkbox" checked={settings.enabled} onChange={(event) => update("enabled", event.target.checked)} className="size-5" /></label>
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-sm">Délai avant la réservation<select value={settings.delayMinutes} onChange={(event) => update("delayMinutes", Number(event.target.value))} className="rounded-xl border border-darkBlue/15 px-3 py-2"><option value={5}>5 minutes</option><option value={10}>10 minutes</option><option value={120}>2 heures</option><option value={360}>6 heures</option><option value={720}>12 heures</option><option value={1440}>1 jour</option><option value={2880}>2 jours</option></select></label>
+            <label className="grid gap-1 text-sm">Délai avant la réservation<select value={settings.delayMinutes} onChange={(event) => update("delayMinutes", Number(event.target.value))} className="rounded-xl border border-darkBlue/15 px-3 py-2"><option value={120}>2 heures</option><option value={360}>6 heures</option><option value={720}>12 heures</option><option value={1440}>1 jour</option><option value={2880}>2 jours</option></select><span className="text-xs leading-relaxed text-darkBlue/55">Les rappels SMS sont envoyés entre 8h et 21h. Si l’heure prévue tombe en dehors de cette plage, elle est automatiquement ajustée dans la mesure du possible. Si aucun envoi ne peut être effectué avant l’heure de la réservation, le rappel n’est pas envoyé.</span></label>
             <label className="grid gap-1 text-sm">Mode d’envoi<select value={settings.deliveryMode} onChange={(event) => update("deliveryMode", event.target.value)} className="rounded-xl border border-darkBlue/15 px-3 py-2"><option value="sms_always">SMS systématique</option><option value="eco">Mode Économie (email prioritaire)</option></select></label>
           </div>
           <label className="grid gap-1 text-sm">Modèle de message<textarea rows={4} value={settings.template} onChange={(event) => update("template", event.target.value)} className="rounded-xl border border-darkBlue/15 px-3 py-2" /><span className="text-xs text-darkBlue/55">Variables : {"{firstName} {date} {time} {guests} {restaurantName}"}</span></label>

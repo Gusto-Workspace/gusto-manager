@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+
+process.env.STRIPE_API_SECRET_KEY ||= "sk_test_sms_reminders";
+
 const {
   DEFAULT_SMS_TEMPLATE,
   LEGACY_DEFAULT_SMS_TEMPLATE,
@@ -12,6 +15,164 @@ const { computeSmsSchedule } = require("../services/sms/sms-schedule.service");
 const {
   buildStripeMeterEventParams,
 } = require("../services/sms/sms-meter.service");
+const {
+  ACCEPTED_RECONCILIATION_WINDOW_MS,
+  PROVIDER_RECONCILIATION_INTERVAL_MS,
+  reconcileProviderStatuses,
+  sendingIsEnabled,
+} = require("../services/sms/sms-reminder.service");
+
+test("active l'envoi uniquement avec SMS_SENDING_ENABLED=true", () => {
+  const previousSmsSendingEnabled = process.env.SMS_SENDING_ENABLED;
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  try {
+    process.env.NODE_ENV = "development";
+    process.env.SMS_SENDING_ENABLED = "true";
+    assert.equal(sendingIsEnabled(), true);
+
+    process.env.NODE_ENV = "production";
+    process.env.SMS_SENDING_ENABLED = "false";
+    assert.equal(sendingIsEnabled(), false);
+
+    delete process.env.SMS_SENDING_ENABLED;
+    assert.equal(sendingIsEnabled(), false);
+  } finally {
+    if (previousSmsSendingEnabled === undefined) {
+      delete process.env.SMS_SENDING_ENABLED;
+    } else {
+      process.env.SMS_SENDING_ENABLED = previousSmsSendingEnabled;
+    }
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  }
+});
+
+test("réconcilie les statuts provider sans renvoi ni double consommation", async () => {
+  const now = new Date("2026-09-17T12:00:00.000Z");
+  const makeJob = ({ id, status, acceptedAt, lastCheckedAt }) => ({
+    _id: id,
+    status,
+    provider: "smsmode",
+    providerMessageId: `provider_${id}`,
+    providerReference: `reference_${id}`,
+    acceptedAt: acceptedAt || null,
+    providerStatusLastCheckedAt: lastCheckedAt || null,
+    usageState: "consumed",
+    stripeUsageState: "reported",
+    deliveredAt: null,
+    failedAt: null,
+    saveCount: 0,
+    async save() {
+      this.saveCount += 1;
+    },
+  });
+  const recentAcceptedAt = new Date(now.getTime() - 60 * 60 * 1000);
+  const uncertain = makeJob({ id: "uncertain", status: "uncertain" });
+  const delivered = makeJob({
+    id: "delivered",
+    status: "accepted",
+    acceptedAt: recentAcceptedAt,
+  });
+  const enroute = makeJob({
+    id: "enroute",
+    status: "accepted",
+    acceptedAt: recentAcceptedAt,
+  });
+  const undeliverable = makeJob({
+    id: "undeliverable",
+    status: "accepted",
+    acceptedAt: recentAcceptedAt,
+  });
+  const alreadyDelivered = makeJob({
+    id: "already_delivered",
+    status: "delivered",
+    acceptedAt: recentAcceptedAt,
+  });
+  const alreadyFailed = makeJob({
+    id: "already_failed",
+    status: "failed",
+    acceptedAt: recentAcceptedAt,
+  });
+  const tooOld = makeJob({
+    id: "too_old",
+    status: "accepted",
+    acceptedAt: new Date(
+      now.getTime() - ACCEPTED_RECONCILIATION_WINDOW_MS - 1,
+    ),
+  });
+  const checkedRecently = makeJob({
+    id: "checked_recently",
+    status: "accepted",
+    acceptedAt: recentAcceptedAt,
+    lastCheckedAt: new Date(
+      now.getTime() - PROVIDER_RECONCILIATION_INTERVAL_MS + 1,
+    ),
+  });
+  const calls = [];
+  const responses = {
+    provider_uncertain: { status: "ENROUTE" },
+    provider_delivered: {
+      status: {
+        value: "DELIVERED",
+        deliveryDate: "2026-09-17T11:59:00.000Z",
+      },
+    },
+    provider_enroute: { status: "ENROUTE" },
+    provider_undeliverable: {
+      status: { value: "UNDELIVERABLE", detail: "destination_unreachable" },
+    },
+  };
+  const provider = {
+    async reconcile({ providerMessageId }) {
+      calls.push(providerMessageId);
+      return responses[providerMessageId] || null;
+    },
+  };
+
+  await reconcileProviderStatuses({
+    now,
+    provider,
+    jobs: [
+      uncertain,
+      delivered,
+      enroute,
+      undeliverable,
+      alreadyDelivered,
+      alreadyFailed,
+      tooOld,
+      checkedRecently,
+    ],
+  });
+
+  assert.deepEqual(calls.sort(), [
+    "provider_delivered",
+    "provider_enroute",
+    "provider_uncertain",
+    "provider_undeliverable",
+  ]);
+  assert.equal(uncertain.status, "accepted");
+  assert.equal(delivered.status, "delivered");
+  assert.equal(delivered.deliveredAt.toISOString(), "2026-09-17T11:59:00.000Z");
+  assert.equal(enroute.status, "accepted");
+  assert.equal(undeliverable.status, "failed");
+  assert.equal(alreadyDelivered.saveCount, 0);
+  assert.equal(alreadyFailed.saveCount, 0);
+  assert.equal(tooOld.saveCount, 0);
+  assert.equal(checkedRecently.saveCount, 0);
+  assert.equal(delivered.usageState, "consumed");
+  assert.equal(delivered.stripeUsageState, "reported");
+  assert.equal(undeliverable.usageState, "consumed");
+  assert.equal(undeliverable.stripeUsageState, "reported");
+
+  const deliveredAt = delivered.deliveredAt.getTime();
+  await reconcileProviderStatuses({ now, provider, jobs: [delivered] });
+  assert.equal(calls.length, 4);
+  assert.equal(delivered.deliveredAt.getTime(), deliveredAt);
+});
 
 test("compte les caractères GSM-7 étendus comme deux septets", () => {
   const result = analyzeSingleSms("{}[]^~|€");
