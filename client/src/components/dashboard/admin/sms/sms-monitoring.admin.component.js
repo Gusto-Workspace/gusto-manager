@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Check, Loader2, Pencil, RefreshCw, X } from "lucide-react";
+import { Loader2, Pencil, RefreshCw, X } from "lucide-react";
 import EditDestinationPolicyAdminComponent from "./edit-destination-policy.admin.component";
+import EditSenderIdAdminComponent from "./edit-sender-id.admin.component";
 import SenderStatusModalAdminComponent from "./sender-status-modal.admin.component";
 import {
   formatSmsBillingStatus,
@@ -17,15 +18,19 @@ export default function SmsMonitoringAdminComponent() {
   const [updatingSender, setUpdatingSender] = useState("");
   const [senderError, setSenderError] = useState("");
   const [senderAction, setSenderAction] = useState(null);
+  const [editingSender, setEditingSender] = useState(null);
+  const [verifyingSender, setVerifyingSender] = useState("");
+  const [senderFeedback, setSenderFeedback] = useState(null);
 
   const pendingSenders = data.senders.filter(
-    (sender) => sender.status === "pending",
+    (sender) => sender.value && sender.status === "pending",
   );
 
   async function load() {
     setLoading(true);
     setError("");
     setSenderError("");
+    setSenderFeedback(null);
     try {
       const token = localStorage.getItem("admin-token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -50,6 +55,28 @@ export default function SmsMonitoringAdminComponent() {
     setSenderAction({ sender, status });
   }
 
+  function applySenderResult(restaurantId, result) {
+    if (!result?.sender) return;
+    setData((current) => ({
+      ...current,
+      senders: current.senders.map((sender) =>
+        String(sender.restaurantId) === String(restaurantId)
+          ? { ...sender, ...result.sender }
+          : sender,
+      ),
+    }));
+    setSenderFeedback(
+      result.verification?.status === "unavailable"
+        ? {
+            type: "warning",
+            message:
+              result.verification.message ||
+              "Sender ID enregistré, mais la vérification smsmode n’a pas pu être effectuée.",
+          }
+        : null,
+    );
+  }
+
   function closeSenderAction() {
     if (updatingSender) return;
     setSenderError("");
@@ -64,12 +91,12 @@ export default function SmsMonitoringAdminComponent() {
     setSenderError("");
     try {
       const token = localStorage.getItem("admin-token");
-      await axios.put(
+      const { data: result } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${sender.restaurantId}/sms-sender`,
         { status },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      await load();
+      applySenderResult(sender.restaurantId, result);
       setSenderAction(null);
     } catch (requestError) {
       setSenderError(
@@ -78,6 +105,29 @@ export default function SmsMonitoringAdminComponent() {
       );
     } finally {
       setUpdatingSender("");
+    }
+  }
+
+  async function verifySender(sender) {
+    setVerifyingSender(String(sender.restaurantId));
+    setSenderFeedback(null);
+    try {
+      const token = localStorage.getItem("admin-token");
+      const { data: result } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${sender.restaurantId}/sms-sender/verify`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      applySenderResult(sender.restaurantId, result);
+    } catch (requestError) {
+      setSenderFeedback({
+        type: "error",
+        message:
+          requestError?.response?.data?.message ||
+          "Impossible de vérifier le Sender ID chez smsmode.",
+      });
+    } finally {
+      setVerifyingSender("");
     }
   }
 
@@ -91,6 +141,17 @@ export default function SmsMonitoringAdminComponent() {
           <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Consommation par période</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Restaurant</th><th className="p-2">Période</th><th className="p-2">Crédits en cours</th><th className="p-2">Consommés</th><th className="p-2">Inclus</th><th className="p-2">Dépassement</th></tr></thead><tbody>{data.usage.map((period) => <tr key={period._id} className="border-b border-darkBlue/5"><td className="p-2">{period.restaurantName || "Restaurant supprimé"}</td><td className="p-2">{new Date(period.periodStart).toLocaleDateString("fr-FR")} – {new Date(period.periodEnd).toLocaleDateString("fr-FR")}</td><td className="p-2">{period.reservedCredits}</td><td className="p-2">{period.consumedCredits}</td><td className="p-2">{period.includedCreditsConsumed}/{period.includedCredits}</td><td className="p-2">{period.overageCredits} · {Number(period.overageAmount || 0).toFixed(2)} €</td></tr>)}</tbody></table></div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4">
             <h2 className="mb-3 font-semibold">Sender IDs</h2>
+            {senderFeedback ? (
+              <p
+                className={`mb-3 rounded-xl border px-3 py-2 text-sm ${
+                  senderFeedback.type === "error"
+                    ? "border-red/20 bg-red/10 text-red"
+                    : "border-orange/20 bg-orange/10 text-darkBlue/70"
+                }`}
+              >
+                {senderFeedback.message}
+              </p>
+            ) : null}
             {data.senders.length ? (
               <table className="min-w-full text-left text-xs">
                 <thead>
@@ -103,63 +164,78 @@ export default function SmsMonitoringAdminComponent() {
                 </thead>
                 <tbody>
                   {data.senders.map((sender) => {
-                    const isApproving =
-                      updatingSender === `${sender.restaurantId}:approved`;
                     const isRejecting =
                       updatingSender === `${sender.restaurantId}:rejected`;
-                    const isUpdating = isApproving || isRejecting;
-                    const isPending = sender.status === "pending";
-                    const statusLabel =
-                      sender.status === "approved"
+                    const isVerifying =
+                      verifyingSender === String(sender.restaurantId);
+                    const isUpdating = isRejecting || isVerifying;
+                    const configured = Boolean(sender.value);
+                    const isPending = configured && sender.status === "pending";
+                    const statusLabel = !configured
+                      ? "Non configuré"
+                      : sender.status === "approved"
                         ? "Approuvé"
                         : sender.status === "rejected"
                           ? "Rejeté"
-                          : "En attente";
+                          : "À créer chez smsmode";
                     return (
                       <tr
                         key={sender.restaurantId}
                         className="border-b border-darkBlue/5"
                       >
                         <td className="p-2">{sender.restaurantName}</td>
-                        <td className="p-2 font-medium">{sender.value}</td>
-                        <td className="p-2">{statusLabel}</td>
+                        <td className="p-2 font-medium">{sender.value || "—"}</td>
                         <td className="p-2">
+                          <span>{statusLabel}</span>
                           {isPending ? (
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() =>
-                                  openSenderAction(sender, "approved")
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg border border-green/25 px-2.5 py-1.5 font-medium text-green hover:bg-green/10 disabled:cursor-wait disabled:opacity-50"
-                              >
-                                {isApproving ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="size-3.5" />
-                                )}
-                                Approuver
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() =>
-                                  openSenderAction(sender, "rejected")
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg border border-red/25 px-2.5 py-1.5 font-medium text-red hover:bg-red/10 disabled:cursor-wait disabled:opacity-50"
-                              >
-                                {isRejecting ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <X className="size-3.5" />
-                                )}
-                                Rejeter
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-right text-darkBlue/40">—</div>
-                          )}
+                            <span className="mt-1 block max-w-56 text-[11px] text-darkBlue/50">
+                              Ce Sender ID n’est pas encore disponible chez
+                              smsmode.
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="p-2">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={isUpdating}
+                              onClick={() => setEditingSender(sender)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-darkBlue/15 px-2.5 py-1.5 font-medium hover:bg-darkBlue/5 disabled:opacity-50"
+                            >
+                              <Pencil className="size-3.5" />
+                              {configured ? "Modifier" : "Configurer"}
+                            </button>
+                            {isPending ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() => verifySender(sender)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue/25 px-2.5 py-1.5 font-medium text-blue hover:bg-blue/10 disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  <RefreshCw
+                                    className={`size-3.5 ${isVerifying ? "animate-spin" : ""}`}
+                                  />
+                                  Vérifier chez smsmode
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    openSenderAction(sender, "rejected")
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red/25 px-2.5 py-1.5 font-medium text-red hover:bg-red/10 disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  {isRejecting ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="size-3.5" />
+                                  )}
+                                  Rejeter
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -176,6 +252,7 @@ export default function SmsMonitoringAdminComponent() {
         </>
       )}
       {editingPolicy ? <EditDestinationPolicyAdminComponent policy={editingPolicy} onClose={() => setEditingPolicy(null)} onSaved={async () => { await load(); setEditingPolicy(null); }} /> : null}
+      {editingSender ? <EditSenderIdAdminComponent sender={editingSender} onClose={() => setEditingSender(null)} onSaved={async (result) => { applySenderResult(editingSender.restaurantId, result); setEditingSender(null); }} /> : null}
       <SenderStatusModalAdminComponent
         action={senderAction}
         error={senderError}

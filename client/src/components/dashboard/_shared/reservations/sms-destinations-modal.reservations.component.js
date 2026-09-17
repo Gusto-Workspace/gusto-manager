@@ -8,21 +8,9 @@ function countryName(country) {
   }
 }
 
-function senderLabel(destination, sender, restaurantName) {
-  if (["alpha", "registered_alpha"].includes(destination.senderMode)) {
-    if (sender?.status === "approved" && sender.value) return sender.value;
-    return restaurantName
-      ? `${restaurantName}, après approbation du Sender ID`
-      : "Nom du restaurant après approbation du Sender ID";
-  }
-  return destination.fallbackSender || "Expéditeur géré par Gusto";
-}
-
 export default function SmsDestinationsModalReservationsComponent({
   destinations = [],
   onClose,
-  restaurantName,
-  sender,
 }) {
   const activeDestinations = destinations.filter(
     (destination) => destination.enabled,
@@ -97,18 +85,6 @@ export default function SmsDestinationsModalReservationsComponent({
                     <dd className="inline">
                       inclus dans les 100 crédits puis selon la tarification
                       Gusto
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="inline font-medium text-darkBlue">
-                      Sender :{" "}
-                    </dt>
-                    <dd className="inline">
-                      {senderLabel(
-                        destination,
-                        sender,
-                        restaurantName,
-                      )}
                     </dd>
                   </div>
                 </dl>

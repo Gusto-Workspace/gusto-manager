@@ -7,6 +7,115 @@ const SmsJobModel = require("../../models/sms-job.model");
 const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
 const { syncAllFutureSmsJobs } = require("../../services/sms/sms-reminder.service");
+const SmsModeProvider = require("../../services/sms/smsmode-provider");
+
+const SENDER_ID_PATTERN = /^[A-Za-z0-9 ._-]{3,11}$/;
+
+function resolveAdminSenderUpdate(currentSender = {}, input = {}) {
+  const hasValue = Object.prototype.hasOwnProperty.call(input, "value");
+  const hasStatus = Object.prototype.hasOwnProperty.call(input, "status");
+  if (!hasValue && !hasStatus) {
+    const error = new Error("Valeur ou statut Sender ID requis.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const currentValue = String(currentSender.value || "").trim();
+  const nextValue = hasValue ? String(input.value || "").trim() : currentValue;
+  if (!nextValue || !SENDER_ID_PATTERN.test(nextValue)) {
+    const error = new Error(
+      "Le Sender ID doit contenir 3 à 11 caractères autorisés.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const requestedStatus = hasStatus ? String(input.status || "") : "";
+  if (
+    hasStatus &&
+    !["pending", "approved", "rejected"].includes(requestedStatus)
+  ) {
+    const error = new Error("Statut Sender ID invalide.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (requestedStatus === "approved") {
+    const error = new Error(
+      "L’approbation nécessite une vérification auprès de smsmode.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const valueChanged = nextValue !== currentValue;
+  return {
+    value: nextValue,
+    status: valueChanged
+      ? "pending"
+      : requestedStatus || currentSender.status || "pending",
+  };
+}
+
+async function verifyConfiguredSender(restaurant, provider) {
+  const sender = restaurant.reservationsSettings?.smsReminder?.sender;
+  const value = String(sender?.value || "").trim();
+  if (!value) {
+    const error = new Error("Configurez d’abord un Sender ID.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  try {
+    const result = await provider.senderExists(value);
+    if (result?.exists) {
+      sender.status = "approved";
+      await restaurant.save();
+      return {
+        sender: { value, status: "approved" },
+        verification: {
+          status: "verified",
+          channelId: result.channelId || "",
+          channelName: result.channelName || "",
+        },
+      };
+    }
+    sender.status = "pending";
+    await restaurant.save();
+    return {
+      sender: { value, status: "pending" },
+      verification: { status: "not_found" },
+    };
+  } catch (_) {
+    sender.status = "pending";
+    await restaurant.save();
+    return {
+      sender: { value, status: "pending" },
+      verification: {
+        status: "unavailable",
+        message:
+          "Sender ID enregistré, mais la vérification smsmode n’a pas pu être effectuée.",
+      },
+    };
+  }
+}
+
+async function configureAdminSender(restaurant, input, provider) {
+  restaurant.reservationsSettings = restaurant.reservationsSettings || {};
+  restaurant.reservationsSettings.smsReminder =
+    restaurant.reservationsSettings.smsReminder || {};
+  const currentSender = restaurant.reservationsSettings?.smsReminder?.sender;
+  const currentValue = String(currentSender?.value || "").trim();
+  const sender = resolveAdminSenderUpdate(currentSender, input);
+  const valueChanged = sender.value !== currentValue;
+  restaurant.reservationsSettings.smsReminder.sender = sender;
+  await restaurant.save();
+
+  if (valueChanged) return verifyConfiguredSender(restaurant, provider);
+  return {
+    sender,
+    verification: { status: "not_required" },
+  };
+}
 
 async function withRestaurantNames(items = []) {
   const restaurantIds = Array.from(
@@ -46,10 +155,7 @@ router.get("/admin/sms/usage", authenticateAdmin, async (_req, res) => {
 
 router.get("/admin/sms/senders", authenticateAdmin, async (_req, res) => {
   const restaurants = await RestaurantModel.find({
-    "reservationsSettings.smsReminder.sender.status": {
-      $in: ["pending", "approved", "rejected"],
-    },
-    "reservationsSettings.smsReminder.sender.value": { $ne: "" },
+    "options.sms_reminders": true,
   })
     .select("name reservationsSettings.smsReminder.sender")
     .sort({ name: 1 })
@@ -81,11 +187,47 @@ router.put("/admin/sms/destination-policies/:country", authenticateAdmin, requir
 });
 
 router.put("/admin/restaurants/:id/sms-sender", authenticateAdmin, requireAdminRole, async (req, res) => {
-  const status = String(req.body?.status || "");
-  if (!["pending", "approved", "rejected"].includes(status)) return res.status(400).json({ message: "Statut Sender ID invalide." });
-  const restaurant = await RestaurantModel.findByIdAndUpdate(req.params.id, { $set: { "reservationsSettings.smsReminder.sender.status": status } }, { new: true });
-  if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
-  return res.json({ sender: restaurant.reservationsSettings?.smsReminder?.sender });
+  try {
+    const restaurant = await RestaurantModel.findById(req.params.id);
+    if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
+    const input = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(input, "value")) {
+      const result = await configureAdminSender(
+        restaurant,
+        input,
+        new SmsModeProvider(),
+      );
+      return res.json(result);
+    }
+    const sender = resolveAdminSenderUpdate(
+      restaurant.reservationsSettings?.smsReminder?.sender,
+      input,
+    );
+    restaurant.reservationsSettings.smsReminder.sender = sender;
+    await restaurant.save();
+    return res.json({ sender, verification: { status: "not_required" } });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({
+      message: error?.message || "Internal server error",
+    });
+  }
+});
+
+router.post("/admin/restaurants/:id/sms-sender/verify", authenticateAdmin, requireAdminRole, async (req, res) => {
+  try {
+    const restaurant = await RestaurantModel.findById(req.params.id);
+    if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
+    return res.json(
+      await verifyConfiguredSender(restaurant, new SmsModeProvider()),
+    );
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({
+      message: error?.message || "Internal server error",
+    });
+  }
 });
 
 module.exports = router;
+module.exports.configureAdminSender = configureAdminSender;
+module.exports.resolveAdminSenderUpdate = resolveAdminSenderUpdate;
+module.exports.verifyConfiguredSender = verifyConfiguredSender;

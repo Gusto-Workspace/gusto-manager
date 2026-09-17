@@ -1,4 +1,4 @@
-import { Check, Loader2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 export default function SenderStatusModalAdminComponent({
   action,
@@ -7,13 +7,7 @@ export default function SenderStatusModalAdminComponent({
   onClose,
   onConfirm,
 }) {
-  if (!action?.sender) return null;
-
-  const approving = action.status === "approved";
-  const title = approving
-    ? "Approuver le Sender ID"
-    : "Rejeter le Sender ID";
-  const actionLabel = approving ? "Approuver" : "Rejeter";
+  if (!action?.sender || action.status !== "rejected") return null;
 
   return (
     <div
@@ -36,11 +30,11 @@ export default function SenderStatusModalAdminComponent({
               id="sender-status-modal-title"
               className="font-semibold text-darkBlue"
             >
-              {title}
+              Rejeter le Sender ID
             </h2>
             <p className="mt-2 text-sm text-darkBlue/70">
-              Confirmer {approving ? "l'approbation" : "le rejet"} du Sender
-              ID « {action.sender.value} » pour {action.sender.restaurantName}
+              Confirmer le rejet du Sender ID « {action.sender.value} » pour{" "}
+              {action.sender.restaurantName}
               &nbsp;?
             </p>
           </div>
@@ -74,20 +68,14 @@ export default function SenderStatusModalAdminComponent({
             type="button"
             disabled={loading}
             onClick={onConfirm}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-wait disabled:opacity-60 ${
-              approving
-                ? "bg-green hover:bg-green/90"
-                : "bg-red hover:bg-red/90"
-            }`}
+            className="inline-flex items-center gap-2 rounded-xl bg-red px-4 py-2 text-sm font-semibold text-white transition hover:bg-red/90 disabled:cursor-wait disabled:opacity-60"
           >
             {loading ? (
               <Loader2 className="size-4 animate-spin" />
-            ) : approving ? (
-              <Check className="size-4" />
             ) : (
               <X className="size-4" />
             )}
-            {actionLabel}
+            Rejeter
           </button>
         </div>
       </div>

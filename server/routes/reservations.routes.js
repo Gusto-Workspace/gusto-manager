@@ -4587,6 +4587,18 @@ router.put(
         waitlist: nextWaitlist,
       };
 
+      if (Object.prototype.hasOwnProperty.call(parameters, "smsReminder")) {
+        nextReservationSettings.smsReminder =
+          parameters.smsReminder &&
+          typeof parameters.smsReminder === "object"
+            ? {
+                ...(existing.smsReminder || {}),
+                ...parameters.smsReminder,
+                sender: existing.smsReminder?.sender,
+              }
+            : existing.smsReminder;
+      }
+
       if (
         Object.prototype.hasOwnProperty.call(
           parameters,

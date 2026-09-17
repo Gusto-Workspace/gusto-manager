@@ -31,8 +31,47 @@ function serializeSettings(settings = {}) {
     ),
     internationalEnabled: Boolean(settings.internationalEnabled),
     billingPeriodSpendingLimit: settings.billingPeriodSpendingLimit ?? null,
-    sender: { value: settings.sender?.value || "", status: settings.sender?.status || "pending" },
   };
+}
+
+function applyRestaurantSmsSettings(settings, input = {}) {
+  const delayMinutes = Math.floor(Number(input.delayMinutes));
+  if (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 43200) {
+    const error = new Error("Délai SMS invalide.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!["sms_always", "eco"].includes(input.deliveryMode)) {
+    const error = new Error("Mode d'envoi invalide.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const template = validateSmsTemplate(
+    normalizeDefaultSmsTemplate(input.template),
+  );
+  const rawLimit = input.billingPeriodSpendingLimit;
+  const spendingLimit =
+    rawLimit === null || rawLimit === "" || rawLimit === undefined
+      ? null
+      : Number(rawLimit);
+  if (
+    spendingLimit !== null &&
+    (!Number.isFinite(spendingLimit) ||
+      spendingLimit < 0 ||
+      spendingLimit > 10000)
+  ) {
+    const error = new Error("Plafond de dépense invalide.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  settings.enabled = Boolean(input.enabled);
+  settings.delayMinutes = delayMinutes;
+  settings.deliveryMode = input.deliveryMode;
+  settings.template = template;
+  settings.internationalEnabled = Boolean(input.internationalEnabled);
+  settings.billingPeriodSpendingLimit = spendingLimit;
+  return settings;
 }
 
 function serializeDestinationPolicy(policy = {}) {
@@ -72,30 +111,10 @@ router.put("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     if (!(await canManageSms(req.user, restaurant))) return res.status(403).json({ message: "Forbidden" });
     if (!restaurant.options?.sms_reminders) return res.status(403).json({ message: "Le module Rappels SMS n'est pas souscrit." });
     const input = req.body || {};
-    const delayMinutes = Math.floor(Number(input.delayMinutes));
-    if (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 43200) return res.status(400).json({ message: "Délai SMS invalide." });
-    if (!["sms_always", "eco"].includes(input.deliveryMode)) return res.status(400).json({ message: "Mode d'envoi invalide." });
-    const template = validateSmsTemplate(
-      normalizeDefaultSmsTemplate(input.template),
+    applyRestaurantSmsSettings(
+      restaurant.reservationsSettings.smsReminder,
+      input,
     );
-    const rawLimit = input.billingPeriodSpendingLimit;
-    const spendingLimit = rawLimit === null || rawLimit === "" || rawLimit === undefined ? null : Number(rawLimit);
-    if (spendingLimit !== null && (!Number.isFinite(spendingLimit) || spendingLimit < 0 || spendingLimit > 10000)) return res.status(400).json({ message: "Plafond de dépense invalide." });
-    const senderValue = String(input.sender?.value || "").trim();
-    if (senderValue && !/^[A-Za-z0-9 ._-]{3,11}$/.test(senderValue)) return res.status(400).json({ message: "Le Sender ID doit contenir 3 à 11 caractères autorisés." });
-    const previous = restaurant.reservationsSettings?.smsReminder?.toObject?.() || restaurant.reservationsSettings?.smsReminder || {};
-    restaurant.reservationsSettings.smsReminder = {
-      enabled: Boolean(input.enabled),
-      delayMinutes,
-      deliveryMode: input.deliveryMode,
-      template,
-      internationalEnabled: Boolean(input.internationalEnabled),
-      billingPeriodSpendingLimit: spendingLimit,
-      sender: {
-        value: senderValue,
-        status: senderValue === String(previous.sender?.value || "") ? previous.sender?.status || "pending" : "pending",
-      },
-    };
     await restaurant.save();
     await syncAllFutureSmsJobs({ force: true });
     return res.json({ settings: serializeSettings(restaurant.reservationsSettings.smsReminder) });
@@ -106,3 +125,5 @@ router.put("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
 });
 
 module.exports = router;
+module.exports.applyRestaurantSmsSettings = applyRestaurantSmsSettings;
+module.exports.serializeSettings = serializeSettings;

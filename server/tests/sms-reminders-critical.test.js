@@ -406,10 +406,14 @@ test("policy étrangère active respecte billingCredits sans modifier les seeds"
   assert.equal(meterValue, 3);
 });
 
-test("registered_alpha bloque pending/rejected et autorise approved", async () => {
-  for (const status of ["pending", "rejected", "approved"]) {
+test("registered_alpha bloque les Sender IDs absents/non approuvés", async () => {
+  for (const status of [null, "pending", "rejected", "approved"]) {
     const booking = reservation();
-    const venue = restaurant({ smsReminder: { sender: { value: "SAVEURS", status } } });
+    const venue = restaurant({
+      smsReminder: {
+        sender: status ? { value: "SAVEURS", status } : undefined,
+      },
+    });
     const currentJob = jobFor(booking, venue);
     const usage = usageModel();
     let sends = 0;

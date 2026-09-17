@@ -1228,6 +1228,7 @@ export default function ParametersReservationComponent(props) {
 
         <SmsRemindersReservationsComponent
           restaurantData={props.restaurantData}
+          savePresentation="icon"
         />
 
         {/* --- Bloc: Gestion intelligente + tables --- */}
