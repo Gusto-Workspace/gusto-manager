@@ -109,8 +109,9 @@ test("l'admin peut rejeter mais pas approuver sans vérification smsmode", () =>
   );
 });
 
-function fakeRestaurant(sender = {}) {
+function fakeRestaurant(sender = {}, options = {}) {
   return {
+    options,
     reservationsSettings: { smsReminder: { sender: { ...sender } } },
     saveCount: 0,
     async save() {
@@ -157,6 +158,23 @@ test("une nouvelle vérification approuve un Sender ID devenu disponible", async
 
   assert.equal(result.sender.status, "approved");
   assert.equal(restaurant.reservationsSettings.smsReminder.sender.status, "approved");
+});
+
+test("l’approbation admin rend éligible un restaurant dont le module est provisionné", async () => {
+  const restaurant = fakeRestaurant(
+    { value: "RESTOB", status: "pending" },
+    { sms_reminders: true },
+  );
+  await verifyConfiguredSender(restaurant, {
+    async senderExists() {
+      return { exists: true };
+    },
+  });
+
+  assert.equal(
+    restaurant.reservationsSettings.smsReminder.selfServiceEligible,
+    true,
+  );
 });
 
 test("une indisponibilité smsmode conserve la valeur et le statut pending", async () => {

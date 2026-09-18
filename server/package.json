@@ -19,7 +19,8 @@
     "test:sms-reminders": "TZ=UTC node --test tests/sms-reminders.test.js",
     "import:customers:xlsx": "node utils/script/importCustomersFromXlsx.script.js",
     "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js",
-    "sms:seed-fr-policy": "node utils/script/seedSmsFrancePolicy.script.js"
+    "sms:seed-fr-policy": "node utils/script/seedSmsFrancePolicy.script.js",
+    "sms:backfill-self-service": "node scripts/backfillSmsSelfServiceEligibility.script.js"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.11",

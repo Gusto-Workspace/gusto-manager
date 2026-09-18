@@ -57,6 +57,11 @@ function statusBadge(status, type, signatureRequest) {
       };
     case "SIGNED":
       return { label: "Signé", className: "bg-green/10 text-green-700" };
+    case "ACCEPTED":
+      return {
+        label: "Accepté électroniquement",
+        className: "bg-green/10 text-green-700",
+      };
     default:
       return {
         label: status || "—",
@@ -314,6 +319,7 @@ export default function ListDocumentsAdminComponent(props) {
             <option value="DRAFT">Brouillons</option>
             <option value="SENT">Envoyés</option>
             <option value="SIGNED">Signés</option>
+            <option value="ACCEPTED">Acceptés électroniquement</option>
           </select>
         </div>
       ) : null}

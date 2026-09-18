@@ -24,6 +24,57 @@ const FINAL_JOB_STATUSES = ["accepted", "delivered", "failed", "uncertain"];
 const ACCEPTED_RECONCILIATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PROVIDER_RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 
+function smsDestinationPolicyIsUsable(policy) {
+  return Boolean(
+    policy?.enabled === true &&
+      Number(policy.billingCredits) >= 1 &&
+      policy.senderMode &&
+      policy.providerRateHt !== null &&
+      policy.providerRateHt !== undefined &&
+      policy.lastReviewedAt,
+  );
+}
+
+function smsDestinationPolicyRequiresApprovedSender(policy) {
+  return Boolean(
+    policy?.senderRegistrationRequired ||
+      policy?.senderMode === "registered_alpha",
+  );
+}
+
+function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) {
+  const applicablePolicies = policies.filter(
+    (policy) =>
+      policy?.country === "FR" || settings.internationalEnabled === true,
+  );
+  const francePolicy = applicablePolicies.find(
+    (policy) => policy?.country === "FR",
+  );
+  if (!smsDestinationPolicyIsUsable(francePolicy)) {
+    return {
+      code: "SMS_CONFIGURATION_REQUIRED",
+      message:
+        "La configuration SMS doit être vérifiée par le service client avant la réactivation.",
+    };
+  }
+
+  const senderRequired = applicablePolicies
+    .filter(smsDestinationPolicyIsUsable)
+    .some(smsDestinationPolicyRequiresApprovedSender);
+  const senderValue = String(settings.sender?.value || "").trim();
+  if (
+    senderRequired &&
+    (settings.sender?.status !== "approved" || !senderValue)
+  ) {
+    return {
+      code: "SMS_SENDER_REVALIDATION_REQUIRED",
+      message:
+        "Le Sender ID doit être reconfiguré et validé par le service client avant la réactivation.",
+    };
+  }
+  return null;
+}
+
 function sendingIsEnabled() {
   return process.env.SMS_SENDING_ENABLED === "true";
 }
@@ -406,11 +457,11 @@ async function processClaimedJob(
   if (!phone) return skipJob(job, "no_phone", usagePeriodModel);
   if (phone.country !== "FR" && !settings.internationalEnabled) return skipJob(job, "international_disabled", usagePeriodModel);
   const policy = await destinationPolicyModel.findOne({ country: phone.country, enabled: true });
-  if (!policy || !policy.billingCredits || !policy.senderMode || policy.providerRateHt === null || !policy.lastReviewedAt) return skipJob(job, "unsupported_destination", usagePeriodModel);
+  if (!smsDestinationPolicyIsUsable(policy)) return skipJob(job, "unsupported_destination", usagePeriodModel);
 
   const approvedSender = settings.sender?.status === "approved" ? String(settings.sender.value || "").trim() : "";
   if (
-    (policy.senderRegistrationRequired || policy.senderMode === "registered_alpha") &&
+    smsDestinationPolicyRequiresApprovedSender(policy) &&
     !approvedSender
   ) {
     return skipJob(job, "sender_not_approved", usagePeriodModel);
@@ -685,4 +736,7 @@ module.exports = {
   runSmsReminderWorker,
   syncAllFutureSmsJobs,
   syncReservationSmsJob,
+  smsDestinationPolicyIsUsable,
+  smsDestinationPolicyRequiresApprovedSender,
+  validateSmsReactivationPrerequisites,
 };

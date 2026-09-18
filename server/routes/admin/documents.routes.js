@@ -379,7 +379,10 @@ async function prepareDraftContractSnapshot(doc) {
     const parentDocument = doc.parentDocumentId
       ? await DocumentModel.findById(doc.parentDocumentId)
       : null;
-    if (!parentDocument || parentDocument.status !== "SIGNED") {
+    if (
+      !parentDocument ||
+      !["SIGNED", "ACCEPTED"].includes(parentDocument.status)
+    ) {
       const error = new Error(
         "Le document signé précédant cet avenant est introuvable.",
       );
@@ -1004,7 +1007,11 @@ router.get(
         return res.status(404).json({ message: "Document introuvable" });
 
       // ✅ CONTRAT SIGNÉ => renvoyer le PDF signé enregistré (Cloudinary)
-      if (doc.type === "CONTRACT" && doc.status === "SIGNED" && doc?.pdf?.url) {
+      if (
+        doc.type === "CONTRACT" &&
+        ["SIGNED", "ACCEPTED"].includes(doc.status) &&
+        doc?.pdf?.url
+      ) {
         const pdfBuffer = await downloadStoredPdf(doc.pdf.url);
         if (doc.pdf.sha256 && hashPdfBuffer(pdfBuffer) !== doc.pdf.sha256) {
           return res.status(409).json({
@@ -1078,6 +1085,8 @@ function serializeContractHistoryItem(document) {
     issueDate: document.issueDate,
     sentAt: document.sentAt,
     signedAt: document.signature?.signedAt || null,
+    acceptedAt: document.selfServiceAcceptance?.acceptedAt || null,
+    acceptanceMode: document.acceptanceMode || "SIGNATURE",
     signatureRequestState:
       document.status === "SENT" ? getRequestState(document) : null,
   };
@@ -1097,10 +1106,13 @@ router.get(
       const pendingAmendment = family
         .filter(
           (item) =>
-            item.contractKind === "AMENDMENT" && item.status !== "SIGNED",
+            item.contractKind === "AMENDMENT" &&
+            !["SIGNED", "ACCEPTED"].includes(item.status),
         )
         .at(-1);
-      const signedDocuments = family.filter((item) => item.status === "SIGNED");
+      const signedDocuments = family.filter((item) =>
+        ["SIGNED", "ACCEPTED"].includes(item.status),
+      );
       const latestSigned = signedDocuments.at(-1) || null;
       const previousSnapshot =
         latestSigned?.commercialSnapshot ||
@@ -1277,7 +1289,7 @@ router.post(
       const family = await getContractFamily(sourceDocument);
       const rootContract = family[0];
       const latestSigned = family
-        .filter((item) => item.status === "SIGNED")
+        .filter((item) => ["SIGNED", "ACCEPTED"].includes(item.status))
         .at(-1);
 
       if (!latestSigned) {
@@ -1289,7 +1301,8 @@ router.post(
       if (
         family.some(
           (item) =>
-            item.contractKind === "AMENDMENT" && item.status !== "SIGNED",
+            item.contractKind === "AMENDMENT" &&
+            !["SIGNED", "ACCEPTED"].includes(item.status),
         )
       ) {
         return res.status(409).json({

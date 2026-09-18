@@ -70,6 +70,9 @@ async function verifyConfiguredSender(restaurant, provider) {
     const result = await provider.senderExists(value);
     if (result?.exists) {
       sender.status = "approved";
+      if (restaurant.options?.sms_reminders) {
+        restaurant.reservationsSettings.smsReminder.selfServiceEligible = true;
+      }
       await restaurant.save();
       return {
         sender: { value, status: "approved" },

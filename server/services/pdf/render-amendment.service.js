@@ -45,6 +45,19 @@ function dateFr(value) {
   return parsed.toLocaleDateString("fr-FR");
 }
 
+function dateTimeFr(value) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function absolutePathIfExists(value) {
   if (!value) return null;
   const absolute = path.isAbsolute(value)
@@ -273,6 +286,7 @@ async function renderAmendmentPdf(documentData, emitter, signatureImageBuffer) {
     paragraph(text(documentData.comments), { after: 1 });
   }
 
+  const selfServiceAcceptance = documentData.selfServiceAcceptance;
   ensureSpace(190);
   const place = text(documentData.placeOfSignature);
   paragraph(
@@ -307,7 +321,18 @@ async function renderAmendmentPdf(documentData, emitter, signatureImageBuffer) {
     });
   }
 
-  if (signatureImageBuffer) {
+  if (selfServiceAcceptance?.mode === "SELF_SERVICE") {
+    const acceptedBy = text(selfServiceAcceptance.acceptedByName);
+    pdf
+      .fontSize(9)
+      .fillColor("#333")
+      .text(
+        `Accepté électroniquement par le Client\nDepuis son espace Gusto Manager\nLe ${dateTimeFr(selfServiceAcceptance.acceptedAt)}${acceptedBy ? `\n${acceptedBy}` : ""}${party.restaurantName ? `\n${party.restaurantName}` : ""}`,
+        332,
+        baseY + 31,
+        { width: boxWidth - 24, align: "center", lineGap: 2 },
+      );
+  } else if (signatureImageBuffer) {
     pdf.image(signatureImageBuffer, 330, baseY + 28, {
       fit: [boxWidth - 20, boxHeight - 20],
       align: "center",

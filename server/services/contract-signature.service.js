@@ -52,6 +52,8 @@ function buildContractContentSnapshot(documentData, commercialSnapshot) {
     comments: normalizeString(source.comments),
     amendment: plainValue(source.amendment) || null,
     commercialSnapshot: plainValue(commercialSnapshot) || null,
+    acceptanceMode: source.acceptanceMode || "SIGNATURE",
+    selfServiceAcceptance: plainValue(source.selfServiceAcceptance) || null,
   };
 }
 

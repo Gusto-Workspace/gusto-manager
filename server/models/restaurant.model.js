@@ -180,6 +180,7 @@ const reservationWaitlistSchema = new mongoose.Schema(
 
 const smsReminderSchema = new mongoose.Schema(
   {
+    selfServiceEligible: { type: Boolean, default: false },
     enabled: { type: Boolean, default: false },
     delayMinutes: { type: Number, min: 1, default: 1440 },
     deliveryMode: {
@@ -210,6 +211,22 @@ const smsReminderSchema = new mongoose.Schema(
       stripeScheduleId: { type: String, trim: true, default: "" },
       effectiveAt: { type: Date, default: null },
       requestedAt: { type: Date, default: null },
+    },
+    selfServiceOperation: {
+      idempotencyKey: { type: String, trim: true, default: "" },
+      action: {
+        type: String,
+        enum: ["", "schedule_deactivation", "cancel_deactivation", "reactivate"],
+        default: "",
+      },
+      status: {
+        type: String,
+        enum: ["", "processing", "stripe_applied", "completed", "document_failed"],
+        default: "",
+      },
+      documentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document", default: null },
+      updatedAt: { type: Date, default: null },
+      error: { type: String, default: "" },
     },
   },
   { _id: false },

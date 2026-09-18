@@ -207,6 +207,7 @@ const DOCUMENT_STATUS_LABELS = {
   DRAFT: "Brouillon",
   SENT: "Envoyé",
   SIGNED: "Signé",
+  ACCEPTED: "Accepté électroniquement",
 };
 
 function documentTitle(document) {
@@ -636,7 +637,7 @@ export default function DetailsDocumentAdminPage(props) {
     };
   }, [doc?._id, doc?.status, doc?.type]);
 
-  const isLocked = doc?.status === "SENT" || doc?.status === "SIGNED";
+  const isLocked = ["SENT", "SIGNED", "ACCEPTED"].includes(doc?.status);
   const isLegacyPhysicalSent =
     doc?.type === "CONTRACT" &&
     doc?.status === "SENT" &&
@@ -1482,7 +1483,9 @@ export default function DetailsDocumentAdminPage(props) {
                           : "Contrat initial"}
                       </p>
                       <p className="mt-1 text-xs text-darkBlue/60">
-                        {doc.status === "SIGNED"
+                        {doc.status === "ACCEPTED"
+                          ? `Accepté électroniquement${doc.selfServiceAcceptance?.acceptedAt ? ` le ${new Date(doc.selfServiceAcceptance.acceptedAt).toLocaleDateString("fr-FR")}` : ""}${doc.selfServiceAcceptance?.acceptedByName ? ` par ${doc.selfServiceAcceptance.acceptedByName}` : ""}`
+                          : doc.status === "SIGNED"
                           ? `Signé${doc.signature?.signedAt ? ` le ${new Date(doc.signature.signedAt).toLocaleDateString("fr-FR")}` : ""}`
                           : doc.status === "SENT"
                             ? doc.signatureRequest?.expiresAt &&
