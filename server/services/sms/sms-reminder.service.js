@@ -23,15 +23,49 @@ const LOCK_MS = 3 * 60 * 1000;
 const FINAL_JOB_STATUSES = ["accepted", "delivered", "failed", "uncertain"];
 const ACCEPTED_RECONCILIATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PROVIDER_RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
+const SMS_DESTINATION_SENDER_MODES = [
+  "alpha",
+  "registered_alpha",
+  "numeric",
+  "shortcode",
+  "provider_default",
+];
+const SMS_DESTINATION_FALLBACK_REQUIRED_MODES = ["numeric", "shortcode"];
+
+function isSmsDestinationPolicyTechnicallyReady(policy) {
+  const senderMode = String(policy?.senderMode || "").trim();
+  const providerRateHt = Number(policy?.providerRateHt);
+  const billingCredits = Number(policy?.billingCredits);
+  const lastReviewedAt = new Date(policy?.lastReviewedAt || "");
+  const fallbackIsReady =
+    !SMS_DESTINATION_FALLBACK_REQUIRED_MODES.includes(senderMode) ||
+    Boolean(String(policy?.fallbackSender || "").trim());
+  const registrationRequirementIsConsistent =
+    policy?.senderRegistrationRequired ===
+    (senderMode === "registered_alpha");
+
+  return Boolean(
+    String(policy?.provider || "").trim() &&
+      policy?.providerRateHt !== null &&
+      policy?.providerRateHt !== undefined &&
+      policy?.providerRateHt !== "" &&
+      Number.isFinite(providerRateHt) &&
+      providerRateHt >= 0 &&
+      Number.isInteger(billingCredits) &&
+      billingCredits >= 1 &&
+      SMS_DESTINATION_SENDER_MODES.includes(senderMode) &&
+      typeof policy?.senderRegistrationRequired === "boolean" &&
+      registrationRequirementIsConsistent &&
+      typeof policy?.supportsDlr === "boolean" &&
+      fallbackIsReady &&
+      !Number.isNaN(lastReviewedAt.getTime()),
+  );
+}
 
 function smsDestinationPolicyIsUsable(policy) {
   return Boolean(
     policy?.enabled === true &&
-      Number(policy.billingCredits) >= 1 &&
-      policy.senderMode &&
-      policy.providerRateHt !== null &&
-      policy.providerRateHt !== undefined &&
-      policy.lastReviewedAt,
+      isSmsDestinationPolicyTechnicallyReady(policy),
   );
 }
 
@@ -736,6 +770,8 @@ module.exports = {
   runSmsReminderWorker,
   syncAllFutureSmsJobs,
   syncReservationSmsJob,
+  isSmsDestinationPolicyTechnicallyReady,
+  SMS_DESTINATION_SENDER_MODES,
   smsDestinationPolicyIsUsable,
   smsDestinationPolicyRequiresApprovedSender,
   validateSmsReactivationPrerequisites,

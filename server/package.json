@@ -20,6 +20,7 @@
     "import:customers:xlsx": "node utils/script/importCustomersFromXlsx.script.js",
     "customers:recompute-tags": "node utils/script/recomputeCustomerTags.script.js",
     "sms:seed-fr-policy": "node utils/script/seedSmsFrancePolicy.script.js",
+    "sms:seed-international-policies": "node scripts/seedSmsInternationalPolicies.script.js",
     "sms:backfill-self-service": "node scripts/backfillSmsSelfServiceEligibility.script.js"
   },
   "dependencies": {

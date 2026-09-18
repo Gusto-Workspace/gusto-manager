@@ -12,6 +12,7 @@ const {
   validateSmsTemplate,
 } = require("../services/sms/sms-message.service");
 const {
+  smsDestinationPolicyIsUsable,
   syncAllFutureSmsJobs,
   validateSmsReactivationPrerequisites,
 } = require("../services/sms/sms-reminder.service");
@@ -106,6 +107,12 @@ function serializeDestinationPolicy(policy = {}) {
   };
 }
 
+function serializeAvailableDestinationPolicies(policies = []) {
+  return policies
+    .filter(smsDestinationPolicyIsUsable)
+    .map(serializeDestinationPolicy);
+}
+
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -165,7 +172,7 @@ router.get("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
       subscribed: Boolean(restaurant.options?.sms_reminders),
       settings: serializeSettings(restaurant.reservationsSettings?.smsReminder),
       usage: usage || { includedCredits: 100, reservedCredits: 0, consumedCredits: 0, includedCreditsConsumed: 0, overageCredits: 0, overageAmount: 0 },
-      destinations: destinations.map(serializeDestinationPolicy),
+      destinations: serializeAvailableDestinationPolicies(destinations),
       commercial: {
         ...commercialState,
         canSelfManage:
@@ -509,5 +516,7 @@ router.put("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
 });
 
 module.exports = router;
+module.exports.serializeAvailableDestinationPolicies =
+  serializeAvailableDestinationPolicies;
 module.exports.applyRestaurantSmsSettings = applyRestaurantSmsSettings;
 module.exports.serializeSettings = serializeSettings;

@@ -155,6 +155,7 @@ function frenchPolicy(overrides = {}) {
   return {
     country: "FR",
     enabled: true,
+    provider: "smsmode",
     senderMode: "registered_alpha",
     senderRegistrationRequired: true,
     supportsDlr: true,
@@ -526,6 +527,7 @@ test("numéros et destinations non éligibles n'appellent pas le provider", asyn
     { phone: "123", internationalEnabled: false, policy: frenchPolicy(), reason: "no_phone" },
     { phone: "+32 470 12 34 56", internationalEnabled: false, policy: frenchPolicy(), reason: "international_disabled" },
     { phone: "+32 470 12 34 56", internationalEnabled: true, policy: null, reason: "unsupported_destination" },
+    { phone: "+32 470 12 34 56", internationalEnabled: true, policy: frenchPolicy({ country: "BE", supportsDlr: null }), reason: "unsupported_destination" },
   ];
   for (const value of cases) {
     const booking = reservation({ customerPhone: value.phone });

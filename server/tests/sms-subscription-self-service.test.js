@@ -110,9 +110,11 @@ test("la réactivation refuse un Sender ID invalide lorsque la policy l’exige"
       {
         country: "FR",
         enabled: true,
+        provider: "smsmode",
         billingCredits: 1,
         senderMode: "registered_alpha",
         senderRegistrationRequired: true,
+        supportsDlr: true,
         providerRateHt: 0.05,
         lastReviewedAt: new Date(),
       },
@@ -132,9 +134,11 @@ test("la réactivation accepte une policy exploitable sans Sender ID obligatoire
       {
         country: "FR",
         enabled: true,
+        provider: "smsmode",
         billingCredits: 1,
         senderMode: "provider_default",
         senderRegistrationRequired: false,
+        supportsDlr: true,
         providerRateHt: 0.05,
         lastReviewedAt: new Date(),
       },
