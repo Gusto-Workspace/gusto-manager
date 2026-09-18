@@ -76,10 +76,17 @@ function smsDestinationPolicyRequiresApprovedSender(policy) {
   );
 }
 
-function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) {
-  const applicablePolicies = policies.filter(
+function getApplicableSmsDestinationPolicies(settings = {}, policies = []) {
+  return policies.filter(
     (policy) =>
       policy?.country === "FR" || settings.internationalEnabled === true,
+  );
+}
+
+function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) {
+  const applicablePolicies = getApplicableSmsDestinationPolicies(
+    settings,
+    policies,
   );
   const francePolicy = applicablePolicies.find(
     (policy) => policy?.country === "FR",
@@ -96,10 +103,7 @@ function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) 
     .filter(smsDestinationPolicyIsUsable)
     .some(smsDestinationPolicyRequiresApprovedSender);
   const senderValue = String(settings.sender?.value || "").trim();
-  if (
-    senderRequired &&
-    (settings.sender?.status !== "approved" || !senderValue)
-  ) {
+  if (senderRequired && !senderValue) {
     return {
       code: "SMS_SENDER_REVALIDATION_REQUIRED",
       message:
@@ -107,6 +111,74 @@ function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) 
     };
   }
   return null;
+}
+
+async function revalidateSmsSenderForReactivation({
+  settings = {},
+  policies = [],
+  provider = new SmsModeProvider(),
+} = {}) {
+  const prerequisiteError = validateSmsReactivationPrerequisites({
+    settings,
+    policies,
+  });
+  if (prerequisiteError) {
+    if (prerequisiteError.code === "SMS_SENDER_REVALIDATION_REQUIRED") {
+      settings.sender = settings.sender || {};
+      const senderStatusChanged = settings.sender.status !== "pending";
+      settings.sender.status = "pending";
+      return { error: prerequisiteError, senderStatusChanged };
+    }
+    return { error: prerequisiteError, senderStatusChanged: false };
+  }
+
+  const senderRequired = getApplicableSmsDestinationPolicies(
+    settings,
+    policies,
+  )
+    .filter(smsDestinationPolicyIsUsable)
+    .some(smsDestinationPolicyRequiresApprovedSender);
+  if (!senderRequired) {
+    return {
+      error: null,
+      senderStatusChanged: false,
+      verification: { status: "not_required" },
+    };
+  }
+
+  const sender = settings.sender;
+  const previousStatus = sender.status;
+  try {
+    const result = await provider.senderExists(String(sender.value).trim());
+    if (result?.exists) {
+      sender.status = "approved";
+      return {
+        error: null,
+        senderStatusChanged: previousStatus !== "approved",
+        verification: { status: "verified" },
+      };
+    }
+    sender.status = "pending";
+    return {
+      error: {
+        code: "SMS_SENDER_REVALIDATION_REQUIRED",
+        message:
+          "Le Sender ID doit être reconfiguré et validé par le service client avant la réactivation.",
+      },
+      senderStatusChanged: previousStatus !== "pending",
+      verification: { status: "not_found" },
+    };
+  } catch (_) {
+    return {
+      error: {
+        code: "SMS_SENDER_VERIFICATION_UNAVAILABLE",
+        message:
+          "La vérification du Sender ID auprès de smsmode est temporairement indisponible. Réessayez ultérieurement.",
+      },
+      senderStatusChanged: false,
+      verification: { status: "unavailable" },
+    };
+  }
 }
 
 function sendingIsEnabled() {
@@ -764,6 +836,7 @@ module.exports = {
   recoverExpiredJobs,
   releaseUsage,
   reportStripeUsage,
+  revalidateSmsSenderForReactivation,
   reserveUsage,
   sendingIsEnabled,
   applyProviderStatus,

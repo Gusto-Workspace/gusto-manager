@@ -734,10 +734,11 @@ test("désactivation commerciale attend la disparition des Prices SMS", async ()
   const venue = restaurant({ smsReminder: { commercialDeactivation: deactivation } });
   let updates = 0;
   let cancellations = 0;
+  let effectiveUpdate = null;
   let dueRestaurants = [];
   const restaurantModel = {
     find() { return { async select() { return dueRestaurants; } }; },
-    async updateOne() { updates += 1; return { modifiedCount: 1 }; },
+    async updateOne(_query, update) { updates += 1; effectiveUpdate = update; return { modifiedCount: 1 }; },
   };
   const smsJobModel = { async updateMany() { cancellations += 1; } };
   await finalizeDueSmsDeactivations(new Date("2027-01-01"), {
@@ -764,6 +765,18 @@ test("désactivation commerciale attend la disparition des Prices SMS", async ()
   });
   assert.equal(updates, 1);
   assert.equal(cancellations, 1);
+  assert.equal(
+    effectiveUpdate.$set["options.sms_reminders"],
+    false,
+  );
+  assert.equal(
+    Object.keys(effectiveUpdate.$set).some((path) => path.includes("sender")),
+    false,
+  );
+  assert.deepEqual(
+    venue.reservationsSettings.smsReminder.sender,
+    { value: "SAVEURS", status: "approved" },
+  );
 });
 
 test("DLR dupliqués delivered/failed ne consomment ni ne facturent deux fois", async () => {

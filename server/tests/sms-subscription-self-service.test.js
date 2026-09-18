@@ -8,6 +8,7 @@ process.env.STRIPE_API_SECRET_KEY ||= "sk_test_sms_self_service";
 const RestaurantModel = require("../models/restaurant.model");
 const DocumentModel = require("../models/document.model");
 const {
+  revalidateSmsSenderForReactivation,
   validateSmsReactivationPrerequisites,
 } = require("../services/sms/sms-reminder.service");
 const {
@@ -100,51 +101,106 @@ test("l’annulation produit une nouvelle acceptation et un email sans signature
   assert.doesNotMatch(html, /signer|signature/i);
 });
 
-test("la réactivation refuse un Sender ID invalide lorsque la policy l’exige", () => {
-  const result = validateSmsReactivationPrerequisites({
-    settings: {
-      sender: { value: "SAVEURS", status: "rejected" },
-      internationalEnabled: false,
-    },
-    policies: [
-      {
-        country: "FR",
-        enabled: true,
-        provider: "smsmode",
-        billingCredits: 1,
-        senderMode: "registered_alpha",
-        senderRegistrationRequired: true,
-        supportsDlr: true,
-        providerRateHt: 0.05,
-        lastReviewedAt: new Date(),
+function senderPolicy(overrides = {}) {
+  return {
+    country: "FR",
+    enabled: true,
+    provider: "smsmode",
+    billingCredits: 1,
+    senderMode: "registered_alpha",
+    senderRegistrationRequired: true,
+    supportsDlr: true,
+    providerRateHt: 0.05,
+    lastReviewedAt: new Date(),
+    ...overrides,
+  };
+}
+
+test("la réactivation approuve le Sender réellement confirmé par smsmode", async () => {
+  const settings = {
+    sender: { value: "SAVEURS", status: "pending" },
+    internationalEnabled: false,
+  };
+  let calls = 0;
+  const result = await revalidateSmsSenderForReactivation({
+    settings,
+    policies: [senderPolicy()],
+    provider: {
+      async senderExists(value) {
+        calls += 1;
+        assert.equal(value, "SAVEURS");
+        return { exists: true };
       },
-    ],
+    },
   });
-  assert.equal(result.code, "SMS_SENDER_REVALIDATION_REQUIRED");
-  assert.match(result.message, /reconfiguré et validé/i);
+  assert.equal(result.error, null);
+  assert.equal(result.senderStatusChanged, true);
+  assert.equal(settings.sender.status, "approved");
+  assert.equal(calls, 1);
 });
 
-test("la réactivation accepte une policy exploitable sans Sender ID obligatoire", () => {
-  const result = validateSmsReactivationPrerequisites({
+test("la réactivation refuse avant Stripe un Sender disparu de smsmode", async () => {
+  const settings = {
+    sender: { value: "SAVEURS", status: "approved" },
+    internationalEnabled: false,
+  };
+  const result = await revalidateSmsSenderForReactivation({
+    settings,
+    policies: [senderPolicy()],
+    provider: { async senderExists() { return { exists: false }; } },
+  });
+  assert.equal(result.error.code, "SMS_SENDER_REVALIDATION_REQUIRED");
+  assert.equal(result.senderStatusChanged, true);
+  assert.equal(settings.sender.status, "pending");
+});
+
+test("la réactivation refuse un Sender requis mais absent sans appeler smsmode", async () => {
+  const settings = {
+    sender: { value: "", status: "approved" },
+    internationalEnabled: false,
+  };
+  let calls = 0;
+  const result = await revalidateSmsSenderForReactivation({
+    settings,
+    policies: [senderPolicy()],
+    provider: { async senderExists() { calls += 1; } },
+  });
+  assert.equal(result.error.code, "SMS_SENDER_REVALIDATION_REQUIRED");
+  assert.equal(settings.sender.status, "pending");
+  assert.equal(calls, 0);
+});
+
+test("une indisponibilité smsmode bloque temporairement sans dégrader le Sender", async () => {
+  const settings = {
+    sender: { value: "SAVEURS", status: "approved" },
+    internationalEnabled: false,
+  };
+  const result = await revalidateSmsSenderForReactivation({
+    settings,
+    policies: [senderPolicy()],
+    provider: { async senderExists() { throw new Error("timeout"); } },
+  });
+  assert.equal(result.error.code, "SMS_SENDER_VERIFICATION_UNAVAILABLE");
+  assert.equal(result.senderStatusChanged, false);
+  assert.equal(settings.sender.status, "approved");
+});
+
+test("la réactivation sans Sender enregistré n’appelle pas smsmode", async () => {
+  let calls = 0;
+  const result = await revalidateSmsSenderForReactivation({
     settings: {
       sender: { value: "", status: "rejected" },
       internationalEnabled: false,
     },
-    policies: [
-      {
-        country: "FR",
-        enabled: true,
-        provider: "smsmode",
-        billingCredits: 1,
-        senderMode: "provider_default",
-        senderRegistrationRequired: false,
-        supportsDlr: true,
-        providerRateHt: 0.05,
-        lastReviewedAt: new Date(),
-      },
-    ],
+    policies: [senderPolicy({
+      senderMode: "provider_default",
+      senderRegistrationRequired: false,
+    })],
+    provider: { async senderExists() { calls += 1; } },
   });
-  assert.equal(result, null);
+  assert.equal(result.error, null);
+  assert.equal(result.verification.status, "not_required");
+  assert.equal(calls, 0);
 });
 
 test("la réactivation refuse une configuration pays absente ou incomplète", () => {
@@ -174,6 +230,22 @@ test("la réactivation utilise la déduplication fixe plus metered du catalogue"
   assert.match(routeSource, /buildSubscriptionItemUpdatePayload/);
   assert.match(routeSource, /proration_behavior: "create_prorations"/);
   assert.match(routeSource, /sms-self-service-\$\{idempotencyKey\}/);
+});
+
+test("la revalidation smsmode précède toute mutation Stripe et tout avenant", () => {
+  const revalidationIndex = routeSource.indexOf(
+    "await revalidateSmsSenderForReactivation",
+  );
+  const stripeMutationIndex = routeSource.indexOf(
+    "await stripe.subscriptions.update",
+  );
+  const amendmentIndex = routeSource.indexOf(
+    "document = await finalizeSelfServiceAmendment",
+  );
+  assert.ok(revalidationIndex > 0);
+  assert.ok(revalidationIndex < stripeMutationIndex);
+  assert.ok(revalidationIndex < amendmentIndex);
+  assert.match(routeSource, /if \(action === "reactivate"\)/);
 });
 
 test("l’opération persistée protège les retries et garde l’échec documentaire récupérable", () => {

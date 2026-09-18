@@ -15,6 +15,12 @@ const { DEFAULT_TIMEZONE } = require("../../services/sms/sms-schedule.service");
 const SmsModeProvider = require("../../services/sms/smsmode-provider");
 
 const SENDER_ID_PATTERN = /^[A-Za-z0-9 ._-]{3,11}$/;
+const ADMIN_SMS_SENDERS_QUERY = {
+  "reservationsSettings.smsReminder.sender.value": {
+    $type: "string",
+    $regex: /\S/,
+  },
+};
 
 function resolveAdminSenderUpdate(currentSender = {}, input = {}) {
   const hasValue = Object.prototype.hasOwnProperty.call(input, "value");
@@ -185,14 +191,21 @@ router.get("/admin/sms/usage", authenticateAdmin, async (_req, res) => {
   return res.json({ usage: await withRestaurantNames(usage) });
 });
 
+function serializeAdminSenderRestaurant(restaurant = {}) {
+  return {
+    restaurantId: restaurant._id,
+    restaurantName: restaurant.name,
+    moduleActive: Boolean(restaurant.options?.sms_reminders),
+    ...(restaurant.reservationsSettings?.smsReminder?.sender || {}),
+  };
+}
+
 router.get("/admin/sms/senders", authenticateAdmin, async (_req, res) => {
-  const restaurants = await RestaurantModel.find({
-    "options.sms_reminders": true,
-  })
-    .select("name reservationsSettings.smsReminder.sender")
+  const restaurants = await RestaurantModel.find(ADMIN_SMS_SENDERS_QUERY)
+    .select("name options.sms_reminders reservationsSettings.smsReminder.sender")
     .sort({ name: 1 })
     .lean();
-  return res.json({ senders: restaurants.map((restaurant) => ({ restaurantId: restaurant._id, restaurantName: restaurant.name, ...restaurant.reservationsSettings.smsReminder.sender })) });
+  return res.json({ senders: restaurants.map(serializeAdminSenderRestaurant) });
 });
 
 function serializeAdminDestinationPolicy(policy = {}) {
@@ -348,9 +361,11 @@ router.post("/admin/restaurants/:id/sms-sender/verify", authenticateAdmin, requi
 });
 
 module.exports = router;
+module.exports.ADMIN_SMS_SENDERS_QUERY = ADMIN_SMS_SENDERS_QUERY;
 module.exports.configureAdminSender = configureAdminSender;
 module.exports.resolveAdminSenderUpdate = resolveAdminSenderUpdate;
 module.exports.normalizeDestinationPolicyInput = normalizeDestinationPolicyInput;
 module.exports.serializeAdminDestinationPolicy = serializeAdminDestinationPolicy;
+module.exports.serializeAdminSenderRestaurant = serializeAdminSenderRestaurant;
 module.exports.serializeAdminSmsJob = serializeAdminSmsJob;
 module.exports.verifyConfiguredSender = verifyConfiguredSender;
