@@ -12,9 +12,9 @@ const {
   validateSmsTemplate,
 } = require("../services/sms/sms-message.service");
 const {
+  revalidateSmsSenderForReactivation,
   smsDestinationPolicyIsUsable,
   syncAllFutureSmsJobs,
-  validateSmsReactivationPrerequisites,
 } = require("../services/sms/sms-reminder.service");
 const { findRestaurantSubscription } = require("../services/stripe-billing.service");
 const {
@@ -291,6 +291,29 @@ router.post(
       restaurant = lockedRestaurant;
       operation = restaurant.reservationsSettings.smsReminder.selfServiceOperation;
 
+      if (action === "reactivate") {
+        const policies = await SmsDestinationPolicyModel.find({
+          enabled: true,
+        }).lean();
+        const senderRevalidation = await revalidateSmsSenderForReactivation({
+          settings: restaurant.reservationsSettings.smsReminder,
+          policies,
+        });
+        if (senderRevalidation.senderStatusChanged) {
+          await restaurant.save();
+        }
+        if (senderRevalidation.error) {
+          const error = new Error(senderRevalidation.error.message);
+          error.statusCode =
+            senderRevalidation.error.code ===
+            "SMS_SENDER_VERIFICATION_UNAVAILABLE"
+              ? 503
+              : 409;
+          error.code = senderRevalidation.error.code;
+          throw error;
+        }
+      }
+
       const context = await findRestaurantSubscription({ restaurantId: restaurant._id });
       if (!context?.subscription?.id) {
         const error = new Error("Abonnement Stripe introuvable.");
@@ -370,19 +393,6 @@ router.post(
         actionType = "SMS_DEACTIVATION_CANCELLED";
         afterSnapshot = buildStripeCommercialSnapshot(beforeSummary, subscription);
       } else {
-        const policies = await SmsDestinationPolicyModel.find({
-          enabled: true,
-        }).lean();
-        const prerequisiteError = validateSmsReactivationPrerequisites({
-          settings: restaurant.reservationsSettings.smsReminder,
-          policies,
-        });
-        if (prerequisiteError) {
-          const error = new Error(prerequisiteError.message);
-          error.statusCode = 409;
-          error.code = prerequisiteError.code;
-          throw error;
-        }
         const fixedPriceId = normalizeString(process.env.STRIPE_SMS_FIXED_PRICE_ID);
         if (!fixedPriceId || !process.env.STRIPE_SMS_METERED_PRICE_ID) {
           const error = new Error("La tarification Stripe SMS n’est pas configurée.");

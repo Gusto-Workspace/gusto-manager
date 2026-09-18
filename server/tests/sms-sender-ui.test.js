@@ -14,6 +14,8 @@ test("l'admin propose la vérification smsmode sans approbation manuelle", () =>
   assert.match(source, /À créer chez smsmode/);
   assert.match(source, /Vérifier chez smsmode/);
   assert.match(source, /sms-sender\/verify/);
+  assert.match(source, />Module SMS</);
+  assert.match(source, /sender\.moduleActive \? "Actif" : "Inactif"/);
   assert.doesNotMatch(source, />\s*Approuver\s*</);
 });
 

@@ -8,8 +8,10 @@ const {
   serializeSettings,
 } = require("../routes/sms-reminders.routes");
 const {
+  ADMIN_SMS_SENDERS_QUERY,
   configureAdminSender,
   resolveAdminSenderUpdate,
+  serializeAdminSenderRestaurant,
   verifyConfiguredSender,
 } = require("../routes/admin/sms-reminders.routes");
 const {
@@ -40,6 +42,47 @@ function validRestaurantPayload(overrides = {}) {
     ...overrides,
   };
 }
+
+test("la liste admin cible uniquement les restaurants ayant un Sender configuré", () => {
+  const senderFilter =
+    ADMIN_SMS_SENDERS_QUERY[
+      "reservationsSettings.smsReminder.sender.value"
+    ];
+  assert.equal(senderFilter.$type, "string");
+  assert.equal(senderFilter.$regex.test("SAVEURS"), true);
+  assert.equal(senderFilter.$regex.test("   "), false);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      ADMIN_SMS_SENDERS_QUERY,
+      "options.sms_reminders",
+    ),
+    false,
+  );
+});
+
+test("la liste admin expose l’état commercial sans perdre le Sender", () => {
+  const base = {
+    _id: "restaurant-sender",
+    name: "L'Atelier des saveurs",
+    reservationsSettings: {
+      smsReminder: { sender: { value: "SAVEURS", status: "approved" } },
+    },
+  };
+  const active = serializeAdminSenderRestaurant({
+    ...base,
+    options: { sms_reminders: true },
+  });
+  const inactive = serializeAdminSenderRestaurant({
+    ...base,
+    options: { sms_reminders: false },
+  });
+  assert.equal(active.moduleActive, true);
+  assert.equal(inactive.moduleActive, false);
+  assert.deepEqual(
+    { value: inactive.value, status: inactive.status },
+    { value: "SAVEURS", status: "approved" },
+  );
+});
 
 test("la sauvegarde restaurateur sans sender conserve le Sender ID existant", () => {
   const settings = restaurantSettings();

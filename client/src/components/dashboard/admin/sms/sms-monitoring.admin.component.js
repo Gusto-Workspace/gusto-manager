@@ -219,6 +219,7 @@ export default function SmsMonitoringAdminComponent() {
                     <th className="p-2">Restaurant</th>
                     <th className="p-2">Sender ID</th>
                     <th className="p-2">Statut</th>
+                    <th className="p-2">Module SMS</th>
                     <th className="p-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -253,6 +254,9 @@ export default function SmsMonitoringAdminComponent() {
                               smsmode.
                             </span>
                           ) : null}
+                        </td>
+                        <td className="p-2">
+                          {sender.moduleActive ? "Actif" : "Inactif"}
                         </td>
                         <td className="p-2">
                           <div className="flex flex-wrap justify-end gap-2">
