@@ -51,7 +51,7 @@ router.get(
       const latestSigned = await DocumentModel.findOne({
         type: "CONTRACT",
         restaurantId: req.params.restaurantId,
-        status: "SIGNED",
+        status: { $in: ["SIGNED", "ACCEPTED"] },
       }).sort({ versionNumber: -1, createdAt: -1 });
       const snapshot =
         latestSigned?.commercialSnapshot ||
@@ -197,6 +197,7 @@ async function scheduleSmsDeactivation({
   subscription,
   restaurantId,
   targetSelection,
+  idempotencyKey = "",
 }) {
   const effectiveAt = getSubscriptionPeriodEnd(subscription);
   const phaseStart = getSubscriptionPeriodStart(subscription);
@@ -208,9 +209,10 @@ async function scheduleSmsDeactivation({
     throw error;
   }
 
-  const schedule = await stripe.subscriptionSchedules.create({
-    from_subscription: subscription.id,
-  });
+  const schedule = await stripe.subscriptionSchedules.create(
+    { from_subscription: subscription.id },
+    idempotencyKey ? { idempotencyKey } : undefined,
+  );
   const scheduledPhaseStart = Number(
     schedule?.current_phase?.start_date || phaseStart,
   );
@@ -1211,7 +1213,23 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
     if (restaurantId && selectionIncludesSms(stripeSelection)) {
       await RestaurantModel.updateOne(
         { _id: restaurantId },
-        { $set: { "options.sms_reminders": true } },
+        {
+          $set: {
+            "options.sms_reminders": true,
+          },
+        },
+      );
+      await RestaurantModel.updateOne(
+        {
+          _id: restaurantId,
+          "reservationsSettings.smsReminder.sender.status": "approved",
+          "reservationsSettings.smsReminder.sender.value": { $ne: "" },
+        },
+        {
+          $set: {
+            "reservationsSettings.smsReminder.selfServiceEligible": true,
+          },
+        },
       );
     }
 
@@ -1807,6 +1825,18 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
           },
         },
       );
+      await RestaurantModel.updateOne(
+        {
+          _id: subscriptionRestaurantId,
+          "reservationsSettings.smsReminder.sender.status": "approved",
+          "reservationsSettings.smsReminder.sender.value": { $ne: "" },
+        },
+        {
+          $set: {
+            "reservationsSettings.smsReminder.selfServiceEligible": true,
+          },
+        },
+      );
     }
 
     let smsDeactivation = null;
@@ -1914,3 +1944,6 @@ router.get("/admin/subscription-invoices/:subscriptionId", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.releaseGustoSmsDeactivationSchedule =
+  releaseGustoSmsDeactivationSchedule;
+module.exports.scheduleSmsDeactivation = scheduleSmsDeactivation;

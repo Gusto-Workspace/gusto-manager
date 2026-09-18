@@ -155,6 +155,7 @@ function frenchPolicy(overrides = {}) {
   return {
     country: "FR",
     enabled: true,
+    provider: "smsmode",
     senderMode: "registered_alpha",
     senderRegistrationRequired: true,
     supportsDlr: true,
@@ -262,6 +263,35 @@ test("matrice d'éligibilité: seul Confirmed planifie un rappel", async () => {
   }
 });
 
+test("un job créé directement ignored horodate une seule fois la décision", async () => {
+  const model = memorySmsJobModel();
+  const venue = restaurant({ smsReminder: { deliveryMode: "eco" } });
+  const booking = reservation({ customerEmail: "alex@example.com" });
+  const skippedAt = new Date("2027-02-01T10:00:00.000Z");
+  await syncReservationSmsJob(booking, venue, skippedAt, {
+    smsJobModel: model,
+  });
+  assert.equal(model.jobs[0].status, "skipped");
+  assert.equal(model.jobs[0].skippedAt.toISOString(), skippedAt.toISOString());
+
+  await syncReservationSmsJob(
+    booking,
+    venue,
+    new Date("2027-02-01T11:00:00.000Z"),
+    { smsJobModel: model },
+  );
+  assert.equal(model.jobs[0].skippedAt.toISOString(), skippedAt.toISOString());
+
+  model.jobs[0].skippedAt = null;
+  await syncReservationSmsJob(
+    booking,
+    venue,
+    new Date("2027-02-01T12:00:00.000Z"),
+    { smsJobModel: model },
+  );
+  assert.equal(model.jobs[0].skippedAt, null);
+});
+
 test("mode eco avec email exploitable n'appelle ni provider ni crédits", async () => {
   const booking = reservation({ customerEmail: "alex@example.com" });
   const venue = restaurant({ smsReminder: { deliveryMode: "eco" } });
@@ -269,21 +299,27 @@ test("mode eco avec email exploitable n'appelle ni provider ni crédits", async 
   const usage = usageModel();
   let sends = 0;
   let meters = 0;
+  const dependencies = processDependencies({
+    reservationValue: booking,
+    restaurantValue: venue,
+    policy: frenchPolicy(),
+    usage,
+    provider: { async send() { sends += 1; } },
+    reportUsage: async () => { meters += 1; },
+  });
   await processClaimedJob(
     currentJob,
-    processDependencies({
-      reservationValue: booking,
-      restaurantValue: venue,
-      policy: frenchPolicy(),
-      usage,
-      provider: { async send() { sends += 1; } },
-      reportUsage: async () => { meters += 1; },
-    }),
+    dependencies,
   );
   assert.equal(currentJob.status, "skipped");
   assert.equal(currentJob.skipReason, "eco_email");
+  assert.ok(currentJob.skippedAt instanceof Date);
+  const skippedAt = currentJob.skippedAt.getTime();
+  await processClaimedJob(currentJob, dependencies);
+  assert.equal(currentJob.skippedAt.getTime(), skippedAt);
   assert.equal(sends, 0);
   assert.equal(meters, 0);
+  assert.equal(currentJob.sentAt, undefined);
   assert.equal(usage.state.consumedCredits, 0);
 });
 
@@ -307,6 +343,8 @@ test("mode eco sans email ou avec email invalide utilise une seule fois le chemi
       }),
     );
     assert.equal(currentJob.status, "accepted");
+    assert.ok(currentJob.sentAt instanceof Date);
+    assert.equal(currentJob.sentAt.getTime(), currentJob.acceptedAt.getTime());
     assert.equal(sends, 1);
     assert.equal(meters, 1);
     assert.equal(usage.state.consumedCredits, 1);
@@ -489,6 +527,7 @@ test("numéros et destinations non éligibles n'appellent pas le provider", asyn
     { phone: "123", internationalEnabled: false, policy: frenchPolicy(), reason: "no_phone" },
     { phone: "+32 470 12 34 56", internationalEnabled: false, policy: frenchPolicy(), reason: "international_disabled" },
     { phone: "+32 470 12 34 56", internationalEnabled: true, policy: null, reason: "unsupported_destination" },
+    { phone: "+32 470 12 34 56", internationalEnabled: true, policy: frenchPolicy({ country: "BE", supportsDlr: null }), reason: "unsupported_destination" },
   ];
   for (const value of cases) {
     const booking = reservation({ customerPhone: value.phone });
@@ -640,23 +679,29 @@ test("replanification, changement de délai, désactivation et réactivation res
   const model = memorySmsJobModel();
   const venue = restaurant();
   const booking = reservation();
-  await syncReservationSmsJob(booking, venue, new Date("2027-02-01"), { smsJobModel: model });
+  const initialSyncAt = new Date("2027-02-01T10:00:00.000Z");
+  await syncReservationSmsJob(booking, venue, initialSyncAt, { smsJobModel: model });
   const firstScheduledAt = model.jobs[0].scheduledAt.toISOString();
   venue.reservationsSettings.smsReminder.delayMinutes = 360;
-  await syncReservationSmsJob(booking, venue, new Date("2027-02-01"), { force: true, smsJobModel: model });
+  await syncReservationSmsJob(booking, venue, initialSyncAt, { force: true, smsJobModel: model });
   assert.equal(model.jobs.length, 1);
   assert.notEqual(model.jobs[0].scheduledAt.toISOString(), firstScheduledAt);
 
+  const scheduledBeforeReschedule = model.jobs[0].scheduledAt.toISOString();
+  const rescheduledAt = new Date("2027-02-01T11:30:00.000Z");
   booking.reservationTime = "21:00";
-  await syncReservationSmsJob(booking, venue, new Date("2027-02-01"), { force: true, smsJobModel: model });
+  await syncReservationSmsJob(booking, venue, rescheduledAt, { force: true, smsJobModel: model });
   assert.equal(model.jobs.filter((value) => value.status === "scheduled").length, 1);
   assert.equal(model.jobs.filter((value) => value.status === "cancelled").length, 1);
+  const cancelledJob = model.jobs.find((value) => value.status === "cancelled");
+  assert.equal(cancelledJob.scheduledAt.toISOString(), scheduledBeforeReschedule);
+  assert.equal(cancelledJob.cancelledAt.toISOString(), rescheduledAt.toISOString());
 
   venue.reservationsSettings.smsReminder.enabled = false;
-  await syncReservationSmsJob(booking, venue, new Date("2027-02-01"), { smsJobModel: model });
+  await syncReservationSmsJob(booking, venue, new Date("2027-02-01T12:00:00.000Z"), { smsJobModel: model });
   assert.equal(model.jobs.filter((value) => value.status === "scheduled").length, 0);
   venue.reservationsSettings.smsReminder.enabled = true;
-  await syncReservationSmsJob(booking, venue, new Date("2027-02-01"), { force: true, smsJobModel: model });
+  await syncReservationSmsJob(booking, venue, new Date("2027-02-01T12:00:00.000Z"), { force: true, smsJobModel: model });
   assert.equal(model.jobs.filter((value) => value.status === "scheduled").length, 1);
 });
 
@@ -734,6 +779,7 @@ test("DLR dupliqués delivered/failed ne consomment ni ne facturent deux fois", 
   const payload = { status: { value: "DELIVERED", deliveryDate: "2027-02-10T18:00:00.000Z" } };
   await applyProviderStatus(delivered, payload);
   const deliveredAt = delivered.deliveredAt.toISOString();
+  assert.equal(deliveredAt, "2027-02-10T18:00:00.000Z");
   const saveCount = delivered.saveCount;
   await applyProviderStatus(delivered, payload);
   assert.equal(delivered.deliveredAt.toISOString(), deliveredAt);
@@ -751,6 +797,7 @@ test("DLR dupliqués delivered/failed ne consomment ni ne facturent deux fois", 
   const failedSaveCount = failed.saveCount;
   await applyProviderStatus(failed, failure);
   assert.equal(failed.status, "failed");
+  assert.ok(failed.failedAt instanceof Date);
   assert.equal(failed.saveCount, failedSaveCount);
 });
 

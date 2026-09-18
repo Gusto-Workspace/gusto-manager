@@ -44,7 +44,7 @@ async function getContractFamily(restaurantId) {
   const latestSigned = await DocumentModel.findOne({
     type: "CONTRACT",
     restaurantId,
-    status: "SIGNED",
+    status: { $in: ["SIGNED", "ACCEPTED"] },
   }).sort({ versionNumber: -1, createdAt: -1 });
   if (!latestSigned) return { rootContract: null, family: [], latestSigned: null };
 
@@ -62,11 +62,17 @@ async function getContractFamily(restaurantId) {
   return {
     rootContract,
     family,
-    latestSigned: family.filter((document) => document.status === "SIGNED").at(-1) || null,
+    latestSigned: family
+      .filter((document) => ["SIGNED", "ACCEPTED"].includes(document.status))
+      .at(-1) || null,
   };
 }
 
-async function prepareSubscriptionAmendment({ restaurantId, stripeSnapshot }) {
+async function prepareSubscriptionAmendment({
+  restaurantId,
+  stripeSnapshot,
+  createWhenUnchanged = false,
+}) {
   if (!restaurantId || !stripeSnapshot) {
     return { document: null, reason: "NO_SUBSCRIPTION_SNAPSHOT" };
   }
@@ -93,7 +99,7 @@ async function prepareSubscriptionAmendment({ restaurantId, stripeSnapshot }) {
     draft?.commercialSnapshot || previousSnapshot,
   );
   const comparison = compareCommercialSnapshots(previousSnapshot, currentSnapshot);
-  if (!comparison.hasChanges) {
+  if (!comparison.hasChanges && !createWhenUnchanged) {
     return { document: draft || null, reason: "NO_COMMERCIAL_CHANGE" };
   }
 
@@ -121,7 +127,12 @@ async function prepareSubscriptionAmendment({ restaurantId, stripeSnapshot }) {
   if (draft) {
     draft.set(sharedFields);
     await draft.save();
-    return { document: draft, created: false, updated: true };
+    return {
+      document: draft,
+      created: false,
+      updated: true,
+      ...(comparison.hasChanges ? {} : { reason: "NO_COMMERCIAL_CHANGE" }),
+    };
   }
 
   const versionNumber = Math.max(...family.map((item) => Number(item.versionNumber || 1))) + 1;

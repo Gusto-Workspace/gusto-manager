@@ -36,6 +36,10 @@ export default function SmsRemindersReservationsComponent({
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [commercial, setCommercial] = useState({ selfServiceEligible: false });
+  const [subscriptionAction, setSubscriptionAction] = useState("");
+  const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
+  const [subscriptionNotice, setSubscriptionNotice] = useState("");
   const [usage, setUsage] = useState({ includedCredits: 100 });
   const [destinations, setDestinations] = useState([]);
   const [showDestinations, setShowDestinations] = useState(false);
@@ -57,6 +61,7 @@ export default function SmsRemindersReservationsComponent({
           (destination) => destination.country !== "FR",
         );
         setSubscribed(Boolean(data.subscribed));
+        setCommercial(data.commercial || { selfServiceEligible: false });
         setSettings((current) => ({
           ...current,
           ...(data.settings || {}),
@@ -102,7 +107,8 @@ export default function SmsRemindersReservationsComponent({
   const hasInternationalDestination = destinations.some(
     (destination) => destination.country !== "FR",
   );
-  const smsEnabled = subscribed && Boolean(settings.enabled);
+  const commercialActive = subscribed;
+  const deactivationScheduled = commercial.status === "scheduled";
   const {
     included: includedCredits,
     includedUsed: includedCreditsUsed,
@@ -143,7 +149,11 @@ export default function SmsRemindersReservationsComponent({
     try {
       const { data } = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/sms-reminders`,
-        { ...settings, template: smsTemplateToBackend(settings.template) },
+        {
+          ...settings,
+          enabled: commercialActive,
+          template: smsTemplateToBackend(settings.template),
+        },
       );
       setSettings((current) => ({
         ...current,
@@ -158,6 +168,52 @@ export default function SmsRemindersReservationsComponent({
       setError(requestError?.response?.data?.message || "Impossible d'enregistrer les rappels SMS.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function formatDate(value) {
+    if (!value) return "la fin de la période en cours";
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(value));
+  }
+
+  async function confirmSubscriptionAction() {
+    if (!subscriptionAction || subscriptionActionLoading) return;
+    setSubscriptionActionLoading(true);
+    setError("");
+    try {
+      const idempotencyKey =
+        globalThis.crypto?.randomUUID?.() ||
+        `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/sms-subscription/actions`,
+        { action: subscriptionAction, idempotencyKey },
+        { headers: { "Idempotency-Key": idempotencyKey } },
+      );
+      const nextCommercial = data.commercial || commercial;
+      setCommercial(nextCommercial);
+      setSubscribed(Boolean(nextCommercial.active));
+      if (subscriptionAction === "reactivate") {
+        setSettings((current) => ({ ...current, enabled: true }));
+      }
+      setSubscriptionNotice(
+        subscriptionAction === "schedule_deactivation"
+          ? ""
+          : subscriptionAction === "cancel_deactivation"
+            ? "Votre abonnement Rappels SMS reste actif. La résiliation programmée a été annulée."
+            : "Votre abonnement Rappels SMS a été réactivé.",
+      );
+      setSubscriptionAction("");
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          "Impossible de modifier l’abonnement Rappels SMS.",
+      );
+    } finally {
+      setSubscriptionActionLoading(false);
     }
   }
 
@@ -180,7 +236,7 @@ export default function SmsRemindersReservationsComponent({
               type="button"
               onClick={save}
               disabled={
-                saving || saved || (smsEnabled && !analysis.valid)
+                saving || saved || (commercialActive && !analysis.valid)
               }
               className={[
                 savePresentation === "icon"
@@ -241,33 +297,39 @@ export default function SmsRemindersReservationsComponent({
                   <span
                     className={[
                       toggleBase,
-                      smsEnabled
+                      commercialActive
                         ? "border-blue/40 bg-blue"
                         : "border-darkBlue/10 bg-darkBlue/10",
-                      !subscribed ? "cursor-not-allowed opacity-50" : "",
+                      !commercial.canSelfManage
+                        ? "cursor-not-allowed opacity-50"
+                        : "",
                     ].join(" ")}
                   >
                     <input
                       type="checkbox"
                       className="sr-only"
                       id="sms_reminders_enabled"
-                      checked={smsEnabled}
-                      disabled={!subscribed}
-                      onChange={(event) =>
-                        update("enabled", event.target.checked)
+                      checked={commercialActive}
+                      disabled={!commercial.canSelfManage || deactivationScheduled}
+                      onChange={() =>
+                        setSubscriptionAction(
+                          commercialActive
+                            ? "schedule_deactivation"
+                            : "reactivate",
+                        )
                       }
                     />
                     <span
                       className={[
                         toggleDot,
-                        smsEnabled ? "translate-x-7" : "translate-x-1",
+                        commercialActive ? "translate-x-7" : "translate-x-1",
                       ].join(" ")}
                     />
                   </span>
                 </label>
               </div>
 
-              {!subscribed ? (
+              {!commercial.selfServiceEligible ? (
                 <div className="mt-3 rounded-2xl border border-blue/15 bg-blue/5 px-3 py-3 text-sm text-darkBlue/70">
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 size-4 shrink-0 text-blue" />
@@ -278,9 +340,27 @@ export default function SmsRemindersReservationsComponent({
                   </div>
                 </div>
               ) : null}
+              {deactivationScheduled ? (
+                <div className="mt-3 rounded-2xl border border-orange/20 bg-orange/5 px-3 py-3 text-sm text-darkBlue/70">
+                  <p>
+                    Résiliation programmée au {formatDate(commercial.effectiveAt)}.
+                    Le module reste actif jusque-là.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 font-semibold text-blue underline"
+                    onClick={() => setSubscriptionAction("cancel_deactivation")}
+                  >
+                    Annuler la résiliation
+                  </button>
+                </div>
+              ) : null}
+              {subscriptionNotice ? (
+                <p className="mt-3 text-sm text-green">{subscriptionNotice}</p>
+              ) : null}
             </div>
 
-            {smsEnabled ? (
+            {commercialActive ? (
               <div className="mt-5 grid gap-5">
           <div className="grid grid-cols-1 gap-4 midTablet:grid-cols-2">
             <div className="grid gap-1 text-sm">
@@ -527,6 +607,67 @@ export default function SmsRemindersReservationsComponent({
                 className="inline-flex shrink-0 items-center justify-center rounded-full border border-darkBlue/10 bg-white p-2 transition hover:bg-darkBlue/5"
               >
                 <X className="size-4 text-darkBlue/70" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {subscriptionAction ? (
+        <div
+          className="fixed inset-0 z-[230] flex items-end justify-center tablet:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sms-subscription-confirm-title"
+        >
+          <button
+            type="button"
+            aria-label="Fermer"
+            className="absolute inset-0 bg-darkBlue/35"
+            disabled={subscriptionActionLoading}
+            onClick={() => setSubscriptionAction("")}
+          />
+          <div className="relative w-full rounded-t-3xl bg-white p-5 shadow-xl tablet:max-w-lg tablet:rounded-3xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="sms-subscription-confirm-title" className="font-semibold text-darkBlue">
+                  {subscriptionAction === "schedule_deactivation"
+                    ? "Résilier Rappels SMS"
+                    : subscriptionAction === "cancel_deactivation"
+                      ? "Annuler la résiliation"
+                      : "Réactiver Rappels SMS"}
+                </h2>
+                <div className="mt-3 grid gap-2 text-sm text-darkBlue/70">
+                  {subscriptionAction === "schedule_deactivation" ? (
+                    <p>
+                      Le module restera actif jusqu’au {formatDate(commercial.periodEnd)} puis prendra fin. Aucun nouveau renouvellement n’aura lieu après cette date et vous pourrez annuler avant l’échéance.
+                    </p>
+                  ) : subscriptionAction === "cancel_deactivation" ? (
+                    <p>Le module restera actif et aucune nouvelle facturation immédiate ne sera déclenchée.</p>
+                  ) : (
+                    <p>
+                      Le module sera réactivé immédiatement pour {Number(commercial.fixedMonthlyAmount || 9.9).toFixed(2).replace(".", ",")} € / mois, avec 100 crédits inclus puis 0,10 € par crédit. Le prorata Stripe de la période en cours s’appliquera.
+                    </p>
+                  )}
+                  <p className="font-medium text-darkBlue">
+                    En confirmant, vous acceptez la modification de votre abonnement et l’avenant correspondant.
+                  </p>
+                </div>
+              </div>
+              <button type="button" aria-label="Fermer" disabled={subscriptionActionLoading} onClick={() => setSubscriptionAction("")}>
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={subscriptionActionLoading} onClick={() => setSubscriptionAction("")} className="rounded-xl border px-4 py-2 text-sm font-semibold">
+                Annuler
+              </button>
+              <button type="button" disabled={subscriptionActionLoading} onClick={confirmSubscriptionAction} className="inline-flex items-center gap-2 rounded-xl bg-darkBlue px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {subscriptionActionLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+                {subscriptionAction === "schedule_deactivation"
+                  ? "Confirmer la résiliation"
+                  : subscriptionAction === "cancel_deactivation"
+                    ? "Annuler la résiliation"
+                    : "Confirmer la réactivation"}
               </button>
             </div>
           </div>

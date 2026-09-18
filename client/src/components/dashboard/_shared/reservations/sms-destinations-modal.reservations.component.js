@@ -1,12 +1,5 @@
 import { Info, X } from "lucide-react";
-
-function countryName(country) {
-  try {
-    return new Intl.DisplayNames(["fr"], { type: "region" }).of(country);
-  } catch (_) {
-    return country;
-  }
-}
+import { getSmsCountryName } from "../../../../_assets/utils/sms-country-labels";
 
 export default function SmsDestinationsModalReservationsComponent({
   destinations = [],
@@ -66,7 +59,7 @@ export default function SmsDestinationsModalReservationsComponent({
                 className="rounded-2xl border border-darkBlue/10 bg-slate-50 p-4"
               >
                 <h3 className="font-semibold text-darkBlue">
-                  {countryName(destination.country)}
+                  {getSmsCountryName(destination.country)}
                 </h3>
                 <dl className="mt-3 grid gap-2 text-sm text-darkBlue/70">
                   <div>

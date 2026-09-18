@@ -1206,3 +1206,89 @@ test("un ancien contrat signé reste valide sans les nouveaux champs", () => {
   assert.equal(legacyDocument.earlyTermination.minimumCommitmentMonths, 12);
   assert.equal(legacyDocument.earlyTermination.noticeMonths, 3);
 });
+
+test("un avenant self-service fige sa preuve d’acceptation dans le snapshot", () => {
+  const acceptedAt = "2026-09-18T08:42:00.000Z";
+  const snapshot = buildContractContentSnapshot(
+    {
+      type: "CONTRACT",
+      contractKind: "AMENDMENT",
+      docNumber: "WD-C-SELF-A1",
+      issueDate: acceptedAt,
+      party: { restaurantName: "L’Atelier", email: "owner@example.com" },
+      acceptanceMode: "SELF_SERVICE",
+      selfServiceAcceptance: {
+        mode: "SELF_SERVICE",
+        actionType: "SMS_REACTIVATED",
+        acceptedAt,
+        effectiveAt: acceptedAt,
+        acceptedByUserId: "owner-1",
+        acceptedByName: "Camille Dupont",
+        acceptedByEmail: "owner@example.com",
+        restaurantId: "507f1f77bcf86cd799439011",
+        idempotencyKey: "operation-self-service-1",
+        previousCommercialSnapshot: { fingerprint: "before" },
+        newCommercialSnapshot: { fingerprint: "after" },
+      },
+    },
+    { source: "STRIPE_SUBSCRIPTION", items: [] },
+  );
+
+  assert.equal(snapshot.acceptanceMode, "SELF_SERVICE");
+  assert.equal(snapshot.selfServiceAcceptance.acceptedByName, "Camille Dupont");
+  assert.equal(snapshot.selfServiceAcceptance.actionType, "SMS_REACTIVATED");
+  assert.equal(hashContractContent(snapshot), hashContractContent(snapshot));
+});
+
+test("le PDF self-service mentionne l’acceptation électronique sans signature client", async () => {
+  const { calls } = await capturePdfKitText(() =>
+    renderContractPdf(
+      {
+        type: "CONTRACT",
+        contractKind: "AMENDMENT",
+        docNumber: "WD-C-SELF-A1",
+        issueDate: "2026-09-18T08:42:00.000Z",
+        party: { restaurantName: "L’Atelier", ownerName: "Camille Dupont" },
+        amendment: { baseContractNumber: "WD-C-SELF" },
+        commercialSnapshot: { items: [] },
+        acceptanceMode: "SELF_SERVICE",
+        selfServiceAcceptance: {
+          mode: "SELF_SERVICE",
+          acceptedAt: "2026-09-18T08:42:00.000Z",
+          acceptedByName: "Camille Dupont",
+        },
+      },
+      { title: "Gusto Manager" },
+      null,
+    ),
+  );
+  const renderedText = calls.map((call) => call.value).join("\n");
+  assert.match(renderedText, /Accepté électroniquement par le Client/);
+  assert.match(renderedText, /Depuis son espace Gusto Manager/);
+  assert.doesNotMatch(renderedText, /Signature du client/);
+});
+
+test("le modèle distingue un avenant accepté d’un avenant signé", () => {
+  const accepted = new DocumentModel({
+    type: "CONTRACT",
+    docNumber: "WD-C-ACCEPTED",
+    status: "ACCEPTED",
+    contractKind: "AMENDMENT",
+    party: { restaurantName: "Test", email: "owner@example.com" },
+    acceptanceMode: "SELF_SERVICE",
+    selfServiceAcceptance: {
+      actionType: "SMS_DEACTIVATION_SCHEDULED",
+      acceptedAt: new Date(),
+      effectiveAt: new Date(),
+      acceptedByUserId: "owner-1",
+      restaurantId: "507f1f77bcf86cd799439011",
+      idempotencyKey: "operation-self-service-2",
+      previousCommercialSnapshot: {},
+      newCommercialSnapshot: {},
+    },
+  });
+  assert.equal(accepted.validateSync(), undefined);
+  assert.equal(accepted.status, "ACCEPTED");
+  assert.equal(accepted.acceptanceMode, "SELF_SERVICE");
+  assert.equal(accepted.signature?.signatureImageHash || "", "");
+});

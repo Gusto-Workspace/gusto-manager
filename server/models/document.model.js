@@ -233,6 +233,33 @@ const SignatureSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const SelfServiceAcceptanceSchema = new mongoose.Schema(
+  {
+    mode: { type: String, enum: ["SELF_SERVICE"], default: "SELF_SERVICE" },
+    actionType: {
+      type: String,
+      enum: ["SMS_DEACTIVATION_SCHEDULED", "SMS_DEACTIVATION_CANCELLED", "SMS_REACTIVATED"],
+      required: true,
+    },
+    acceptedAt: { type: Date, required: true },
+    effectiveAt: { type: Date, required: true },
+    acceptedByUserId: { type: String, required: true },
+    acceptedByName: { type: String, default: "" },
+    acceptedByEmail: { type: String, default: "" },
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    ip: { type: String, default: "" },
+    userAgent: { type: String, default: "" },
+    idempotencyKey: { type: String, required: true },
+    previousCommercialSnapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+    newCommercialSnapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+    acceptedTerms: { type: mongoose.Schema.Types.Mixed, default: null },
+    emailStatus: { type: String, enum: ["NOT_SENT", "SENT", "FAILED"], default: "NOT_SENT" },
+    emailSentAt: { type: Date, default: null },
+    emailError: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const SignatureRequestSchema = new mongoose.Schema(
   {
     tokenHash: { type: String, default: "", select: false },
@@ -294,7 +321,7 @@ const DocumentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["DRAFT", "SENT", "SIGNED"],
+      enum: ["DRAFT", "SENT", "SIGNED", "ACCEPTED"],
       default: "DRAFT",
     },
 
@@ -358,6 +385,12 @@ const DocumentSchema = new mongoose.Schema(
     contractSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     contentHash: { type: String, default: "" },
     signatureSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+    acceptanceMode: {
+      type: String,
+      enum: ["SIGNATURE", "SELF_SERVICE"],
+      default: "SIGNATURE",
+    },
+    selfServiceAcceptance: { type: SelfServiceAcceptanceSchema, default: null },
 
     // PDF + signature
     presentedPdf: { type: PdfSchema, default: null },
@@ -373,6 +406,10 @@ const DocumentSchema = new mongoose.Schema(
 
 DocumentSchema.index({ rootContractId: 1, versionNumber: 1 });
 DocumentSchema.index({ "signatureRequest.tokenHash": 1 }, { sparse: true });
+DocumentSchema.index(
+  { "selfServiceAcceptance.idempotencyKey": 1 },
+  { unique: true, sparse: true },
+);
 
 DocumentSchema.pre("validate", function validateEarlyTerminationWindow() {
   if (this.type !== "CONTRACT" || this.earlyTermination?.enabled !== true) {

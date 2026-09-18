@@ -23,6 +23,91 @@ const LOCK_MS = 3 * 60 * 1000;
 const FINAL_JOB_STATUSES = ["accepted", "delivered", "failed", "uncertain"];
 const ACCEPTED_RECONCILIATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PROVIDER_RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
+const SMS_DESTINATION_SENDER_MODES = [
+  "alpha",
+  "registered_alpha",
+  "numeric",
+  "shortcode",
+  "provider_default",
+];
+const SMS_DESTINATION_FALLBACK_REQUIRED_MODES = ["numeric", "shortcode"];
+
+function isSmsDestinationPolicyTechnicallyReady(policy) {
+  const senderMode = String(policy?.senderMode || "").trim();
+  const providerRateHt = Number(policy?.providerRateHt);
+  const billingCredits = Number(policy?.billingCredits);
+  const lastReviewedAt = new Date(policy?.lastReviewedAt || "");
+  const fallbackIsReady =
+    !SMS_DESTINATION_FALLBACK_REQUIRED_MODES.includes(senderMode) ||
+    Boolean(String(policy?.fallbackSender || "").trim());
+  const registrationRequirementIsConsistent =
+    policy?.senderRegistrationRequired ===
+    (senderMode === "registered_alpha");
+
+  return Boolean(
+    String(policy?.provider || "").trim() &&
+      policy?.providerRateHt !== null &&
+      policy?.providerRateHt !== undefined &&
+      policy?.providerRateHt !== "" &&
+      Number.isFinite(providerRateHt) &&
+      providerRateHt >= 0 &&
+      Number.isInteger(billingCredits) &&
+      billingCredits >= 1 &&
+      SMS_DESTINATION_SENDER_MODES.includes(senderMode) &&
+      typeof policy?.senderRegistrationRequired === "boolean" &&
+      registrationRequirementIsConsistent &&
+      typeof policy?.supportsDlr === "boolean" &&
+      fallbackIsReady &&
+      !Number.isNaN(lastReviewedAt.getTime()),
+  );
+}
+
+function smsDestinationPolicyIsUsable(policy) {
+  return Boolean(
+    policy?.enabled === true &&
+      isSmsDestinationPolicyTechnicallyReady(policy),
+  );
+}
+
+function smsDestinationPolicyRequiresApprovedSender(policy) {
+  return Boolean(
+    policy?.senderRegistrationRequired ||
+      policy?.senderMode === "registered_alpha",
+  );
+}
+
+function validateSmsReactivationPrerequisites({ settings = {}, policies = [] }) {
+  const applicablePolicies = policies.filter(
+    (policy) =>
+      policy?.country === "FR" || settings.internationalEnabled === true,
+  );
+  const francePolicy = applicablePolicies.find(
+    (policy) => policy?.country === "FR",
+  );
+  if (!smsDestinationPolicyIsUsable(francePolicy)) {
+    return {
+      code: "SMS_CONFIGURATION_REQUIRED",
+      message:
+        "La configuration SMS doit être vérifiée par le service client avant la réactivation.",
+    };
+  }
+
+  const senderRequired = applicablePolicies
+    .filter(smsDestinationPolicyIsUsable)
+    .some(smsDestinationPolicyRequiresApprovedSender);
+  const senderValue = String(settings.sender?.value || "").trim();
+  if (
+    senderRequired &&
+    (settings.sender?.status !== "approved" || !senderValue)
+  ) {
+    return {
+      code: "SMS_SENDER_REVALIDATION_REQUIRED",
+      message:
+        "Le Sender ID doit être reconfiguré et validé par le service client avant la réactivation.",
+    };
+  }
+  return null;
+}
 
 function sendingIsEnabled() {
   return process.env.SMS_SENDING_ENABLED === "true";
@@ -75,7 +160,7 @@ async function syncReservationSmsJob(
   if (!settings.enabled || !restaurant?.options?.sms_reminders || reservation.status !== "Confirmed") {
     await smsJobModel.updateMany(
       { reservationId: reservation._id, status: { $in: ["scheduled", "processing"] }, providerSubmissionStartedAt: null },
-      { $set: { status: "cancelled", skipReason: settings.enabled ? "reservation_not_confirmed" : "feature_disabled", lockedAt: null, lockExpiresAt: null } },
+      { $set: { status: "cancelled", cancelledAt: now, skipReason: settings.enabled ? "reservation_not_confirmed" : "feature_disabled", lockedAt: null, lockExpiresAt: null } },
     );
     return null;
   }
@@ -85,7 +170,7 @@ async function syncReservationSmsJob(
   const occurrenceKey = buildOccurrenceKey(schedule.reservationStartsAt);
   await smsJobModel.updateMany(
     { reservationId: reservation._id, occurrenceKey: { $ne: occurrenceKey }, status: { $in: ["scheduled", "processing"] }, providerSubmissionStartedAt: null },
-    { $set: { status: "cancelled", skipReason: "reservation_rescheduled", lockedAt: null, lockExpiresAt: null } },
+    { $set: { status: "cancelled", cancelledAt: now, skipReason: "reservation_rescheduled", lockedAt: null, lockExpiresAt: null } },
   );
 
   const reference = `gusto-sms-${reservation._id}-${crypto.createHash("sha256").update(occurrenceKey).digest("hex").slice(0, 12)}`;
@@ -94,6 +179,11 @@ async function syncReservationSmsJob(
   const existing = await smsJobModel.findOne({ reservationId: reservation._id, type: "reservation_reminder", occurrenceKey });
   if (existing && FINAL_JOB_STATUSES.includes(existing.status)) return existing;
   if (existing?.status === "skipped" && !force) return existing;
+  const skippedAt = desiredStatus === "skipped"
+    ? existing?.status === "skipped"
+      ? existing.skippedAt || null
+      : now
+    : null;
 
   return smsJobModel.findOneAndUpdate(
     { reservationId: reservation._id, type: "reservation_reminder", occurrenceKey, status: { $in: mutableStatuses } },
@@ -105,6 +195,8 @@ async function syncReservationSmsJob(
         reservationTimeSnapshot: reservation.reservationTime,
         scheduledAt: schedule.scheduledAt || now,
         status: desiredStatus,
+        cancelledAt: null,
+        skippedAt,
         skipReason,
         nextAttemptAt: schedule.scheduledAt || now,
         providerReference: reference,
@@ -143,7 +235,7 @@ async function syncAllFutureSmsJobs({ force = false } = {}) {
   }
   await SmsJobModel.updateMany(
     { status: "scheduled", reservationStartsAt: { $lte: now } },
-    { $set: { status: "skipped", skipReason: "too_late" } },
+    { $set: { status: "skipped", skippedAt: now, skipReason: "too_late" } },
   );
 }
 
@@ -164,7 +256,7 @@ async function cancelIneligibleScheduledJobs() {
     ) continue;
     await SmsJobModel.updateOne(
       { _id: job._id, status: "scheduled" },
-      { $set: { status: "cancelled", skipReason: !reservation || reservation.status !== "Confirmed" ? "reservation_not_confirmed" : "feature_disabled" } },
+      { $set: { status: "cancelled", cancelledAt: new Date(), skipReason: !reservation || reservation.status !== "Confirmed" ? "reservation_not_confirmed" : "feature_disabled" } },
     );
   }
 }
@@ -232,6 +324,7 @@ async function finalizeDueSmsDeactivations(
         {
           $set: {
             status: "cancelled",
+            cancelledAt: now,
             skipReason: "feature_disabled",
             lockedAt: null,
             lockExpiresAt: null,
@@ -362,6 +455,7 @@ function buildFinalMessage({ reservation, restaurant, settings, prefixRequired }
 async function skipJob(job, reason, usagePeriodModel = SmsUsagePeriodModel) {
   await releaseUsage(job, usagePeriodModel);
   job.status = "skipped";
+  job.skippedAt = job.skippedAt || new Date();
   job.skipReason = reason;
   job.lockedAt = null;
   job.lockExpiresAt = null;
@@ -397,11 +491,11 @@ async function processClaimedJob(
   if (!phone) return skipJob(job, "no_phone", usagePeriodModel);
   if (phone.country !== "FR" && !settings.internationalEnabled) return skipJob(job, "international_disabled", usagePeriodModel);
   const policy = await destinationPolicyModel.findOne({ country: phone.country, enabled: true });
-  if (!policy || !policy.billingCredits || !policy.senderMode || policy.providerRateHt === null || !policy.lastReviewedAt) return skipJob(job, "unsupported_destination", usagePeriodModel);
+  if (!smsDestinationPolicyIsUsable(policy)) return skipJob(job, "unsupported_destination", usagePeriodModel);
 
   const approvedSender = settings.sender?.status === "approved" ? String(settings.sender.value || "").trim() : "";
   if (
-    (policy.senderRegistrationRequired || policy.senderMode === "registered_alpha") &&
+    smsDestinationPolicyRequiresApprovedSender(policy) &&
     !approvedSender
   ) {
     return skipJob(job, "sender_not_approved", usagePeriodModel);
@@ -446,8 +540,9 @@ async function processClaimedJob(
     });
     job.providerMessageId = result.providerMessageId;
     job.status = "accepted";
-    job.sentAt = new Date();
-    job.acceptedAt = new Date();
+    const acceptedAt = new Date();
+    job.sentAt = acceptedAt;
+    job.acceptedAt = acceptedAt;
     job.lockedAt = null;
     job.lockExpiresAt = null;
     await consumeUsage(job, usagePeriodModel);
@@ -601,7 +696,11 @@ async function applyProviderStatus(job, providerPayload) {
     job.acceptedAt = job.acceptedAt || new Date(providerPayload?.acceptedAt || Date.now());
     job.sentAt = job.sentAt || new Date(providerPayload?.sentDate || Date.now());
     job.status = value === "DELIVERED" ? "delivered" : "accepted";
-    if (value === "DELIVERED") job.deliveredAt = new Date(providerPayload?.status?.deliveryDate || Date.now());
+    if (value === "DELIVERED") {
+      job.deliveredAt =
+        job.deliveredAt ||
+        new Date(providerPayload?.status?.deliveryDate || Date.now());
+    }
     await job.save();
     if (job.stripeUsageState !== "reported") {
       const billing = await getSmsBillingContext(job.restaurantId);
@@ -671,4 +770,9 @@ module.exports = {
   runSmsReminderWorker,
   syncAllFutureSmsJobs,
   syncReservationSmsJob,
+  isSmsDestinationPolicyTechnicallyReady,
+  SMS_DESTINATION_SENDER_MODES,
+  smsDestinationPolicyIsUsable,
+  smsDestinationPolicyRequiresApprovedSender,
+  validateSmsReactivationPrerequisites,
 };

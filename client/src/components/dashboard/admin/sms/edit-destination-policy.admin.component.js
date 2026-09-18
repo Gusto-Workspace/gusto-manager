@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { Loader2, X } from "lucide-react";
+import { getSmsCountryName } from "../../../../_assets/utils/sms-country-labels";
 
 const SENDER_MODES = [
   "alpha",
@@ -20,8 +21,8 @@ function buildInitialForm(policy) {
   return {
     enabled: Boolean(policy.enabled),
     senderMode: policy.senderMode || "",
-    senderRegistrationRequired: Boolean(policy.senderRegistrationRequired),
-    supportsDlr: Boolean(policy.supportsDlr),
+    senderRegistrationRequired: policy.senderRegistrationRequired ?? "",
+    supportsDlr: policy.supportsDlr ?? "",
     providerRateHt:
       policy.providerRateHt === null || policy.providerRateHt === undefined
         ? ""
@@ -44,11 +45,10 @@ export default function EditDestinationPolicyAdminComponent({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const isComplete = useMemo(() => {
+  const pricingIsComplete = useMemo(() => {
     const providerRateHt = Number(form.providerRateHt);
     const billingCredits = Number(form.billingCredits);
     return (
-      SENDER_MODES.includes(form.senderMode) &&
       form.providerRateHt !== "" &&
       Number.isFinite(providerRateHt) &&
       providerRateHt >= 0 &&
@@ -68,9 +68,15 @@ export default function EditDestinationPolicyAdminComponent({
     event.preventDefault();
     setError("");
 
-    if (!isComplete) {
+    if (!pricingIsComplete) {
       setError(
-        "La politique est incomplète. Renseignez le mode d’envoi, le tarif, les crédits et la date de revue.",
+        "La politique tarifaire est incomplète. Renseignez le tarif, les crédits et la date de revue.",
+      );
+      return;
+    }
+    if (form.enabled && !policy.technicalReady) {
+      setError(
+        "La destination ne peut pas être activée tant que sa configuration technique est à compléter.",
       );
       return;
     }
@@ -79,7 +85,7 @@ export default function EditDestinationPolicyAdminComponent({
       policy.enabled &&
       !form.enabled &&
       !window.confirm(
-        `Confirmer la désactivation de la destination ${policy.country} ?`,
+        `Confirmer la désactivation de la destination ${getSmsCountryName(policy.country)} ?`,
       )
     ) {
       return;
@@ -92,6 +98,7 @@ export default function EditDestinationPolicyAdminComponent({
         `${process.env.NEXT_PUBLIC_API_URL}/admin/sms/destination-policies/${policy.country}`,
         {
           ...form,
+          senderMode: form.senderMode || null,
           providerRateHt: Number(form.providerRateHt),
           billingCredits: Number(form.billingCredits),
         },
@@ -128,7 +135,7 @@ export default function EditDestinationPolicyAdminComponent({
         <div className="flex items-center justify-between border-b border-darkBlue/10 px-5 py-4">
           <div>
             <h2 id="destination-policy-title" className="font-semibold">
-              Modifier la destination {policy.country}
+              Modifier la destination {getSmsCountryName(policy.country)}
             </h2>
             <p className="text-xs text-darkBlue/55">Provider smsmode</p>
           </div>
@@ -153,10 +160,17 @@ export default function EditDestinationPolicyAdminComponent({
               }
               className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2.5"
             >
-              <option value="yes">Oui</option>
+              <option value="yes" disabled={!policy.technicalReady}>Oui</option>
               <option value="no">Non</option>
             </select>
           </label>
+
+          <div className="grid gap-1 text-sm">
+            <span className="font-medium">Configuration technique</span>
+            <p className="rounded-xl border border-darkBlue/10 bg-slate-50 px-3 py-2.5 text-darkBlue/70">
+              {policy.technicalReady ? "Prête" : "À compléter"}
+            </p>
+          </div>
 
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Mode d’envoi</span>
@@ -232,34 +246,54 @@ export default function EditDestinationPolicyAdminComponent({
             />
           </label>
 
-          <label className="flex items-center gap-3 rounded-xl border border-darkBlue/10 p-3 text-sm">
-            <input
-              type="checkbox"
-              checked={form.senderRegistrationRequired}
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Enregistrement Sender requis</span>
+            <select
+              value={String(form.senderRegistrationRequired)}
               onChange={(event) =>
                 updateField(
                   "senderRegistrationRequired",
-                  event.target.checked,
+                  event.target.value === ""
+                    ? ""
+                    : event.target.value === "true",
                 )
               }
-              className="size-4"
-            />
-            Enregistrement Sender requis
+              className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2.5"
+            >
+              <option value="">À déterminer</option>
+              <option value="true">Oui</option>
+              <option value="false">Non</option>
+            </select>
           </label>
 
-          <label className="flex items-center gap-3 rounded-xl border border-darkBlue/10 p-3 text-sm">
-            <input
-              type="checkbox"
-              checked={form.supportsDlr}
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">DLR supporté</span>
+            <select
+              value={String(form.supportsDlr)}
               onChange={(event) =>
-                updateField("supportsDlr", event.target.checked)
+                updateField(
+                  "supportsDlr",
+                  event.target.value === ""
+                    ? ""
+                    : event.target.value === "true",
+                )
               }
-              className="size-4"
-            />
-            DLR supporté
+              className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2.5"
+            >
+              <option value="">À déterminer</option>
+              <option value="true">Oui</option>
+              <option value="false">Non</option>
+            </select>
           </label>
 
-          {!isComplete ? (
+          {!policy.technicalReady ? (
+            <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 tablet:col-span-2">
+              Configuration technique à compléter. Enregistrez tous les
+              paramètres requis avant d’activer cette destination.
+            </p>
+          ) : null}
+
+          {!pricingIsComplete ? (
             <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 tablet:col-span-2">
               Destination incomplète : elle ne peut pas être activée tant que
               les champs obligatoires ne sont pas valides.
@@ -284,7 +318,11 @@ export default function EditDestinationPolicyAdminComponent({
           </button>
           <button
             type="submit"
-            disabled={saving || (form.enabled && !isComplete)}
+            disabled={
+              saving ||
+              !pricingIsComplete ||
+              (form.enabled && !policy.technicalReady)
+            }
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-darkBlue px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : null}

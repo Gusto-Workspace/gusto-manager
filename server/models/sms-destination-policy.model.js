@@ -8,10 +8,10 @@ const smsDestinationPolicySchema = new mongoose.Schema(
     senderMode: {
       type: String,
       enum: ["alpha", "registered_alpha", "numeric", "shortcode", "provider_default"],
-      required: true,
+      default: null,
     },
-    senderRegistrationRequired: { type: Boolean, default: false },
-    supportsDlr: { type: Boolean, default: false },
+    senderRegistrationRequired: { type: Boolean, default: null },
+    supportsDlr: { type: Boolean, default: null },
     providerRateHt: { type: Number, min: 0, required: true },
     billingCredits: { type: Number, min: 1, required: true },
     fallbackSender: { type: String, default: "" },

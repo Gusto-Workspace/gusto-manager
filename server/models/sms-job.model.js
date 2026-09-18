@@ -50,6 +50,8 @@ const smsJobSchema = new mongoose.Schema(
     acceptedAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+    skippedAt: { type: Date, default: null },
     failureCode: { type: String, default: "" },
     failureReason: { type: String, default: "" },
     skipReason: { type: String, default: "" },

@@ -6,7 +6,12 @@ const RestaurantModel = require("../../models/restaurant.model");
 const SmsJobModel = require("../../models/sms-job.model");
 const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
-const { syncAllFutureSmsJobs } = require("../../services/sms/sms-reminder.service");
+const {
+  isSmsDestinationPolicyTechnicallyReady,
+  SMS_DESTINATION_SENDER_MODES,
+  syncAllFutureSmsJobs,
+} = require("../../services/sms/sms-reminder.service");
+const { DEFAULT_TIMEZONE } = require("../../services/sms/sms-schedule.service");
 const SmsModeProvider = require("../../services/sms/smsmode-provider");
 
 const SENDER_ID_PATTERN = /^[A-Za-z0-9 ._-]{3,11}$/;
@@ -69,6 +74,9 @@ async function verifyConfiguredSender(restaurant, provider) {
     const result = await provider.senderExists(value);
     if (result?.exists) {
       sender.status = "approved";
+      if (restaurant.options?.sms_reminders) {
+        restaurant.reservationsSettings.smsReminder.selfServiceEligible = true;
+      }
       await restaurant.save();
       return {
         sender: { value, status: "approved" },
@@ -123,29 +131,53 @@ async function withRestaurantNames(items = []) {
   );
   const restaurants = restaurantIds.length
     ? await RestaurantModel.find({ _id: { $in: restaurantIds } })
-        .select("name")
+        .select("name timezone")
         .lean()
     : [];
-  const namesById = new Map(
+  const restaurantsById = new Map(
     restaurants.map((restaurant) => [
       String(restaurant._id),
-      restaurant.name || "Restaurant supprimé",
+      restaurant,
     ]),
   );
 
-  return items.map((item) => ({
-    ...item,
-    restaurantName:
-      namesById.get(String(item.restaurantId || "")) || "Restaurant supprimé",
-  }));
+  return items.map((item) => {
+    const restaurant = restaurantsById.get(String(item.restaurantId || ""));
+    return {
+      ...item,
+      restaurantName: restaurant?.name || "Restaurant supprimé",
+      restaurantTimezone: restaurant?.timezone || DEFAULT_TIMEZONE,
+    };
+  });
+}
+
+function toIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function serializeAdminSmsJob(job = {}) {
+  return {
+    ...job,
+    scheduledAt: toIsoDate(job.scheduledAt),
+    providerSubmissionStartedAt: toIsoDate(job.providerSubmissionStartedAt),
+    sentAt: toIsoDate(job.sentAt),
+    acceptedAt: toIsoDate(job.acceptedAt),
+    deliveredAt: toIsoDate(job.deliveredAt),
+    failedAt: toIsoDate(job.failedAt),
+    cancelledAt: toIsoDate(job.cancelledAt),
+    skippedAt: toIsoDate(job.skippedAt),
+  };
 }
 
 router.get("/admin/sms/jobs", authenticateAdmin, async (req, res) => {
   const query = {};
   if (req.query.status) query.status = req.query.status;
   if (req.query.restaurantId) query.restaurantId = req.query.restaurantId;
-  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt acceptedAt deliveredAt failedAt createdAt").lean();
-  return res.json({ jobs: await withRestaurantNames(jobs) });
+  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt providerSubmissionStartedAt sentAt acceptedAt deliveredAt failedAt cancelledAt skippedAt createdAt").lean();
+  const enrichedJobs = await withRestaurantNames(jobs);
+  return res.json({ jobs: enrichedJobs.map(serializeAdminSmsJob) });
 });
 
 router.get("/admin/sms/usage", authenticateAdmin, async (_req, res) => {
@@ -163,27 +195,115 @@ router.get("/admin/sms/senders", authenticateAdmin, async (_req, res) => {
   return res.json({ senders: restaurants.map((restaurant) => ({ restaurantId: restaurant._id, restaurantName: restaurant.name, ...restaurant.reservationsSettings.smsReminder.sender })) });
 });
 
+function serializeAdminDestinationPolicy(policy = {}) {
+  const value = typeof policy.toObject === "function" ? policy.toObject() : policy;
+  const serialized = { ...value };
+  delete serialized.technicalStatus;
+  return {
+    ...serialized,
+    technicalReady: isSmsDestinationPolicyTechnicallyReady(serialized),
+  };
+}
+
 router.get("/admin/sms/destination-policies", authenticateAdmin, async (_req, res) => {
-  return res.json({ policies: await SmsDestinationPolicyModel.find().sort({ country: 1 }).lean() });
+  const policies = await SmsDestinationPolicyModel.find().sort({ country: 1 }).lean();
+  return res.json({
+    policies: policies.map(serializeAdminDestinationPolicy),
+  });
 });
+
+function destinationPolicyValidationError(message, code, statusCode = 400) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  return error;
+}
+
+function normalizeDestinationPolicyInput(country, input = {}) {
+  const billingCredits = Number(input.billingCredits);
+  const providerRateHt = Number(input.providerRateHt);
+  const senderMode = String(input.senderMode || "").trim() || null;
+  const lastReviewedAt = new Date(input.lastReviewedAt);
+  const senderRegistrationRequired =
+    typeof input.senderRegistrationRequired === "boolean"
+      ? input.senderRegistrationRequired
+      : null;
+  const supportsDlr =
+    typeof input.supportsDlr === "boolean" ? input.supportsDlr : null;
+
+  if (!/^[A-Z]{2}$/.test(country)) {
+    throw destinationPolicyValidationError(
+      "Pays ISO2 invalide.",
+      "SMS_DESTINATION_COUNTRY_INVALID",
+    );
+  }
+  if (
+    !Number.isInteger(billingCredits) ||
+    billingCredits < 1 ||
+    !Number.isFinite(providerRateHt) ||
+    providerRateHt < 0 ||
+    Number.isNaN(lastReviewedAt.getTime())
+  ) {
+    throw destinationPolicyValidationError(
+      "Politique tarifaire SMS incomplète.",
+      "SMS_DESTINATION_PRICING_INCOMPLETE",
+    );
+  }
+  if (
+    senderMode !== null &&
+    !SMS_DESTINATION_SENDER_MODES.includes(senderMode)
+  ) {
+    throw destinationPolicyValidationError(
+      "Mode d’envoi SMS invalide.",
+      "SMS_DESTINATION_SENDER_MODE_INVALID",
+    );
+  }
+
+  const update = {
+    country,
+    enabled: Boolean(input.enabled),
+    provider: "smsmode",
+    senderMode,
+    senderRegistrationRequired,
+    supportsDlr,
+    providerRateHt,
+    billingCredits,
+    fallbackSender: String(input.fallbackSender || "").trim(),
+    lastReviewedAt,
+  };
+  if (
+    update.enabled &&
+    !isSmsDestinationPolicyTechnicallyReady(update)
+  ) {
+    throw destinationPolicyValidationError(
+      "Cette destination ne peut pas être activée tant que sa configuration technique n’est pas prête.",
+      "SMS_DESTINATION_NOT_READY",
+      409,
+    );
+  }
+  return update;
+}
 
 router.put("/admin/sms/destination-policies/:country", authenticateAdmin, requireAdminRole, async (req, res) => {
   const country = String(req.params.country || "").trim().toUpperCase();
-  const input = req.body || {};
-  if (!/^[A-Z]{2}$/.test(country)) return res.status(400).json({ message: "Pays ISO2 invalide." });
-  const billingCredits = Number(input.billingCredits);
-  const providerRateHt = Number(input.providerRateHt);
-  const senderModes = ["alpha", "registered_alpha", "numeric", "shortcode", "provider_default"];
-  if (!Number.isInteger(billingCredits) || billingCredits < 1 || !Number.isFinite(providerRateHt) || providerRateHt < 0 || !senderModes.includes(input.senderMode) || !input.lastReviewedAt) {
-    return res.status(400).json({ message: "Politique SMS incomplète; activation refusée." });
+  let update;
+  try {
+    update = normalizeDestinationPolicyInput(country, req.body || {});
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({
+      code: error.code,
+      message: error.message,
+    });
   }
   const policy = await SmsDestinationPolicyModel.findOneAndUpdate(
     { country },
-    { $set: { country, enabled: Boolean(input.enabled), provider: "smsmode", senderMode: input.senderMode, senderRegistrationRequired: Boolean(input.senderRegistrationRequired), supportsDlr: Boolean(input.supportsDlr), providerRateHt, billingCredits, fallbackSender: String(input.fallbackSender || "").trim(), lastReviewedAt: new Date(input.lastReviewedAt) } },
+    { $set: update },
     { upsert: true, new: true, runValidators: true },
   );
   await syncAllFutureSmsJobs({ force: true });
-  return res.json({ policy });
+  return res.json({
+    policy: serializeAdminDestinationPolicy(policy),
+  });
 });
 
 router.put("/admin/restaurants/:id/sms-sender", authenticateAdmin, requireAdminRole, async (req, res) => {
@@ -230,4 +350,7 @@ router.post("/admin/restaurants/:id/sms-sender/verify", authenticateAdmin, requi
 module.exports = router;
 module.exports.configureAdminSender = configureAdminSender;
 module.exports.resolveAdminSenderUpdate = resolveAdminSenderUpdate;
+module.exports.normalizeDestinationPolicyInput = normalizeDestinationPolicyInput;
+module.exports.serializeAdminDestinationPolicy = serializeAdminDestinationPolicy;
+module.exports.serializeAdminSmsJob = serializeAdminSmsJob;
 module.exports.verifyConfiguredSender = verifyConfiguredSender;
