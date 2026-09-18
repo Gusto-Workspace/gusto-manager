@@ -6,9 +6,26 @@ import EditSenderIdAdminComponent from "./edit-sender-id.admin.component";
 import SenderStatusModalAdminComponent from "./sender-status-modal.admin.component";
 import {
   formatSmsBillingStatus,
+  formatSmsConsumedCredits,
   formatSmsDiagnostic,
   formatSmsJobStatus,
+  formatSmsTrackingDate,
+  getSmsJobTracking,
 } from "./sms-job-labels.admin.utils";
+
+function SmsJobTracking({ job }) {
+  const timeZone = job.restaurantTimezone || "Europe/Paris";
+  const tracking = getSmsJobTracking(job);
+
+  if (!tracking) return <span className="text-darkBlue/45">—</span>;
+
+  return (
+    <p className="min-w-48 whitespace-nowrap text-[11px] leading-snug text-darkBlue/80">
+      <span className="font-medium text-darkBlue/55">{tracking.label} :</span>{" "}
+      {formatSmsTrackingDate(tracking.value, timeZone)}
+    </p>
+  );
+}
 
 export default function SmsMonitoringAdminComponent() {
   const [data, setData] = useState({ jobs: [], usage: [], policies: [], senders: [] });
@@ -137,7 +154,49 @@ export default function SmsMonitoringAdminComponent() {
       {loading ? <Loader2 className="size-5 animate-spin" /> : error ? <p className="text-red-600">{error}</p> : (
         <>
           <div className="grid gap-3 midTablet:grid-cols-2 desktop:grid-cols-3"><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">Jobs visibles</span><strong className="block text-2xl">{data.jobs.length}</strong></div><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">En attente de vérification</span><strong className="block text-2xl">{data.jobs.filter((job) => job.status === "uncertain").length}</strong></div><div className="rounded-2xl bg-white p-4"><span className="text-sm text-darkBlue/55">Sender IDs à traiter</span><strong className="block text-2xl">{pendingSenders.length}</strong></div></div>
-          <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Jobs récents</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">État</th><th className="p-2">Restaurant</th><th className="p-2">Pays</th><th className="p-2">Crédits</th><th className="p-2">Facturation</th><th className="p-2">Provider ID</th><th className="p-2">Diagnostic</th></tr></thead><tbody>{data.jobs.map((job) => <tr key={job._id} className="border-b border-darkBlue/5"><td className="p-2 font-medium">{formatSmsJobStatus(job.status)}</td><td className="p-2">{job.restaurantName || "Restaurant supprimé"}</td><td className="p-2">{job.destinationCountry || "-"}</td><td className="p-2">{job.billingCredits || 0}</td><td className="p-2">{formatSmsBillingStatus(job.stripeUsageState)}</td><td className="p-2">{job.providerMessageId || "-"}</td><td className="p-2">{formatSmsDiagnostic(job.skipReason || job.failureReason || job.failureCode)}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded-2xl bg-white p-4">
+            <h2 className="mb-3 font-semibold">Jobs récents</h2>
+            <table className="min-w-full text-left text-xs">
+              <thead>
+                <tr className="border-b">
+                  <th className="p-2">État</th>
+                  <th className="p-2">Restaurant</th>
+                  <th className="p-2">Suivi</th>
+                  <th className="p-2">Pays</th>
+                  <th className="p-2">Crédits</th>
+                  <th className="p-2">Facturation</th>
+                  <th className="p-2">Provider ID</th>
+                  <th className="p-2">Diagnostic</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.jobs.map((job) => (
+                  <tr key={job._id} className="border-b border-darkBlue/5">
+                    <td className="p-2 font-medium">
+                      {formatSmsJobStatus(job.status)}
+                    </td>
+                    <td className="p-2">
+                      {job.restaurantName || "Restaurant supprimé"}
+                    </td>
+                    <td className="p-2 align-top">
+                      <SmsJobTracking job={job} />
+                    </td>
+                    <td className="p-2">{job.destinationCountry || "-"}</td>
+                    <td className="p-2">{formatSmsConsumedCredits(job)}</td>
+                    <td className="p-2">
+                      {formatSmsBillingStatus(job.stripeUsageState)}
+                    </td>
+                    <td className="p-2">{job.providerMessageId || "-"}</td>
+                    <td className="p-2">
+                      {formatSmsDiagnostic(
+                        job.skipReason || job.failureReason || job.failureCode,
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Consommation par période</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Restaurant</th><th className="p-2">Période</th><th className="p-2">Crédits en cours</th><th className="p-2">Consommés</th><th className="p-2">Inclus</th><th className="p-2">Dépassement</th></tr></thead><tbody>{data.usage.map((period) => <tr key={period._id} className="border-b border-darkBlue/5"><td className="p-2">{period.restaurantName || "Restaurant supprimé"}</td><td className="p-2">{new Date(period.periodStart).toLocaleDateString("fr-FR")} – {new Date(period.periodEnd).toLocaleDateString("fr-FR")}</td><td className="p-2">{period.reservedCredits}</td><td className="p-2">{period.consumedCredits}</td><td className="p-2">{period.includedCreditsConsumed}/{period.includedCredits}</td><td className="p-2">{period.overageCredits} · {Number(period.overageAmount || 0).toFixed(2)} €</td></tr>)}</tbody></table></div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4">
             <h2 className="mb-3 font-semibold">Sender IDs</h2>

@@ -75,7 +75,7 @@ async function syncReservationSmsJob(
   if (!settings.enabled || !restaurant?.options?.sms_reminders || reservation.status !== "Confirmed") {
     await smsJobModel.updateMany(
       { reservationId: reservation._id, status: { $in: ["scheduled", "processing"] }, providerSubmissionStartedAt: null },
-      { $set: { status: "cancelled", skipReason: settings.enabled ? "reservation_not_confirmed" : "feature_disabled", lockedAt: null, lockExpiresAt: null } },
+      { $set: { status: "cancelled", cancelledAt: now, skipReason: settings.enabled ? "reservation_not_confirmed" : "feature_disabled", lockedAt: null, lockExpiresAt: null } },
     );
     return null;
   }
@@ -85,7 +85,7 @@ async function syncReservationSmsJob(
   const occurrenceKey = buildOccurrenceKey(schedule.reservationStartsAt);
   await smsJobModel.updateMany(
     { reservationId: reservation._id, occurrenceKey: { $ne: occurrenceKey }, status: { $in: ["scheduled", "processing"] }, providerSubmissionStartedAt: null },
-    { $set: { status: "cancelled", skipReason: "reservation_rescheduled", lockedAt: null, lockExpiresAt: null } },
+    { $set: { status: "cancelled", cancelledAt: now, skipReason: "reservation_rescheduled", lockedAt: null, lockExpiresAt: null } },
   );
 
   const reference = `gusto-sms-${reservation._id}-${crypto.createHash("sha256").update(occurrenceKey).digest("hex").slice(0, 12)}`;
@@ -94,6 +94,11 @@ async function syncReservationSmsJob(
   const existing = await smsJobModel.findOne({ reservationId: reservation._id, type: "reservation_reminder", occurrenceKey });
   if (existing && FINAL_JOB_STATUSES.includes(existing.status)) return existing;
   if (existing?.status === "skipped" && !force) return existing;
+  const skippedAt = desiredStatus === "skipped"
+    ? existing?.status === "skipped"
+      ? existing.skippedAt || null
+      : now
+    : null;
 
   return smsJobModel.findOneAndUpdate(
     { reservationId: reservation._id, type: "reservation_reminder", occurrenceKey, status: { $in: mutableStatuses } },
@@ -105,6 +110,8 @@ async function syncReservationSmsJob(
         reservationTimeSnapshot: reservation.reservationTime,
         scheduledAt: schedule.scheduledAt || now,
         status: desiredStatus,
+        cancelledAt: null,
+        skippedAt,
         skipReason,
         nextAttemptAt: schedule.scheduledAt || now,
         providerReference: reference,
@@ -143,7 +150,7 @@ async function syncAllFutureSmsJobs({ force = false } = {}) {
   }
   await SmsJobModel.updateMany(
     { status: "scheduled", reservationStartsAt: { $lte: now } },
-    { $set: { status: "skipped", skipReason: "too_late" } },
+    { $set: { status: "skipped", skippedAt: now, skipReason: "too_late" } },
   );
 }
 
@@ -164,7 +171,7 @@ async function cancelIneligibleScheduledJobs() {
     ) continue;
     await SmsJobModel.updateOne(
       { _id: job._id, status: "scheduled" },
-      { $set: { status: "cancelled", skipReason: !reservation || reservation.status !== "Confirmed" ? "reservation_not_confirmed" : "feature_disabled" } },
+      { $set: { status: "cancelled", cancelledAt: new Date(), skipReason: !reservation || reservation.status !== "Confirmed" ? "reservation_not_confirmed" : "feature_disabled" } },
     );
   }
 }
@@ -232,6 +239,7 @@ async function finalizeDueSmsDeactivations(
         {
           $set: {
             status: "cancelled",
+            cancelledAt: now,
             skipReason: "feature_disabled",
             lockedAt: null,
             lockExpiresAt: null,
@@ -362,6 +370,7 @@ function buildFinalMessage({ reservation, restaurant, settings, prefixRequired }
 async function skipJob(job, reason, usagePeriodModel = SmsUsagePeriodModel) {
   await releaseUsage(job, usagePeriodModel);
   job.status = "skipped";
+  job.skippedAt = job.skippedAt || new Date();
   job.skipReason = reason;
   job.lockedAt = null;
   job.lockExpiresAt = null;
@@ -446,8 +455,9 @@ async function processClaimedJob(
     });
     job.providerMessageId = result.providerMessageId;
     job.status = "accepted";
-    job.sentAt = new Date();
-    job.acceptedAt = new Date();
+    const acceptedAt = new Date();
+    job.sentAt = acceptedAt;
+    job.acceptedAt = acceptedAt;
     job.lockedAt = null;
     job.lockExpiresAt = null;
     await consumeUsage(job, usagePeriodModel);
@@ -601,7 +611,11 @@ async function applyProviderStatus(job, providerPayload) {
     job.acceptedAt = job.acceptedAt || new Date(providerPayload?.acceptedAt || Date.now());
     job.sentAt = job.sentAt || new Date(providerPayload?.sentDate || Date.now());
     job.status = value === "DELIVERED" ? "delivered" : "accepted";
-    if (value === "DELIVERED") job.deliveredAt = new Date(providerPayload?.status?.deliveryDate || Date.now());
+    if (value === "DELIVERED") {
+      job.deliveredAt =
+        job.deliveredAt ||
+        new Date(providerPayload?.status?.deliveryDate || Date.now());
+    }
     await job.save();
     if (job.stripeUsageState !== "reported") {
       const billing = await getSmsBillingContext(job.restaurantId);

@@ -7,6 +7,7 @@ const SmsJobModel = require("../../models/sms-job.model");
 const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
 const { syncAllFutureSmsJobs } = require("../../services/sms/sms-reminder.service");
+const { DEFAULT_TIMEZONE } = require("../../services/sms/sms-schedule.service");
 const SmsModeProvider = require("../../services/sms/smsmode-provider");
 
 const SENDER_ID_PATTERN = /^[A-Za-z0-9 ._-]{3,11}$/;
@@ -123,29 +124,53 @@ async function withRestaurantNames(items = []) {
   );
   const restaurants = restaurantIds.length
     ? await RestaurantModel.find({ _id: { $in: restaurantIds } })
-        .select("name")
+        .select("name timezone")
         .lean()
     : [];
-  const namesById = new Map(
+  const restaurantsById = new Map(
     restaurants.map((restaurant) => [
       String(restaurant._id),
-      restaurant.name || "Restaurant supprimé",
+      restaurant,
     ]),
   );
 
-  return items.map((item) => ({
-    ...item,
-    restaurantName:
-      namesById.get(String(item.restaurantId || "")) || "Restaurant supprimé",
-  }));
+  return items.map((item) => {
+    const restaurant = restaurantsById.get(String(item.restaurantId || ""));
+    return {
+      ...item,
+      restaurantName: restaurant?.name || "Restaurant supprimé",
+      restaurantTimezone: restaurant?.timezone || DEFAULT_TIMEZONE,
+    };
+  });
+}
+
+function toIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function serializeAdminSmsJob(job = {}) {
+  return {
+    ...job,
+    scheduledAt: toIsoDate(job.scheduledAt),
+    providerSubmissionStartedAt: toIsoDate(job.providerSubmissionStartedAt),
+    sentAt: toIsoDate(job.sentAt),
+    acceptedAt: toIsoDate(job.acceptedAt),
+    deliveredAt: toIsoDate(job.deliveredAt),
+    failedAt: toIsoDate(job.failedAt),
+    cancelledAt: toIsoDate(job.cancelledAt),
+    skippedAt: toIsoDate(job.skippedAt),
+  };
 }
 
 router.get("/admin/sms/jobs", authenticateAdmin, async (req, res) => {
   const query = {};
   if (req.query.status) query.status = req.query.status;
   if (req.query.restaurantId) query.restaurantId = req.query.restaurantId;
-  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt acceptedAt deliveredAt failedAt createdAt").lean();
-  return res.json({ jobs: await withRestaurantNames(jobs) });
+  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt providerSubmissionStartedAt sentAt acceptedAt deliveredAt failedAt cancelledAt skippedAt createdAt").lean();
+  const enrichedJobs = await withRestaurantNames(jobs);
+  return res.json({ jobs: enrichedJobs.map(serializeAdminSmsJob) });
 });
 
 router.get("/admin/sms/usage", authenticateAdmin, async (_req, res) => {
@@ -230,4 +255,5 @@ router.post("/admin/restaurants/:id/sms-sender/verify", authenticateAdmin, requi
 module.exports = router;
 module.exports.configureAdminSender = configureAdminSender;
 module.exports.resolveAdminSenderUpdate = resolveAdminSenderUpdate;
+module.exports.serializeAdminSmsJob = serializeAdminSmsJob;
 module.exports.verifyConfiguredSender = verifyConfiguredSender;
