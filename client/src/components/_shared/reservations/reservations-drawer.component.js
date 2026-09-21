@@ -191,6 +191,11 @@ export default function ReservationsDrawerComponent({
   }
 
   const status = reservation?.status || null;
+  const reservationDateTime = getReservationDateTime(reservation);
+  const isPastPending =
+    status === "Pending" &&
+    reservationDateTime instanceof Date &&
+    reservationDateTime.getTime() < Date.now();
   const customerId = getReservationCustomerId(reservation);
 
   const bankHold = reservation?.bankHold || {};
@@ -386,6 +391,9 @@ export default function ReservationsDrawerComponent({
   );
 
   const primaryAction = useMemo(() => {
+    if (isPastPending) {
+      return { type: "finish", label: t?.("buttons.finish") || "Terminée" };
+    }
     if (status === "Waitlist")
       return { type: "confirm", label: "Confirmer la place" };
     if (status === "Pending")
@@ -393,21 +401,18 @@ export default function ReservationsDrawerComponent({
     if (["Confirmed", "Active", "Late"].includes(status))
       return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
-  }, [status, t]);
-  const canEdit = !["Canceled", "Finished", "Rejected", "NoShow"].includes(
-    status,
-  );
-  const canMarkNoShow = ![
-    "AwaitingBankHold",
-    "Waitlist",
-    "Pending",
-    "NoShow",
-  ].includes(status);
-  const terminalActionCount = ["Canceled", "Rejected", "NoShow"].includes(
-    status,
-  )
-    ? 2
-    : 1;
+  }, [isPastPending, status, t]);
+  const canEdit =
+    !isPastPending &&
+    !["Canceled", "Finished", "Rejected", "NoShow"].includes(status);
+  const canMarkNoShow =
+    !isPastPending &&
+    !["AwaitingBankHold", "Waitlist", "Pending", "NoShow"].includes(status);
+  const terminalActionCount = isPastPending
+    ? 1
+    : ["Canceled", "Rejected", "NoShow"].includes(status)
+      ? 2
+      : 1;
   const actionCount =
     Number(Boolean(primaryAction)) +
     Number(canEdit) +
@@ -771,7 +776,8 @@ export default function ReservationsDrawerComponent({
                     ) : null}
                   </div>
 
-                  {canCaptureBankHold || canReleaseBankHold ? (
+                  {!isPastPending &&
+                  (canCaptureBankHold || canReleaseBankHold) ? (
                     <div className="mt-4 flex gap-2">
                       {canCaptureBankHold ? (
                         <button
@@ -839,7 +845,14 @@ export default function ReservationsDrawerComponent({
                 </button>
               ) : null}
 
-              {["Canceled", "Rejected", "NoShow"].includes(status) ? (
+              {isPastPending ? (
+                <button
+                  onClick={() => onAction?.(reservation, "delete")}
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
+                >
+                  Supprimer
+                </button>
+              ) : ["Canceled", "Rejected", "NoShow"].includes(status) ? (
                 <>
                   <button
                     onClick={() => onAction?.(reservation, "restore_confirmed")}

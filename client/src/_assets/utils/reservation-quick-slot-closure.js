@@ -13,6 +13,14 @@ export function getReservationDayHoursForDate({ restaurant, date }) {
 
   const parameters = restaurant?.reservationsSettings || {};
   const dateKey = format(date, "yyyy-MM-dd");
+  const exceptionalClosures = Array.isArray(restaurant?.exceptional_closures)
+    ? restaurant.exceptional_closures
+    : [];
+
+  if (exceptionalClosures.includes(dateKey)) {
+    return { day: "exceptional", isClosed: true, hours: [] };
+  }
+
   const exceptionalOpening = (
     Array.isArray(parameters.exceptional_openings)
       ? parameters.exceptional_openings

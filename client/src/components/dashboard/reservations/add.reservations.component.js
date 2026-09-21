@@ -96,6 +96,15 @@ function getExceptionalOpeningForDate(parameters, reservationDate) {
 }
 
 function getReservationDayHoursForDate({ restaurant, parameters, date }) {
+  const dateKey = format(date, "yyyy-MM-dd");
+  const exceptionalClosures = Array.isArray(restaurant?.exceptional_closures)
+    ? restaurant.exceptional_closures
+    : [];
+
+  if (exceptionalClosures.includes(dateKey)) {
+    return { day: "exceptional", isClosed: true, hours: [] };
+  }
+
   const exceptionalOpening = getExceptionalOpeningForDate(parameters, date);
   if (exceptionalOpening) return exceptionalOpening;
 

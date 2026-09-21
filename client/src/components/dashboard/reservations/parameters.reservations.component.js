@@ -41,6 +41,7 @@ import {
   buildReservationEmailTemplatesState,
 } from "../../_shared/reservations/email-templates.reservations";
 import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
+import ParametersSearchReservationsComponent from "./parameters-search.reservations.component";
 
 const DEFAULT_DELETION_DURATION_MINUTES = 6 * 30 * 24 * 60;
 
@@ -1125,6 +1126,8 @@ export default function ParametersReservationComponent(props) {
         onBack={handleBack}
         backLabel={t("reservations:buttons.back", "Retour")}
         subtitle={subtitle}
+        actions={<ParametersSearchReservationsComponent />}
+        actionsClassName="w-full midTablet:w-auto"
       />
 
       {/* =========================
@@ -1132,112 +1135,134 @@ export default function ParametersReservationComponent(props) {
           ========================= */}
       <form className="flex flex-col gap-4">
         {/* --- Bloc: Ranges --- */}
-        <RangesParametersComponent
-          restaurantId={props.restaurantData?._id}
-          blockedRanges={blockedRanges}
-          setRestaurantData={props.setRestaurantData}
-        />
+        <div id="reservation-parameters-pauses" tabIndex={-1}>
+          <RangesParametersComponent
+            restaurantId={props.restaurantData?._id}
+            blockedRanges={blockedRanges}
+            setRestaurantData={props.setRestaurantData}
+          />
+        </div>
         {/* --- Bloc: Heures --- */}
-        <HoursParametersComponent
-          register={register}
-          same_hours_as_restaurant={same_hours_as_restaurant}
-          restaurantId={props.restaurantData?._id}
-          reservationHours={reservationHours}
-          setReservationHours={setReservationHours}
-          exceptionalOpenings={exceptionalOpenings}
-          setExceptionalOpenings={setExceptionalOpenings}
-          setRestaurantData={props.setRestaurantData}
-          dataLoading={restaurantContext.dataLoading}
-          closeEditing={restaurantContext.closeEditing}
-        />
+        <div id="reservation-parameters-hours" tabIndex={-1}>
+          <HoursParametersComponent
+            register={register}
+            same_hours_as_restaurant={same_hours_as_restaurant}
+            restaurantId={props.restaurantData?._id}
+            reservationHours={reservationHours}
+            setReservationHours={setReservationHours}
+            exceptionalOpenings={exceptionalOpenings}
+            setExceptionalOpenings={setExceptionalOpenings}
+            setRestaurantData={props.setRestaurantData}
+            dataLoading={restaurantContext.dataLoading}
+            closeEditing={restaurantContext.closeEditing}
+          />
+        </div>
         {/* --- Bloc: Créneaux --- */}
-        <SlotsParametersComponent
-          register={register}
-          watch={watch}
-          errors={errors}
-          auto_accept={auto_accept}
-          restaurantData={props.restaurantData || restaurantContext.restaurantData}
-          sameHoursAsRestaurant={same_hours_as_restaurant}
-          reservationHours={reservationHours}
-          interval={interval}
-          slotCoverLimits={slotCoverLimits}
-          onSlotCoverLimitsChange={setSlotCoverLimits}
-          saveUI={sectionUI.slots}
-          onSave={() => saveSection("slots")}
-        />
+        <div id="reservation-parameters-slots" tabIndex={-1}>
+          <SlotsParametersComponent
+            register={register}
+            watch={watch}
+            errors={errors}
+            auto_accept={auto_accept}
+            restaurantData={
+              props.restaurantData || restaurantContext.restaurantData
+            }
+            sameHoursAsRestaurant={same_hours_as_restaurant}
+            reservationHours={reservationHours}
+            interval={interval}
+            slotCoverLimits={slotCoverLimits}
+            onSlotCoverLimitsChange={setSlotCoverLimits}
+            saveUI={sectionUI.slots}
+            onSave={() => saveSection("slots")}
+          />
+        </div>
         {/* --- Bloc: Empreinte bancaire --- */}
-        <BankHoldParametersComponent
-          register={register}
-          watch={watch}
-          errors={errors}
-          stripeReady={stripeReady}
-          saveUI={sectionUI.bank_hold}
-          onSave={() => saveSection("bank_hold")}
-        />
-        <WaitlistParametersComponent
-          register={register}
-          watch={watch}
-          setValue={setValue}
-          saveUI={sectionUI.waitlist}
-          onSave={() => saveSection("waitlist")}
-        />
+        <div id="reservation-parameters-bank-hold" tabIndex={-1}>
+          <BankHoldParametersComponent
+            register={register}
+            watch={watch}
+            errors={errors}
+            stripeReady={stripeReady}
+            saveUI={sectionUI.bank_hold}
+            onSave={() => saveSection("bank_hold")}
+          />
+        </div>
+        <div id="reservation-parameters-waitlist" tabIndex={-1}>
+          <WaitlistParametersComponent
+            register={register}
+            watch={watch}
+            setValue={setValue}
+            saveUI={sectionUI.waitlist}
+            onSave={() => saveSection("waitlist")}
+          />
+        </div>
         {/* --- Bloc: Automatisations --- */}
-        <AutomationsParametersComponent
-          register={register}
-          setValue={setValue}
-          auto_finish_reservations={auto_finish_reservations}
-          deletion_duration={deletion_duration}
-          durationError={durationError}
-          saveUI={sectionUI.automations}
-          onSave={() => saveSection("automations")}
-        />
-        <EmailsParametersComponent
-          templates={emailTemplates}
-          savedTemplates={initialSnapRef.current?.emails?.templates}
-          onTemplatesChange={setEmailTemplates}
-          notifyRestaurantOnNewPublicReservation={
-            notifyRestaurantOnNewPublicReservation
-          }
-          onNotifyRestaurantOnNewPublicReservationChange={
-            setNotifyRestaurantOnNewPublicReservation
-          }
-          restaurantName={props.restaurantData?.name}
-          bankHoldEnabled={Boolean(bank_hold_enabled)}
-          saveUI={sectionUI.emails}
-          onSave={() => saveSection("emails")}
-        />
-        <SmsRemindersReservationsComponent
-          restaurantData={props.restaurantData}
-        />
+        <div id="reservation-parameters-automations" tabIndex={-1}>
+          <AutomationsParametersComponent
+            register={register}
+            setValue={setValue}
+            auto_finish_reservations={auto_finish_reservations}
+            deletion_duration={deletion_duration}
+            durationError={durationError}
+            saveUI={sectionUI.automations}
+            onSave={() => saveSection("automations")}
+          />
+        </div>
+        <div id="reservation-parameters-emails" tabIndex={-1}>
+          <EmailsParametersComponent
+            templates={emailTemplates}
+            savedTemplates={initialSnapRef.current?.emails?.templates}
+            onTemplatesChange={setEmailTemplates}
+            notifyRestaurantOnNewPublicReservation={
+              notifyRestaurantOnNewPublicReservation
+            }
+            onNotifyRestaurantOnNewPublicReservationChange={
+              setNotifyRestaurantOnNewPublicReservation
+            }
+            restaurantName={props.restaurantData?.name}
+            bankHoldEnabled={Boolean(bank_hold_enabled)}
+            saveUI={sectionUI.emails}
+            onSave={() => saveSection("emails")}
+          />
+        </div>
+        <div id="reservation-parameters-sms" tabIndex={-1}>
+          <SmsRemindersReservationsComponent
+            restaurantData={props.restaurantData}
+          />
+        </div>
         {/* --- Bloc: Gestion intelligente + tables --- */}
-        <SmartParametersComponent
-          register={register}
-          manage_disponibilities={manage_disponibilities}
-          smartAvailabilitySetup={smartAvailabilitySetup}
-          smartAvailabilityError={smartAvailabilityError}
-          manualTablesNeedingAssignment={manualTablesNeedingAssignment}
-          manualToFixLoading={manualToFixLoading}
-          manualToFixError={manualToFixError}
-          manualToFix={manualToFix}
-          fetchManualTablesToFix={fetchManualTablesToFix}
-          unassignedReservationsNeedingAssignment={
-            unassignedReservationsNeedingAssignment
-          }
-          unassignedToFixLoading={unassignedToFixLoading}
-          unassignedToFixError={unassignedToFixError}
-          unassignedToFix={unassignedToFix}
-          fetchUnassignedTablesToFix={fetchUnassignedTablesToFix}
-          fmtShortFR={fmtShortFR}
-          statusLabel={statusLabel}
-        />
-        <FloorPlanParametersComponent
-          restaurantId={props.restaurantData?._id}
-          setRestaurantData={props.setRestaurantData}
-          tablesCatalog={tablesCatalog}
-          onTablesCatalogUpdated={(nextTables) => {
-            setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);
-          }}
-        />
+        <div id="reservation-parameters-availability" tabIndex={-1}>
+          <SmartParametersComponent
+            register={register}
+            manage_disponibilities={manage_disponibilities}
+            smartAvailabilitySetup={smartAvailabilitySetup}
+            smartAvailabilityError={smartAvailabilityError}
+            manualTablesNeedingAssignment={manualTablesNeedingAssignment}
+            manualToFixLoading={manualToFixLoading}
+            manualToFixError={manualToFixError}
+            manualToFix={manualToFix}
+            fetchManualTablesToFix={fetchManualTablesToFix}
+            unassignedReservationsNeedingAssignment={
+              unassignedReservationsNeedingAssignment
+            }
+            unassignedToFixLoading={unassignedToFixLoading}
+            unassignedToFixError={unassignedToFixError}
+            unassignedToFix={unassignedToFix}
+            fetchUnassignedTablesToFix={fetchUnassignedTablesToFix}
+            fmtShortFR={fmtShortFR}
+            statusLabel={statusLabel}
+          />
+        </div>
+        <div id="reservation-parameters-tables" tabIndex={-1}>
+          <FloorPlanParametersComponent
+            restaurantId={props.restaurantData?._id}
+            setRestaurantData={props.setRestaurantData}
+            tablesCatalog={tablesCatalog}
+            onTablesCatalogUpdated={(nextTables) => {
+              setTablesCatalog(Array.isArray(nextTables) ? nextTables : []);
+            }}
+          />
+        </div>
       </form>
     </section>
   );

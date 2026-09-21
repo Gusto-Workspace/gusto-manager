@@ -109,6 +109,9 @@ export default function RestaurantPage(props) {
                     openingHours={
                       restaurantContext.restaurantData?.opening_hours
                     }
+                    exceptionalClosures={
+                      restaurantContext.restaurantData?.exceptional_closures
+                    }
                     restaurantId={restaurantContext.restaurantData?._id}
                     dataLoading={restaurantContext.dataLoading}
                     closeEditing={restaurantContext.closeEditing}

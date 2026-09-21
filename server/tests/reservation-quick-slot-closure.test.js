@@ -7,6 +7,9 @@ const {
   getConfiguredQuickClosureTimes,
   isDepartureCoveredByRange,
 } = require("../services/reservation-quick-slot-closure.service");
+const {
+  isRestaurantExceptionallyClosed,
+} = require("../services/restaurant-exceptional-closures.service");
 
 function buildHours(mondayHours = []) {
   const names = [
@@ -25,9 +28,15 @@ function buildHours(mondayHours = []) {
   }));
 }
 
-function restaurantWith({ hours, interval = 30, exceptionalOpenings = [] }) {
+function restaurantWith({
+  hours,
+  interval = 30,
+  exceptionalOpenings = [],
+  exceptionalClosures = [],
+}) {
   return {
     opening_hours: buildHours(hours),
+    exceptional_closures: exceptionalClosures,
     reservationsSettings: {
       same_hours_as_restaurant: true,
       interval,
@@ -145,6 +154,30 @@ test("les ouvertures exceptionnelles remplacent les horaires hebdomadaires", () 
     "12:30",
     "13:00",
   ]);
+});
+
+test("une fermeture exceptionnelle ne ferme que la date enregistrée", () => {
+  const restaurant = restaurantWith({
+    hours: [{ open: "19:00", close: "20:00" }],
+    exceptionalClosures: ["2026-09-07"],
+  });
+
+  assert.deepEqual(
+    getConfiguredQuickClosureTimes(restaurant, "2026-09-07"),
+    [],
+  );
+  assert.deepEqual(getConfiguredQuickClosureTimes(restaurant, "2026-09-14"), [
+    "19:00",
+    "19:30",
+    "20:00",
+  ]);
+  assert.equal(
+    isRestaurantExceptionallyClosed(
+      restaurant,
+      new Date(2026, 8, 7, 12, 0, 0),
+    ),
+    true,
+  );
 });
 
 test("un service après minuit rattache les heures de nuit à la date de service", () => {

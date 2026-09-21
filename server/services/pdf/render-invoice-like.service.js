@@ -264,18 +264,16 @@ async function renderInvoiceLikePdf(documentData, emitter) {
 
     const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
 
-    // ✅ espacement réduit entre "Abonnement :" et valeur
-    if (subPrice > 0) {
+    const subName = safeText(documentData?.subscription?.name);
+
+    if (subName || subPrice > 0) {
       doc.fontSize(10).fillColor("#111");
 
-      const label = "Abonnement";
+      const label = subName ? `Abonnement : ${subName}` : "Abonnement";
       const labelX = 50;
       doc.text(label, labelX, y);
 
-      // on calcule où commencer le nom (juste après le label)
-      const labelW = doc.widthOfString(label);
-
-      doc.text(subPrice > 0 ? `${euro(subPrice)} / mois` : "-", 410, y, {
+      doc.text(subPrice > 0 ? `${euro(subPrice)} / mois` : "Offert", 410, y, {
         width: 135,
         align: "right",
       });

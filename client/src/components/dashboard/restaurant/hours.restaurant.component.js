@@ -20,6 +20,8 @@ export default function HoursRestaurantComponent(props) {
 
   const [editing, setEditing] = useState(false);
   const [localHours, setLocalHours] = useState([]);
+  const [localExceptionalClosures, setLocalExceptionalClosures] = useState([]);
+  const [newExceptionalClosure, setNewExceptionalClosure] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -38,7 +40,17 @@ export default function HoursRestaurantComponent(props) {
       };
     });
     setLocalHours(initialHours);
-  }, [props.openingHours, props.reservationHours, props.reservations]);
+    setLocalExceptionalClosures(
+      Array.isArray(props.exceptionalClosures)
+        ? [...props.exceptionalClosures].sort()
+        : [],
+    );
+  }, [
+    props.exceptionalClosures,
+    props.openingHours,
+    props.reservationHours,
+    props.reservations,
+  ]);
 
   function handleToggleEdit() {
     setEditing((prev) => !prev);
@@ -109,6 +121,44 @@ export default function HoursRestaurantComponent(props) {
     );
   }
 
+  function handleAddExceptionalClosure() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newExceptionalClosure)) return;
+
+    setLocalExceptionalClosures((prev) =>
+      [...new Set([...prev, newExceptionalClosure])].sort(),
+    );
+    setNewExceptionalClosure("");
+  }
+
+  function handleRemoveExceptionalClosure(date) {
+    setLocalExceptionalClosures((prev) =>
+      prev.filter((closureDate) => closureDate !== date),
+    );
+  }
+
+  function formatExceptionalClosure(date) {
+    const parsed = new Date(`${date}T12:00:00`);
+    if (Number.isNaN(parsed.getTime())) return date;
+    return parsed.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  function getLocalDateKey() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const visibleExceptionalClosures = localExceptionalClosures.filter(
+    (date) => date >= getLocalDateKey(),
+  );
+
   // Enregistrement
   async function handleSave() {
     // Nettoyage : on supprime les créneaux vides
@@ -150,7 +200,10 @@ export default function HoursRestaurantComponent(props) {
       setSaving(true);
       const res = await axios.put(
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${props.restaurantId}/opening_hours`,
-        { openingHours: cleanedHours },
+        {
+          openingHours: cleanedHours,
+          exceptionalClosures: localExceptionalClosures,
+        },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -407,6 +460,74 @@ export default function HoursRestaurantComponent(props) {
           </Fragment>
         ))}
       </ul>
+
+      {!props.reservations ? (
+        <div className="rounded-xl border border-darkBlue/10 bg-white/70 px-4 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-darkBlue">
+              Fermetures exceptionnelles
+            </h2>
+            <p className="text-xs text-darkBlue/60">
+              Fermez le restaurant pour une date précise, sans modifier les
+              horaires habituels.
+            </p>
+          </div>
+
+          {editing ? (
+            <div className="mt-4 flex flex-col gap-2 mobile:flex-row">
+              <input
+                type="date"
+                value={newExceptionalClosure}
+                onChange={(event) =>
+                  setNewExceptionalClosure(event.target.value)
+                }
+                disabled={saving}
+                className={timeInputCls}
+                aria-label="Date de fermeture exceptionnelle"
+              />
+              <button
+                type="button"
+                onClick={handleAddExceptionalClosure}
+                disabled={!newExceptionalClosure || saving}
+                className={`${actionBtnBase} ${actionBtnPrimary} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Ajouter
+              </button>
+            </div>
+          ) : null}
+
+          <ul className="mt-4 flex flex-col gap-2">
+            {visibleExceptionalClosures.length ? (
+              visibleExceptionalClosures.map((date) => (
+                <li
+                  key={date}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-darkBlue/10 bg-white px-3 py-2"
+                >
+                  <span className="text-sm text-darkBlue first-letter:uppercase">
+                    {formatExceptionalClosure(date)}
+                  </span>
+                  {editing ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveExceptionalClosure(date)}
+                      disabled={saving}
+                      className="inline-flex size-8 items-center justify-center rounded-lg bg-red/10 text-red transition hover:bg-red/20"
+                      aria-label={`Supprimer la fermeture du ${formatExceptionalClosure(date)}`}
+                      title="Supprimer"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  ) : null}
+                </li>
+              ))
+            ) : (
+              <li className="text-sm italic text-darkBlue/50">
+                Aucune fermeture exceptionnelle à venir.
+              </li>
+            )}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }

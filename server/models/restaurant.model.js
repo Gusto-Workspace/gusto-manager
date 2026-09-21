@@ -715,6 +715,7 @@ const restaurantSchema = new mongoose.Schema({
     required: true,
   },
   opening_hours: { type: [openingHoursSchema], default: [] },
+  exceptional_closures: { type: [String], default: [] },
   dish_categories: { type: [dishCategorySchema], default: [] },
   drink_categories: { type: [drinkCategorySchema], default: [] },
   wine_categories: { type: [wineCategorySchema], default: [] },
