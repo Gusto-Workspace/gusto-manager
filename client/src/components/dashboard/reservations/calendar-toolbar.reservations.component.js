@@ -14,7 +14,6 @@ import {
   Search,
   Settings,
   Plus,
-  X,
   LayoutGrid,
   Users,
 } from "lucide-react";
@@ -192,11 +191,11 @@ export default function CalendarToolbarReservationsComponent(props) {
             {props.searchTerm && (
               <button
                 onClick={clearSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-6 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-darkBlue/10 text-[11px] text-darkBlue hover:bg-darkBlue/20 transition"
                 aria-label={t("buttons.clear", "Effacer")}
                 title={t("buttons.clear", "Effacer")}
               >
-                <X className="size-4 text-darkBlue/60" />
+                ×
               </button>
             )}
           </div>

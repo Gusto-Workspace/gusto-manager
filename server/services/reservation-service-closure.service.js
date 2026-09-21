@@ -2,6 +2,9 @@ const {
   buildServiceRangeDateTimes,
   minutesFromHHmm,
 } = require("./reservation-service-time.service");
+const {
+  isRestaurantExceptionallyClosed,
+} = require("./restaurant-exceptional-closures.service");
 
 function isValidHHmm(value) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
@@ -72,6 +75,10 @@ function getCurrentReservationService({
   serviceDates[1].setHours(0, 0, 0, 0);
 
   for (const serviceDate of serviceDates) {
+    if (isRestaurantExceptionallyClosed(restaurant, serviceDate)) {
+      continue;
+    }
+
     const exceptionalOpening = getReservationExceptionalOpeningForDate(
       parameters || restaurant?.reservationsSettings || {},
       serviceDate,

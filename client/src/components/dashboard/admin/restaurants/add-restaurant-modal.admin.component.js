@@ -510,7 +510,7 @@ export default function AddRestaurantModal(props) {
                   name="restaurantData.website"
                   placeholder={t("restaurants.form.web")}
                   register={register}
-                  required={true}
+                  required={false}
                   errors={errors}
                 />
               </div>

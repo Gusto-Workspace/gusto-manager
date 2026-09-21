@@ -774,6 +774,14 @@ export default function DetailsDocumentAdminPage(props) {
   }
 
   function selectCatalogPlan(priceId) {
+    if (!priceId && doc?.type === "INVOICE") {
+      setSubscriptionName("");
+      setSubscriptionPriceMonthly("");
+      setSubscriptionQuantity(1);
+      setSubscriptionMeta({});
+      return;
+    }
+
     const product = catalogPlans.find(
       (entry) => entry?.default_price?.id === priceId,
     );
@@ -977,7 +985,7 @@ export default function DetailsDocumentAdminPage(props) {
           : normalizedClassicLines;
 
       // ✅ abonnement + modules (numeric)
-      payload.subscription = {
+      const subscriptionPayload = {
         name: trimText(subscriptionName),
         priceMonthly: clampMin(subscriptionPriceMonthly, 0),
         quantity: Math.max(1, Number(subscriptionQuantity || 1)),
@@ -991,6 +999,17 @@ export default function DetailsDocumentAdminPage(props) {
           Number(subscriptionMeta?.intervalCount || 1),
         ),
       };
+      const hasSubscription = Boolean(
+        subscriptionPayload.name ||
+          subscriptionPayload.code ||
+          subscriptionPayload.priceId ||
+          subscriptionPayload.productId ||
+          subscriptionPayload.priceMonthly > 0,
+      );
+      payload.subscription =
+        doc.type === "INVOICE" && !hasSubscription
+          ? null
+          : subscriptionPayload;
       payload.engagementMonths = clampMin(engagementMonths, 1);
       payload.earlyTermination = {
         enabled: Boolean(earlyTerminationEnabled),

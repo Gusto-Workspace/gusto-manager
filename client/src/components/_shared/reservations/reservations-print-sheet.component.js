@@ -319,10 +319,16 @@ export default function ReservationsPrintSheet({
       <style jsx global>{`
         @page {
           size: A4 portrait;
-          margin: 14mm;
+          margin: 0;
         }
 
         @media print {
+          html,
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
           body > * {
             display: none !important;
           }
@@ -330,7 +336,10 @@ export default function ReservationsPrintSheet({
           body > .reservations-print-sheet {
             display: block !important;
             width: 100%;
+            padding: ${PRINT_MARGIN_MM}mm;
             box-sizing: border-box;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
           }
 
           .reservations-print-sheet table {

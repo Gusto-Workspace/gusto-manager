@@ -774,38 +774,52 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
 
     // ✅ Subscription object
     if (body.subscription !== undefined) {
-      doc.subscription = {
-        ...doc.subscription,
-        name: String(body.subscription?.name || doc.subscription?.name || ""),
-        priceMonthly: Number(body.subscription?.priceMonthly || 0),
-        quantity: Math.max(
-          1,
-          Number(
-            body.subscription?.quantity || doc.subscription?.quantity || 1,
+      if (doc.type === "INVOICE" && body.subscription === null) {
+        doc.subscription = undefined;
+      } else {
+        doc.subscription = {
+          ...doc.subscription,
+          name: String(
+            body.subscription?.name || doc.subscription?.name || "",
           ),
-        ),
-        code: String(body.subscription?.code || doc.subscription?.code || ""),
-        priceId: String(
-          body.subscription?.priceId || doc.subscription?.priceId || "",
-        ),
-        productId: String(
-          body.subscription?.productId || doc.subscription?.productId || "",
-        ),
-        currency: String(
-          body.subscription?.currency || doc.subscription?.currency || "EUR",
-        ),
-        interval: String(
-          body.subscription?.interval || doc.subscription?.interval || "month",
-        ),
-        intervalCount: Math.max(
-          1,
-          Number(
-            body.subscription?.intervalCount ||
-              doc.subscription?.intervalCount ||
-              1,
+          priceMonthly: Number(body.subscription?.priceMonthly || 0),
+          quantity: Math.max(
+            1,
+            Number(
+              body.subscription?.quantity || doc.subscription?.quantity || 1,
+            ),
           ),
-        ),
-      };
+          code: String(
+            body.subscription?.code || doc.subscription?.code || "",
+          ),
+          priceId: String(
+            body.subscription?.priceId || doc.subscription?.priceId || "",
+          ),
+          productId: String(
+            body.subscription?.productId ||
+              doc.subscription?.productId ||
+              "",
+          ),
+          currency: String(
+            body.subscription?.currency ||
+              doc.subscription?.currency ||
+              "EUR",
+          ),
+          interval: String(
+            body.subscription?.interval ||
+              doc.subscription?.interval ||
+              "month",
+          ),
+          intervalCount: Math.max(
+            1,
+            Number(
+              body.subscription?.intervalCount ||
+                doc.subscription?.intervalCount ||
+                1,
+            ),
+          ),
+        };
+      }
     }
 
     if (body.modules) {
@@ -888,6 +902,30 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
 
     await doc.validate();
     const staleProcessingBefore = new Date(Date.now() - 5 * 60 * 1000);
+    const documentUpdate = {
+      $set: {
+        party: plain(doc.party),
+        issueDate: doc.issueDate,
+        dueDate: doc.dueDate,
+        lines: plain(doc.lines),
+        totals: plain(doc.totals),
+        comments: doc.comments,
+        website: plain(doc.website),
+        timeClockTerminalRental: plain(doc.timeClockTerminalRental),
+        placeOfSignature: doc.placeOfSignature,
+        subscription: plain(doc.subscription),
+        engagementMonths: doc.engagementMonths,
+        earlyTermination: plain(doc.earlyTermination),
+        modules: plain(doc.modules),
+        commercialSnapshot: plain(doc.commercialSnapshot),
+        commercialReviewConfirmedAt: doc.commercialReviewConfirmedAt,
+      },
+    };
+    if (doc.type === "INVOICE" && body.subscription === null) {
+      delete documentUpdate.$set.subscription;
+      documentUpdate.$unset = { subscription: 1 };
+    }
+
     const updatedDocument = await DocumentModel.findOneAndUpdate(
       {
         _id: doc._id,
@@ -899,25 +937,7 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
           { "signature.processingAt": { $lt: staleProcessingBefore } },
         ],
       },
-      {
-        $set: {
-          party: plain(doc.party),
-          issueDate: doc.issueDate,
-          dueDate: doc.dueDate,
-          lines: plain(doc.lines),
-          totals: plain(doc.totals),
-          comments: doc.comments,
-          website: plain(doc.website),
-          timeClockTerminalRental: plain(doc.timeClockTerminalRental),
-          placeOfSignature: doc.placeOfSignature,
-          subscription: plain(doc.subscription),
-          engagementMonths: doc.engagementMonths,
-          earlyTermination: plain(doc.earlyTermination),
-          modules: plain(doc.modules),
-          commercialSnapshot: plain(doc.commercialSnapshot),
-          commercialReviewConfirmedAt: doc.commercialReviewConfirmedAt,
-        },
-      },
+      documentUpdate,
       { new: true, runValidators: true },
     );
 

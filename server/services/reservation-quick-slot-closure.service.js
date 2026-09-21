@@ -3,6 +3,9 @@ const {
   minutesFromHHmm,
   minutesFromServiceTime,
 } = require("./reservation-service-time.service");
+const {
+  isRestaurantExceptionallyClosed,
+} = require("./restaurant-exceptional-closures.service");
 
 const QUICK_SLOT_CLOSURE_SOURCE = "quick_slot_closure";
 const MAX_QUICK_SLOT_CLOSURES_PER_REQUEST = 96;
@@ -59,6 +62,10 @@ function getExceptionalOpening(parameters, dateKey) {
 }
 
 function getReservationDayHours(restaurant, dateKey) {
+  if (isRestaurantExceptionallyClosed(restaurant, dateKey)) {
+    return { day: "exceptional", isClosed: true, hours: [] };
+  }
+
   const parameters = restaurant?.reservationsSettings || {};
   const exceptionalOpening = getExceptionalOpening(parameters, dateKey);
   if (exceptionalOpening) return exceptionalOpening;

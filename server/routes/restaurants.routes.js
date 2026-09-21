@@ -190,7 +190,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
     let restaurantQuery = RestaurantModel.findById(id);
     if (reservationsScope) {
       restaurantQuery = restaurantQuery.select(
-        "_id name website opening_hours options reservationsSettings owner_id employees",
+        "_id name website opening_hours exceptional_closures options reservationsSettings owner_id employees",
       );
     }
     restaurantQuery = restaurantQuery.populate("owner_id", "firstname");

@@ -74,6 +74,9 @@ const {
   buildQuickSlotClosureRanges,
   isDepartureCoveredByRange,
 } = require("../services/reservation-quick-slot-closure.service");
+const {
+  isRestaurantExceptionallyClosed,
+} = require("../services/restaurant-exceptional-closures.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 
@@ -1252,6 +1255,12 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
 
     // max 7 jours de recherche
     for (let safety = 0; safety < 7 && minutesRemaining > 0; safety++) {
+      if (isRestaurantExceptionallyClosed(restaurant, cursor)) {
+        cursor.setDate(cursor.getDate() + 1);
+        cursor.setHours(0, 0, 0, 0);
+        continue;
+      }
+
       const jsDay = cursor.getDay();
       const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
 
@@ -1632,6 +1641,10 @@ function getReservationDayHours({
 }) {
   const normalizedDay = normalizeReservationDayToUTC(reservationDateUTC);
   if (!normalizedDay) return null;
+
+  if (isRestaurantExceptionallyClosed(restaurant, normalizedDay)) {
+    return { day: "exceptional", isClosed: true, hours: [] };
+  }
 
   const exceptionalOpening = getReservationExceptionalOpeningForDate(
     parameters,

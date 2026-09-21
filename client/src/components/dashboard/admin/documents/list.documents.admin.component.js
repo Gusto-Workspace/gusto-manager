@@ -59,7 +59,7 @@ function statusBadge(status, type, signatureRequest) {
       return { label: "Signé", className: "bg-green/10 text-green-700" };
     case "ACCEPTED":
       return {
-        label: "Accepté électroniquement",
+        label: "Signé",
         className: "bg-green/10 text-green-700",
       };
     default:

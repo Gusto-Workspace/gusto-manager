@@ -46,6 +46,7 @@ export default function CatalogHeaderDashboardComponent({
   subtitleItems = [],
   badges = [],
   actions = null,
+  actionsClassName = "",
 }) {
   const visibleSubtitleItems =
     subtitleItems.length > 0
@@ -127,7 +128,11 @@ export default function CatalogHeaderDashboardComponent({
         </div>
       </div>
 
-      {actions ? <div className="flex flex-wrap gap-1">{actions}</div> : null}
+      {actions ? (
+        <div className={`flex flex-wrap gap-1 ${actionsClassName}`.trim()}>
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

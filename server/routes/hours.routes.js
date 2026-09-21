@@ -3,11 +3,14 @@ const router = express.Router();
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
+const {
+  sanitizeExceptionalClosures,
+} = require("../services/restaurant-exceptional-closures.service");
 
 // UPDATE RESTAURANT HOURS OPENING
 router.put("/restaurants/:id/opening_hours", async (req, res) => {
   const restaurantId = req.params.id;
-  const { openingHours } = req.body;
+  const { openingHours, exceptionalClosures } = req.body;
 
   try {
     if (!Array.isArray(openingHours)) {
@@ -28,10 +31,36 @@ router.put("/restaurants/:id/opening_hours", async (req, res) => {
       };
     });
 
+    const update = { opening_hours: formattedOpeningHours };
+
+    if (exceptionalClosures !== undefined) {
+      if (!Array.isArray(exceptionalClosures)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid exceptionalClosures format" });
+      }
+
+      if (
+        exceptionalClosures.some(
+          (date) =>
+            !/^\d{4}-\d{2}-\d{2}$/.test(String(date)) ||
+            !sanitizeExceptionalClosures([date]).length,
+        )
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Invalid exceptional closure date" });
+      }
+
+      const sanitizedClosures =
+        sanitizeExceptionalClosures(exceptionalClosures);
+      update.exceptional_closures = sanitizedClosures;
+    }
+
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
-      { opening_hours: formattedOpeningHours },
-      { new: true }
+      update,
+      { new: true },
     )
       .populate("owner_id", "firstname")
       .populate("employees")
