@@ -217,7 +217,6 @@ export default function ParametersReservationComponent(props) {
   });
 
   const [reservationHours, setReservationHours] = useState([]);
-  const [exceptionalOpenings, setExceptionalOpenings] = useState([]);
   const [slotCoverLimits, setSlotCoverLimits] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [manualTablesNeedingAssignment, setManualTablesNeedingAssignment] =
@@ -459,7 +458,6 @@ export default function ParametersReservationComponent(props) {
       });
 
       setReservationHours(parameters.reservation_hours || []);
-      setExceptionalOpenings(parameters.exceptional_openings || []);
       setSlotCoverLimits(nextSlotCoverLimits);
       setIsLoading(false);
       setDurationError({ lunch: false, dinner: false });
@@ -804,7 +802,6 @@ export default function ParametersReservationComponent(props) {
           reservation_hours: Boolean(same_hours_as_restaurant)
             ? restaurantContext.restaurantData?.opening_hours
             : reservationHours,
-          exceptional_openings: exceptionalOpenings,
         };
       }
 
@@ -1150,8 +1147,6 @@ export default function ParametersReservationComponent(props) {
             restaurantId={props.restaurantData?._id}
             reservationHours={reservationHours}
             setReservationHours={setReservationHours}
-            exceptionalOpenings={exceptionalOpenings}
-            setExceptionalOpenings={setExceptionalOpenings}
             setRestaurantData={props.setRestaurantData}
             dataLoading={restaurantContext.dataLoading}
             closeEditing={restaurantContext.closeEditing}
