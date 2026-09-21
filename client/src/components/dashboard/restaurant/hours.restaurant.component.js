@@ -10,7 +10,7 @@ import { daysOfWeeksData } from "@/_assets/data/days-of-week.data";
 import axios from "axios";
 
 // ICONS
-import { Edit, Loader2, Save, X } from "lucide-react";
+import { Edit, Loader2, Plus, Save, X } from "lucide-react";
 
 // COMPONENTS
 import DoubleSkeletonComponent from "../../_shared/skeleton/double-skeleton.component";
@@ -471,14 +471,27 @@ export default function HoursRestaurantComponent(props) {
           />
 
           <div className="rounded-xl border border-darkBlue/10 bg-white/70 px-4 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-darkBlue">
-                Fermetures exceptionnelles
-              </h2>
-              <p className="text-xs text-darkBlue/60">
-                Fermez le restaurant pour une date précise, sans modifier les
-                horaires habituels.
-              </p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-darkBlue">
+                  Fermetures exceptionnelles
+                </h2>
+                <p className="text-sm text-darkBlue/60">
+                  Fermez le restaurant pour une date précise, sans modifier les
+                  horaires habituels.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                disabled={saving}
+                className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-darkBlue/10 bg-white text-darkBlue/70 transition hover:bg-darkBlue/5 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Ajouter une fermeture exceptionnelle"
+                title="Ajouter"
+              >
+                <Plus className="size-4" />
+              </button>
             </div>
 
             {editing ? (
@@ -529,7 +542,7 @@ export default function HoursRestaurantComponent(props) {
                   </li>
                 ))
               ) : (
-                <li className="text-sm italic text-darkBlue/50">
+                <li className="rounded-2xl border border-dashed border-darkBlue/15 bg-white/50 px-4 py-3 text-sm text-darkBlue/50">
                   Aucune fermeture exceptionnelle à venir.
                 </li>
               )}
