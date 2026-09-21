@@ -1138,7 +1138,7 @@ export default function ParametersReservationComponent(props) {
           </div>
         </div>
 
-        <ParametersSearchReservationsComponent />
+        <ParametersSearchReservationsComponent webapp />
       </div>
 
       <form className="flex flex-col gap-4">
@@ -1164,6 +1164,7 @@ export default function ParametersReservationComponent(props) {
             setRestaurantData={props.setRestaurantData}
             dataLoading={restaurantContext.dataLoading}
             closeEditing={restaurantContext.closeEditing}
+            showExceptionalOpenings
             savePresentation="icon"
           />
         </div>

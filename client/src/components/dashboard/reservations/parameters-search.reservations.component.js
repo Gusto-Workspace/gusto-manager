@@ -10,7 +10,7 @@ const PARAMETER_SECTIONS = [
   {
     id: "reservation-parameters-hours",
     title: "Heures de réservation",
-    keywords: "horaire horaires créneau ouverture heures service",
+    keywords: "horaire horaires créneau heures service",
   },
   {
     id: "reservation-parameters-slots",
@@ -56,6 +56,13 @@ const PARAMETER_SECTIONS = [
   },
 ];
 
+const EXCEPTIONAL_OPENINGS_SECTION = {
+  id: "reservation-parameters-exceptional-openings",
+  title: "Ouvertures exceptionnelles",
+  keywords:
+    "ouverture ouvertures exceptionnelle exceptionnelles date horaire horaires créneau créneaux",
+};
+
 function normalizeSearchText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -64,7 +71,9 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-export default function ParametersSearchReservationsComponent() {
+export default function ParametersSearchReservationsComponent({
+  webapp = false,
+}) {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const searchContainerRef = useRef(null);
@@ -72,12 +81,20 @@ export default function ParametersSearchReservationsComponent() {
     const query = normalizeSearchText(search);
     if (!query) return [];
 
-    return PARAMETER_SECTIONS.filter((section) =>
+    const sections = webapp
+      ? [
+          ...PARAMETER_SECTIONS.slice(0, 2),
+          EXCEPTIONAL_OPENINGS_SECTION,
+          ...PARAMETER_SECTIONS.slice(2),
+        ]
+      : PARAMETER_SECTIONS;
+
+    return sections.filter((section) =>
       normalizeSearchText(`${section.title} ${section.keywords}`).includes(
         query,
       ),
     );
-  }, [search]);
+  }, [search, webapp]);
 
   useEffect(() => {
     function handleClickOutside(event) {

@@ -14,6 +14,7 @@ import { Edit, Loader2, Save, X } from "lucide-react";
 
 // COMPONENTS
 import DoubleSkeletonComponent from "../../_shared/skeleton/double-skeleton.component";
+import ExceptionalOpeningsRestaurantComponent from "./exceptional-openings.restaurant.component";
 
 export default function HoursRestaurantComponent(props) {
   const { t } = useTranslation("restaurant");
@@ -462,70 +463,78 @@ export default function HoursRestaurantComponent(props) {
       </ul>
 
       {!props.reservations ? (
-        <div className="rounded-xl border border-darkBlue/10 bg-white/70 px-4 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-darkBlue">
-              Fermetures exceptionnelles
-            </h2>
-            <p className="text-xs text-darkBlue/60">
-              Fermez le restaurant pour une date précise, sans modifier les
-              horaires habituels.
-            </p>
-          </div>
+        <div className="flex flex-col gap-4">
+          <ExceptionalOpeningsRestaurantComponent
+            restaurantId={props.restaurantId}
+            exceptionalOpenings={props.exceptionalOpenings}
+            setRestaurantData={props.handleUpdateData}
+          />
 
-          {editing ? (
-            <div className="mt-4 flex flex-col gap-2 mobile:flex-row">
-              <input
-                type="date"
-                value={newExceptionalClosure}
-                onChange={(event) =>
-                  setNewExceptionalClosure(event.target.value)
-                }
-                disabled={saving}
-                className={timeInputCls}
-                aria-label="Date de fermeture exceptionnelle"
-              />
-              <button
-                type="button"
-                onClick={handleAddExceptionalClosure}
-                disabled={!newExceptionalClosure || saving}
-                className={`${actionBtnBase} ${actionBtnPrimary} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                Ajouter
-              </button>
+          <div className="rounded-xl border border-darkBlue/10 bg-white/70 px-4 py-4">
+            <div>
+              <h2 className="text-sm font-semibold text-darkBlue">
+                Fermetures exceptionnelles
+              </h2>
+              <p className="text-xs text-darkBlue/60">
+                Fermez le restaurant pour une date précise, sans modifier les
+                horaires habituels.
+              </p>
             </div>
-          ) : null}
 
-          <ul className="mt-4 flex flex-col gap-2">
-            {visibleExceptionalClosures.length ? (
-              visibleExceptionalClosures.map((date) => (
-                <li
-                  key={date}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-darkBlue/10 bg-white px-3 py-2"
+            {editing ? (
+              <div className="mt-4 flex flex-col gap-2 mobile:flex-row">
+                <input
+                  type="date"
+                  value={newExceptionalClosure}
+                  onChange={(event) =>
+                    setNewExceptionalClosure(event.target.value)
+                  }
+                  disabled={saving}
+                  className={timeInputCls}
+                  aria-label="Date de fermeture exceptionnelle"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddExceptionalClosure}
+                  disabled={!newExceptionalClosure || saving}
+                  className={`${actionBtnBase} ${actionBtnPrimary} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
                 >
-                  <span className="text-sm text-darkBlue first-letter:uppercase">
-                    {formatExceptionalClosure(date)}
-                  </span>
-                  {editing ? (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveExceptionalClosure(date)}
-                      disabled={saving}
-                      className="inline-flex size-8 items-center justify-center rounded-lg bg-red/10 text-red transition hover:bg-red/20"
-                      aria-label={`Supprimer la fermeture du ${formatExceptionalClosure(date)}`}
-                      title="Supprimer"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  ) : null}
+                  Ajouter
+                </button>
+              </div>
+            ) : null}
+
+            <ul className="mt-4 flex flex-col gap-2">
+              {visibleExceptionalClosures.length ? (
+                visibleExceptionalClosures.map((date) => (
+                  <li
+                    key={date}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-darkBlue/10 bg-white px-3 py-2"
+                  >
+                    <span className="text-sm text-darkBlue first-letter:uppercase">
+                      {formatExceptionalClosure(date)}
+                    </span>
+                    {editing ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExceptionalClosure(date)}
+                        disabled={saving}
+                        className="inline-flex size-8 items-center justify-center rounded-lg bg-red/10 text-red transition hover:bg-red/20"
+                        aria-label={`Supprimer la fermeture du ${formatExceptionalClosure(date)}`}
+                        title="Supprimer"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    ) : null}
+                  </li>
+                ))
+              ) : (
+                <li className="text-sm italic text-darkBlue/50">
+                  Aucune fermeture exceptionnelle à venir.
                 </li>
-              ))
-            ) : (
-              <li className="text-sm italic text-darkBlue/50">
-                Aucune fermeture exceptionnelle à venir.
-              </li>
-            )}
-          </ul>
+              )}
+            </ul>
+          </div>
         </div>
       ) : null}
     </section>
