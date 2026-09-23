@@ -3,15 +3,15 @@ const mongoose = require("mongoose");
 const SmsDestinationPolicyModel = require("../models/sms-destination-policy.model");
 
 const INTERNATIONAL_SMS_POLICIES = Object.freeze([
-  { country: "BE", providerRateHt: 0.0616, billingCredits: 2, senderMode: "shortcode" },
-  { country: "CH", providerRateHt: 0.0667, billingCredits: 2 },
-  { country: "LU", providerRateHt: 0.0704, billingCredits: 2 },
-  { country: "DE", providerRateHt: 0.0792, billingCredits: 2 },
-  { country: "GB", providerRateHt: 0.0395, billingCredits: 1, senderMode: "registered_alpha", senderRegistrationRequired: true },
-  { country: "ES", providerRateHt: 0.0308, billingCredits: 1 },
-  { country: "IT", providerRateHt: 0.0352, billingCredits: 1 },
-  { country: "NL", providerRateHt: 0.0836, billingCredits: 2 },
-  { country: "PT", providerRateHt: 0.0176, billingCredits: 1 },
+  { country: "BE", providerRateHt: 0.0616, billingCredits: 2, senderMode: "shortcode", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "CH", providerRateHt: 0.0667, billingCredits: 2, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "LU", providerRateHt: 0.0704, billingCredits: 2, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "DE", providerRateHt: 0.0792, billingCredits: 2, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "GB", providerRateHt: 0.0395, billingCredits: 1, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "ES", providerRateHt: 0.0308, billingCredits: 1, senderMode: "registered_alpha", senderRegistrationRequired: true, supportsDlr: true },
+  { country: "IT", providerRateHt: 0.0352, billingCredits: 1, senderMode: "registered_alpha", senderRegistrationRequired: true, supportsDlr: true },
+  { country: "NL", providerRateHt: 0.0836, billingCredits: 2, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
+  { country: "PT", providerRateHt: 0.0176, billingCredits: 1, senderMode: "alpha", senderRegistrationRequired: false, supportsDlr: true },
 ]);
 
 function buildPolicyUpdate(policy, reviewedAt = new Date()) {
@@ -21,8 +21,11 @@ function buildPolicyUpdate(policy, reviewedAt = new Date()) {
     provider: "smsmode",
     senderMode: policy.senderMode || null,
     senderRegistrationRequired:
-      policy.senderRegistrationRequired === true ? true : null,
-    supportsDlr: null,
+      typeof policy.senderRegistrationRequired === "boolean"
+        ? policy.senderRegistrationRequired
+        : null,
+    supportsDlr:
+      typeof policy.supportsDlr === "boolean" ? policy.supportsDlr : null,
     providerRateHt: policy.providerRateHt,
     billingCredits: policy.billingCredits,
     fallbackSender: "",

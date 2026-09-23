@@ -30,7 +30,7 @@ const SMS_DESTINATION_SENDER_MODES = [
   "shortcode",
   "provider_default",
 ];
-const SMS_DESTINATION_FALLBACK_REQUIRED_MODES = ["numeric", "shortcode"];
+const SMS_DESTINATION_FALLBACK_REQUIRED_MODES = ["numeric"];
 
 function isSmsDestinationPolicyTechnicallyReady(policy) {
   const senderMode = String(policy?.senderMode || "").trim();
