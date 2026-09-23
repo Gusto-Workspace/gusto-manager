@@ -33,6 +33,17 @@ const expectedPolicies = [
   ["NL", 0.0836, 2],
   ["PT", 0.0176, 1],
 ];
+const expectedTechnicalConfiguration = {
+  BE: ["shortcode", false, true, ""],
+  CH: ["alpha", false, true, ""],
+  LU: ["alpha", false, true, ""],
+  DE: ["alpha", false, true, ""],
+  GB: ["alpha", false, true, ""],
+  ES: ["registered_alpha", true, true, ""],
+  IT: ["registered_alpha", true, true, ""],
+  NL: ["alpha", false, true, ""],
+  PT: ["alpha", false, true, ""],
+};
 
 function readyPolicy(overrides = {}) {
   return {
@@ -123,25 +134,19 @@ test("le seed prépare exactement neuf policies inactives avec les bons tarifs",
   assert.ok(
     updates.every((policy) => policy.enabled === false),
   );
-  assert.equal(updates.find((policy) => policy.country === "BE").senderMode, "shortcode");
   assert.deepEqual(
-    {
-      senderMode: updates.find((policy) => policy.country === "GB").senderMode,
-      senderRegistrationRequired: updates.find(
-        (policy) => policy.country === "GB",
-      ).senderRegistrationRequired,
-    },
-    { senderMode: "registered_alpha", senderRegistrationRequired: true },
-  );
-  assert.ok(
-    updates
-      .filter((policy) => !["BE", "GB"].includes(policy.country))
-      .every(
-        (policy) =>
-          policy.senderMode === null &&
-          policy.senderRegistrationRequired === null &&
-          policy.supportsDlr === null,
-      ),
+    Object.fromEntries(
+      updates.map((policy) => [
+        policy.country,
+        [
+          policy.senderMode,
+          policy.senderRegistrationRequired,
+          policy.supportsDlr,
+          policy.fallbackSender,
+        ],
+      ]),
+    ),
+    expectedTechnicalConfiguration,
   );
 });
 
@@ -183,17 +188,17 @@ test("la readiness technique est calculée à partir de tous les champs requis",
         fallbackSender: "",
       }),
     ),
-    false,
+    true,
   );
   assert.equal(
     isSmsDestinationPolicyTechnicallyReady(
       readyPolicy({
-        senderMode: "shortcode",
+        senderMode: "numeric",
         senderRegistrationRequired: false,
-        fallbackSender: "12345",
+        fallbackSender: "",
       }),
     ),
-    true,
+    false,
   );
   assert.equal(
     isSmsDestinationPolicyTechnicallyReady(
@@ -206,13 +211,13 @@ test("la readiness technique est calculée à partir de tous les champs requis",
   );
 });
 
-test("les policies internationales du seed restent automatiquement à compléter", () => {
+test("les policies internationales du seed sont techniquement prêtes mais inactives", () => {
   const updates = INTERNATIONAL_SMS_POLICIES.map((policy) =>
     buildPolicyUpdate(policy, new Date("2026-09-18T00:00:00.000Z")),
   );
   assert.ok(
     updates.every(
-      (policy) => !isSmsDestinationPolicyTechnicallyReady(policy),
+      (policy) => isSmsDestinationPolicyTechnicallyReady(policy),
     ),
   );
   assert.equal(isSmsDestinationPolicyTechnicallyReady(readyPolicy()), true);
@@ -222,7 +227,7 @@ test("les policies internationales du seed restent automatiquement à compléter
       ...updates[0],
       technicalStatus: "validated",
     }).technicalReady,
-    false,
+    true,
   );
   assert.equal(
     Object.prototype.hasOwnProperty.call(
@@ -240,7 +245,7 @@ test("l’API refuse une activation incomplète même avec un statut forgé", ()
   const input = {
     enabled: true,
     technicalStatus: "validated",
-    senderMode: "shortcode",
+    senderMode: "numeric",
     senderRegistrationRequired: false,
     supportsDlr: true,
     providerRateHt: 0.0616,
