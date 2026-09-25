@@ -54,7 +54,9 @@ app.use(
       "https://www.lescapucinsbylily.fr", // Client Capucins by Lily
       "https://www.brasserielesartistes.fr", // Client Les Artistes
       "https://www.jacasse-montauban.fr", // Client Jacasse
-      "https://www.lambassade-montauban.fr" // Client l'Ambassade
+      "https://www.lambassade-montauban.fr", // Client l'Ambassade
+      // Tous les sites provisoires Gusto Manager
+      /^https:\/\/[a-z0-9-]+\.gusto-manager\.com$/i,
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
