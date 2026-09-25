@@ -26,7 +26,7 @@
       "labels": {
         "name": "Menu name",
         "selectedDishes": "Selected dishes",
-        "selectPlaceholder": " Sélect dishes on individuals dishes to add on this menu",
+        "selectPlaceholder": "Select dishes from the menu or add them directly to your set menu",
         "or": "or",
         "and": "and"
       }

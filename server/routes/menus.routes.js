@@ -35,8 +35,7 @@ function buildCustomGroupRelations(group, dishesLength) {
 // ADD MENU
 router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
   const { restaurantId } = req.params;
-  const { combinations, description, name, type, price, dishes, customGroups } =
-    req.body;
+  const { combinations, description, name, type, price, dishes, customGroups, menuDishes } = req.body;
 
   try {
     // Vérifiez si le restaurant existe
@@ -54,6 +53,7 @@ router.post("/restaurants/:restaurantId/add-menus", async (req, res) => {
       type,
       dishes,
       customGroups,
+      ...(menuDishes && { menuDishes }),
       price,
     });
     await newMenu.save();
@@ -159,7 +159,13 @@ router.get("/menus/:menuId", async (req, res) => {
             }
 
             const found = findDishAcrossCategories(dishId);
-            return found?.dish || null;
+            return (
+              found?.dish ||
+              (menu.menuDishes || []).find(
+                (dish) => dish._id.toString() === dishId.toString(),
+              ) ||
+              null
+            );
           })
           .filter(Boolean);
 

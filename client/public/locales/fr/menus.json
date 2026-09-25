@@ -26,7 +26,7 @@
       "labels": {
         "name": "Nom du menu",
         "selectedDishes": "Plats sélectionnés",
-        "selectPlaceholder": " Sélectionnez des plats dans la carte pour les ajouter à votre menu",
+        "selectPlaceholder": "Sélectionnez des plats dans la carte ou ajoutez-les directement à votre menu",
         "or": "ou",
         "and": "et"
       }

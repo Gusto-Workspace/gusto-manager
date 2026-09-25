@@ -20,6 +20,12 @@ const menuSchema = new mongoose.Schema({
   ],
   // List of selected dishes for custom menus
   dishes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Dish" }],
+  menuDishes: [
+    {
+      name: { type: String, required: true },
+      description: { type: String, default: "" },
+    },
+  ],
   customGroups: [
     {
       categoryId: { type: String },

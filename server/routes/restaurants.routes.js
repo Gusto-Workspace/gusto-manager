@@ -243,7 +243,7 @@ router.get("/restaurants/:id", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    const resolveDish = (dishId) => {
+    const resolveDish = (dishId, menu) => {
       for (const category of restaurant.dish_categories || []) {
         const categoryDish = category.dishes.find(
           (currentDish) => currentDish._id.toString() === dishId.toString(),
@@ -276,7 +276,11 @@ router.get("/restaurants/:id", async (req, res) => {
         }
       }
 
-      return dishId;
+      return (
+        (menu.menuDishes || []).find(
+          (dish) => dish._id.toString() === dishId.toString(),
+        ) || dishId
+      );
     };
 
     let restaurantData = {
@@ -290,13 +294,13 @@ router.get("/restaurants/:id", async (req, res) => {
         visible: menu.visible,
         created_at: menu.created_at,
         combinations: menu.combinations,
-        dishes: menu.dishes.map(resolveDish),
+        dishes: menu.dishes.map((dishId) => resolveDish(dishId, menu)),
         customGroups: (menu.customGroups || []).map((group) => ({
           categoryId: group.categoryId,
           categoryName: group.categoryName,
           relation: group.relation,
           relations: group.relations || [],
-          dishes: (group.dishes || []).map(resolveDish),
+          dishes: (group.dishes || []).map((dishId) => resolveDish(dishId, menu)),
         })),
       })),
     };
