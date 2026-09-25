@@ -1,4 +1,5 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 
 // REACT HOOK FORM
@@ -41,6 +42,16 @@ function normalizeRelations(
   });
 }
 
+function createDishId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function normalizeCategoryName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 export default function CustomMenuComponent(props) {
   const { t } = useTranslation("menus");
   const router = useRouter();
@@ -53,7 +64,62 @@ export default function CustomMenuComponent(props) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDishes, setSelectedDishes] = useState({});
+  const [menuDishes, setMenuDishes] = useState(props.menu?.menuDishes || []);
+  const [isDishModalOpen, setIsDishModalOpen] = useState(false);
+  const [dishCategory, setDishCategory] = useState("");
+  const [dishName, setDishName] = useState("");
+  const [dishDescription, setDishDescription] = useState("");
+  const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
+  const categoryPickerRef = useRef(null);
   const selectedDishGroups = Object.values(selectedDishes);
+
+  const categoryOptions = [...selectedDishGroups.map((group) => group.categoryName), ...categories.map((category) => category.name)]
+    .filter((name) => String(name || "").trim())
+    .filter((name, index, names) =>
+      names.findIndex((candidate) => normalizeCategoryName(candidate) === normalizeCategoryName(name)) === index,
+    );
+  const filteredCategoryOptions = categoryOptions.filter((name) =>
+    normalizeCategoryName(name).includes(normalizeCategoryName(dishCategory)),
+  );
+
+  useEffect(() => {
+    if (!showCategorySuggestions) return;
+
+    function handleOutsideClick(event) {
+      if (!categoryPickerRef.current?.contains(event.target)) {
+        setShowCategorySuggestions(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showCategorySuggestions]);
+
+  useEffect(() => {
+    if (!isDishModalOpen) return;
+
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY || document.body.scrollTop;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      window.scrollTo(scrollX, scrollY);
+    };
+  }, [isDishModalOpen]);
 
   const {
     register,
@@ -72,6 +138,7 @@ export default function CustomMenuComponent(props) {
   });
 
   useEffect(() => {
+    setMenuDishes(props.menu?.menuDishes || []);
     if (props.menu) {
       reset({
         name: props.menu.name || "",
@@ -154,6 +221,14 @@ export default function CustomMenuComponent(props) {
   }
 
   function handleRemoveDish(groupKey, dishId) {
+    const usedInAnotherGroup = selectedDishGroups.some(
+      (group) => group.categoryId !== groupKey &&
+        group.dishes.some((dish) => String(dish._id) === String(dishId)),
+    );
+    if (!usedInAnotherGroup) {
+      setMenuDishes((prev) => prev.filter((dish) => String(dish._id) !== String(dishId)));
+    }
+
     setSelectedDishes((prev) => {
       const updated = { ...prev };
 
@@ -204,6 +279,57 @@ export default function CustomMenuComponent(props) {
     });
   }
 
+  function closeDishModal() {
+    setIsDishModalOpen(false);
+    setShowCategorySuggestions(false);
+    setDishCategory("");
+    setDishName("");
+    setDishDescription("");
+  }
+
+  function handleAddMenuDish() {
+    const categoryName = dishCategory.trim().replace(/\s+/g, " ");
+    const name = dishName.trim();
+    if (!categoryName || !name) return;
+
+    const matchingGroup = selectedDishGroups.find(
+      (group) => normalizeCategoryName(group.categoryName) === normalizeCategoryName(categoryName),
+    );
+    const matchingCategory = categories.find(
+      (category) => normalizeCategoryName(category.name) === normalizeCategoryName(categoryName),
+    );
+    const groupKey = matchingGroup?.categoryId || String(matchingCategory?._id || `menu-${createDishId()}`);
+    const dish = {
+      _id: createDishId(),
+      name,
+      description: dishDescription.trim(),
+    };
+
+    setSelectedDishes((prev) => {
+      const existingGroup = prev[groupKey] || {
+        categoryId: groupKey,
+        categoryName: matchingCategory?.name || categoryName,
+        relation: "or",
+        relations: [],
+        dishes: [],
+      };
+      const dishes = [...existingGroup.dishes, dish];
+      const relations = normalizeRelations(dishes, existingGroup.relations, existingGroup.relation);
+
+      return {
+        ...prev,
+        [groupKey]: {
+          ...existingGroup,
+          relation: relations[0] || existingGroup.relation,
+          relations,
+          dishes,
+        },
+      };
+    });
+    setMenuDishes((prev) => [...prev, dish]);
+    closeDishModal();
+  }
+
   function handleRelationChange(groupKey, relationIndex, relation) {
     setSelectedDishes((prev) => {
       if (!prev[groupKey]) return prev;
@@ -249,6 +375,8 @@ export default function CustomMenuComponent(props) {
         dishes: group.dishes.map((dish) => dish._id),
       }))
       .filter((group) => group.dishes.length > 0);
+    const usedDishIds = new Set(customGroups.flatMap((group) => group.dishes.map(String)));
+    const usedMenuDishes = menuDishes.filter((dish) => usedDishIds.has(String(dish._id)));
 
     const formattedData = {
       type: props.menuType,
@@ -257,6 +385,9 @@ export default function CustomMenuComponent(props) {
       price: priceValue,
       dishes: customGroups.flatMap((group) => group.dishes),
       customGroups,
+      ...(usedMenuDishes.length > 0 || props.menu?.menuDishes?.length > 0
+        ? { menuDishes: usedMenuDishes }
+        : {}),
     };
 
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext?.restaurantData?._id}`;
@@ -356,10 +487,23 @@ export default function CustomMenuComponent(props) {
           </div>
 
           {/* Carte : plats sélectionnés */}
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)]">
-            <h2 className="text-center text-base font-semibold text-darkBlue">
-              {t("form.custom.labels.selectedDishes")}
-            </h2>
+          <div className="relative rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)]">
+            <div className="relative flex min-h-7 items-center justify-center">
+              <h2 className="text-center text-base font-semibold text-darkBlue">
+                {t("form.custom.labels.selectedDishes")}
+              </h2>
+              {props.isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setIsDishModalOpen(true)}
+                  aria-label={locale === "fr" ? "Créer un plat pour ce menu" : "Create a dish for this menu"}
+                  title={locale === "fr" ? "Créer un plat pour ce menu" : "Create a dish for this menu"}
+                  className="absolute right-0 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-blue text-lg leading-none text-white hover:bg-blue/90"
+                >
+                  +
+                </button>
+              )}
+            </div>
 
             {!hasSelectedDishes ? (
               <p className="mt-4 text-xs tablet:text-sm text-darkBlue/40 italic text-center text-pretty">
@@ -514,6 +658,89 @@ export default function CustomMenuComponent(props) {
           </div>
         )}
       </div>
+
+      {isDishModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[260] flex items-center justify-center overflow-y-auto overscroll-contain p-4"
+        >
+          <div className="absolute inset-0 bg-darkBlue/30" onMouseDown={closeDishModal} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="menu-dish-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeDishModal();
+              if (event.key === "Enter" && event.target.tagName === "INPUT") {
+                event.preventDefault();
+                handleAddMenuDish();
+              }
+            }}
+            className="relative z-[1] w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h2 id="menu-dish-title" className="mb-5 text-center text-lg font-semibold text-darkBlue">
+              {locale === "fr" ? "Ajouter un plat au menu" : "Add a dish to the menu"}
+            </h2>
+            <div className="flex flex-col gap-4">
+              <div ref={categoryPickerRef} className="relative flex flex-col gap-1">
+                <label htmlFor="menu-dish-category" className="text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                  {locale === "fr" ? "Catégorie" : "Category"}
+                </label>
+                <input
+                  id="menu-dish-category"
+                  type="text"
+                  value={dishCategory}
+                  onFocus={() => setShowCategorySuggestions(true)}
+                  onChange={(event) => {
+                    setDishCategory(event.target.value);
+                    setShowCategorySuggestions(true);
+                  }}
+                  autoComplete="off"
+                  className="h-11 w-full rounded-xl border border-darkBlue/10 px-3 outline-none focus:border-darkBlue/40"
+                />
+                {showCategorySuggestions && filteredCategoryOptions.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-44 overflow-y-auto rounded-xl border border-darkBlue/10 bg-white py-1 shadow-lg">
+                    {filteredCategoryOptions.map((name) => (
+                      <li key={normalizeCategoryName(name)}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDishCategory(name);
+                            setShowCategorySuggestions(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-sm text-darkBlue hover:bg-lightGrey"
+                        >
+                          {name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="menu-dish-name" className="text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                  {locale === "fr" ? "Nom du plat" : "Dish name"}
+                </label>
+                <input id="menu-dish-name" type="text" value={dishName} onChange={(event) => setDishName(event.target.value)} className="h-11 w-full rounded-xl border border-darkBlue/10 px-3 outline-none focus:border-darkBlue/40" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="menu-dish-description" className="text-xs font-semibold uppercase tracking-[0.08em] text-darkBlue/70">
+                  {locale === "fr" ? "Description (facultative)" : "Description (optional)"}
+                </label>
+                <textarea id="menu-dish-description" rows={3} value={dishDescription} onChange={(event) => setDishDescription(event.target.value)} className="w-full resize-none rounded-xl border border-darkBlue/10 px-3 py-2 outline-none focus:border-darkBlue/40" />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={closeDishModal} className="rounded-xl border border-darkBlue/10 px-4 py-2 text-sm text-darkBlue">
+                {locale === "fr" ? "Annuler" : "Cancel"}
+              </button>
+              <button type="button" onClick={handleAddMenuDish} disabled={!dishCategory.trim() || !dishName.trim()} className="rounded-xl bg-blue px-4 py-2 text-sm text-white disabled:opacity-50">
+                {locale === "fr" ? "Ajouter" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Boutons mobile */}
       <div className="flex tablet:hidden gap-3 pt-2 justify-center">
