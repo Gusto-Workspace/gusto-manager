@@ -46,6 +46,20 @@ export default function AddModaleDrinksComponent(props) {
                 props.errors.name ? "border-red" : ""
               } ${props.isDeleting || props.isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
             />
+
+            <label className="block font-semibold">
+              <span>{t("form.labels.description")}</span>
+              <span className="text-xs opacity-50 ml-2 italic">
+                {t("form.labels.optional")}
+              </span>
+            </label>
+
+            <textarea
+              placeholder="-"
+              className={`h-[150px] w-full rounded-lg border p-2 text-base resize-none ${props.isDeleting || props.isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+              {...props.register("description", { required: false })}
+              disabled={props.isDeleting || props.isSubmitting}
+            />
           </div>
 
           <div className="flex gap-4">
