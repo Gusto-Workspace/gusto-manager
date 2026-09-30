@@ -70,9 +70,9 @@ export default function CategoriesListDrinksComponent() {
 
   useEffect(() => {
     if (editingCategory) {
-      reset({ name: editingCategory.name });
+      reset({ name: editingCategory.name, description: editingCategory.description || "" });
     } else {
-      reset({ name: "" });
+      reset({ name: "", description: "" });
     }
   }, [editingCategory, reset]);
 

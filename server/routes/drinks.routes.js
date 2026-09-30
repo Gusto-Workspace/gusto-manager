@@ -12,7 +12,7 @@ router.post(
   "/restaurants/:restaurantId/drinks/categories",
   async (req, res) => {
     const { restaurantId } = req.params;
-    const { name } = req.body;
+    const { name, description } = req.body;
 
     // Validation des données
     if (!name) {
@@ -42,6 +42,7 @@ router.post(
       // Ajouter la nouvelle catégorie
       const newCategory = {
         name,
+        description,
         drinks: [],
       };
 
@@ -67,7 +68,7 @@ router.put(
   "/restaurants/:restaurantId/drinks/categories/:categoryId",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
-    const { name, visible } = req.body;
+    const { name, description, visible } = req.body;
 
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
@@ -87,6 +88,7 @@ router.put(
 
       // Mettre à jour le nom et la visibilité si fournis
       if (name !== undefined) category.name = name;
+      if (description !== undefined) category.description = description;
       if (visible !== undefined) category.visible = visible;
 
       await restaurant.save();
@@ -153,10 +155,10 @@ router.post("/restaurants/:restaurantId/drinks", async (req, res) => {
   const { categoryId } = req.body;
 
   // Validation des données
-  if (!req.body.name || !req.body.price || !categoryId) {
+  if (!req.body.name || !categoryId) {
     return res
       .status(400)
-      .json({ message: "Name, price, and category ID are required." });
+      .json({ message: "Name and category ID are required." });
   }
 
   try {
@@ -196,8 +198,8 @@ router.put("/restaurants/:restaurantId/drinks/:drinkId", async (req, res) => {
   const { name, description, price, showOnWebsite, bio } = req.body;
 
   // Validation des données
-  if (!name || !price) {
-    return res.status(400).json({ message: "Name and price are required." });
+  if (!name) {
+    return res.status(400).json({ message: "Name is required." });
   }
 
   try {
@@ -528,7 +530,7 @@ router.post(
   "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories",
   async (req, res) => {
     const { restaurantId, categoryId } = req.params;
-    const { name } = req.body;
+    const { name, description } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: "Subcategory name is required." });
@@ -550,7 +552,7 @@ router.post(
         return res.status(404).json({ message: "Category not found." });
       }
 
-      const newSubCategory = { name, drinks: [] };
+      const newSubCategory = { name, description, drinks: [] };
       category.subCategories.push(newSubCategory);
 
       await restaurant.save();
@@ -572,7 +574,7 @@ router.put(
   "/restaurants/:restaurantId/drinks/categories/:categoryId/subcategories/:subCategoryId",
   async (req, res) => {
     const { restaurantId, categoryId, subCategoryId } = req.params;
-    const { name, visible } = req.body;
+    const { name, description, visible } = req.body;
 
     try {
       const restaurant = await RestaurantModel.findById(restaurantId)
@@ -595,6 +597,7 @@ router.put(
       }
 
       if (name !== undefined) subCategory.name = name;
+      if (description !== undefined) subCategory.description = description;
       if (visible !== undefined) subCategory.visible = visible;
 
       await restaurant.save();
@@ -667,10 +670,10 @@ router.post(
     const { restaurantId, categoryId, subCategoryId } = req.params;
     const { name, price, description } = req.body;
 
-    if (!name || !price) {
+    if (!name) {
       return res
         .status(400)
-        .json({ message: "Drink name and price are required." });
+        .json({ message: "Drink name is required." });
     }
 
     try {
@@ -762,8 +765,8 @@ router.put(
     const { name, description, price, showOnWebsite, bio } = req.body;
 
     // Validation des données
-    if (!name || !price) {
-      return res.status(400).json({ message: "Name and price are required." });
+    if (!name) {
+      return res.status(400).json({ message: "Name is required." });
     }
 
     try {

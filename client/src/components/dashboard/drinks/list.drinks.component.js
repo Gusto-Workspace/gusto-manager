@@ -82,6 +82,13 @@ export default function ListDrinksComponent(props) {
     formState: { errors },
   } = useForm();
 
+  useEffect(() => {
+    reset({
+      name: editingCategory?.name || "",
+      description: editingCategory?.description || "",
+    });
+  }, [editingCategory, reset]);
+
   // GENERE UN ID POUR DND
   const id = useId();
 

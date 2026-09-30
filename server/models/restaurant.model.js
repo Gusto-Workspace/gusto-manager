@@ -541,7 +541,7 @@ const wineCategorySchema = new mongoose.Schema({
 const drinkSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
-  price: { type: Number, required: true },
+  price: { type: Number },
   showOnWebsite: { type: Boolean, default: true },
   bio: { type: Boolean, default: false },
 });
@@ -549,6 +549,7 @@ const drinkSchema = new mongoose.Schema({
 // Sous-schéma pour les sous-catégories de boissons
 const drinkSubCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  description: { type: String },
   visible: { type: Boolean, default: true },
   drinks: { type: [drinkSchema], default: [] },
 });
@@ -556,6 +557,7 @@ const drinkSubCategorySchema = new mongoose.Schema({
 // Schéma pour les catégories de boissons
 const drinkCategorySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  description: { type: String },
   visible: { type: Boolean, default: true },
   subCategories: { type: [drinkSubCategorySchema], default: [] },
   drinks: { type: [drinkSchema], default: [] },
