@@ -9,6 +9,9 @@ const SiteProject = require("../../models/site-project.model");
 const DesignReference = require("../../models/design-reference.model");
 const openai = require("../../services/design-lab/openai.service");
 const {
+  fetchWebsiteText,
+} = require("../../services/design-lab/existing-website.service");
+const {
   selectReferences,
   uploadImage,
   downloadOwnImage,
@@ -110,6 +113,12 @@ function validateProject(body, existing) {
 
 async function lockedProject(id, operation, status, task) {
   const token = `${operation}:${crypto.randomUUID()}`;
+  const lockUpdate = {
+    operation: token,
+    operationStartedAt: new Date(),
+    lastError: "",
+  };
+  if (status) lockUpdate.status = status;
   const project = await SiteProject.findOneAndUpdate(
     {
       _id: id,
@@ -118,14 +127,7 @@ async function lockedProject(id, operation, status, task) {
         { operationStartedAt: { $lt: new Date(Date.now() - 10 * 60 * 1000) } },
       ],
     },
-    {
-      $set: {
-        operation: token,
-        operationStartedAt: new Date(),
-        status,
-        lastError: "",
-      },
-    },
+    { $set: lockUpdate },
     { new: true },
   );
   if (!project) {
@@ -159,13 +161,15 @@ async function lockedProject(id, operation, status, task) {
     await Promise.allSettled(
       newImages.map((publicId) => cloudinary.uploader.destroy(publicId)),
     );
-    const fallbackStatus = project.approvedGeneration
-      ? "approved"
-      : project.generations.length
-        ? "exploration"
-        : project.directions.length
-          ? "directions_ready"
-          : "brief_ready";
+    const fallbackStatus = status
+      ? project.approvedGeneration
+        ? "approved"
+        : project.generations.length
+          ? "exploration"
+          : project.directions.length
+            ? "directions_ready"
+            : "brief_ready"
+      : project.status;
     await SiteProject.updateOne(
       { _id: id, operation: token },
       {
@@ -295,7 +299,10 @@ router.put("/admin/design-lab/projects/:id", async (req, res) => {
       return res.status(404).json({ message: "Projet introuvable." });
     if (project.operation)
       return res.status(409).json({ message: "Génération en cours." });
+    const previousWebsite = project.brief?.existingWebsite;
     Object.assign(project, validateProject(req.body, project));
+    if (project.brief?.existingWebsite !== previousWebsite)
+      project.existingWebsiteContext = null;
     if (project.status === "draft") project.status = "brief_ready";
     await project.save();
     res.json({ project });
@@ -307,6 +314,46 @@ router.put("/admin/design-lab/projects/:id", async (req, res) => {
     errorResponse(res, responseError);
   }
 });
+
+router.post(
+  "/admin/design-lab/projects/:id/existing-website-context",
+  async (req, res) => {
+    if (!validId(req.params.id))
+      return res.status(400).json({ message: "ID invalide." });
+    try {
+      const project = await lockedProject(
+        req.params.id,
+        "website-context",
+        null,
+        async (locked) => {
+          if (!locked.brief?.existingWebsite)
+            throw Object.assign(
+              new Error("Enregistrez d'abord l'URL du site existant."),
+              {
+                status: 400,
+              },
+            );
+          const { text, sourceUrl } = await fetchWebsiteText(
+            locked.brief.existingWebsite,
+          );
+          const context = await openai.analyzeExistingWebsiteText(text);
+          locked.existingWebsiteContext = {
+            sourceUrl,
+            summary: context.summary,
+            offerings: context.offerings,
+            distinctiveFacts: context.distinctiveFacts,
+            practicalInformation: context.practicalInformation,
+            analyzedAt: new Date(),
+          };
+          return locked;
+        },
+      );
+      res.json({ project });
+    } catch (error) {
+      errorResponse(res, error);
+    }
+  },
+);
 
 router.delete("/admin/design-lab/projects/:id", async (req, res) => {
   if (!validId(req.params.id))

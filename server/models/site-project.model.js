@@ -18,6 +18,18 @@ const assetSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+const existingWebsiteContextSchema = new mongoose.Schema(
+  {
+    sourceUrl: String,
+    summary: String,
+    offerings: [String],
+    distinctiveFacts: [String],
+    practicalInformation: [String],
+    analyzedAt: Date,
+  },
+  { _id: false },
+);
+
 const directionSchema = new mongoose.Schema(
   {
     name: String,
@@ -77,6 +89,10 @@ const siteProjectSchema = new mongoose.Schema(
       existingWebsite: String,
       notes: String,
       services: [String],
+    },
+    existingWebsiteContext: {
+      type: existingWebsiteContextSchema,
+      default: null,
     },
     creativeSettings: {
       creativity: { type: Number, min: 0, max: 100, default: 50 },

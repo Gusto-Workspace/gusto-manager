@@ -335,6 +335,59 @@ export default function SiteProjectPage() {
                       }
                     />
                   ))}
+                  <div className="rounded-xl border border-darkBlue/10 p-4">
+                    <h3 className="text-sm font-semibold">
+                      Contenu du site existant
+                    </h3>
+                    <p className="mt-1 text-xs text-darkBlue/60">
+                      Analyse uniquement le texte de la page enregistrée pour
+                      documenter le restaurant. Son design ne sert pas
+                      d’inspiration.
+                    </p>
+                    <button
+                      type="button"
+                      className={`${secondaryButton} mt-3`}
+                      disabled={
+                        !!busy ||
+                        !!project?.operation ||
+                        !project?.brief?.existingWebsite ||
+                        form.brief?.existingWebsite?.trim() !==
+                          project.brief.existingWebsite?.trim()
+                      }
+                      onClick={() =>
+                        run(
+                          "Analyse du contenu",
+                          "post",
+                          `/projects/${id}/existing-website-context`,
+                        )
+                      }
+                    >
+                      <Sparkles size={16} /> Analyser le contenu du site
+                    </button>
+                    {project?.existingWebsiteContext?.analyzedAt && (
+                      <div className="mt-4 space-y-2 text-sm text-darkBlue/75">
+                        <p className="font-medium">Contexte documentaire</p>
+                        <p>{project.existingWebsiteContext.summary}</p>
+                        {[
+                          ["Offre", project.existingWebsiteContext.offerings],
+                          [
+                            "Particularités",
+                            project.existingWebsiteContext.distinctiveFacts,
+                          ],
+                          [
+                            "Informations pratiques",
+                            project.existingWebsiteContext.practicalInformation,
+                          ],
+                        ].map(([label, items]) =>
+                          items?.length ? (
+                            <p key={label}>
+                              <strong>{label} :</strong> {items.join(" · ")}
+                            </p>
+                          ) : null,
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <FormField
                     label="Services (séparés par des virgules)"
                     value={(form.brief?.services || []).join(", ")}
