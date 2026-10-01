@@ -652,7 +652,7 @@ export default function EmailsParametersComponent({
       </div>
 
       {drawerTemplateKey && selectedDefinition && selectedTemplate && (
-        <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[260]" role="dialog" aria-modal="true">
           <div
             className={`
               absolute inset-0 bg-darkBlue/30

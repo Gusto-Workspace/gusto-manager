@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
 
@@ -31,6 +31,20 @@ export default function ListNewsComponent(props) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedNews, setSelectedNews] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!isDeleteModalOpen) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isDeleteModalOpen]);
 
   const cardCls =
     "rounded-2xl border border-darkBlue/10 bg-white/50 px-4 py-3 tablet:px-5 tablet:py-4 shadow-[0_18px_45px_rgba(19,30,54,0.06)] hover:shadow-[0_22px_55px_rgba(19,30,54,0.10)] transition-shadow flex flex-col gap-3";
@@ -280,7 +294,7 @@ export default function ListNewsComponent(props) {
 
       {/* Modal suppression */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div className="fixed inset-0 z-[260] flex items-center justify-center">
           <div
             onClick={!isDeleting ? closeDeleteModal : undefined}
             className="fixed inset-0 bg-black/30"
