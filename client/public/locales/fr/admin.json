@@ -5,7 +5,8 @@
     "owners": "Propriétaires",
     "subscriptions": "Abonnements",
     "documents": "Création documents",
-    "smsReminders": "Rappels SMS"
+    "smsReminders": "Rappels SMS",
+    "sites": "Sites"
   },
   "buttons": {
     "logout": "Déconnexion",

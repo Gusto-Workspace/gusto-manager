@@ -92,6 +92,7 @@ const ownersAdminRoutes = require("./routes/admin/owners.routes");
 const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
 const documentsAdminRoutes = require("./routes/admin/documents.routes");
 const smsRemindersAdminRoutes = require("./routes/admin/sms-reminders.routes");
+const designLabAdminRoutes = require("./routes/admin/design-lab.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
@@ -99,6 +100,7 @@ app.use(apiRoutes, ownersAdminRoutes);
 app.use(apiRoutes, subscriptionsAdminRoutes);
 app.use(apiRoutes, documentsAdminRoutes);
 app.use(apiRoutes, smsRemindersAdminRoutes);
+app.use(apiRoutes, designLabAdminRoutes);
 
 // OWNER
 const restaurantsRoutes = require("./routes/restaurants.routes");

@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useContext } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import Image from "next/image";
 import { useTranslation } from "next-i18next";
-import { ChevronRight, LogOut } from "lucide-react";
+import { ChevronRight, LogOut, PanelsTopLeft } from "lucide-react";
+import { GlobalContext } from "@/contexts/global.context";
 
 import {
   AnalyticsSvg,
@@ -37,10 +38,17 @@ const ADMIN_NAV_ITEMS = [
     label: "nav.smsReminders",
     Icon: ReservationSvg,
   },
+  {
+    href: "/dashboard/admin/sites",
+    label: "nav.sites",
+    Icon: PanelsTopLeft,
+    adminOnly: true,
+  },
 ];
 
 export default function NavAdminComponent() {
   const { t } = useTranslation("admin");
+  const { adminContext } = useContext(GlobalContext);
   const router = useRouter();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -332,7 +340,9 @@ export default function NavAdminComponent() {
 
           {/* Items */}
           <ul className={navListCls}>
-            {ADMIN_NAV_ITEMS.map(({ href, label, Icon }) => {
+            {ADMIN_NAV_ITEMS.filter(
+              (item) => !item.adminOnly || adminContext.isAdmin,
+            ).map(({ href, label, Icon }) => {
               const active = isActive(href);
 
               const itemCls = [

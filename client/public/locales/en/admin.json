@@ -5,7 +5,8 @@
     "owners": "Owners",
     "subscriptions": "Subscriptions",
     "documents": "Documents creation",
-    "smsReminders": "SMS reminders"
+    "smsReminders": "SMS reminders",
+    "sites": "Sites"
   },
   "buttons": {
     "logout": "Log Out",
