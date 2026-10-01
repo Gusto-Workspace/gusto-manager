@@ -55,6 +55,7 @@ app.use(
       "https://www.brasserielesartistes.fr", // Client Les Artistes
       "https://www.jacasse-montauban.fr", // Client Jacasse
       "https://www.lambassade-montauban.fr", // Client l'Ambassade
+      "https://lejardindepauline82.fr", // Client Le jardin de Pauline
       // Tous les sites provisoires Gusto Manager
       /^https:\/\/[a-z0-9-]+\.gusto-manager\.com$/i,
     ],
