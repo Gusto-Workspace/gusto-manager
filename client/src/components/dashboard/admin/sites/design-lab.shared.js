@@ -32,10 +32,10 @@ export const STATUS = {
   directions_ready: "Directions prêtes",
   generating: "Génération en cours",
   exploration: "Exploration",
-  approved: "Direction approuvée",
+  approved: "Maquette approuvée",
 };
 
-export function api(method, path, data) {
+export function api(method, path, data, { timeout = 300000 } = {}) {
   const token =
     typeof window === "undefined" ? "" : localStorage.getItem("admin-token");
   return axios({
@@ -43,7 +43,7 @@ export function api(method, path, data) {
     url: `${process.env.NEXT_PUBLIC_API_URL}/admin/design-lab${path}`,
     data,
     headers: { Authorization: `Bearer ${token}` },
-    timeout: 300000,
+    timeout,
   }).then((response) => response.data);
 }
 
@@ -53,6 +53,12 @@ export function message(error) {
     error?.message ||
     "Une erreur est survenue."
   );
+}
+
+export function styleFrameErrorMessage(value) {
+  return /The server had an error while processing your request/i.test(String(value || ""))
+    ? "Génération interrompue par le service d’image OpenAI. Aucun Style Frame n’a été enregistré. Vous pouvez relancer manuellement."
+    : value;
 }
 
 export const panel =

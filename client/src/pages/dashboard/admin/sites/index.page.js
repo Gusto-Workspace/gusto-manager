@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { ArrowRight, Plus, Library } from "lucide-react";
+import { ArrowRight, Plus, Library, Images } from "lucide-react";
 import DesignLabShell from "@/components/dashboard/admin/sites/design-lab-shell.component";
 import PageHeaderAdminComponent from "@/components/dashboard/admin/_shared/page-header.admin.component";
 import {
@@ -62,7 +62,13 @@ export default function SitesPage() {
             </button>
           }
         />
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-5">
+          <Link className="inline-flex items-center gap-2 text-sm font-semibold text-blue" href="/dashboard/admin/sites/structural-references">
+            <Library size={17} /> Références structurelles <ArrowRight size={15} />
+          </Link>
+          <Link className="inline-flex items-center gap-2 text-sm font-semibold text-blue" href="/dashboard/admin/sites/portfolio">
+            <Images size={17} /> Portfolio Gusto <ArrowRight size={15} />
+          </Link>
           <Link
             className="inline-flex items-center gap-2 text-sm font-semibold text-blue"
             href="/dashboard/admin/sites/references"

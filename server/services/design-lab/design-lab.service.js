@@ -1,4 +1,6 @@
 const cloudinary = require("cloudinary").v2;
+const cloudinaryFolders = require("./cloudinary-folders");
+const { canonicalVisualConcept } = require("./portfolio.service");
 const streamifier = require("streamifier");
 const sharp = require("sharp");
 
@@ -193,7 +195,17 @@ function applyReferenceAnalysis(reference, result) {
   return reference;
 }
 
-function selectReferences(project, references, limit = 8) {
+function portfolioSimilarityAdjustment(visualTags, similarity, portfolioSummary) {
+  if (!portfolioSummary?.siteCount) return 0;
+  const frequent = new Set(portfolioSummary.frequentPatterns.map((item) =>
+    canonicalVisualConcept(item.tag),
+  ));
+  const concepts = new Set(visualTags.map(canonicalVisualConcept));
+  const overlap = [...concepts].filter((key) => key && frequent.has(key)).length;
+  return ((Number(similarity ?? 50) - 50) / 50) * Math.min(3, overlap * 1.5);
+}
+
+function selectReferences(project, references, limit = 8, portfolioSummary = null) {
   const settings = project.creativeSettings;
   const styles = settings.styles.map(normalize);
   const businessContext = normalize(
@@ -260,9 +272,12 @@ function selectReferences(project, references, limit = 8) {
       score +=
         3 * closeness(characteristics.whitespace, 100 - settings.visualDensity);
       score += 4 * closeness(characteristics.asymmetry, settings.creativity);
-      const useCount = Number(ref.useCount || 0);
-      score -=
-        ((100 - settings.gustoSimilarity) / 100) * Math.min(8, useCount * 1.5);
+      // Portfolio is a small tie-breaker; brief, settings and reference quality dominate.
+      score += portfolioSimilarityAdjustment(
+        visualTags,
+        settings.gustoSimilarity,
+        portfolioSummary,
+      );
       return { ref, score };
     })
     .sort(
@@ -273,10 +288,10 @@ function selectReferences(project, references, limit = 8) {
     .map(({ ref }) => ref);
 }
 
-function uploadImage(buffer, folder, { format } = {}) {
+function uploadImage(buffer, folder, { format, publicId } = {}) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: "image", ...(format ? { format } : {}) },
+      { ...(publicId ? { public_id: publicId, overwrite: false } : { folder }), resource_type: "image", ...(format ? { format } : {}) },
       (error, result) => {
         if (error || !result)
           return reject(error || new Error("Upload Cloudinary échoué."));
@@ -292,6 +307,7 @@ async function downloadOwnImage(image, maxBytes = 20 * 1024 * 1024) {
   if (
     host !== "res.cloudinary.com" ||
     !(
+      image.publicId?.startsWith(`${cloudinaryFolders.ROOT}/`) ||
       image.publicId?.startsWith("gusto/design-lab/") ||
       image.publicId?.startsWith("Gusto_Workspace/admin/design-lab/")
     )
@@ -379,6 +395,7 @@ module.exports = {
   WEBP_QUALITY,
   MAX_UPLOAD_WIDTH,
   selectReferences,
+  portfolioSimilarityAdjustment,
   filterPresentationTags,
   uniqueTags,
   excludeTags,

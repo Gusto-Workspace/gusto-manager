@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -11,6 +11,9 @@ import {
   Trash2,
 } from "lucide-react";
 import DesignLabShell from "@/components/dashboard/admin/sites/design-lab-shell.component";
+import StyleFrameRefinement from "@/components/dashboard/admin/sites/style-frame-refinement.component";
+import HomepageAttempt, { homepageStageLabel } from "@/components/dashboard/admin/sites/homepage-attempt.component";
+import { GlobalContext } from "@/contexts/global.context";
 import PageHeaderAdminComponent from "@/components/dashboard/admin/_shared/page-header.admin.component";
 import {
   api,
@@ -18,6 +21,7 @@ import {
   button,
   input,
   message,
+  styleFrameErrorMessage,
   panel,
   secondaryButton,
   STATUS,
@@ -35,6 +39,19 @@ const FIELDS = [
   ["existingWebsite", "Site existant"],
   ["notes", "Notes / brief libre"],
 ];
+const MOCKUP_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
+const DIRECTIONS_REQUEST_TIMEOUT_MS = 17 * 60 * 1000;
+const WEBSITE_PAGE_TYPES = {
+  home: "Accueil",
+  restaurant: "Le restaurant / Histoire",
+  chef: "Chef / Équipe",
+  menu: "Carte / Menus",
+  catering: "Traiteur",
+  events: "Événements",
+  groups: "Groupes / Privatisation",
+  contact: "Contact",
+  practical: "Informations pratiques",
+};
 const SLIDERS = [
   ["creativity", "Créativité", "Classique", "Expérimental"],
   ["gustoSimilarity", "Similarité Gusto", "Très différent", "Proche"],
@@ -46,6 +63,7 @@ const INITIAL = {
   slug: "",
   brief: {},
   creativeSettings: {
+    brandContinuity: "reinvent",
     creativity: 50,
     styles: [],
     gustoSimilarity: 50,
@@ -53,6 +71,16 @@ const INITIAL = {
     compositionFreedom: 50,
   },
 };
+
+function formFromProject(project) {
+  return {
+    name: project.name,
+    slug: project.slug,
+    restaurantId: project.restaurantId || "",
+    brief: project.brief || {},
+    creativeSettings: project.creativeSettings || INITIAL.creativeSettings,
+  };
+}
 
 function FormField({ label, value, onChange, multiline = false }) {
   return (
@@ -76,6 +104,7 @@ function FormField({ label, value, onChange, multiline = false }) {
 }
 
 export default function SiteProjectPage() {
+  const { adminContext } = useContext(GlobalContext);
   const router = useRouter();
   const { id } = router.query;
   const [project, setProject] = useState(null);
@@ -83,31 +112,37 @@ export default function SiteProjectPage() {
   const [references, setReferences] = useState([]);
   const [tab, setTab] = useState("brief");
   const [busy, setBusy] = useState("");
+  const runningAction = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [assetFile, setAssetFile] = useState(null);
   const [assetRole, setAssetRole] = useState("other");
   const [assetSignature, setAssetSignature] = useState(false);
   const [variation, setVariation] = useState("");
+  const [styleFrameAttempts, setStyleFrameAttempts] = useState([]);
+  const [homepageAttempts, setHomepageAttempts] = useState([]);
+  const [homepageOperationStale, setHomepageOperationStale] = useState(false);
+  const [styleFrameError, setStyleFrameError] = useState(null);
+  const [refiningFrame, setRefiningFrame] = useState(null);
+  const [refinementFeedback, setRefinementFeedback] = useState("");
+  const latestFrameAttempt = (direction) => styleFrameAttempts.find((attempt) => String(attempt.directionId) === String(direction._id));
+  const frameRecoveryPending = (direction) => styleFrameAttempts.some((attempt) => String(attempt.directionId) === String(direction._id)
+    && (attempt.status === "uploaded" || (attempt.status === "running" && attempt.stage === "openai") || (attempt.status === "failed" && ["STYLE_FRAME_CLOUDINARY_ERROR", "STYLE_FRAME_PERSISTENCE_ERROR"].includes(attempt.errorCategory))));
 
   const load = useCallback(
     async (syncForm = false) => {
       if (!id) return;
-      const [projectData, referenceData] = await Promise.all([
+      const [projectData, referenceData, homepageData] = await Promise.all([
         api("get", `/projects/${id}`),
         api("get", "/references"),
+        api("get", `/projects/${id}/homepage-attempts`),
       ]);
       setProject(projectData.project);
+      setStyleFrameAttempts(projectData.styleFrameAttempts || []);
+      setHomepageAttempts(homepageData.attempts || []);
+      setHomepageOperationStale(projectData.homepageOperationStale === true);
       setReferences(referenceData.references);
-      if (syncForm)
-        setForm({
-          name: projectData.project.name,
-          slug: projectData.project.slug,
-          restaurantId: projectData.project.restaurantId || "",
-          brief: projectData.project.brief || {},
-          creativeSettings:
-            projectData.project.creativeSettings || INITIAL.creativeSettings,
-        });
+      if (syncForm) setForm(formFromProject(projectData.project));
     },
     [id],
   );
@@ -115,34 +150,49 @@ export default function SiteProjectPage() {
     load(true).catch((err) => setError(message(err)));
   }, [load]);
   useEffect(() => {
-    if (!project?.operation) return;
+    if (!project?.operation && !["Directions", "Direction", "Homepage", "Reprise homepage", "Finalisation homepage"].includes(busy)) return;
     const timer = setInterval(() => load().catch(() => {}), 5000);
     return () => clearInterval(timer);
-  }, [project?.operation, load]);
+  }, [project?.operation, busy, load]);
 
-  async function run(label, method, path, data, nextTab) {
-    if (busy || project?.operation) return;
+  async function run(label, method, path, data, nextTab, options) {
+    const attemptPath = pendingHomepage && `/projects/${id}/directions/${pendingHomepage.directionId}/homepage-attempts/${pendingHomepage.generationId}`;
+    const staleHomepageAction = homepageOperationStale && pendingHomepage && (
+      (method === "post" && [`${attemptPath}/resume`, `${attemptPath}/recover`].includes(path))
+      || (method === "delete" && path === `/projects/${id}/homepage-attempts/${pendingHomepage.generationId}`)
+    );
+    if (runningAction.current || busy || (project?.operation && !staleHomepageAction) || frozen) return;
+    runningAction.current = true;
     setBusy(label);
     setError("");
+    setStyleFrameError(null);
     setNotice("");
     try {
-      const result = await api(method, path, data);
-      if (result.project) setProject(result.project);
+      const result = await api(method, path, data, options);
+      if (result.project) {
+        setProject(result.project);
+        setHomepageOperationStale(false);
+        if (result.project.status === "approved")
+          setForm(formFromProject(result.project));
+      }
       else await load();
       if (nextTab) setTab(nextTab);
       setNotice(`${label} terminé.`);
+      if (label.includes("Style Frame") || /homepage/i.test(label)) await load().catch(() => {});
       return true;
     } catch (err) {
       setError(message(err));
+      setStyleFrameError(err?.response?.data?.styleFrameError || null);
       await load().catch(() => {});
       return false;
     } finally {
+      runningAction.current = false;
       setBusy("");
     }
   }
   async function save(event) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || frozen) return;
     setBusy("Enregistrement");
     setError("");
     try {
@@ -157,7 +207,7 @@ export default function SiteProjectPage() {
   }
   async function uploadAsset(event) {
     event.preventDefault();
-    if (!assetFile || busy) return;
+    if (!assetFile || busy || frozen) return;
     const data = new FormData();
     data.append("image", assetFile);
     data.append("role", assetRole);
@@ -167,39 +217,8 @@ export default function SiteProjectPage() {
     setAssetFile(null);
     event.target.reset();
   }
-  async function generateAll() {
-    if (busy || project.operation) return;
-    const directions = project.directions.slice(-3).filter(
-      (direction) =>
-        !project.generations.some(
-          (generation) => generation.directionId === direction._id,
-        ),
-    );
-    if (!directions.length) {
-      setTab("generations");
-      return;
-    }
-    setError("");
-    setBusy(`Génération de ${directions.length} maquette(s)`);
-    try {
-      for (const direction of directions) {
-        setNotice(`Génération : ${direction.name}`);
-        const result = await api(
-          "post",
-          `/projects/${id}/directions/${direction._id}/generations`,
-        );
-        setProject(result.project);
-      }
-      setTab("generations");
-      setNotice("Les maquettes sont prêtes.");
-    } catch (err) {
-      setError(message(err));
-      await load().catch(() => {});
-    } finally {
-      setBusy("");
-    }
-  }
   async function deleteProject() {
+    if (frozen) return;
     if (!window.confirm("Supprimer ce projet et son historique ?")) return;
     try {
       await api("delete", `/projects/${id}`);
@@ -208,6 +227,51 @@ export default function SiteProjectPage() {
       setError(message(err));
     }
   }
+  async function reopen() {
+    if (
+      !project ||
+      !(
+        project.status === "approved" ||
+        project.approvedGeneration ||
+        project.approvedAt ||
+        project.approvedSnapshot
+      ) ||
+      busy ||
+      !window.confirm(
+        "Réouvrir ce projet ? La maquette approuvée restera dans l’historique, mais il n’y aura plus de version finale active avant une nouvelle approbation.",
+      )
+    )
+      return;
+    setBusy("Réouverture");
+    setError("");
+    try {
+      const { project: reopened } = await api(
+        "post",
+        `/projects/${id}/reopen`,
+      );
+      setProject(reopened);
+      setForm(formFromProject(reopened));
+      setNotice("Projet réouvert. L’ancienne approbation reste dans l’historique.");
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy("");
+    }
+  }
+  const frozen = Boolean(
+    project &&
+      (project.status === "approved" ||
+        project.approvedGeneration ||
+        project.approvedAt ||
+        project.approvedSnapshot),
+  );
+  const restaurants = adminContext?.restaurantsList || [];
+  const mainDirections = (project?.directions || []).filter((direction) => direction.status === "active" && ["A", "B", "C"].includes(direction.slot))
+    .sort((a, b) => a.slot.localeCompare(b.slot));
+  const pendingHomepage = homepageAttempts.find((attempt) => attempt.blocking && !["completed", "abandoned"].includes(attempt.status));
+  const selectedRestaurantIsMissing =
+    form.restaurantId &&
+    !restaurants.some((restaurant) => restaurant._id === form.restaurantId);
   const selected = project?.generations?.find(
     (generation) => generation._id === project.selectedGeneration,
   );
@@ -220,11 +284,29 @@ export default function SiteProjectPage() {
   const phase =
     project?.operation?.startsWith("directions") ||
     project?.operation?.startsWith("direction")
-      ? "Création des directions…"
+      ? project.operationStage === "territories"
+        ? "Création des territoires artistiques…"
+        : project.operationStage === "expanding"
+          ? project.operation.startsWith("directions:")
+            ? "Développement des trois directions…"
+            : "Développement de la direction…"
+          : project.operationStage === "saving"
+            ? "Enregistrement des directions…"
+            : "Génération des directions en cours…"
+      : project?.operation?.startsWith("style-frame-recovery")
+        ? "Récupération du Style Frame en cours (sans OpenAI)…"
+      : project?.operation?.startsWith("style-frame-refine")
+        ? "Affinage du Style Frame en cours…"
+      : project?.operation?.startsWith("style-frame")
+        ? "Génération du Style Frame en cours…"
+      : project?.operation?.startsWith("homepage:")
+        ? homepageStageLabel(pendingHomepage)
       : project?.operation
         ? "Génération de la maquette…"
-        : busy === "Directions"
-          ? "Sélection des inspirations et création des directions…"
+        : busy === "Directions" || busy === "Direction"
+          ? "Préparation de la génération des directions…"
+          : busy === "Style Frame"
+            ? "Génération du Style Frame en cours…"
           : busy === "Upload asset"
             ? "Upload des images…"
             : busy === "Sélection"
@@ -251,7 +333,7 @@ export default function SiteProjectPage() {
             <button
               onClick={deleteProject}
               className={secondaryButton}
-              disabled={!project || !!busy}
+              disabled={!project || !!busy || frozen}
             >
               <Trash2 size={15} /> Supprimer
             </button>
@@ -263,15 +345,16 @@ export default function SiteProjectPage() {
             {phase}
           </div>
         )}
-        {error && (
+        {(error || project?.lastError) && (
           <p role="alert" className="rounded-xl bg-red/10 p-3 text-sm text-red">
-            {error}
+            {styleFrameErrorMessage(error || project.lastError)}
           </p>
         )}
-        {project?.lastError && (
-          <p className="rounded-xl bg-red/10 p-3 text-sm text-red">
-            Dernière erreur : {project.lastError}
-          </p>
+        {styleFrameError && (
+          <details className="text-xs text-darkBlue/60"><summary>Détails de la tentative</summary>
+            <p>Request ID : {styleFrameError.requestId || "—"} · HTTP : {styleFrameError.httpStatus || "—"}</p>
+            <p>Generation ID : {styleFrameError.generationId || "—"} · Étape : {styleFrameError.stage}</p>
+          </details>
         )}
         {notice && (
           <p
@@ -280,6 +363,34 @@ export default function SiteProjectPage() {
           >
             {notice}
           </p>
+        )}
+        {frozen && (
+          <section className={`${panel} border-green/30 bg-green/5`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-green">
+                  Maquette approuvée · projet gelé
+                </p>
+                <p className="mt-1 text-sm text-darkBlue/75">
+                  Approuvée le{" "}
+                  {project.approvedAt
+                    ? new Date(project.approvedAt).toLocaleString("fr-FR")
+                    : "date indisponible"}
+                  {approved && ` · ${approved._id.slice(-6)}`}
+                </p>
+                <p className="mt-1 text-xs text-darkBlue/55">
+                  Le brief, les assets et les générations sont protégés. L’historique reste consultable.
+                </p>
+              </div>
+              <button
+                className={secondaryButton}
+                disabled={!!busy || !!project.operation}
+                onClick={reopen}
+              >
+                <RefreshCw size={15} /> Réouvrir le projet
+              </button>
+            </div>
+          </section>
         )}
         {project && (
           <>
@@ -305,6 +416,7 @@ export default function SiteProjectPage() {
                 className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]"
                 onSubmit={save}
               >
+                <fieldset disabled={frozen} className="contents">
                 <section className={`${panel} space-y-4`}>
                   <h2 className="text-lg font-semibold">Restaurant et brief</h2>
                   <div className="grid gap-4 md:grid-cols-2">
@@ -319,6 +431,28 @@ export default function SiteProjectPage() {
                       onChange={(value) => setForm({ ...form, slug: value })}
                     />
                   </div>
+                  <label className="block text-sm font-medium">
+                    Restaurant Gusto associé
+                    <select
+                      className={`${input} mt-2`}
+                      value={form.restaurantId || ""}
+                      onChange={(event) =>
+                        setForm({ ...form, restaurantId: event.target.value })
+                      }
+                    >
+                      <option value="">Aucun restaurant associé</option>
+                      {selectedRestaurantIsMissing && (
+                        <option value={form.restaurantId}>
+                          Restaurant associé indisponible dans la liste
+                        </option>
+                      )}
+                      {restaurants.map((restaurant) => (
+                        <option key={restaurant._id} value={restaurant._id}>
+                          {restaurant.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   {FIELDS.map(([key, label]) => (
                     <FormField
                       key={key}
@@ -362,28 +496,100 @@ export default function SiteProjectPage() {
                         )
                       }
                     >
-                      <Sparkles size={16} /> Analyser le contenu du site
+                      <Sparkles size={16} />{" "}
+                      {project?.existingWebsiteContext?.analyzedAt
+                        ? "Réanalyser"
+                        : "Analyser le contenu du site"}
                     </button>
                     {project?.existingWebsiteContext?.analyzedAt && (
                       <div className="mt-4 space-y-2 text-sm text-darkBlue/75">
+                        <p className="font-medium">Site analysé ✓</p>
+                        <p>
+                          {project.existingWebsiteContext.pagesDiscovered ||
+                            project.existingWebsiteContext.sourcePages
+                              ?.length ||
+                            0}{" "}
+                          page(s) découverte(s) ·{" "}
+                          {project.existingWebsiteContext.sourcePages?.length ||
+                            0}{" "}
+                          analysée(s)
+                          {project.existingWebsiteContext.pagesFailed
+                            ? ` · ${project.existingWebsiteContext.pagesFailed} erreur(s)`
+                            : ""}
+                        </p>
+                        <div>
+                          <p className="font-medium">Pages utilisées :</p>
+                          <ul className="mt-1 list-inside list-disc">
+                            {(
+                              project.existingWebsiteContext.sourcePages || []
+                            ).map((page) => (
+                              <li key={page.url}>
+                                <a
+                                  href={page.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue hover:underline"
+                                >
+                                  {WEBSITE_PAGE_TYPES[page.pageType] ||
+                                    page.pageType}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                         <p className="font-medium">Contexte documentaire</p>
-                        <p>{project.existingWebsiteContext.summary}</p>
+                        <p>
+                          {project.existingWebsiteContext.restaurantSummary}
+                        </p>
                         {[
-                          ["Offre", project.existingWebsiteContext.offerings],
+                          ["Histoire", project.existingWebsiteContext.story],
                           [
-                            "Particularités",
-                            project.existingWebsiteContext.distinctiveFacts,
+                            "Positionnement",
+                            project.existingWebsiteContext.positioning,
+                          ],
+                          ["Cuisine", project.existingWebsiteContext.cuisine],
+                          ["Chef", project.existingWebsiteContext.chef],
+                          ["Équipe", project.existingWebsiteContext.team],
+                          ["Services", project.existingWebsiteContext.services],
+                          [
+                            "Spécialités",
+                            project.existingWebsiteContext.specialties,
+                          ],
+                          ["Valeurs", project.existingWebsiteContext.values],
+                          [
+                            "Faits notables",
+                            project.existingWebsiteContext.notableFacts,
+                          ],
+                          ["Lieu", project.existingWebsiteContext.location],
+                          [
+                            "Horaires",
+                            project.existingWebsiteContext.openingHours,
                           ],
                           [
-                            "Informations pratiques",
-                            project.existingWebsiteContext.practicalInformation,
+                            "Contenu utile",
+                            project.existingWebsiteContext.usefulContent,
                           ],
                         ].map(([label, items]) =>
                           items?.length ? (
                             <p key={label}>
-                              <strong>{label} :</strong> {items.join(" · ")}
+                              <strong>{label} :</strong>{" "}
+                              {Array.isArray(items) ? items.join(" · ") : items}
                             </p>
                           ) : null,
+                        )}
+                        {Object.values(
+                          project.existingWebsiteContext.contact || {},
+                        ).some(Boolean) && (
+                          <p>
+                            <strong>Contact :</strong>{" "}
+                            {[
+                              project.existingWebsiteContext.contact.address,
+                              project.existingWebsiteContext.contact.phone,
+                              project.existingWebsiteContext.contact.email,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
                         )}
                       </div>
                     )}
@@ -433,6 +639,14 @@ export default function SiteProjectPage() {
                         <span>{left}</span>
                         <span>{right}</span>
                       </div>
+                      {key === "gustoSimilarity" && (
+                        <p className="mt-2 text-xs text-darkBlue/55">
+                          Comparé aux sites actifs du Portfolio Gusto : 0
+                          explore un langage distinct, 50 garde une continuité
+                          mesurée, 100 autorise une forte continuité sans copier
+                          un site.
+                        </p>
+                      )}
                     </div>
                   ))}
                   <div>
@@ -471,6 +685,18 @@ export default function SiteProjectPage() {
                       })}
                     </div>
                   </div>
+                  <label className="block text-sm font-medium">
+                    Continuité de marque
+                    <select
+                      className={`${input} mt-2`}
+                      value={form.creativeSettings?.brandContinuity || "reinvent"}
+                      onChange={(event) => setForm({ ...form, creativeSettings: { ...form.creativeSettings, brandContinuity: event.target.value } })}
+                    >
+                      <option value="reinvent">Réinventer — nouvelle palette possible</option>
+                      <option value="evolve">Faire évoluer — conserver certains codes</option>
+                      <option value="preserve">Préserver — identité existante contraignante</option>
+                    </select>
+                  </label>
                   <div className="rounded-xl bg-lightGrey p-4 text-sm">
                     <h3 className="font-semibold">Direction recherchée</h3>
                     <p className="mt-2 text-darkBlue/65">
@@ -508,6 +734,7 @@ export default function SiteProjectPage() {
                     Enregistrer le brief
                   </button>
                 </section>
+                </fieldset>
               </form>
             )}
             {tab === "assets" && (
@@ -522,6 +749,7 @@ export default function SiteProjectPage() {
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
                       className={`${input} mt-2`}
+                      disabled={frozen}
                       onChange={(event) =>
                         setAssetFile(event.target.files?.[0])
                       }
@@ -533,6 +761,7 @@ export default function SiteProjectPage() {
                     <select
                       className={`${input} mt-2`}
                       value={assetRole}
+                      disabled={frozen}
                       onChange={(event) => setAssetRole(event.target.value)}
                     >
                       {ASSET_ROLES.map((role) => (
@@ -544,13 +773,14 @@ export default function SiteProjectPage() {
                     <input
                       type="checkbox"
                       checked={assetSignature}
+                      disabled={frozen}
                       onChange={(event) =>
                         setAssetSignature(event.target.checked)
                       }
                     />{" "}
                     Élément signature
                   </label>
-                  <button className={button} disabled={!!busy}>
+                  <button className={button} disabled={!!busy || frozen}>
                     <ImagePlus size={16} /> Ajouter
                   </button>
                 </form>
@@ -568,6 +798,7 @@ export default function SiteProjectPage() {
                       <select
                         className={`${input} mt-2`}
                         value={asset.role}
+                        disabled={!!busy || frozen}
                         onChange={(event) =>
                           run(
                             "Mise à jour",
@@ -586,6 +817,7 @@ export default function SiteProjectPage() {
                           <input
                             type="checkbox"
                             checked={asset.signature}
+                            disabled={!!busy || frozen}
                             onChange={(event) =>
                               run(
                                 "Mise à jour",
@@ -599,6 +831,7 @@ export default function SiteProjectPage() {
                         </label>
                         <button
                           aria-label="Supprimer l’asset"
+                          disabled={!!busy || frozen}
                           onClick={() =>
                             run(
                               "Suppression",
@@ -610,6 +843,22 @@ export default function SiteProjectPage() {
                           <Trash2 size={16} />
                         </button>
                       </div>
+                      <label className="mt-3 flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={!!asset.benchmarkExcluded}
+                          disabled={!!busy || frozen}
+                          onChange={(event) =>
+                            run(
+                              "Mise à jour",
+                              "patch",
+                              `/projects/${id}/assets/${asset._id}`,
+                              { benchmarkExcluded: event.target.checked },
+                            )
+                          }
+                        />{" "}
+                        Exclure des maquettes (benchmark)
+                      </label>
                     </div>
                   ))}
                 </div>
@@ -628,7 +877,7 @@ export default function SiteProjectPage() {
                   </p>
                   <button
                     className={`${button} mt-4`}
-                    disabled={!!busy || !!project.operation}
+                    disabled={!!busy || !!project.operation || frozen}
                     onClick={() =>
                       run(
                         "Sélection",
@@ -672,7 +921,7 @@ export default function SiteProjectPage() {
                   </p>
                   <button
                     className={`${button} mt-4`}
-                    disabled={!!busy || !!project.operation}
+                    disabled={!!busy || !!project.operation || frozen}
                     onClick={() =>
                       run(
                         "Directions",
@@ -680,26 +929,33 @@ export default function SiteProjectPage() {
                         `/projects/${id}/directions`,
                         null,
                         "directions",
+                        { timeout: DIRECTIONS_REQUEST_TIMEOUT_MS },
                       )
                     }
                   >
                     <Sparkles size={16} /> Générer les directions
-                  </button>{" "}
-                  {project.directions.length > 0 && (
-                    <button
-                      className={`${secondaryButton} mt-4 ml-2`}
-                      disabled={!!busy || !!project.operation}
-                      onClick={generateAll}
-                    >
-                      Générer jusqu’à 3 maquettes
-                    </button>
-                  )}
+                  </button>
                 </section>
+                {pendingHomepage && <HomepageAttempt attempt={pendingHomepage} disabled={!!busy || (!!project.operation && !homepageOperationStale) || frozen}
+                  operationBlocked={!!project.operation && !homepageOperationStale} operationStale={homepageOperationStale}
+                  compatibleDirection={mainDirections.some((direction) => direction._id === pendingHomepage.directionId)}
+                  onResume={() => {
+                    const confirmed = pendingHomepage.needsUncertainConfirmation
+                      ? window.confirm("Un appel précédent peut avoir été facturé sans résultat récupéré. La reprise vérifiera d’abord les images sauvegardées. Si aucune n’est retrouvée, autorisez-vous explicitement un nouvel appel pour ce chapitre ?") : false;
+                    if (pendingHomepage.needsUncertainConfirmation && !confirmed) return;
+                    run("Reprise homepage", "post", `/projects/${id}/directions/${pendingHomepage.directionId}/homepage-attempts/${pendingHomepage.generationId}/resume`,
+                      { confirmUncertainRetry: confirmed }, "generations", { timeout: MOCKUP_REQUEST_TIMEOUT_MS });
+                  }}
+                  onRecover={() => run("Finalisation homepage", "post", `/projects/${id}/directions/${pendingHomepage.directionId}/homepage-attempts/${pendingHomepage.generationId}/recover`, null, "generations", { timeout: MOCKUP_REQUEST_TIMEOUT_MS })}
+                  onAbandon={() => {
+                    if (window.confirm("Abandonner cette tentative ? Les images conservées et les homepages officielles ne seront pas supprimées. Une prochaine génération commencera une nouvelle tentative payante."))
+                      run("Abandon homepage", "delete", `/projects/${id}/homepage-attempts/${pendingHomepage.generationId}`, null, "directions");
+                  }} />}
                 <div className="grid gap-5 lg:grid-cols-3">
-                  {project.directions.map((direction, index) => (
+                  {mainDirections.map((direction) => (
                     <article key={direction._id} className={panel}>
                       <span className="text-xs font-semibold uppercase tracking-widest text-blue">
-                        Direction {index + 1}
+                        Direction {direction.slot} · v{direction.version}
                       </span>
                       <h2 className="mt-2 text-xl font-semibold">
                         {direction.name}
@@ -707,39 +963,65 @@ export default function SiteProjectPage() {
                       <p className="mt-3 text-sm text-darkBlue/75">
                         {direction.concept}
                       </p>
-                      <div className="mt-4 space-y-2 text-sm text-darkBlue/65">
-                        <p>
-                          <strong>Intention :</strong>{" "}
-                          {direction.artisticIntent}
-                        </p>
-                        <p>
-                          <strong>Composition :</strong>{" "}
-                          {direction.layoutPrinciples}
-                        </p>
-                        <p>
-                          <strong>Typographie :</strong>{" "}
-                          {direction.typographyDirection}
-                        </p>
-                        <p>
-                          <strong>Couleurs :</strong> {direction.colorDirection}
-                        </p>
-                        <p>
-                          <strong>Signature :</strong>{" "}
-                          {direction.signatureElements.join(", ")}
-                        </p>
-                        <p>
-                          <strong>Pourquoi :</strong>{" "}
-                          {direction.whyItFitsRestaurant}
-                        </p>
-                        <p>
-                          <strong>Différence :</strong>{" "}
-                          {direction.differenceFromOtherDirections}
-                        </p>
+                      <div className="mt-4 space-y-3 text-sm text-darkBlue/70">
+                          <p><strong>Idée de marque :</strong> {direction.brandSystem?.brandIdea}</p>
+                          <p><strong>Personnalité :</strong> {direction.brandSystem?.brandPersonality?.join(" · ")}</p>
+                          <p><strong>Voix typographique :</strong> {direction.brandSystem?.typographicVoice}</p>
+                          <p><strong>Langage spatial :</strong> {direction.brandSystem?.spatialLanguage}</p>
+                          <p><strong>Thèse web :</strong> {direction.visualSystem?.designThesis}</p>
+                          <p><strong>Palette et provenance :</strong></p>
+                          <ul className="space-y-1 pl-4 list-disc">
+                            {Object.entries(direction.brandSystem?.colorSystem || {}).filter(([, value]) => value && typeof value === "object").map(([role, color]) => (
+                              <li key={role}>{role} : {color.name} {color.hex} — {color.sourceType} : {color.sourceExplanation}</li>
+                            ))}
+                          </ul>
+                          <p><strong>Références visuelles :</strong> {(direction.visualSystem?.referenceAnchors || []).map((anchor) => references.find((reference) => reference._id === anchor.referenceId)?.name || String(anchor.referenceId).slice(-6)).join(" · ")}</p>
+                          <p><strong>Pages :</strong> {(direction.siteInformationArchitecture?.primaryPages || []).map((page) => page.label).join(" · ")}</p>
+                          <p><strong>Rythme :</strong> {(direction.siteInformationArchitecture?.homepageMoments || []).map((section) => `${section.purpose} (${section.climate}, ${section.layoutMode})`).join(" → ")}</p>
+                          <p><strong>À éviter :</strong> {direction.visualSystem?.antiPatterns?.join(" · ")}</p>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                          <button
+                            className={button}
+                            disabled={!!busy || !!project.operation || frozen || project.selectedDirection !== direction._id || frameRecoveryPending(direction)}
+                            onClick={() => run("Style Frame", "post", `/projects/${id}/directions/${direction._id}/style-frames`,
+                              !direction.styleFrames?.length && latestFrameAttempt(direction)?.status === "failed" && latestFrameAttempt(direction)?.mode === "new_proposal"
+                                ? { retryGenerationId: latestFrameAttempt(direction).generationId } : null,
+                              "directions", { timeout: MOCKUP_REQUEST_TIMEOUT_MS })}
+                          >
+                            <ImagePlus size={16} /> {direction.styleFrames?.length ? "Nouvelle proposition" : latestFrameAttempt(direction)?.status === "failed" || (project.lastError && project.selectedDirection === direction._id) ? "Relancer la génération" : "Générer le Style Frame"}
+                          </button>
+                          {styleFrameAttempts.filter((attempt) => String(attempt.directionId) === String(direction._id) && attempt.status !== "completed").map((attempt) => (
+                            <div key={attempt.generationId} className="text-xs text-darkBlue/60">
+                              <details><summary>Tentative {attempt.generationId.slice(0, 8)} — {attempt.status}</summary>
+                                <p>Generation ID : {attempt.generationId} · Request ID : {attempt.openaiRequestId || "—"} · HTTP : {attempt.httpStatus || "—"}</p>
+                                <p>Étape : {attempt.stage} · {attempt.errorCategory}</p>
+                              </details>
+                              {(attempt.status === "uploaded" || (attempt.status === "running" && attempt.stage === "openai") || ["STYLE_FRAME_CLOUDINARY_ERROR", "STYLE_FRAME_PERSISTENCE_ERROR"].includes(attempt.errorCategory)) && (
+                                <button className={`${secondaryButton} mt-2`} disabled={!!busy || !!project.operation || frozen || project.selectedDirection !== direction._id}
+                                  onClick={() => run("Récupération du Style Frame", "post", `/projects/${id}/directions/${direction._id}/style-frame-attempts/${attempt.generationId}/recover`, null, "directions", { timeout: MOCKUP_REQUEST_TIMEOUT_MS })}>Récupérer la tentative (sans OpenAI)</button>
+                              )}
+                            </div>
+                          ))}
+                          {[...(direction.styleFrames || [])].reverse().map((frame) => (
+                            <div key={frame._id} className="rounded-xl border border-darkBlue/10 p-3">
+                              <a href={frame.image.url} target="_blank" rel="noreferrer"><img src={frame.image.url} alt={`Style Frame ${direction.name}`} className="w-full rounded-lg" /></a>
+                              <p className="mt-2 text-xs text-darkBlue/60">{frame.inputs?.filter((item) => item.kind === "CLIENT_ASSET").map((item) => item.name).join(" · ")}</p>
+                              <p className="text-xs text-darkBlue/60">Références : {frame.inputs?.filter((item) => item.kind === "VISUAL_REFERENCE").map((item) => item.name).join(" · ")}</p>
+                              {String(direction.approvedStyleFrameId || "") === frame._id ? (
+                                <p className="mt-2 text-sm font-medium text-green-700">Style Frame validé</p>
+                              ) : (
+                                <button className={`${secondaryButton} mt-3`} disabled={!!busy || !!project.operation || frozen} onClick={() => run("Validation du Style Frame", "patch", `/projects/${id}/directions/${direction._id}/style-frames/${frame._id}/approve`, null, "directions")}><Check size={15} /> Valider ce Style Frame</button>
+                              )}
+                              <button className={`${secondaryButton} mt-3 ml-2`} disabled={!!busy || !!project.operation || frozen || project.selectedDirection !== direction._id || frameRecoveryPending(direction)}
+                                onClick={() => { setRefiningFrame({ directionId: direction._id, frameId: frame._id }); setRefinementFeedback(""); }}>Affiner ce Style Frame</button>
+                            </div>
+                          ))}
                       </div>
                       <div className="mt-5 flex flex-wrap gap-2">
                         <button
                           className={secondaryButton}
-                          disabled={!!busy || !!project.operation}
+                          disabled={!!busy || !!project.operation || frozen}
                           onClick={() =>
                             run(
                               "Sélection",
@@ -754,27 +1036,31 @@ export default function SiteProjectPage() {
                         </button>
                         <button
                           className={button}
-                          disabled={!!busy || !!project.operation}
+                          disabled={!!busy || !!project.operation || frozen || !!pendingHomepage || !direction.approvedStyleFrameId}
                           onClick={() =>
                             run(
-                              "Maquette",
+                              "Homepage",
                               "post",
                               `/projects/${id}/directions/${direction._id}/generations`,
                               null,
                               "generations",
+                              { timeout: MOCKUP_REQUEST_TIMEOUT_MS },
                             )
                           }
                         >
-                          Générer la maquette
+                          Générer la homepage
                         </button>
                         <button
                           className={secondaryButton}
-                          disabled={!!busy || !!project.operation}
+                          disabled={!!busy || !!project.operation || frozen}
                           onClick={() =>
                             run(
                               "Direction",
                               "post",
                               `/projects/${id}/directions/${direction._id}/regenerate`,
+                              null,
+                              "directions",
+                              { timeout: DIRECTIONS_REQUEST_TIMEOUT_MS },
                             )
                           }
                         >
@@ -833,7 +1119,7 @@ export default function SiteProjectPage() {
                       <button
                         className={`${button} mt-3 w-full`}
                         disabled={
-                          !!busy || !!project.operation || !variation.trim()
+                          !!busy || !!project.operation || frozen || !variation.trim()
                         }
                         onClick={() => {
                           run(
@@ -841,6 +1127,8 @@ export default function SiteProjectPage() {
                             "post",
                             `/projects/${id}/generations/${selected._id}/variations`,
                             { instruction: variation },
+                            undefined,
+                            { timeout: MOCKUP_REQUEST_TIMEOUT_MS },
                           ).then((ok) => {
                             if (ok) setVariation("");
                           });
@@ -853,6 +1141,7 @@ export default function SiteProjectPage() {
                         disabled={
                           !!busy ||
                           !!project.operation ||
+                          frozen ||
                           approved?._id === selected._id
                         }
                         onClick={() =>
@@ -877,11 +1166,13 @@ export default function SiteProjectPage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   {[...project.generations].reverse().map((generation) => (
                     <article key={generation._id} className={panel}>
-                      <img
-                        src={generation.image.url}
-                        alt="Version de maquette"
-                        className="h-56 w-full rounded-xl bg-lightGrey object-cover object-top"
-                      />
+                      <a href={generation.image.url} target="_blank" rel="noreferrer">
+                        <img
+                          src={generation.image.url}
+                          alt="Voir la version de maquette"
+                          className="h-56 w-full rounded-xl bg-lightGrey object-cover object-top"
+                        />
+                      </a>
                       <p className="mt-3 text-sm font-semibold">
                         {
                           project.directions.find(
@@ -900,7 +1191,7 @@ export default function SiteProjectPage() {
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           className={secondaryButton}
-                          disabled={!!busy}
+                          disabled={!!busy || frozen}
                           onClick={() =>
                             run(
                               "Sélection",
@@ -917,6 +1208,14 @@ export default function SiteProjectPage() {
                             Approuvée
                           </span>
                         )}
+                        {project.approvalHistory?.some(
+                          (snapshot) =>
+                            snapshot.generation?._id === generation._id,
+                        ) && (
+                          <span className="self-center text-xs font-semibold text-darkBlue/55">
+                            Anciennement approuvée
+                          </span>
+                        )}
                       </div>
                     </article>
                   ))}
@@ -926,6 +1225,12 @@ export default function SiteProjectPage() {
           </>
         )}
       </div>
+      {refiningFrame && <StyleFrameRefinement feedback={refinementFeedback} onChange={setRefinementFeedback} busy={!!busy || !!project?.operation}
+        onClose={() => setRefiningFrame(null)} onSubmit={async (event) => {
+          event.preventDefault();
+          const success = await run("Affinage du Style Frame", "post", `/projects/${id}/directions/${refiningFrame.directionId}/style-frames/${refiningFrame.frameId}/refine`, { feedback: refinementFeedback }, "directions", { timeout: MOCKUP_REQUEST_TIMEOUT_MS });
+          if (success) setRefiningFrame(null);
+        }} />}
     </DesignLabShell>
   );
 }

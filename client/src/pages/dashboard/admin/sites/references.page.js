@@ -3,6 +3,7 @@ import Link from "next/link";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { ArrowLeft, RefreshCw, Trash2 } from "lucide-react";
 import DesignLabShell from "@/components/dashboard/admin/sites/design-lab-shell.component";
+import DesignLabProgress from "@/components/dashboard/admin/sites/design-lab-progress.component";
 import PageHeaderAdminComponent from "@/components/dashboard/admin/_shared/page-header.admin.component";
 import {
   api,
@@ -46,6 +47,9 @@ export default function ReferencesPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [bulkProgress, setBulkProgress] = useState(null);
+  const [operationId, setOperationId] = useState("");
+  const [referenceProgress, setReferenceProgress] = useState(null);
+  const hasAnalyzingReference = references.some((reference) => reference.analyzing);
   async function load() {
     try {
       setReferences((await api("get", "/references")).references);
@@ -56,6 +60,68 @@ export default function ReferencesPage() {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    if (!hasAnalyzingReference) return undefined;
+    const timer = setInterval(() => {
+      api("get", "/references")
+        .then(({ references: items }) => setReferences(items))
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [hasAnalyzingReference]);
+  useEffect(() => {
+    if (!operationId || referenceProgress?.status !== "running") return undefined;
+    let active = true;
+    const poll = () =>
+      api("get", `/references/progress/${operationId}`)
+        .then(({ progress }) => {
+          if (active) setReferenceProgress((current) =>
+            current?.operationId !== operationId ||
+            current?.status !== "running" && progress.status === "running"
+              ? current
+              : { ...progress, operationId, name: current?.name },
+          );
+        })
+        .catch(() => {});
+    const timer = setInterval(poll, 1000);
+    poll();
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [operationId, referenceProgress?.status]);
+  function beginProgress(name, reanalysis = false) {
+    const id = window.crypto.randomUUID();
+    setOperationId(id);
+    setReferenceProgress({
+      status: "running",
+      operationId: id,
+      currentStep: reanalysis ? "analyzing" : "preparing",
+      progress: 0,
+      name,
+      message: reanalysis ? "Demande d’analyse envoyée…" : "Envoi de l’image…",
+    });
+    return id;
+  }
+  async function finishProgress(id, reference, error) {
+    try {
+      const { progress } = await api("get", `/references/progress/${id}`);
+      setReferenceProgress({ ...progress, operationId: id, name: reference?.name || "Référence" });
+    } catch {
+      if (error || reference?.lastError)
+        setReferenceProgress((current) => ({
+          ...current,
+          status: "failed",
+          message: `Échec pendant : ${current?.currentStep || "analyse"}`,
+        }));
+      else if (reference?.analyzedAt)
+        setReferenceProgress((current) => ({
+          ...current,
+          status: "completed", progress: 100,
+          currentStep: "completed", message: "Analyse terminée",
+        }));
+    }
+  }
   async function add(event) {
     event.preventDefault();
     if (!form.image || busy) return;
@@ -65,13 +131,17 @@ export default function ReferencesPage() {
     Object.entries(form).forEach(
       ([key, value]) => value && data.append(key, value),
     );
+    const id = beginProgress(form.name || form.image.name);
+    data.append("operationId", id);
     try {
-      await api("post", "/references", data);
+      const { reference } = await api("post", "/references", data);
+      await finishProgress(id, reference);
       setForm({ name: "", source: "", manualTags: "", image: null });
       event.target.reset();
       await load();
     } catch (err) {
       setError(message(err));
+      await finishProgress(id, null, err);
     } finally {
       setBusy("");
     }
@@ -93,18 +163,21 @@ export default function ReferencesPage() {
     if (busy) return;
     setBusy(reference._id);
     setError("");
+    const id = beginProgress(reference.name, true);
     try {
-      await api("post", `/references/${reference._id}/analyze`);
+      const result = await api("post", `/references/${reference._id}/analyze`, { operationId: id });
+      await finishProgress(id, result.reference);
       await load();
     } catch (err) {
       setError(message(err));
+      await finishProgress(id, reference, err);
       await load();
     } finally {
       setBusy("");
     }
   }
   async function analyzeAll() {
-    if (busy || !references.length) return;
+    if (busy || hasAnalyzingReference || !references.length) return;
     setBusy("bulk");
     setError("");
     const failures = [];
@@ -115,11 +188,14 @@ export default function ReferencesPage() {
         total: references.length,
         name: reference.name,
       });
+      const id = beginProgress(reference.name, true);
       try {
         const result = await api(
           "post",
           `/references/${reference._id}/analyze`,
+          { operationId: id },
         );
+        await finishProgress(id, result.reference);
         setReferences((current) =>
           current.map((item) =>
             item._id === reference._id ? result.reference : item,
@@ -127,6 +203,7 @@ export default function ReferencesPage() {
         );
       } catch (err) {
         failures.push(`${reference.name} : ${message(err)}`);
+        await finishProgress(id, reference, err);
       }
       setBulkProgress({
         done: index + 1,
@@ -170,7 +247,7 @@ export default function ReferencesPage() {
           <button
             type="button"
             className={secondaryButton}
-            disabled={!!busy || !references.length}
+            disabled={!!busy || hasAnalyzingReference || !references.length}
             onClick={analyzeAll}
           >
             <RefreshCw size={15} /> Réanalyser les références
@@ -187,6 +264,7 @@ export default function ReferencesPage() {
             {error}
           </p>
         )}
+        <DesignLabProgress title={`Analyse de la référence${referenceProgress?.name ? ` · ${referenceProgress.name}` : ""}`} progress={referenceProgress} />
         <form onSubmit={add} className={`${panel} grid gap-3 md:grid-cols-4`}>
           <input
             className={input}
@@ -269,7 +347,7 @@ export default function ReferencesPage() {
                 />
               </label>
               <p className="mt-3 line-clamp-3 min-h-12 text-sm text-darkBlue/70">
-                {reference.analysis?.identity ||
+                {reference.analyzing ? "Analyse visuelle en cours…" : reference.analysis?.identity ||
                   reference.lastError ||
                   "Analyse en attente"}
               </p>
@@ -290,7 +368,7 @@ export default function ReferencesPage() {
               <div className="mt-4 flex gap-2">
                 <button
                   className={secondaryButton}
-                  disabled={!!busy}
+                  disabled={!!busy || reference.analyzing}
                   onClick={() => analyze(reference)}
                 >
                   <RefreshCw size={15} />{" "}
