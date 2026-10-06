@@ -123,6 +123,12 @@ La convention de sortie est `pagePercent = 100 * absoluteY / captureCoverage.tot
 
 Chaque analyse crée un `StructuralAnalysisAttempt` séparé de la référence active, avant l'appel payant. La réponse OpenAI complète (avec le texte JSON exact dans `output`) est sauvegardée en `rawResponse` et statut `received` **avant parsing/validation**. Le checkpoint conserve l'instantané des captures et de leurs métadonnées, puis `parsedResult` si disponible. Un rejet devient `validation_failed`, avec erreur, champ et géométrie du rejet lorsqu'applicables ; il ne remplace pas l'analyse active. Un log `structural:validation_failed` donne generationId/referenceId et les détails mécaniques, sans clé API ni JSON complet.
 
+Les nouveaux checkpoints conservent aussi `captureSnapshot.visionInput` : ordre exact des identifiants envoyés, URLs, rectangles source, viewport, géométrie absolue, rôle de lecture et niveau `detail`. Un constructeur pur partagé alimente le prompt, le schéma strict limité aux seules vues effectivement envoyées et la validation. Les rôles locaux n'attribuent aucune région depuis leur nom ; les preuves sont résolues par identifiant et rectangle réel. Un manifeste incohérent avec ses captures est refusé avant l'appel. Les anciens attempts sans manifeste restent retraitables depuis leurs captures originales, sans renommage ou migration de leurs preuves.
+
+Une nouvelle analyse sampled ne réutilise plus un cache v2 : elle repasse par la capture/sélection v3 actuelle. Un worker renvoyant encore v2 est refusé avant upload/analyse. Les lots v3 en fallback fixe restent réutilisables au même titre que les lots adaptatifs ; les anciennes captures et analyses demeurent lisibles. Le retraitement d'un attempt v2 ne déclenche jamais cette mise à jour ni une recapture.
+
+Diagnostic confirmé le 6 octobre 2026 : le premier run Tastavents a réutilisé les six images v2 persistées le 5 octobre, pas les observations adaptatives du benchmark. Son crop `middle` est réellement à `[5328, 6228]` sur une page de 11556 px. Une preuve située à 63–74 % (`[7280.28, 8551.44]`) et citant ce crop doit rester rejetée ; aucune nouvelle position ni citation ne peut lui être attribuée pour faire accepter le brut. Le benchmark ne remplace pas les captures persistées.
+
 Routes admin authentifiées, sous `/api/admin/design-lab/structural-references/:id` :
 
 - `GET /analysis-attempts` : liste des tentatives (sans objets volumineux).

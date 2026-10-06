@@ -218,13 +218,81 @@ function structuralViewGeometry(view, metadata = {}, captures = []) {
     pagePercentRange: [rect.top, end].map((px) => (100 * px) / totalHeight),
   };
 }
-function validateStructuralAnalysis(value, metadata = {}, captures = []) {
+// This is the identity/geometry of the actual Vision inputs, not a positional
+// interpretation of their names. Persist it before the request and reuse it.
+function buildStructuralVisionRequest(captures, metadata = {}, recordedManifest) {
+  const captureStrategy = metadata.captureCoverage?.captureStrategy || "continuous";
+  const views = visionViewsForStrategy(captures, captureStrategy, metadata.captureCoverage);
+  if (!views.length || views.length > 6 || views.some((view) => !view?.url) ||
+      new Set(views.map((view) => view?.type)).size !== views.length)
+    throw Object.assign(new Error("Vues structurelles incomplètes."), { status: 422 });
+  const manifest = {
+    version: 1,
+    captureStrategy,
+    viewOrder: views.map((view) => view.type),
+    views: views.map((view) => {
+      const full = ["visionOverview", "overview"].includes(view.type);
+      const geometry = structuralViewGeometry(view, metadata, captures);
+      if (captureStrategy === "sampled" && !full && !geometry)
+        throw Object.assign(new Error("Géométrie des observations sampled manquante : analyse non lancée."),
+          { status: 422, code: "missing_structural_capture_geometry" });
+      return {
+        id: view.type,
+        url: view.url,
+        sourceRect: view.sourceRect || null,
+        viewport: view.viewport || null,
+        geometry,
+        role: full ? view.type === "visionOverview"
+          ? "FULL PAGE OPTIMISÉE — dérivée de la master desktop_full, lecture macro de toute la homepage"
+          : "OVERVIEW — lecture globale du rythme"
+          : "OBSERVATION LOCALE — identifiant sans position implicite ; seule visibleRangePx situe cette vue",
+        detail: full ? "low" : /^observation[1-5]$/.test(view.type) ? view.detail || "high"
+          : captureStrategy === "sampled" && ["upper", "lower"].includes(view.type) ? "low" : "high",
+      };
+    }),
+  };
+  if (recordedManifest && JSON.stringify(manifest) !== JSON.stringify(recordedManifest))
+    throw Object.assign(new Error("Le manifeste Vision ne correspond plus aux captures enregistrées."),
+      { status: 409, code: "structural_vision_manifest_mismatch" });
+  const schema = structuredClone(structuralAnalysisSchema);
+  schema.properties.structuralMoments.items.properties.evidence.properties.sourceViews.items.enum = manifest.viewOrder;
+  const content = [
+    { type: "input_text", text: JSON.stringify({
+      captureStrategy, viewOrder: manifest.viewOrder, localMetadata: metadata,
+      coverageRequirements: structuralCoverageContext(metadata, captures),
+      geometryConvention: "absolute_page_pixels; pagePercent = 100 * absoluteY / totalHeight; scrollProgressPercent is not pagePercent",
+      viewGeometry: manifest.views.map((view) => ({ type: view.id, ...view.geometry })),
+    }) },
+    ...manifest.views.flatMap((view, index) => {
+      const full = ["visionOverview", "overview"].includes(view.id);
+      return [
+        { type: "input_text", text: JSON.stringify({
+          view: view.id, role: view.role,
+          approximatePagePercent: full ? [0, 100] : view.geometry?.pagePercentRange.map(Math.round) || null,
+          visibleRangePx: view.geometry?.visibleRangePx, scrollY: view.geometry?.scrollY,
+          viewportHeight: view.geometry?.viewportHeight,
+          scrollProgressPercent: views[index].progressPercent,
+          positionPx: full ? undefined : view.sourceRect?.top,
+          overviewKind: view.id === "visionOverview" ? "optimized_full_page"
+            : view.id === "overview" ? metadata.captureCoverage?.overviewKind || "structural_storyboard" : undefined,
+        }) },
+        { type: "input_image", image_url: view.url, detail: view.detail },
+      ];
+    }),
+  ];
+  return { manifest, content, schema,
+    instructions: structuralInstructions(captureStrategy, metadata.captureCoverage?.version === 3, manifest.viewOrder) };
+}
+function validateStructuralAnalysis(value, metadata = {}, captures = [], visionInput) {
   const invalid = (field, details = {}) => {
     throw Object.assign(
       new Error(`Analyse structurelle invalide : ${field}.`),
       { status: 502, code: "invalid_structural_analysis", validation: { fieldPath: field, ...details } },
     );
   };
+  if (visionInput) buildStructuralVisionRequest(captures, metadata, visionInput);
+  const inputViews = visionViewsForStrategy(captures, metadata.captureCoverage?.captureStrategy,
+    metadata.captureCoverage).filter(Boolean);
   const check = (data, schema, field) => {
     if (schema.type === "object") {
       if (!data || typeof data !== "object" || Array.isArray(data))
@@ -294,7 +362,12 @@ function validateStructuralAnalysis(value, metadata = {}, captures = []) {
         viewType === "overview"
       )
         invalid(`evidence.${index}.sourceViews.duplicate_global_source`);
-      if (captures.length && !captureForType(captures, viewType))
+      // Old continuous responses may cite the historical overview alias. New
+      // manifests and their strict schema contain only the actually sent IDs.
+      const inputView = inputViews.find((view) => view.type === viewType) ||
+        (!visionInput && viewType === "overview" && metadata.captureCoverage?.captureStrategy !== "sampled"
+          ? captures.find((view) => view.type === "overview") : undefined);
+      if (captures.length && (!inputView || visionInput && !visionInput.viewOrder.includes(viewType)))
         invalid(`evidence.${index}.sourceViews.${viewType}`);
       if (["visionOverview", "overview"].includes(viewType)) {
         if (viewType === "overview" && metadata.captureCoverage?.version === 3) {
@@ -305,7 +378,9 @@ function validateStructuralAnalysis(value, metadata = {}, captures = []) {
         }
         continue;
       }
-      const geometry = structuralViewGeometry(captureForType(captures, viewType), metadata, captures);
+      const geometry = visionInput
+        ? visionInput.views.find((view) => view.id === viewType)?.geometry
+        : structuralViewGeometry(inputView, metadata, captures);
       if (!geometry && metadata.captureCoverage?.captureStrategy === "sampled")
         invalid(`evidence.${index}.sourceViews.${viewType}`, { reason: "missing_recorded_geometry" });
       if (!geometry)
@@ -366,16 +441,21 @@ Adapte le nombre de phases à la longueur et aux changements observés. Une page
 Utilise le layoutMode canonique le plus proche, avec layoutExplanation pour les nuances ; other reste possible pour une composition différente. Le vocabulaire n'est pas un template. Cite quelques signatureStructuralMoves réellement observés et une liste courte de principes transposables indépendamment du secteur. Exemple : grand vide entre deux masses denses ; image débordant après une grille structurée ; axe vertical partagé sans layout répété ; rupture d'échelle unique ; alternance panoramique/étroit.
 avoidCopying doit exclure explicitement layout exact, branding, logos, textes, illustrations propriétaires, motifs reconnaissables et toute composition signature trop spécifique pour être reprise littéralement. suitableFor/avoidWhen décrivent des situations de composition et des contraintes de contenu/lecture. Extrais une grammaire réinterprétable, jamais une œuvre à reproduire.
 Si localMetadata.externalEmbeds contient externalEmbedUnavailable=true, le rectangle correspondant est un placeholder neutre ajouté pour remplacer un document d'iframe externe inaccessible. Analyse uniquement son rôle spatial (position, échelle, place dans le flux ou la composition). N'infère ni ne décris l'apparence, le contenu ou le style interne de cet embed ; ne traite pas le gris du placeholder comme un choix visuel du site.`;
-function structuralInstructions(strategy = "continuous", adaptive = false) {
-  const original = legacyStructuralInstructions(strategy);
-  if (strategy !== "sampled" || !adaptive) return original;
-  return original
+function structuralInstructions(strategy = "continuous", adaptive = false, viewOrder) {
+  const original = legacyStructuralInstructions(strategy)
+    .replace("Un sample MIDDLE à 50 % du scroll ne commence donc pas nécessairement à 50 % de la page. Les noms top/upper/middle/lower/bottom identifient les vues, sans imposer de vérité géométrique", "Le pourcentage de scroll ne situe pas directement un moment dans la page. Les identifiants des vues n'imposent aucune vérité géométrique")
+    .replace("TOP montre le début réel ; MIDDLE la zone médiane ; BOTTOM la fin réelle.", "Les vues locales sont situées uniquement par leurs rectangles enregistrés, jamais par leur nom.");
+  let instructions = strategy !== "sampled" || !adaptive ? original : original
     .replace("TOP, UPPER, MIDDLE, LOWER et BOTTOM sont des viewports locaux stabilisés à différentes progressions réelles.", "OBSERVATION1 à OBSERVATION5 identifient zéro à cinq vues locales complémentaires, présentes uniquement si leur gain géométrique est suffisant. Leur numéro n'est pas une région de page.")
     .replace("(overview, top, upper, middle, lower, bottom)", "(overview et uniquement les observation1 à observation5 présentes dans viewOrder)")
     .replace("Cite les vues de détail TOP/MIDDLE/BOTTOM pour contrôler les régions correspondantes, UPPER/LOWER pour les régions intermédiaires, et OVERVIEW seulement pour le rythme macro ; ne cite jamais desktop_full, absent en mode sampled", "Cite chaque observation locale uniquement pour sa plage enregistrée. OVERVIEW couvre le parcours complet via les panneaux listés dans captureCoverage.storyboard.panels, pour le rythme macro et les masses réellement visibles à sa résolution. Aucun détail local au milieu ou au footer n'est exigé. Ne cite jamais desktop_full, absent en mode sampled")
     .replace("Une justification ne dispense jamais de couvrir début/milieu/fin et de citer les vues correspondantes.", "Une justification ne dispense jamais de couvrir début/milieu/fin ; cette couverture peut être prouvée par le storyboard seul si aucune vue locale correspondante n'a été retenue.")
     + "\nCOUCHES PERSISTANTES : captureCoverage.observationSelection.persistentElements conserve les rectangles viewport et positions observées des couches fixed/sticky. Certains petits contrôles périphériques répétés sont conservés dans OVERVIEW et une observation représentative, puis temporairement masqués uniquement pour les recaptures locales listées dans suppressedObservationIds. Leur absence dans ces locales ne prouve ni une nouvelle composition ni une disparition dans la page. Les landmarks, navbar/header et compositions structurelles restent visibles. Cite une couche uniquement depuis une image qui la montre effectivement ; les metadata ne remplacent pas la preuve visuelle."
     + "\nGALERIES ANIMÉES : captureCoverage.observationSelection.animatedComponents documente les composants dont le mouvement a été temporairement figé après warm-up, avec leur enveloppe viewport et les mécanismes détectés. La structure visible, le clipping et les dimensions ont été vérifiés avant/après capture. Analyse leur composition représentative (rythme, débordement, tailles relatives), sans inférer toutes les slides ou un état final de l'animation.";
+  if (viewOrder) instructions = instructions
+    .replace(/Chaque moment possède evidence :[^\n]+/, `Chaque moment possède evidence : sourceViews contient uniquement ces identifiants réellement envoyés : ${JSON.stringify(viewOrder)}. Cite chaque observation locale uniquement pour son rectangle enregistré ; son nom ou numéro n'indique aucune région. La vue globale décrit le rythme macro. Ne cite aucune image absente du lot ni aucun crop éloigné du moment.`)
+    + `\nIDENTIFIANTS DU LOT : ${JSON.stringify(viewOrder)}. Utilise exactement ces identifiants, sans renommage ou attribution d'une position depuis top/upper/middle/lower/bottom. Les labels et viewGeometry sont la géométrie réelle de chaque image.`;
+  return instructions;
 }
 const STRUCTURAL_INSTRUCTIONS = structuralInstructions("continuous");
 module.exports = {
@@ -393,6 +473,7 @@ module.exports = {
   structuralInstructions,
   structuralCoverageContext,
   structuralViewGeometry,
+  buildStructuralVisionRequest,
   structuralAnalysisSchema,
   validateStructuralAnalysis,
   STRUCTURAL_INSTRUCTIONS,

@@ -14,6 +14,7 @@ const {
   VIEW_TYPES,
   viewTypesForStrategy,
   captureForType,
+  buildStructuralVisionRequest,
 } = require("./structural-reference.contract");
 const folders = require("./cloudinary-folders");
 const {
@@ -240,6 +241,9 @@ function createStructuralService(dependencies = {}) {
         !reprocessAttemptId && (
           !capturesAreClean(reference) ||
           !coverageIsComplete(reference) ||
+          // Read/reprocess old captures as-is, but a new sampled analysis must
+          // pass through today's selector, including its normal fixed fallback.
+          (reference.captureCoverage?.captureStrategy === "sampled" && reference.captureCoverage.version !== 3) ||
           reference.captureCoverage?.overviewKind === "distributed_viewports" ||
           !viewTypesForStrategy(reference.captureCoverage?.captureStrategy, reference.captureCoverage).every(
             (type) => captureForType(reference.captures || [], type),
@@ -277,6 +281,8 @@ function createStructuralService(dependencies = {}) {
               },
             },
           );
+        if (page.captureCoverage.captureStrategy === "sampled" && page.captureCoverage.version !== 3)
+          throw fail("Sélection sampled obsolète : observations du pipeline actuel requises avant analyse.", 422);
         const views = await prepareStructuralViews(
           page.buffer,
           page.localMetadata?.viewport,
@@ -312,20 +318,25 @@ function createStructuralService(dependencies = {}) {
       if (!capturesAreClean(reference) || !coverageIsComplete(reference))
         throw fail("Capture non validée : analyse non lancée.", 422);
       const metadata = { ...reference.localMetadata, captureCoverage: reference.captureCoverage };
-      if (!attempt) attempt = await AttemptModel.create({
-        referenceId: id, generationId: token, status: "running",
-        captureSnapshot: { captures: reference.captures, metadata },
-      });
+      if (!attempt) {
+        const { manifest } = buildStructuralVisionRequest(reference.captures, metadata);
+        attempt = await AttemptModel.create({
+          referenceId: id, generationId: token, status: "running",
+          captureSnapshot: { captures: reference.captures, metadata, visionInput: manifest },
+        });
+      }
       processingAttempt = true;
       const result = reprocessAttemptId
         ? attempt.rawResponse
           ? require("./openai.service").parseStructuredResponse(attempt.rawResponse, "structural_reference_analysis")
           : attempt.parsedResult
         : await analyze(reference.captures, metadata, {
+          visionInput: attempt.captureSnapshot.visionInput,
           onResponse: async (rawResponse) => saveAttempt({ rawResponse, status: "received", receivedAt: new Date() }),
         });
       await saveAttempt({ parsedResult: result });
-      const analysis = validateStructuralAnalysis(result, attempt.captureSnapshot.metadata, attempt.captureSnapshot.captures);
+      const analysis = validateStructuralAnalysis(result, attempt.captureSnapshot.metadata,
+        attempt.captureSnapshot.captures, attempt.captureSnapshot.visionInput);
       await saveAttempt({ status: "validated", validationError: null });
       await save({
         analysis,

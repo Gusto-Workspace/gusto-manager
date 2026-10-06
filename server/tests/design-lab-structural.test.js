@@ -18,9 +18,9 @@ const {
   RHYTHM_FIELDS,
   structuralCoverageContext,
   structuralViewGeometry,
+  buildStructuralVisionRequest,
   structuralAnalysisSchema,
   validateStructuralAnalysis,
-  STRUCTURAL_INSTRUCTIONS,
 } = require("../services/design-lab/structural-reference.contract");
 const {
   publicAddress,
@@ -216,6 +216,49 @@ const sampledViews = () =>
       },
     };
   });
+function currentSampledCoverage(totalHeight = 11556, positions = [0, 3924, 10530], mode = "adaptive") {
+  return {
+    ...sampledCoverage(), version: 3, totalHeight,
+    observationSelection: { version: 1, mode, fallbackReasons: mode === "fixed_fallback" ? ["unreliable_geometry"] : [] },
+    positions: positions.map((position, i) => ({ role: `observation${i + 1}`, position,
+      visibleRangePx: [position, Math.min(totalHeight, position + 900)], stabilized: true })),
+    storyboard: { complete: true, width: 720, height: 2400,
+      panels: Array.from({ length: Math.ceil(totalHeight / 900) }, (_, i) => {
+        const position = Math.min(i * 900, totalHeight - 900);
+        return { position, visibleRangePx: [position, position + 900], stabilized: true,
+          scale: 1 / 6, rect: { x: 0, y: i * 160, width: 240, height: 150 } };
+      }) },
+  };
+}
+function currentSampledViews(coverage = currentSampledCoverage()) {
+  return [sampledViews()[0], ...coverage.positions.map((p) => ({
+    ...sampledViews()[1], type: p.role, url: `https://fixture.test/${p.role}.webp`,
+    sourceRect: { left: 0, top: p.position, width: 1440, height: p.visibleRangePx[1] - p.position }, detail: "high",
+  }))];
+}
+function failedTastaventsCase() {
+  // Exact geometry, phase ranges and citations recovered read-only from
+  // generation c0ffeea4-18bf-4b10-9310-f75818c4d978. Other prose is synthetic.
+  const positions = [0, 2131, 5328, 8525, 10656];
+  const metadata = { viewport: { width: 1440, height: 900 }, captureCoverage: {
+    ...sampledCoverage(), totalHeight: 11556,
+    positions: sampledCoverage().positions.map((p, i) => ({ ...p, position: positions[i] })),
+  } };
+  const captures = sampledViews().map((c, i) => ({ ...c,
+    sourceRect: { ...c.sourceRect, top: i ? positions[i - 1] : 0 } }));
+  const ranges = [[0,9],[9,19],[19,31],[31,49],[49,63],[63,74],[74,79],[79,95],[95,100]];
+  const sources = [["top"],["upper"],["upper"],["middle"],["middle"],["middle","lower"],["lower"],["lower"],["bottom"]];
+  const result = sampledFixture();
+  result.rhythmSequence = ranges.map(([startPercent,endPercent], i) => ({ ...fixture().rhythmSequence[i % 3],
+    order: i + 1, startPercent, endPercent }));
+  result.structuralMoments = ranges.map(([startPercent,endPercent], i) => ({ ...fixture().structuralMoments[i % 3],
+    order: i + 1, evidence: { ...fixture().structuralMoments[i % 3].evidence,
+      sourceViews: [...sources[i], "overview"], startPercent, endPercent } }));
+  result.structuralMoments[5].viewportRelationship = "La bande est annoncée au bas de la vue middle et réapparaît au sommet de la vue lower.";
+  result.structuralMoments[5].evidence.observation = "Le storyboard indique la bande d’images entre le champ typographique et la réservation ; la vue lower en montre la fin au sommet du viewport.";
+  const rawResponse = { output: [{ content: [{ type: "output_text", text: JSON.stringify(result) }] }] };
+  return { captures, metadata, result, rawResponse };
+}
 function twoPhases() {
   const result = fixture();
   result.rhythmSequence = result.rhythmSequence.slice(0, 2);
@@ -268,6 +311,40 @@ test("Tastavents sampled : middle autorisé, rejet evidence.3 uniquement si la p
   result.structuralMoments[3].evidence.startPercent = 60;
   assert.throws(() => validateStructuralAnalysis(result, metadata, captures),
     { message: "Analyse structurelle invalide : evidence.3.sourceViews.middle." });
+});
+
+test("Tastavents attempt c0ffeea4 : les six anciennes images v2 donnent exactement evidence.5.middle", () => {
+  const { captures, metadata, result } = failedTastaventsCase();
+  const request = buildStructuralVisionRequest(captures, metadata);
+  assert.deepEqual(request.manifest.viewOrder, SAMPLED_VIEW_TYPES);
+  assert.deepEqual(request.manifest.views[3].geometry.visibleRangePx, [5328, 6228]);
+  assert.deepEqual(request.content.filter((c) => c.type === "input_image").map((c) => c.image_url), captures.map((c) => c.url));
+  assert.throws(() => validateStructuralAnalysis(result, metadata, captures, request.manifest), (error) => {
+    assert.deepEqual(error.validation, { fieldPath: "evidence.5.sourceViews.middle", reason: "evidence_outside_visible_range",
+      view: "middle", visibleRangePx: [5328,6228], momentRangePx: [7280.28,8551.44], totalHeight: 11556, roundingTolerancePx: 231.12 });
+    return true;
+  });
+});
+
+test("manifeste adaptatif : seuls les vrais identifiants/rectangles sont partagés, anciens crops non envoyés exclus", () => {
+  const metadata = { captureCoverage: currentSampledCoverage() };
+  const captures = [...currentSampledViews(metadata.captureCoverage), ...sampledViews().slice(1)];
+  const request = buildStructuralVisionRequest(captures, metadata);
+  assert.deepEqual(request.manifest.viewOrder, ["overview","observation1","observation2","observation3"]);
+  assert.deepEqual(request.manifest.views.slice(1).map((v) => v.geometry.visibleRangePx), [[0,900],[3924,4824],[10530,11430]]);
+  assert.deepEqual(request.schema.properties.structuralMoments.items.properties.evidence.properties.sourceViews.items.enum,
+    request.manifest.viewOrder);
+  assert.match(request.instructions, /identifiants réellement envoyés : \["overview","observation1","observation2","observation3"\]/);
+  const result = sampledFixture();
+  result.structuralMoments.forEach((m) => { m.evidence.sourceViews = ["overview"]; });
+  assert.equal(validateStructuralAnalysis(result, metadata, captures, request.manifest), result);
+  result.structuralMoments[1].evidence.sourceViews = ["middle"];
+  assert.throws(() => validateStructuralAnalysis(result, metadata, captures, request.manifest),
+    { message: "Analyse structurelle invalide : evidence.1.sourceViews.middle." });
+  const changed = structuredClone(captures);
+  changed[2].sourceRect.top = 5328;
+  assert.throws(() => buildStructuralVisionRequest(changed, metadata, request.manifest),
+    (e) => e.code === "structural_vision_manifest_mismatch");
 });
 
 test("contrat Vision : un seul repère de page et intersection des preuves explicités", () => {
@@ -456,6 +533,94 @@ function harness(initial, overrides = {}) {
   });
   return { db, calls, service, attempts };
 }
+
+test("Tastavents v2 persisté : nouvelle analyse passe par le sélecteur actuel et checkpoint du lot adaptatif avant l'analyse mockée", async () => {
+  const legacy = failedTastaventsCase();
+  const coverage = currentSampledCoverage();
+  const viewport = await sharp({ create: { width: 300, height: 900, channels: 3, background: "olive" } }).png().toBuffer();
+  const macro = await png();
+  const expected = sampledFixture();
+  expected.structuralMoments.forEach((m) => { m.evidence.sourceViews = ["overview"]; });
+  let capturesMade = 0, h;
+  h = harness({ captures: legacy.captures, captureCoverage: legacy.metadata.captureCoverage,
+    localMetadata: legacy.metadata }, {
+    capture: async () => {
+      capturesMade++;
+      return { pages: [{ buffer: macro, captureSanitization: cleanTrace(), captureCoverage: coverage,
+        localMetadata: { viewport: { width: 300, height: 900 } },
+        viewBuffers: { overview: macro, observation1: viewport, observation2: viewport, observation3: viewport },
+        viewPositions: Object.fromEntries(coverage.positions.map((p) => [p.role, p.position])) }] };
+    },
+    analyze: async (captures, metadata, options) => {
+      h.calls.analyze++;
+      const attempt = [...h.attempts.records.values()][0];
+      assert.deepEqual(options.visionInput, attempt.captureSnapshot.visionInput);
+      assert.deepEqual(options.visionInput.viewOrder, ["overview","observation1","observation2","observation3"]);
+      assert.deepEqual(options.visionInput.views.slice(1).map((v) => v.geometry.visibleRangePx), [[0,900],[3924,4824],[10530,11430]]);
+      assert.deepEqual(buildStructuralVisionRequest(captures, metadata, options.visionInput).manifest, options.visionInput);
+      return expected;
+    },
+  });
+  const result = await h.service.run(id);
+  assert.equal(result.status, "analyzed");
+  assert.equal(result.captureCoverage.version, 3);
+  assert.equal(capturesMade, 1);
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.uploads.length, 4);
+});
+
+test("sampled v3 adaptive et fallback courant réutilisés ; aucun quota ou recapture imposée", async () => {
+  for (const [mode, positions] of [["adaptive", []], ["adaptive", [0,3924,10530]],
+    ["fixed_fallback", [0,2131,5328,8525,10656]]]) {
+    const coverage = currentSampledCoverage(11556, positions, mode);
+    const expected = sampledFixture();
+    expected.structuralMoments.forEach((m) => { m.evidence.sourceViews = ["overview"]; });
+    const h = harness({ captures: currentSampledViews(coverage), captureCoverage: coverage }, {
+      analyze: async () => expected,
+    });
+    const result = await h.service.run(id);
+    assert.equal(result.status, "analyzed");
+    assert.equal(h.calls.capture, 0);
+    assert.equal(h.calls.uploads.length, 0);
+    const attempt = [...h.attempts.records.values()][0];
+    assert.equal(attempt.captureSnapshot.visionInput.views.length, positions.length + 1);
+  }
+});
+
+test("capture sampled v2 renvoyée par un ancien worker : analyse et uploads refusés", async () => {
+  const legacy = failedTastaventsCase();
+  const h = harness({ captures: legacy.captures, captureCoverage: legacy.metadata.captureCoverage }, {
+    capture: async () => ({ pages: [{ buffer: await png(), captureSanitization: cleanTrace(),
+      captureCoverage: legacy.metadata.captureCoverage }] }),
+  });
+  const result = await h.service.run(id);
+  assert.match(result.lastError, /Sélection sampled obsolète/);
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.uploads.length, 0);
+  assert.equal(h.attempts.records.size, 0);
+});
+
+test("retraitement c0ffeea4 legacy : même rejet géométrique, brut intact, aucune recapture/analyse/upload", async () => {
+  const legacy = failedTastaventsCase();
+  const previous = fixture("Analyse active antérieure");
+  const h = harness({ captures: legacy.captures, captureCoverage: legacy.metadata.captureCoverage,
+    localMetadata: legacy.metadata, analysis: previous });
+  const attempt = await h.attempts.Model.create({ referenceId: id,
+    generationId: "c0ffeea4-18bf-4b10-9310-f75818c4d978", status: "validation_failed",
+    rawResponse: legacy.rawResponse, captureSnapshot: { captures: legacy.captures, metadata: legacy.metadata } });
+  const result = await h.service.reprocess(id, attempt._id);
+  const updated = h.attempts.records.get(attempt._id);
+  assert.equal(updated.status, "validation_failed");
+  assert.equal(updated.validationError.fieldPath, "evidence.5.sourceViews.middle");
+  assert.deepEqual(updated.validationError.visibleRangePx, [5328,6228]);
+  assert.deepEqual(updated.validationError.momentRangePx, [7280.28,8551.44]);
+  assert.deepEqual(updated.rawResponse, legacy.rawResponse);
+  assert.deepEqual(updated.captureSnapshot, attempt.captureSnapshot);
+  assert.deepEqual(result.analysis, previous);
+  assert.equal(h.calls.capture, 0);
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.uploads.length, 0);
+});
 
 test("réponse Vision rejetée : checkpoint avant validation, erreur conservée et analyse active intacte", async () => {
   const previous = fixture("Analyse active antérieure");
@@ -1016,9 +1181,10 @@ test("Mongo schema sampled : stratégie, progression et six rôles admis", () =>
   assert.equal(document.captures.length, 6);
   assert.equal(document.captures[2].progressPercent, 20);
 });
-test("mode sampled : six uploads, une analyse et aucune full-page défectueuse", async () => {
+test("mode sampled fallback actuel : six uploads, une analyse et aucune full-page défectueuse", async () => {
   const db = store();
-  const coverage = sampledCoverage();
+  const coverage = currentSampledCoverage(6128, [0,1046,2614,4182,5228], "fixed_fallback");
+  const types = ["overview", ...coverage.positions.map((p) => p.role)];
   const viewport = await sharp({
     create: { width: 300, height: 900, channels: 3, background: "olive" },
   })
@@ -1048,7 +1214,7 @@ test("mode sampled : six uploads, une analyse et aucune full-page défectueuse",
             documentHeight: 6128,
           },
           viewBuffers: Object.fromEntries(
-            SAMPLED_VIEW_TYPES.map((type) => [
+            types.map((type) => [
               type,
               type === "overview" ? storyboard : viewport,
             ]),
@@ -1067,9 +1233,11 @@ test("mode sampled : six uploads, une analyse et aucune full-page défectueuse",
       analyses++;
       assert.deepEqual(
         captures.map((view) => view.type),
-        SAMPLED_VIEW_TYPES,
+        types,
       );
-      return sampledFixture();
+      const result = sampledFixture();
+      result.structuralMoments.forEach((m) => { m.evidence.sourceViews = ["overview"]; });
+      return result;
     },
     destroy: async () => {},
   });
@@ -1723,7 +1891,8 @@ test("Vision continuous : un seul POST mocké, quatre images, master exclue, sch
     const body = requests[0].body;
     assert.equal(body.model, MODEL_CONFIG.referenceAnalysisModel);
     assert.equal(body.store, false);
-    assert.equal(body.instructions, STRUCTURAL_INSTRUCTIONS);
+    const request = buildStructuralVisionRequest(gucciViews(), gucciMetadata());
+    assert.equal(body.instructions, request.instructions);
     const images = body.input[0].content.filter(
       (item) => item.type === "input_image",
     );
@@ -1737,7 +1906,7 @@ test("Vision continuous : un seul POST mocké, quatre images, master exclue, sch
       false,
     );
     assert.ok(images[0].image_url.includes("visionOverview"));
-    assert.deepEqual(body.text.format.schema, structuralAnalysisSchema);
+    assert.deepEqual(body.text.format.schema, request.schema);
     assert.equal(body.text.format.strict, true);
     const content = body.input[0].content;
     const labels = content
@@ -1758,9 +1927,10 @@ test("Vision continuous : un seul POST mocké, quatre images, master exclue, sch
       ],
     );
     assert.match(labels[0].role, /FULL PAGE OPTIMISÉE.*master desktop_full/);
-    assert.match(labels[1].role, /TOP.*début/);
-    assert.match(labels[2].role, /MIDDLE.*médiane/);
-    assert.match(labels[3].role, /BOTTOM.*fin/);
+    for (const label of labels.slice(1)) {
+      assert.match(label.role, /identifiant sans position implicite/);
+      assert.doesNotMatch(label.role, /début|médiane|fin réelle/);
+    }
     assert.match(body.instructions, /une seule observation globale/);
     assert.equal(
       JSON.parse(content[0].text).coverageRequirements
@@ -1874,7 +2044,7 @@ test("Vision sampled : un seul POST mocké, storyboard low, 2 samples low et 3 h
     );
     assert.match(body.instructions, /sticky\/fixed répétés/);
     assert.equal(body.store, false);
-    assert.deepEqual(body.text.format.schema, structuralAnalysisSchema);
+    assert.deepEqual(body.text.format.schema, buildStructuralVisionRequest(sampledViews(), metadata).schema);
     const invalidEvidence = fixture();
     for (const type of ["desktop_full", "visionOverview"]) {
       invalidEvidence.structuralMoments[0].evidence.sourceViews = [type];

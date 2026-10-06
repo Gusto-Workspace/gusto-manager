@@ -1204,95 +1204,16 @@ async function generateImage(
   };
 }
 
-async function analyzeStructuralReference(captures, localMetadata, { onResponse } = {}) {
+async function analyzeStructuralReference(captures, localMetadata, { onResponse, visionInput } = {}) {
   const {
-    structuralAnalysisSchema,
     validateStructuralAnalysis,
-    structuralCoverageContext,
-    visionViewsForStrategy,
-    structuralInstructions,
-    structuralViewGeometry,
+    buildStructuralVisionRequest,
   } = require("./structural-reference.contract");
-  const captureStrategy =
-    localMetadata?.captureCoverage?.captureStrategy || "continuous";
-  const views = visionViewsForStrategy(captures, captureStrategy, localMetadata?.captureCoverage);
-  const viewTypes = views.map((image) => image?.type);
-  if (views.length > 6 || !views.length || views.some((image) => !image?.url))
-    throw Object.assign(new Error("Vues structurelles incomplètes."), {
-      status: 422,
-    });
-  if (captureStrategy === "sampled" && views.some((view) =>
-    view.type !== "overview" && !structuralViewGeometry(view, localMetadata, captures)))
-    throw Object.assign(new Error("Géométrie des observations sampled manquante : analyse non lancée."), {
-      status: 422, code: "missing_structural_capture_geometry",
-    });
-  const coverage = structuralCoverageContext(localMetadata, captures);
-  const roles = {
-    visionOverview:
-      "FULL PAGE OPTIMISÉE — dérivée de la master desktop_full, lecture macro de toute la homepage",
-    overview: "OVERVIEW — lecture globale du rythme",
-    top: "TOP — début réel",
-    upper: "UPPER — première zone intérieure stabilisée",
-    middle: "MIDDLE — zone médiane",
-    lower: "LOWER — dernière zone intérieure stabilisée",
-    bottom: "BOTTOM — fin réelle et footer",
-  };
+  const request = buildStructuralVisionRequest(captures, localMetadata, visionInput);
   const result = await structured(
-    structuralInstructions(captureStrategy, localMetadata?.captureCoverage?.version === 3),
-    [
-      {
-        type: "input_text",
-        text: JSON.stringify({
-          captureStrategy,
-          viewOrder: viewTypes,
-          localMetadata,
-          coverageRequirements: coverage,
-          geometryConvention: "absolute_page_pixels; pagePercent = 100 * absoluteY / totalHeight; scrollProgressPercent is not pagePercent",
-          viewGeometry: views.map((view) => ({
-            type: view.type,
-            ...structuralViewGeometry(view, localMetadata, captures),
-          })),
-        }),
-      },
-      ...views.flatMap((image) => {
-        const full = ["visionOverview", "overview"].includes(image.type);
-        const geometry = structuralViewGeometry(image, localMetadata, captures);
-        const range = full ? [0, 100] : geometry?.pagePercentRange.map(Math.round) || null;
-        return [
-          {
-            type: "input_text",
-            text: JSON.stringify({
-              view: image.type,
-              role: roles[image.type] || "OBSERVATION LOCALE — détail complémentaire, position définie par visibleRangePx",
-              approximatePagePercent: range,
-              visibleRangePx: geometry?.visibleRangePx,
-              scrollY: geometry?.scrollY,
-              viewportHeight: geometry?.viewportHeight,
-              scrollProgressPercent: image.progressPercent,
-              positionPx: full ? undefined : image.sourceRect?.top,
-              overviewKind:
-                image.type === "visionOverview"
-                  ? "optimized_full_page"
-                  : image.type === "overview"
-                    ? localMetadata?.captureCoverage?.overviewKind ||
-                      "structural_storyboard"
-                    : undefined,
-            }),
-          },
-          {
-            type: "input_image",
-            image_url: image.url,
-            detail:
-              /^observation[1-5]$/.test(image.type) ? image.detail || "high" : full ||
-              (captureStrategy === "sampled" &&
-                ["upper", "lower"].includes(image.type))
-                ? "low"
-                : "high",
-          },
-        ];
-      }),
-    ],
-    structuralAnalysisSchema,
+    request.instructions,
+    request.content,
+    request.schema,
     "structural_reference_analysis",
     MODEL_CONFIG.referenceAnalysisModel,
     "medium",
@@ -1300,7 +1221,7 @@ async function analyzeStructuralReference(captures, localMetadata, { onResponse 
     undefined,
     onResponse,
   );
-  return validateStructuralAnalysis(result, localMetadata, captures);
+  return validateStructuralAnalysis(result, localMetadata, captures, request.manifest);
 }
 
 module.exports = {
