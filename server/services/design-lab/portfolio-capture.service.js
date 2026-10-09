@@ -124,10 +124,19 @@ function requestPinned(
   deadline,
   maxBytes = MAX_RESOURCE_BYTES,
   accept,
-  { accountBytes, budgetError } = {},
+  { accountBytes, budgetError, origin, byteRange, acceptLanguage } = {},
 ) {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === "https:" ? https : http;
+    const timeoutMs = remaining(deadline, 12000);
+    const signal = AbortSignal.timeout(timeoutMs);
+    const transportProof = { startedAtMs: Date.now(), timeoutMs, deadline,
+      stage: 'request', responseStarted: false };
+    const fail = error => {
+      error.transportProof = { ...transportProof, failedAtMs: Date.now(),
+        signalAborted: signal.aborted, abortReason: signal.reason?.name || null };
+      reject(error);
+    };
     const request = transport.get(
       url,
       {
@@ -141,31 +150,59 @@ function requestPinned(
               : "text/html,application/xhtml+xml,image/*,text/css,application/javascript,*/*;q=0.8",
           "Accept-Encoding": "identity",
           "User-Agent": CAPTURE_USER_AGENT,
+          ...(origin ? { Origin: origin } : {}),
+          ...(acceptLanguage && acceptLanguage.length<=512 && /^[\x20-\x7e]+$/.test(acceptLanguage) ? {'Accept-Language':acceptLanguage} : {}),
+          ...(byteRange ? { Range: `bytes=${byteRange.start}-${byteRange.end}` } : {}),
         },
-        signal: AbortSignal.timeout(remaining(deadline, 12000)),
+        signal,
       },
       (response) => {
+        transportProof.responseStarted = true;
+        transportProof.stage = 'response_body';
+        transportProof.status = response.statusCode;
+        transportProof.headersAtMs = Date.now();
         const chunks = [];
         let size = 0;
         const declaredSize = Number(response.headers["content-length"]);
-        if (declaredSize > maxBytes) {
+        const rangeBytes=byteRange ? byteRange.end-byteRange.start+1 : null;
+        const bodyLimit=byteRange ? Math.min(maxBytes,rangeBytes) : maxBytes;
+        if(byteRange&&response.statusCode===200&&(!Number.isSafeInteger(declaredSize)||declaredSize<=0)){
+          response.destroy();reject(Object.assign(captureError('Taille vidéo sans plage non certifiable.'),{code:'structural_video_range_unsupported'}));return;
+        }
+        const partialVideo = Boolean(byteRange && response.statusCode === 200 && declaredSize > byteRange.end-byteRange.start+1);
+        if (byteRange && response.statusCode === 206) {
+          const range=/^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers['content-range']||'');
+          if (!range || Number(range[1])!==byteRange.start || Number(range[2])<byteRange.start || Number(range[2])>byteRange.end || Number(range[3])<=Number(range[2])) {
+            response.destroy(); reject(captureError('Plage vidéo reçue incohérente.')); return;
+          }
+        }
+        if (partialVideo && byteRange.start!==0) {
+          response.destroy();reject(Object.assign(captureError('Serveur vidéo sans support des plages demandées.'),{code:'structural_video_range_unsupported'}));return;
+        }
+        if (declaredSize > bodyLimit && !partialVideo) {
           response.destroy();
           reject(
-            budgetError?.(declaredSize, maxBytes) ||
+            budgetError?.(declaredSize, bodyLimit) ||
               captureError("Ressource trop volumineuse."),
           );
           return;
         }
         response.on("data", (chunk) => {
-          size += chunk.length;
           try {
             accountBytes?.(chunk.length);
-            if (size > maxBytes)
+            const needed=partialVideo ? byteRange.end-byteRange.start+1-size : chunk.length;
+            const part=partialVideo ? chunk.subarray(0,Math.max(0,needed)) : chunk;
+            size += part.length;
+            if (size > bodyLimit)
               throw (
-                budgetError?.(size, maxBytes) ||
+                budgetError?.(size, bodyLimit) ||
                 captureError("Ressource trop volumineuse.")
               );
-            chunks.push(chunk);
+            chunks.push(part);
+            if(partialVideo && size===byteRange.end-byteRange.start+1) {
+              resolve({status:206,headers:{...response.headers,'content-length':String(size),'content-range':`bytes 0-${size-1}/${declaredSize}`,'accept-ranges':'bytes'},body:Buffer.concat(chunks)});
+              response.destroy();
+            }
           } catch (error) {
             response.destroy(error);
           }
@@ -195,10 +232,23 @@ function requestPinned(
             reject(error);
           }
         });
-        response.on("error", reject);
+        response.on("error", fail);
       },
     );
-    request.on("error", reject);
+    request.on('socket', socket => {
+      transportProof.socketReused = Boolean(request.reusedSocket);
+      transportProof.stage = request.reusedSocket ? 'awaiting_headers' : 'socket';
+      if (request.reusedSocket) return;
+      const connected = () => { transportProof.stage = url.protocol==='https:' ? 'tls' : 'awaiting_headers'; };
+      const secured = () => { transportProof.stage = 'awaiting_headers'; };
+      socket.once('connect', connected);
+      socket.once('secureConnect', secured);
+      request.once('close', () => {
+        socket.removeListener('connect', connected);
+        socket.removeListener('secureConnect', secured);
+      });
+    });
+    request.on("error", fail);
   });
 }
 
@@ -215,9 +265,13 @@ async function fetchPublicResource(
     maxBytes = MAX_RESOURCE_BYTES,
     accountBytes,
     budgetError,
+    origin,
+    acceptLanguage,
+    byteRange,
+    maxUrlLength = 2000,
   } = {},
 ) {
-  let url = parseWebsiteUrl(value);
+  let url = parseWebsiteUrl(value, { maxLength: maxUrlLength });
   const sourceUrl = url.href;
   const visited = new Set();
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
@@ -234,13 +288,18 @@ async function fetchPublicResource(
     if (visited.has(url.href)) throw captureError("Boucle de redirection.");
     visited.add(url.href);
     const address = await publicAddress(url.hostname, lookup, deadline);
-    const result = await request(url, address, deadline, maxBytes, accept, {
-      accountBytes,
-      budgetError,
-    });
+    let result;
+    try {
+      result = await request(url, address, deadline, maxBytes, accept, {
+        accountBytes, budgetError, origin, acceptLanguage, byteRange,
+      });
+    } catch (error) {
+      error.redirectsObserved = redirects;
+      throw error;
+    }
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       if (!result.headers.location) throw captureError("Redirection invalide.");
-      url = parseWebsiteUrl(new URL(result.headers.location, url).href);
+      url = parseWebsiteUrl(new URL(result.headers.location, url).href, { maxLength: maxUrlLength });
       continue;
     }
     if (result.status < 200 || result.status >= 400)
@@ -312,7 +371,7 @@ async function warmUpPortfolioPage(page, deadline) {
           highestObservedHeight = Math.max(highestObservedHeight, height);
           const bottom = Math.max(0, Math.min(height, maxHeight) - viewport);
           const top = Math.min(nextTop, bottom);
-          window.scrollTo({ top, behavior: "instant" });
+          (window[Symbol.for('gusto.structural.capture.native-scroll')]?.windowScrollTo||window.scrollTo).call(window,{ top, behavior: "instant" });
           highestScroll = Math.max(highestScroll, top);
           steps += 1;
           await sleep(Math.min(75, timeLeft()));
@@ -348,7 +407,7 @@ async function warmUpPortfolioPage(page, deadline) {
         );
         if (document.fonts?.ready) await waitBounded(document.fonts.ready, 800);
       } finally {
-        window.scrollTo({ top: 0, behavior: "instant" });
+        (window[Symbol.for('gusto.structural.capture.native-scroll')]?.windowScrollTo||window.scrollTo).call(window,{ top: 0, behavior: "instant" });
         await sleep(topSettleMs);
       }
       return { steps, highestScroll, highestObservedHeight };
@@ -366,24 +425,35 @@ async function waitForPortfolioImages(
   deadline,
   { visibleOnly = false } = {},
 ) {
+  const diagnosticEnabled = Boolean(page.structuralResourceDiagnostics);
+  const startedAtMs = Date.now();
   const maxWaitMs = remaining(deadline, IMAGE_SETTLE_TIMEOUT_MS);
   const end = Date.now() + maxWaitMs;
+  const samples = [];
+  let pollExitReason = 'local_timeout';
   let images;
   do {
     images = await page.evaluate(inspectCaptureImagesDOM, {
       maxWaitMs,
       visibleOnly,
+      diagnostics: diagnosticEnabled,
     });
     // Lightweight browser doubles use the public result shape.
     if (!Array.isArray(images)) return images;
-    if (!images.some((image) => image.pending)) break;
+    if(diagnosticEnabled)samples.push({elapsedMs:Date.now()-startedAtMs,total:images.length,
+      pending:images.filter(image=>image.pending).map(image=>image.url),
+      failed:images.filter(image=>!image.pending&&!image.naturalWidth).map(image=>image.url)});
+    if (!images.some((image) => image.pending)) { pollExitReason = 'no_pending_resources'; break; }
     await page.waitForTimeout(Math.min(100, Math.max(1, end - Date.now())));
   } while (Date.now() < end);
+  if(pollExitReason==='local_timeout'&&maxWaitMs<IMAGE_SETTLE_TIMEOUT_MS)pollExitReason='outer_deadline';
+  const pollElapsedMs = Date.now() - startedAtMs;
   // Rediscover the active branch and source after lazy-load/re-render.
   images = await page.evaluate(inspectCaptureImagesDOM, {
     maxWaitMs,
     visibleOnly,
     decode: true,
+    diagnostics: diagnosticEnabled,
   });
   const missing = images.filter(
     (image) => !image.naturalWidth || image.pending,
@@ -395,12 +465,30 @@ async function waitForPortfolioImages(
   if (visibleOnly && page.structuralResourcePolicy?.embedFailures) {
     await synchronizeUnavailableExternalEmbeds(page);
   }
-  return {
+  const result = {
     total: images.length,
     failed: images.filter((image) => !image.pending && !image.naturalWidth)
       .length,
     pending: images.filter((image) => image.pending).length,
   };
+  // Internal orchestration evidence is independent from passive diagnostics.
+  Object.defineProperty(result,'pendingUrls',{value:images.filter(image=>image.pending).flatMap(image=>
+    [image.url,...(image.pendingTransferUrl ? [image.pendingTransferUrl] : [])])});
+  Object.defineProperty(result,'awaitsDocumentLoad',{value:images.some(image=>image.pending&&image.awaitsDocumentLoad)});
+  Object.defineProperty(result,'awaitsActiveImageSource',{value:images.some(image=>image.pending&&image.awaitsActiveImageSource)});
+  if(diagnosticEnabled)result.diagnostics={startedAtMs,maxWaitMs,waitedMs:Date.now()-startedAtMs,
+    pollElapsedMs,decodeElapsedMs:Date.now()-startedAtMs-pollElapsedMs,remainingMs:deadline-Date.now(),
+    pollExitReason,samples,resources:images.map(image=>({ ...image,
+      refused:!image.naturalWidth||image.pending,
+      refusalReason:image.decodeFailure?(/timeout/i.test(image.decodeFailure.message)?'decode_timeout':'decode_error'):
+        image.pending?(pollExitReason==='no_pending_resources'?'pending_after_rediscovery':
+          pollExitReason==='outer_deadline'?'pending_at_outer_deadline':'pending_at_local_timeout'):
+          !image.naturalWidth?'undecoded_dimensions':null,
+      network:page.structuralResourceDiagnostics.snapshot(image.url || image.pendingTransferUrl || ''),
+      policyError:(()=>{const error=page.structuralResourcePolicy?.failures.get(image.url);return error?
+        {name:error.name,code:error.code||null,status:error.networkStatus||null,message:error.message}:null;})(),
+    }))};
+  return result;
 }
 
 async function synchronizeUnavailableExternalEmbeds(page) {
@@ -441,10 +529,15 @@ async function capturePortfolioSite(
     beforeScreenshot,
     capturePage,
     structuralResources = Boolean(capturePage),
+    onStructuralPhase,
+    onOriginalObservation,
   } = {},
 ) {
+  const phase=value=>onStructuralPhase?.(value);
+  phase('capture_configuration');
   requirePortfolioCaptureEnabled();
   const home = parseWebsiteUrl(homepage);
+  phase('capture_dns');
   await publicAddress(home.hostname, lookup);
   const fs = require("node:fs");
   const executablePath = CHROME_PATHS.find((path) => fs.existsSync(path));
@@ -459,9 +552,11 @@ async function capturePortfolioSite(
       "--disable-features=Prerender2,SpeculationRules",
     ],
   };
+  phase('capture_browser_launch');
   const browser = launch
     ? await launch(launchOptions)
     : await require("playwright-core").chromium.launch(launchOptions);
+  phase('capture_browser_context');
   const context = await browser
     .newContext({
       userAgent: CAPTURE_USER_AGENT,
@@ -479,6 +574,11 @@ async function capturePortfolioSite(
   let requestCount = 0;
   let activeRequests = 0;
   let navigationError = null;
+  let resourceDiagnostics;
+  let capturePageInstance, captureFailure;
+  const captureRuntime={headless:launchOptions.headless,executablePath,launchArgs:launchOptions.args,
+    userAgent:CAPTURE_USER_AGENT,viewport:{width:1440,height:900},deviceScaleFactor:1,
+    serviceWorkers:'block',acceptDownloads:false,singlePage,structuralResources,imageSettleTimeoutMs:IMAGE_SETTLE_TIMEOUT_MS};
   const structuralPolicy = structuralResources
     ? createStructuralResourcePolicy()
     : null;
@@ -503,7 +603,7 @@ async function capturePortfolioSite(
         now() > deadline
       )
         return route.abort();
-      const requestDeadline = Math.min(deadline, now() + PAGE_TIMEOUT_MS);
+      const requestDeadline = Math.min(deadline, page.structuralCaptureDeadline || Infinity, now() + PAGE_TIMEOUT_MS);
       while (
         !structuralPolicy &&
         activeRequests >= MAX_CONCURRENT_REQUESTS &&
@@ -522,6 +622,13 @@ async function capturePortfolioSite(
             "Navigation hors du domaine Portfolio interdite.",
             400,
           );
+        const requestHeaders=typeof request.allHeaders==='function'?await request.allHeaders():request.headers?.()||{};
+        page.structuralResourceDiagnostics?.begin(request,requestHeaders);
+        if(structuralPolicy&&subframeNavigation){
+          const owner=await require('./structural-resource-diagnostics').inspectResourceFrameOwner(request.frame());
+          structuralPolicy.frameOwnership||=[];
+          structuralPolicy.frameOwnership.push({url:request.url(),observedAtMs:now(),owner});
+        }
         const options = {
           rootHostname: home.hostname,
           navigation: isNavigation,
@@ -529,9 +636,18 @@ async function capturePortfolioSite(
           deadline: requestDeadline,
           lookup,
           accept:
-            typeof request.headers === "function"
-              ? request.headers().accept
-              : undefined,
+            requestHeaders.accept,
+          ...(structuralPolicy ? {
+            captureDeadline:()=>page.structuralCaptureDeadline || deadline,
+            maxUrlLength: isNavigation ? 2000 : 16384,
+            origin: (() => {
+              const origin = requestHeaders.origin;
+              if (!origin || origin.length > 512) return undefined;
+              try { const u = new URL(origin); return ['http:', 'https:'].includes(u.protocol) && u.origin === origin ? origin : undefined; }
+              catch { return undefined; }
+            })(),
+            acceptLanguage:requestHeaders['accept-language'],
+          } : {}),
         };
         const requestedType =
           request.resourceType?.() ||
@@ -539,6 +655,13 @@ async function capturePortfolioSite(
         const mediaRequest =
           requestedType === "media" ||
           /\.(?:mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i.test(request.url());
+        const videoRequest = structuralPolicy && mediaRequest && (
+          /\.(?:mp4|m4v|mov|webm|ogv)(?:$|[?#])/i.test(request.url()) ||
+          await page.evaluate(require('./structural-video.service').isVideoResourceDOM,request.url()).catch(()=>false)
+        );
+        if(videoRequest && structuralPolicy.completedVideos.has(request.url().split('#')[0])){
+          page.structuralResourceDiagnostics?.aborted(request,'representative_video_already_certified');return route.abort();
+        }
         const visibleMedia =
           mediaRequest &&
           (await page
@@ -593,16 +716,21 @@ async function capturePortfolioSite(
               });
             }, request.url())
             .catch(() => false));
+        let transportInvoked=false;
+        const diagnosticFetch=page.structuralResourceDiagnostics ? async (url, settings) => {
+          transportInvoked=true;page.structuralResourceDiagnostics.transportStarted(request,url);
+          try {const response=await fetchResource(url,settings);page.structuralResourceDiagnostics.transportCompleted(request,response);return response;}
+          catch(error){page.structuralResourceDiagnostics.transportFailed(request,error);throw error;}
+        } : fetchResource;
         const response = structuralPolicy
-          ? await structuralPolicy.fetch(
-              request.url(),
-              mediaRequest ? "media" : requestedType,
-              fetchResource,
+          ? await (videoRequest ? structuralPolicy.videoRange.bind(structuralPolicy,request.url(),requestHeaders.range) : structuralPolicy.fetch.bind(structuralPolicy,request.url(),mediaRequest ? 'media' : requestedType))(
+              diagnosticFetch,
               options,
               visibleMedia,
             )
           : await fetchResource(request.url(), options);
-        if (!response) return route.abort();
+        if (!response) {page.structuralResourceDiagnostics?.aborted(request,'resource_policy_skip');return route.abort();}
+        page.structuralResourceDiagnostics?.fulfilled(request,response,!transportInvoked);
         if (!structuralPolicy) {
           resourceBytes += response.body.length;
           if (resourceBytes > MAX_PAGE_BYTES) return route.abort();
@@ -619,6 +747,7 @@ async function capturePortfolioSite(
           body: response.body,
         });
       } catch (error) {
+        page.structuralResourceDiagnostics?.failed(request,error);
         if (structuralPolicy) {
           structuralPolicy.failures.set(request.url(), error);
           if (isNavigation && subframeNavigation) {
@@ -653,6 +782,7 @@ async function capturePortfolioSite(
     });
     if (context.routeWebSocket)
       await context.routeWebSocket("**/*", (socket) => socket.close());
+    if(capturePage)await context.addInitScript(require('./structural-native-scroll').installNativeScrollDOM);
     await context.addInitScript(() => {
       window.WebSocket = class {
         constructor() {
@@ -668,7 +798,13 @@ async function capturePortfolioSite(
       window.open = () => null;
     });
     const page = await context.newPage();
+    capturePageInstance=page;
     page.structuralResourcePolicy = structuralPolicy;
+    if(structuralPolicy) {
+      resourceDiagnostics=page.structuralResourceDiagnostics=require('./structural-resource-diagnostics').createResourceDiagnostics(page);
+      await page.exposeBinding('__gustoVideoFrameReady',(_source,url)=>{if(typeof url==='string'&&url)structuralPolicy.completedVideos.add(url.split('#')[0]);});
+      await page.addInitScript(require('./structural-video.service').installVideoCaptureDOM);
+    }
     page.on("popup", (popup) => popup.close());
     page.setDefaultTimeout(PAGE_TIMEOUT_MS);
     const results = [];
@@ -677,9 +813,11 @@ async function capturePortfolioSite(
       resourceBytes = 0;
       navigationError = null;
       if (onPageStart) await onPageStart(candidate, index, total);
+      let observedNavigationUrl=candidate.url;
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        phase('capture_navigation');
         const response = await page
-          .goto(candidate.url, {
+          .goto(observedNavigationUrl, {
             waitUntil: "domcontentloaded",
             timeout: remaining(deadline, PAGE_TIMEOUT_MS),
           })
@@ -692,16 +830,32 @@ async function capturePortfolioSite(
           !sameDomain(new URL(page.url()).hostname, home.hostname)
         )
           throw captureError("Page Portfolio inaccessible.");
+        phase('capture_warmup');
         await page.waitForTimeout(1200);
         await warmUpPortfolioPage(page, deadline);
         // Structural capture owns the per-viewport image gate after popup cleanup.
         // Offscreen lazy images and temporary popup images must not block it here.
-        if (capturePage) break;
+        if (capturePage) {
+          phase('capture_main_paint');
+          try {await require('./structural-paint.service').waitForMainPaint(page,deadline,{requireContent:true});}
+          catch(error) {
+            // A SPA may change its canonical route during hydration (e.g.
+            // browser-language negotiation) while leaving an empty root.
+            // Reconcile only that actually observed same-domain route, once,
+            // within the existing two navigation attempts/site deadline.
+            if(error.code==='structural_main_content_invisible'&&attempt===0&&page.url()!==observedNavigationUrl&&sameDomain(new URL(page.url()).hostname,home.hostname)){
+              observedNavigationUrl=page.url();continue;
+            }
+            throw error;
+          }
+          break;
+        }
         const imageState = await waitForPortfolioImages(page, deadline);
         if (!imageState.failed && !imageState.pending) break;
         if (attempt === 1)
           throw captureError("Images de la page non chargées pour la capture.");
       }
+      phase('capture_sanitation');
       const captureDetails = beforeScreenshot
         ? await beforeScreenshot(page, deadline)
         : {};
@@ -716,8 +870,9 @@ async function capturePortfolioSite(
               })),
             )
           : [];
+      phase('capture_observations');
       const captured = capturePage
-        ? await capturePage(page, deadline, captureDetails)
+        ? await capturePage(page, deadline, captureDetails, {onOriginalObservation})
         : {
             buffer: await page.screenshot({
               type: "png",
@@ -726,6 +881,7 @@ async function capturePortfolioSite(
               timeout: remaining(deadline, PAGE_TIMEOUT_MS),
             }),
           };
+      if(captured.captureDiagnostics&&resourceDiagnostics){captured.captureDiagnostics.resources={...resourceDiagnostics.snapshotAll(),recoveries:structuralPolicy.recoveries,frameOwnership:structuralPolicy.frameOwnership};captured.captureDiagnostics.resourceAdmissions=structuralPolicy.admissionTrace();captured.captureDiagnostics.runtime=captureRuntime;}
       const result = {
         ...candidate,
         captureIndex: index,
@@ -808,8 +964,20 @@ async function capturePortfolioSite(
       }
     }
     return { pages: results, discovered: candidates.length + 1, failures };
+  } catch(error) {
+    captureFailure=error;
+    if(capturePage&&!error.captureTiming)error.captureTiming={phase:'capture_browser',
+      elapsedMs:Math.max(0,SITE_TIMEOUT_MS-(deadline-now())),remainingMs:Math.max(0,deadline-now()),budgetMs:SITE_TIMEOUT_MS};
+    if(resourceDiagnostics){error.captureResourceDiagnostics={...resourceDiagnostics.snapshotAll(),frameOwnership:structuralPolicy?.frameOwnership};error.captureRuntime=captureRuntime;}
+    throw error;
   } finally {
-    await browser.close();
+    try {
+      if(capturePageInstance?.structuralConsentBackdrops?.length)
+        await require('./structural-consent-backdrop.service').restoreConsentBackdrops(capturePageInstance);
+    } catch(error) {
+      if(captureFailure)captureFailure.consentBackdropRestoration=error.consentBackdropIntegrity;
+      else throw error;
+    } finally { await browser.close(); }
   }
 }
 

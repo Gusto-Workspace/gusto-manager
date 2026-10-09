@@ -73,6 +73,8 @@ function selectionConfig(overrides = {}) {
       ...overrides.macroCanvas,
     },
   };
+  if (c.algorithmVersion !== undefined && ![1,2].includes(c.algorithmVersion))
+    throw new Error("Unknown structural selection version");
   for (const v of [
     c.threshold,
     ...Object.values(c.weights),
@@ -455,6 +457,7 @@ function structuralObservationDOM({
   });
   let signal = 0,
     measured = 0;
+  const missingCoverageWitnesses=[];
   for (let row = 0; row < 8; row++)
     for (let col = 0; col < 8; col++) {
       const x = ((col + 0.5) * width) / 8,
@@ -495,6 +498,12 @@ function structuralObservationDOM({
         )
       )
         measured++;
+      else if(missingCoverageWitnesses.length<16){
+        missingCoverageWitnesses.push({x,y,tag:hit.localName,mediaSignal,textSignal,
+          source:hit.currentSrc||hit.getAttribute('src')||null,
+          complete:hit.complete??null,naturalWidth:hit.naturalWidth??null,naturalHeight:hit.naturalHeight??null,
+          geometry:{x:hitRect.x,y:hitRect.y,width:hitRect.width,height:hitRect.height}});
+      }
     }
   const groupKeys = new Set();
   const dedupedGroups = groups.slice(0, config.maxGroups).filter((g) => {
@@ -512,6 +521,7 @@ function structuralObservationDOM({
     unknown: unknown.slice(0, config.maxMasses),
     truncated,
     measuredCoverage: signal ? measured / signal : 1,
+    coverageWitnesses:{signal,measured,missing:missingCoverageWitnesses},
     relationsKnown: !truncated,
     position,
     positioned,
@@ -559,7 +569,7 @@ function withoutPersistentMeasures(measures, ids) {
     groups:(measures.groups || []).filter(keep)};
 }
 
-function descriptor(measures) {
+function descriptor(measures, algorithmVersion = 1) {
   const { width, height } = measures.viewport;
   const maps = { text: [], image: [], empty: [] };
   const rects = measures.masses;
@@ -672,21 +682,29 @@ function descriptor(measures) {
       )
         overlap += area(intersection(rects[i], rects[j]));
   features.push(clamp(overlap / (width * height)));
-  return {
+  const result = {
     occupation: [...maps.text, ...maps.image, ...maps.empty],
     geometry,
     empty,
     features,
   };
+  if (algorithmVersion === 2) {
+    result.version=2;
+    result.composition=require('./structural-composition-descriptor').compositionFeatures(measures,result,unionArea);
+  }
+  return result;
 }
 const difference = (a, b) => mean(a.map((v, i) => Math.abs(v - b[i])));
 function distance(a, b) {
-  return clamp(
+  const legacy=clamp(
     0.4 * difference(a.occupation, b.occupation) +
       0.25 * difference(a.geometry, b.geometry) +
       0.2 * difference(a.empty, b.empty) +
       0.15 * difference(a.features, b.features),
   );
+  if(a.version!==2||b.version!==2)return legacy;
+  const {compositionDistance,presentGeometryDistance}=require('./structural-composition-descriptor');
+  return Math.max(legacy,compositionDistance(a.composition,b.composition),presentGeometryDistance(a.geometry,b.geometry));
 }
 function compositionRelations(measures, config) {
   const main = measures.masses
@@ -873,7 +891,7 @@ function prepareCandidate(candidate, storyboard, config) {
   return {
     ...candidate,
     projection,
-    descriptor: descriptor(m),
+    descriptor: descriptor(m, config.algorithmVersion || 1),
     L,
     D,
     relations,
@@ -945,12 +963,14 @@ function selectStructuralObservations(input, overrides = {}) {
   if (!prepared.length) fallbackReasons.push("no_measurable_candidates");
   if (!input.reachedEnd || !storyboard.complete)
     fallbackReasons.push("incomplete_storyboard_coverage");
+  if (input.adaptiveBudgetExhausted === true)
+    fallbackReasons.push("adaptive_budget_exhausted");
   const reliableFixed = prepared.filter(
     (c) => c.reliability.reliable && input.fixedIds.includes(c.id),
   );
   if (fallbackReasons.length)
     return {
-      version: 1,
+      version: config.algorithmVersion || 1,
       mode: "fixed_fallback",
       config,
       persistentElements: persistent,
@@ -972,6 +992,7 @@ function selectStructuralObservations(input, overrides = {}) {
           ? "fixed_fallback"
           : c.reliability.reasons.join(","),
         reliability: c.reliability,
+        descriptor:c.descriptor || null,
         projection: c.projection,
         projectedDimensions: c.projectedDimensions,
       })),
@@ -1120,10 +1141,11 @@ function selectStructuralObservations(input, overrides = {}) {
       representativity: c.representativity,
       framing: c.framing,
       reliability: c.reliability,
+      descriptor:c.descriptor || null,
     };
   });
   return {
-    version: 1,
+    version: config.algorithmVersion || 1,
     mode: "adaptive",
     config,
     persistentElements: persistent,

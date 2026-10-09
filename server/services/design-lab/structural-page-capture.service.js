@@ -2,6 +2,7 @@
 const { randomUUID, createHash } = require("crypto");
 const sharp = require("sharp");
 const { sanitizeStructuralCapture } = require("./capture-sanitization.service");
+const {verifyConsentBackdrops,restoreConsentBackdrops}=require('./structural-consent-backdrop.service');
 const {
   waitForPortfolioImages,
   synchronizeUnavailableExternalEmbeds,
@@ -12,10 +13,28 @@ const MAX_STEPS = 120;
 const CAPTURE_BUDGET_MS = 120000;
 const SAMPLE_ROLES = ["top", "upper", "middle", "lower", "bottom"];
 const {
-  selectionConfig, structuralObservationDOM, selectStructuralObservations,
+  selectionConfig, selectStructuralObservations, structuralObservationDOM,
 } = require("./structural-observation-selection");
-const { persistentVisibilityDOM } = require("./structural-persistent-elements");
+const {createVisionCleanupController}=require("./structural-vision-cleanup.service");
 const { createAnimatedCaptureController } = require("./structural-animated-components");
+const { createCaptureProfile } = require("./structural-capture-profile");
+const { collectReliabilityMeasurement, buildReliabilityRegistry, applyReliabilityRegistry } = require("./structural-reliability.service");
+const OBSERVATION_SEQUENCING = "phase_a_fixed_pool_v1";
+const {waitForMainPaint,mainPaintDOM,bufferPaintProof,assertPaintedBatch}=require('./structural-paint.service');
+const {inspectVisibleVideoDOM,restoreVideoDOM,verifyVideoDOM}=require('./structural-video.service');
+const {inspectCaptureImagesDOM}=require('./capture-image-visibility');
+const {inspectMediaEvidence,summarizeMediaEvidence}=require('./structural-media-evidence');
+const {buildObservationTrace}=require('./structural-observation-trace');
+
+function optionalObservationBudget(remainingMs, measuredCosts, possibleRecaptures = 0) {
+  // Keep the existing minimum, but learn the cost of a complete operation from
+  // this page. Reserve an equivalent operation for finalization and each
+  // possible persistent-layer recapture. This never extends the deadline.
+  const estimatedCaptureMs = Math.max(1500, ...measuredCosts);
+  const reserveMs = estimatedCaptureMs * (1 + possibleRecaptures);
+  const requiredMs = estimatedCaptureMs + reserveMs;
+  return { admitted: remainingMs > requiredMs, remainingMs, estimatedCaptureMs, reserveMs, requiredMs };
+}
 
 async function structuralStoryboard(views, viewport) {
   const bandHeight = 68;
@@ -230,8 +249,9 @@ function scrollDOM({ mode, token, key, target = 0 }) {
     : doc;
   if (!root) return null;
   if (mode === "move") {
-    if (key) root.scrollTo({ top: target, behavior: "instant" });
-    else window.scrollTo({ top: target, behavior: "instant" });
+    const native=window[Symbol.for('gusto.structural.capture.native-scroll')];
+    if (key) (native?.elementScrollTo||root.scrollTo).call(root,{ top: target, behavior: "instant" });
+    else (native?.windowScrollTo||window.scrollTo).call(window,{ top: target, behavior: "instant" });
   }
   const box = key
     ? geometry(root)
@@ -319,8 +339,10 @@ function coverageIsComplete(reference) {
 }
 
 async function captureStructuralPage(page, deadline, initial = {}, options = {}) {
+  let captureDiagnostics,adaptiveConfig,visionCleanup,sanitation;
   const end = Math.min(deadline, Date.now() + CAPTURE_BUDGET_MS),
     token = randomUUID();
+  page.structuralCaptureDeadline=end;
   const coverage = {
     version: COVERAGE_VERSION,
     complete: false,
@@ -334,13 +356,100 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
   };
   const animated = createAnimatedCaptureController(page,end);
   const animationDiagnostics = [];
+  const measuredCaptureCosts = [];
+  const startedAt = Date.now();
+  let capturePhase = "identify_scroller", lastCapturePosition = null, currentCaptureState, pendingCaptureRecord;
+  const profile = createCaptureProfile();
+  const paintDiagnostics={readiness:[],buffers:[]};
+  const videoDiagnostics={visits:[],restoration:null};
+  const imageGateDiagnostics=[];
+  const mediaViews=[];
+  // Preserve every captured state, including repeated visits at the same y.
+  // Candidate pooling may replace a position; it must not erase original evidence.
+  const originalViews=[];
+  let captureFailure;
+  const time = (operation, work, details) => profile.time(operation, work, { position: lastCapturePosition, ...details });
+  const phase = (name) => { capturePhase = name; profile.phase(name); };
+  const screenshot = async (settings, purpose = "viewport") => {
+    let videoProofs=[];
+    const work=async()=>{
+      await verifyConsentBackdrops(page);
+      if(purpose==='viewport') {
+        // Inspect the actual cleaned state about to be captured, never infer
+        // obligations from an unmeasurable geometric descriptor or iframe.
+        const rows=await page.evaluate(inspectCaptureImagesDOM,{visibleOnly:true,diagnostics:true});
+        mediaViews.push(inspectMediaEvidence(rows,{position:lastCapturePosition,origin:capturePhase,videoFrames:videoProofs.length}));
+        coverage.mediaEvidence=summarizeMediaEvidence(mediaViews);
+      }
+      const buffer=await time("screenshot",()=>page.screenshot(settings),{purpose});
+      await verifyConsentBackdrops(page);
+      if(videoProofs.length){const integrity=await page.evaluate(verifyVideoDOM,videoProofs);
+        if(!integrity.valid)throw Object.assign(new Error('Frame vidéo modifiée pendant la capture.'),{status:422,code:'structural_video_freeze_invalid',videoIntegrity:integrity});}
+      if(purpose==='viewport') {
+        const proof=await time('paint_buffer_gate',()=>bufferPaintProof(buffer));
+        paintDiagnostics.buffers.push({position:lastCapturePosition,...proof});
+        if(!proof.nonUniform&&(await page.evaluate(mainPaintDOM)).paintedText>0)
+          throw Object.assign(new Error('Contenu déclaré peint mais buffer invisible : capture refusée.'),{status:422,code:'structural_empty_visual_capture',paintProofs:[proof]});
+      }
+      return buffer;
+    };
+    if(purpose!=="viewport")return work(); // discarded transition-completion witness
+    const state=currentCaptureState;
+    const origin=capturePhase==="mandatory_traversal"?"traversal":capturePhase==="fixed_samples"?"fixed":"final";
+    const args={position:state.position,regionTop:state.regionTop,regionBottom:state.regionBottom,config:adaptiveConfig};
+    await verifyAnimation();
+    const videoInspection=await time('video_frame_gate',()=>page.evaluate(inspectVisibleVideoDOM));
+    if(!videoInspection.valid)throw Object.assign(new Error(videoInspection.reason),{videoGateFailure:videoInspection});
+    videoProofs=videoInspection.views;
+    videoDiagnostics.visits.push({position:lastCapturePosition,views:videoProofs});
+    let measures;
+    if(origin!=="final"){
+      pendingCaptureRecord=await time("spatial_collection",()=>collectReliabilityMeasurement(page,args,{state,origin}));
+      measures=pendingCaptureRecord.measures;
+    }else measures=await time("spatial_collection",()=>page.evaluate(structuralObservationDOM,args));
+    const buffer=await visionCleanup.capture(measures.positioned,state,origin,work);
+    const original={id:`state${String(originalViews.length+1).padStart(4,'0')}`,buffer,measures,
+      origin,capturedAt:new Date().toISOString(),position:state.position,
+      visibleRangePx:[state.position,Math.min(state.totalHeight,state.position+state.visibleHeight)],
+      viewport:state.viewport,sourceCrop:{left:0,top:state.regionTop,width:state.viewport.width,height:state.visibleHeight},
+      stabilized:true,sampledState:true,sectionIdentity:'unknown',
+      mediaEvidence:mediaViews.at(-1),suppressedLayers:visionCleanup.visits.at(-1)?.suppressed||[],
+      externalEmbeds:[...(page.structuralExternalEmbeds?.values()||[])]};
+    originalViews.push(original);
+    await options.onOriginalObservation?.(original);
+    return buffer;
+  };
+  const waitImages = () => time("image_gate", async () => {
+    let result=await waitForPortfolioImages(page,end,{visibleOnly:true});
+    const pending=page.structuralResourcePolicy?.pendingFor(
+      result.pendingUrls||[],result.awaitsDocumentLoad,result.awaitsActiveImageSource)||[];
+    if(result.pending&&pending.length&&Date.now()<end){
+      const previous=result.diagnostics,settledAt=Date.now();let timer;
+      // Let already queued/transferring visible media settle once. This is not
+      // a longer local image gate or a second download. Always re-run the same
+      // decode gate afterwards, within the original capture deadline.
+      try {await time('visible_transport_settlement',()=>Promise.race([
+        Promise.allSettled(pending.map(p=>p.promise)),
+        new Promise(resolve=>{timer=setTimeout(resolve,Math.max(1,end-Date.now()));}),
+      ]));}finally{clearTimeout(timer);}
+      result=await waitForPortfolioImages(page,end,{visibleOnly:true});
+      if(result.diagnostics)result.diagnostics.transportSettlement={waitedMs:Date.now()-settledAt,
+        urls:[...new Set(pending.map(p=>p.url))],awaitsDocumentLoad:previous?.resources.some(r=>r.awaitsDocumentLoad),previousGate:previous};
+    }
+    if(result.diagnostics)imageGateDiagnostics.push({phase:capturePhase,position:lastCapturePosition,
+      ...result.diagnostics,captureRemainingMs:Math.max(0,end-Date.now()),captureBudgetMs:CAPTURE_BUDGET_MS});
+    return result;
+  });
+  const syncEmbeds = () => time("embed_synchronization", () => synchronizeUnavailableExternalEmbeds(page));
+  const restoreAnimation = () => time("animation_restore", () => animated.restore());
   const verifyAnimation = async () => {
-    const integrity=await animated.verify();
-    if(!integrity.valid) throw incomplete(`gel animé non conforme : ${integrity.failures.join(', ')}`,coverage);
+    const integrity=await time("animation_integrity", () => animated.verify());
+    if(!integrity.valid) throw Object.assign(incomplete(`gel animé non conforme : ${integrity.failures.join(', ')}`,coverage),
+      { animationIntegrity: integrity });
   };
   try {
-  let sanitation = initial.captureSanitization;
-  const adaptiveConfig = selectionConfig({
+  sanitation = initial.captureSanitization;
+  adaptiveConfig = selectionConfig({
     ...(process.env.GUSTO_STRUCTURAL_SELECTION_THRESHOLD !== undefined
       ? { threshold: Number(process.env.GUSTO_STRUCTURAL_SELECTION_THRESHOLD) } : {}),
     ...(process.env.GUSTO_STRUCTURAL_MACRO_CANVAS_WIDTH || process.env.GUSTO_STRUCTURAL_MACRO_CANVAS_HEIGHT
@@ -348,30 +457,48 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
         height: Number(process.env.GUSTO_STRUCTURAL_MACRO_CANVAS_HEIGHT || 512) } } : {}),
     ...options.selectionConfig,
   });
+  visionCleanup=createVisionCleanupController(page,{token,config:adaptiveConfig,time});
   const observations = [];
+  // All actual visits retain reliability evidence, independent of deduplication
+  // of the artistic pool. An optional recorder exposes the same evidence locally.
+  const observationTrace = options.observationTrace || {};
+  observationTrace.reliabilityRecords = [];
+  if (observationTrace) {
+    observationTrace.config = adaptiveConfig;
+    observationTrace.phaseA = [];
+    observationTrace.fixedViews = [];
+  }
   const remember = async (buffer, state, origin) => {
     try {
     await verifyAnimation();
-    const measures = await page.evaluate(structuralObservationDOM, {
-      position: state.position, regionTop: state.regionTop, regionBottom: state.regionBottom, config: adaptiveConfig,
-    });
+    // The same raw descriptor/registry inspection is taken immediately before
+    // temporary masking. Scores and reliability never use the hidden DOM.
+    const record=pendingCaptureRecord;
+    pendingCaptureRecord=null;
+    if(!record||record.origin!==origin||record.position!==state.position)throw incomplete("preuve DOM de capture manquante",coverage);
+    observationTrace.reliabilityRecords.push(record);
+    const measures = record.measures;
     const animatedComponents=animated.components();
     const entry = { buffer, measures, animatedComponents, position: state.position, visibleHeight: state.visibleHeight, stabilized: true, origin };
     await verifyAnimation();
+    if (observationTrace && origin === "traversal") observationTrace.phaseA.push({
+      ...entry, observedTotalHeight: state.totalHeight,
+      capturedElapsedMs: Date.now() - startedAt, afterCompleteTraversal: false,
+    });
     if(animatedComponents.length) animationDiagnostics.push({position:state.position,origin,...animated.diagnostic()});
     const existing = observations.findIndex((v) => Math.abs(v.position - state.position) < 2);
     if (existing >= 0) observations[existing] = entry;
     else observations.push(entry);
     return entry;
-    } finally { await animated.restore(); }
+    } finally { await restoreAnimation(); }
   };
   const check = async () => {
     try {
       // A late widget must be cleared at this scroll position, without a new
       // full-page warm-up that would move the native scroller under the stitch.
-      const result = await sanitizeStructuralCapture(page, deadline, {
+      const result = await time("sanitization", () => sanitizeStructuralCapture(page, deadline, {
         rewarm: false,
-      });
+      }));
       const latest = result.captureSanitization;
       sanitation = {
         ...latest,
@@ -408,6 +535,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       throw error;
     }
   };
+  paintDiagnostics.readiness.push(await time('main_paint_readiness',()=>waitForMainPaint(page,end,{requireContent:true})));
   const identified = await page.evaluate(scrollDOM, {
     mode: "identify",
     token,
@@ -422,7 +550,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
   let key = container?.key,
     strategy = container ? "scroll_container" : "document",
     baseTop = 0;
-  const raw = () => page.evaluate(scrollDOM, { mode: "measure", key });
+  const raw = () => time("scroller_measure", () => page.evaluate(scrollDOM, { mode: "measure", key }));
   const wheel = async (delta) => {
     await page.mouse.move(
       identified.viewport.width / 2,
@@ -458,7 +586,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       } else throw incomplete("scroller sans déplacement observable", coverage);
     }
   }
-  const settle = async () => {
+  const settle = () => time("scroll_stability", async () => {
     let state = await raw(),
       quiet = 0;
     for (let i = 0; i < 14 && quiet < 3; i++) {
@@ -474,14 +602,15 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     }
     if (quiet < 3) throw incomplete("scroll non stabilisé", coverage);
     return state;
-  };
+  });
   const visualHistory = new Map();
   let scrollMotionDetected = false;
-  const stabilizeVisuals = async () => {
+  const stabilizeVisuals = () => time("visual_stability", async () => {
+    paintDiagnostics.readiness.push({position:lastCapturePosition,...await time('main_paint_readiness',()=>waitForMainPaint(page,end))});
     // Normal warm-up precedes this point. Pin only measured stable-envelope
     // galleries, then apply the existing visual gate to their actual DOM state.
-    if((await animated.freeze()).length) scrollMotionDetected=true;
-    const observations = () => page.evaluate(visualMotionDOM);
+    if((await time("animation_detection_and_freeze", () => animated.freeze())).length) scrollMotionDetected=true;
+    const observations = () => time("visual_measure", () => page.evaluate(visualMotionDOM));
     const prominent = (items) => items.filter((item) => item.prominence);
     let allPrevious = await observations();
     let previous = prominent(allPrevious);
@@ -530,12 +659,12 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     if (quiet < 3) {
       // The warm-up has already completed. Let Chromium finish CSS transitions
       // for this diagnostic frame, then require three stable DOM observations.
-      await page.screenshot({
+      await screenshot({
         type: "png",
         fullPage: false,
         animations: "disabled",
         timeout: Math.min(10000, Math.max(1, end - Date.now())),
-      });
+      }, "css_transition_completion");
       allPrevious = await observations();
       previous = prominent(allPrevious);
       quiet = 0;
@@ -570,7 +699,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
         scrollMotionDetected = true;
       visualHistory.set(item.key, item);
     }
-  };
+  });
   if (strategy === "smooth_scroll") {
     await wheel(-MAX_PAGE_HEIGHT * 2);
     await settle();
@@ -601,7 +730,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       strategy === "document" || strategy === "smooth_scroll"
         ? data.viewport.height
         : Math.min(data.viewport.height, data.top + data.clientHeight);
-    return {
+    const measured = {
       ...data,
       position,
       totalHeight,
@@ -609,14 +738,16 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       regionTop: Math.round(regionTop),
       regionBottom: Math.round(regionBottom),
     };
+    currentCaptureState=measured;
+    return measured;
   };
-  const move = async (target) => {
+  const move = (target) => time("scroll_and_settle", async () => {
     const state = await measure();
     if (strategy === "smooth_scroll") await wheel(target - state.position);
     else await direct(target);
     await settle();
     return measure();
-  };
+  }, { target });
   let state = await measure();
   coverage.strategy = strategy;
   coverage.viewportHeight = state.visibleHeight;
@@ -628,21 +759,22 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     firstViewport,
     lastViewport;
   for (let step = 0; step < MAX_STEPS && Date.now() < end; step++) {
+    const stepStartedAt = Date.now();
+    phase("mandatory_traversal");
     await check(); // popups can appear after scroll; no contaminated tile is admitted.
     state = await measure();
+    lastCapturePosition = state.position;
     coverage.totalHeight = state.totalHeight;
     if (state.totalHeight > MAX_PAGE_HEIGHT)
       throw incomplete("limite de hauteur atteinte", coverage);
-    const images = await waitForPortfolioImages(page, deadline, {
-      visibleOnly: true,
-    });
+    const images = await waitImages();
     if (images.failed || images.pending)
       throw incomplete("images non chargées", coverage);
     await stabilizeVisuals();
     await check();
-    await synchronizeUnavailableExternalEmbeds(page);
+    await syncEmbeds();
     // Capture actual viewports, never rely on fullPage for an internal/JS scroller.
-    const image = await page.screenshot({
+    const image = await screenshot({
       type: "png",
       fullPage: false,
       animations: "disabled",
@@ -681,6 +813,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       bottomStable = next.totalHeight <= oldHeight + 4 ? bottomStable + 1 : 0;
       if (bottomStable >= 3) {
         coverage.reachedEnd = true;
+        measuredCaptureCosts.push(Date.now() - stepStartedAt);
         break;
       }
     } else bottomStable = 0;
@@ -691,33 +824,41 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     const next = await move(nextTarget);
     if (next.position <= state.position + 2 && state.position < bottom - 5)
       throw incomplete("scroll bloqué avant la fin", coverage);
+    measuredCaptureCosts.push(Date.now() - stepStartedAt);
   }
   if (!coverage.reachedEnd)
     throw incomplete("fin non atteinte dans le budget de capture", coverage);
+  if (observationTrace) observationTrace.phaseAContext = {
+    totalHeight: coverage.totalHeight, viewportHeight: coverage.viewportHeight,
+    viewport: state.viewport, strategy, reachedEnd: coverage.reachedEnd,
+    coveredPx: covered, bottomConfirmations: bottomStable,
+    scrollMotionDetected, endedElapsedMs: Date.now() - startedAt,
+  };
   // Revisit five distributed positions after lazy content has stabilized.
   const views = [];
   for (const [index, fraction] of [0, 0.2, 0.5, 0.8, 1].entries()) {
+    const sampleStartedAt = Date.now();
+    phase("fixed_samples");
     if (Date.now() >= end)
       throw incomplete("budget de capture dépassé", coverage);
     const target = Math.round(
       Math.max(0, coverage.totalHeight - state.visibleHeight) * fraction,
     );
     state = await move(target);
+    lastCapturePosition = state.position;
     await check();
     state = await measure();
     if (Math.abs(state.position - target) > state.visibleHeight * 0.2)
       throw incomplete("position de lecture non atteinte", coverage);
     if (Math.abs(state.totalHeight - coverage.totalHeight) > 8)
       throw incomplete("longueur encore instable", coverage);
-    const images = await waitForPortfolioImages(page, deadline, {
-      visibleOnly: true,
-    });
+    const images = await waitImages();
     if (images.failed || images.pending)
       throw incomplete("images non chargées", coverage);
     await stabilizeVisuals();
     await check();
-    await synchronizeUnavailableExternalEmbeds(page);
-    const image = await page.screenshot({
+    await syncEmbeds();
+    const image = await screenshot({
       type: "png",
       fullPage: false,
       animations: "disabled",
@@ -730,7 +871,13 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       .digest("hex");
     const observation = await remember(image, state, "fixed");
     views.push({ ...observation, index, signature });
+    if (observationTrace) observationTrace.fixedViews.push({ ...observation, index, signature,
+      observedTotalHeight: state.totalHeight, capturedElapsedMs: Date.now() - startedAt,
+      afterCompleteTraversal: true });
+    measuredCaptureCosts.push(Date.now() - sampleStartedAt);
   }
+  await time('paint_batch_gate',()=>assertPaintedBatch(views.map(v=>v.buffer)));
+  coverage.paintEvidence={version:1,complete:true,verifiedViewports:paintDiagnostics.buffers.length};
   const longPage = coverage.totalHeight > state.visibleHeight * 1.5;
   const selected = [views[0], views[2], views[4]];
   coverage.scrollMotionDetected = scrollMotionDetected;
@@ -757,109 +904,135 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     })
   )
     throw incomplete("échantillons locaux incomplets ou redondants", coverage);
+  const registry = await time("reliability_aggregation", () => buildReliabilityRegistry(
+    observationTrace.reliabilityRecords, adaptiveConfig, [...observationTrace.phaseA, ...observationTrace.fixedViews]));
+  captureDiagnostics = { version: 1, sequencing: OBSERVATION_SEQUENCING, registry,
+    coverageWitnesses:observationTrace.reliabilityRecords.map(r=>({origin:r.origin,position:r.position,...r.measures.coverageWitnesses})),
+    fixedControls: observationTrace.fixedViews.map(({ buffer, measures, animatedComponents, ...v }) => v),
+    deliveries: [], finalRecaptures: 0, freshnessRecaptures: 0,
+    visionCleanup:{visits:visionCleanup.visits},paint:paintDiagnostics,video:videoDiagnostics,imageGates:imageGateDiagnostics };
   if (coverage.captureStrategy === "sampled" || options.diagnostic) {
-    // Boundary candidates supplement the traversal's density/column/image
-    // changes. Equivalent positions and nested landmarks are deduplicated.
+    // Only actually observed Phase A + post-traversal fixed positions enter
+    // the pool. Never visit or extrapolate optional boundary candidates.
     const lastScroll = Math.max(0, coverage.totalHeight - state.visibleHeight);
-    const targets = observations.flatMap((v) => v.measures.anchors)
-      .map((a) => ({ ...a, position: Math.min(lastScroll, Math.round(a.position)) }))
-      .sort((a, b) => a.position - b.position || a.domOrder - b.domOrder)
-      .filter((a, i, all) => !i || a.position - all[i - 1].position >= 32)
-      .filter((a) => !observations.some((v) => Math.abs(v.position - a.position) < 32));
-    // Bound extra work generically over the whole page, not its first sections.
-    const bounded = targets.length <= adaptiveConfig.maxBoundaryViews ? targets :
-      Array.from({ length: adaptiveConfig.maxBoundaryViews }, (_, i) => targets[Math.floor(i * targets.length / adaptiveConfig.maxBoundaryViews)]);
-    for (const target of bounded) {
-      if (Date.now() + 1500 >= end || observations.length >= MAX_STEPS) break;
-      state = await move(target.position);
-      await check();
-      state = await measure();
-      if (Math.abs(state.totalHeight - coverage.totalHeight) > 8 || Math.abs(state.position - target.position) > state.visibleHeight * 0.2)
-        throw incomplete("géométrie du candidat instable", coverage);
-      const images = await waitForPortfolioImages(page, deadline, { visibleOnly: true });
-      if (images.failed || images.pending) throw incomplete("images non chargées", coverage);
-      await stabilizeVisuals();
-      await check();
-      await synchronizeUnavailableExternalEmbeds(page);
-      const buffer = await page.screenshot({ type: "png", fullPage: false, animations: "disabled", timeout: Math.min(25000, Math.max(1, end - Date.now())) });
-      await remember(buffer, state, target.kind);
-    }
+    const optionalBudget = { requested: 0, captured: 0, exhausted: false, skipped: [] };
+    coverage.optionalCandidateBudget = optionalBudget;
+    phase("storyboard_and_selection");
     observations.sort((a, b) => a.position - b.position);
     observations.forEach((v, i) => { v.id = `candidate${i + 1}`; v.domOrder = i;
       v.visibleRangePx = [v.position, Math.min(coverage.totalHeight, v.position + v.visibleHeight)]; });
-    const storyboard = await traversalStoryboard(observations, state.viewport, coverage.totalHeight);
+    const storyboard = await time("storyboard_generation", () => traversalStoryboard(observations, state.viewport, coverage.totalHeight));
     const fixedIds = views.map((v) => observations.find((o) => Math.abs(o.position - v.position) < 2).id);
     const input = { candidates: observations.map(({ buffer, ...v }) => v), fixedIds,
+      adaptiveBudgetExhausted: optionalBudget.exhausted,
       storyboard: { ...storyboard, buffer: undefined }, totalHeight: coverage.totalHeight, reachedEnd: coverage.reachedEnd };
-    const selection = selectStructuralObservations(input, adaptiveConfig);
-    const locals = selection.selectedIds.map((id) => ({ ...observations.find((v) => v.id === id) }));
-    const persistentPresentation = (selection.persistentElements || []).map((p) => ({
-      ...p, representativeObservationId: p.deduplicationEligible
-        ? locals.find((v) => p.stableObservationIds.includes(v.id))?.id || null : null,
-      suppressedObservationIds: [], skipped: [],
+    let selection = await time("observation_selection", () => selectStructuralObservations(input, adaptiveConfig));
+    captureDiagnostics.scoringSelection = selection;
+    captureDiagnostics.pool = observations.map(({ buffer, measures, animatedComponents, ...v }) => v);
+    selection = applyReliabilityRegistry(selection, fixedIds, registry);
+    if (observationTrace) {
+      observationTrace.currentSelection = selection;
+      observationTrace.currentStoryboard = storyboard;
+      observationTrace.currentObservations = observations;
+    }
+    let locals = selection.selectedIds.map((id) => ({ ...observations.find((v) => v.id === id) }));
+    const presentation = () => (selection.persistentElements || []).map((p) => ({
+      ...p, representativeObservationId:null,
+      visionExcluded:visionCleanup.visits.some(v=>v.suppressed.some(s=>s.id===p.id)),
+      suppressedObservationIds:observations.filter(o=>visionCleanup.visits.some(v=>v.position===o.position&&v.suppressed.some(s=>s.id===p.id))).map(o=>o.id),skipped:[],
     }));
+    let persistentPresentation = presentation();
+    if (selection.mode === "adaptive") {
+      const required = locals.filter((v) => v.origin !== "fixed").length;
+      const admission = optionalObservationBudget(end - Date.now(), measuredCaptureCosts, Math.max(0, required - 1));
+      if (required && !admission.admitted) {
+        optionalBudget.exhausted = true;
+        optionalBudget.lastAdmission = admission;
+        selection = applyReliabilityRegistry(selectStructuralObservations({ ...input, adaptiveBudgetExhausted: true }, adaptiveConfig), fixedIds, captureDiagnostics.registry);
+        locals = selection.selectedIds.map((id) => ({ ...observations.find((v) => v.id === id) }));
+        persistentPresentation = presentation();
+      }
+    }
     for (const view of locals) {
-      const layers = persistentPresentation.filter((p) => p.deduplicationEligible &&
-        p.representativeObservationId !== view.id && p.stableObservationIds.includes(view.id));
-      if (!layers.length) continue;
+      const needsFreshCapture = view.origin !== "fixed";
+      if (!needsFreshCapture) {
+        captureDiagnostics.deliveries.push({ id: view.id, position: view.position, source: "validated_post_traversal_fixed", recaptured: false,
+          visionClean:true,suppressedLayers:visionCleanup.visits.find(v=>v.origin==='fixed'&&v.position===view.position)?.suppressed.map(v=>v.id)||[] });
+        continue;
+      }
+      phase("final_observation_recapture");
       if (Date.now() + 1500 >= end) throw incomplete("budget de déduplication des couches persistantes dépassé", coverage);
       state = await move(view.position);
+      lastCapturePosition = state.position;
       await check();
       state = await measure();
       if (Math.abs(state.position - view.position) > 2 || Math.abs(state.totalHeight - coverage.totalHeight) > 8)
         throw incomplete("géométrie de recapture locale modifiée", coverage);
-      const images = await waitForPortfolioImages(page, deadline, { visibleOnly: true });
+      const images = await waitImages();
       if (images.failed || images.pending) throw incomplete("images non chargées", coverage);
       await stabilizeVisuals();
       await check();
-      await synchronizeUnavailableExternalEmbeds(page);
-      let hidden;
+      await syncEmbeds();
       try {
         await verifyAnimation();
         view.animatedComponents=animated.components();
-        hidden = await page.evaluate(persistentVisibilityDOM, { mode:"hide", token,
-          tolerance:adaptiveConfig.persistentTolerance,
-          elements:layers.map((p)=>({id:p.id,rect:p.occurrences.find((o)=>o.observationId===view.id).rect})) });
-        if (hidden.ids.length) view.buffer = await page.screenshot({ type:"png", fullPage:false,
+        view.buffer = await screenshot({ type:"png", fullPage:false,
           animations:"disabled", timeout:Math.min(25000,Math.max(1,end-Date.now())) });
       } finally {
-        await page.evaluate(persistentVisibilityDOM, { mode:"restore", token });
-        try { await verifyAnimation(); } finally { await animated.restore(); }
-      }
-      for (const p of layers) {
-        if (hidden.ids.includes(p.id)) p.suppressedObservationIds.push(view.id);
-        else p.skipped.push({observationId:view.id,reason:hidden.skipped.find((s)=>s.id===p.id)?.reason || "not_hidden"});
+        try { await verifyAnimation(); } finally { await restoreAnimation(); }
       }
       const restored = await measure();
       if (Math.abs(restored.position-view.position)>2 || Math.abs(restored.totalHeight-coverage.totalHeight)>8)
         throw incomplete("géométrie après restauration modifiée",coverage);
       await check();
+      {
+        view.position = state.position;
+        view.visibleRangePx = [view.position, Math.min(coverage.totalHeight, view.position + state.visibleHeight)];
+        captureDiagnostics.deliveries.push({ id: view.id, position: view.position, source: "validated_final_recapture",
+          recaptured:true,freshnessRequired:true,visionClean:true,
+          suppressedLayers:visionCleanup.visits.at(-1).suppressed.map(v=>v.id),geometryRestored:true });
+      }
     }
-    // Full descriptors and rejected candidates stay in the local benchmark.
-    // Mongo retains only selected summaries and the storyboard's geometry.
+    {
+      captureDiagnostics.selection = selection;
+      observationTrace.currentSelection = selection;
+      captureDiagnostics.finalRecaptures = captureDiagnostics.deliveries.filter((v) => v.recaptured).length;
+      captureDiagnostics.freshnessRecaptures = captureDiagnostics.deliveries.filter((v) => v.freshnessRequired).length;
+    }
+    captureDiagnostics.observationTrace=buildObservationTrace({observations,
+      scoring:captureDiagnostics.scoringSelection,delivery:selection,deliveredIds:locals.map(v=>v.id),
+      strategy:coverage.captureStrategy,config:adaptiveConfig,registry,totalHeight:coverage.totalHeight});
     if (options.onDiagnostic) await options.onDiagnostic({ input, selection, observations, localViews:locals,
       persistentPresentation, animationDiagnostics, fixedViews: views,
       oldStoryboard: await structuralStoryboard(views, state.viewport), storyboard: storyboard.buffer, captureStrategy: coverage.captureStrategy });
     if (coverage.captureStrategy === "sampled") {
     coverage.version = 3;
     coverage.storyboard = { ...storyboard, buffer: undefined };
-    coverage.observationSelection = { version: 1, mode: selection.mode, fallbackReasons: selection.fallbackReasons,
+    coverage.observationSelection = { version: 1, sequencing: OBSERVATION_SEQUENCING, mode: selection.mode, fallbackReasons: selection.fallbackReasons,
       threshold: adaptiveConfig.threshold, config: adaptiveConfig, candidateCount: observations.length,
-      persistentElements:persistentPresentation,
+      // Nonstructural layer geometry stays in internal diagnostics only.
+      persistentElements:persistentPresentation.filter(p=>!p.visionExcluded),
       animatedComponents:animationDiagnostics,
       selected: locals.map((v, i) => ({ role: `observation${i + 1}`, position: v.position,
-        ...selection.decisions.find((d) => d.id === v.id), projectedDimensions: undefined, relations: undefined })) };
+        ...selection.decisions.find((d) => d.id === v.id), position: v.position,
+        projectedDimensions: undefined, relations: undefined,descriptor:undefined })) };
     coverage.positions = locals.map((v, i) => ({ role: `observation${i + 1}`, position: v.position, visibleRangePx: v.visibleRangePx,
       progressPercent: Math.round(v.position / Math.max(1, lastScroll) * 100), stabilized: true,
       signature: createHash("sha256").update(v.buffer).digest("hex") }));
     coverage.overviewKind = "structural_storyboard";
+    coverage.visionCleanliness=visionCleanup.summary();
+    coverage.mediaEvidence=summarizeMediaEvidence(mediaViews);
     coverage.complete = true;
     coverage.capturedAt = new Date();
     if (!coverageIsComplete({ captureCoverage: coverage })) throw incomplete("storyboard adaptatif incomplet", coverage);
+    phase("finalization");
     await move(0);
     await check();
+    coverage.captureTiming = { elapsedMs: Date.now() - startedAt, remainingMs: end - Date.now(),
+      budgetMs: end - startedAt, maximumMeasuredCaptureMs: Math.max(...measuredCaptureCosts) };
     return {
       buffer: storyboard.buffer,
+      originalViews,
       viewBuffers: {
         overview: storyboard.buffer,
         ...Object.fromEntries(
@@ -867,6 +1040,8 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
         ),
       },
       captureCoverage: coverage,
+      capturePerformance: profile.snapshot(),
+      captureDiagnostics,
       captureSanitization: sanitation,
       localMetadata: {
         viewport: state.viewport,
@@ -880,6 +1055,7 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     };
     }
   }
+  phase("finalization");
   await move(0);
   await check();
   const prefix = state.regionTop,
@@ -929,10 +1105,16 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
     .png()
     .toBuffer();
   coverage.overviewKind = "optimized_full_page";
+  if(!captureDiagnostics.observationTrace)captureDiagnostics.observationTrace=buildObservationTrace({observations,
+    deliveredIds:selected.map(v=>observations.find(o=>Math.abs(o.position-v.position)<2)?.id || `candidate${observations.findIndex(o=>Math.abs(o.position-v.position)<2)+1}`),
+    strategy:'continuous',config:adaptiveConfig,registry,totalHeight:coverage.totalHeight});
+  coverage.visionCleanliness=visionCleanup.summary();
+  coverage.mediaEvidence=summarizeMediaEvidence(mediaViews);
   coverage.complete = true;
   coverage.capturedAt = new Date();
   return {
     buffer,
+    originalViews,
     viewBuffers: {
       visionOverview: buffer,
       top: selected[0].buffer,
@@ -940,6 +1122,8 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       bottom: selected[2].buffer,
     },
     captureCoverage: coverage,
+    capturePerformance: profile.snapshot(),
+    ...(captureDiagnostics ? { captureDiagnostics } : {}),
     captureSanitization: sanitation,
     localMetadata: {
       viewport: state.viewport,
@@ -953,7 +1137,38 @@ async function captureStructuralPage(page, deadline, initial = {}, options = {})
       bottom: views[4].position,
     },
   };
-  } finally { await animated.restore(); }
+  } catch (error) {
+    captureFailure=error;
+    error.capturePerformance = profile.snapshot();
+    error.captureTiming = { phase: capturePhase, position: lastCapturePosition,
+      elapsedMs: Date.now() - startedAt, remainingMs: end - Date.now(), budgetMs: end - startedAt };
+    error.captureCoverage ||= { ...coverage, complete: false };
+    if(imageGateDiagnostics.length){error.imageGateDiagnostics=imageGateDiagnostics;error.imageGateFailure=imageGateDiagnostics.at(-1);}
+    throw error;
+  } finally {
+    try {
+    await restoreAnimation();
+    try {videoDiagnostics.restoration=await page.evaluate(restoreVideoDOM);}
+    catch(error){
+      videoDiagnostics.restoration={restored:false,error:error.message};
+      if(captureFailure)captureFailure.videoRestoration=videoDiagnostics.restoration;
+      else throw Object.assign(new Error('Restauration vidéo non certifiée.'),{code:'structural_video_restore_failed',status:422});
+    }
+    } finally {
+      if(page.structuralConsentBackdrops?.length) {
+        try {
+          const proof=await time('consent_backdrop_restore',()=>restoreConsentBackdrops(page));
+          if(captureDiagnostics)captureDiagnostics.consentBackdrops=proof;
+          if(coverage.visionCleanliness)coverage.visionCleanliness.consentBackdrops={version:proof.version,
+            complete:proof.complete,restorationVerified:proof.restorationVerified,maskedLayers:proof.entries.length};
+          if(sanitation)sanitation.consentBackdropCleanup=proof;
+        } catch(error) {
+          if(captureFailure)captureFailure.consentBackdropRestoration=error.consentBackdropIntegrity;
+          else throw error;
+        }
+      }
+    }
+  }
 }
 module.exports = {
   captureStructuralPage,
@@ -963,4 +1178,6 @@ module.exports = {
   COVERAGE_VERSION,
   structuralStoryboard,
   traversalStoryboard,
+  optionalObservationBudget,
+  OBSERVATION_SEQUENCING,
 };

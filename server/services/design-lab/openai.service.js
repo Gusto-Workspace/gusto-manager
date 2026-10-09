@@ -519,75 +519,7 @@ const portfolioProfileSchema = object({
   signaturePatterns: strings,
 });
 
-function key() {
-  if (!process.env.OPENAI_API_KEY) {
-    const error = new Error("OPENAI_API_KEY absente sur le serveur.");
-    error.status = 503;
-    throw error;
-  }
-  return process.env.OPENAI_API_KEY;
-}
-
-async function openaiRequest(
-  path,
-  body,
-  {
-    multipart = false,
-    timeout = 90000,
-    onProgress,
-    captureMetadata = false,
-  } = {},
-) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  let requestId = null,
-    httpStatus = null;
-  try {
-    const response = await fetch(`https://api.openai.com/v1/${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key()}`,
-        ...(multipart ? {} : { "Content-Type": "application/json" }),
-      },
-      body: multipart ? body : JSON.stringify(body),
-      signal: controller.signal,
-    });
-    onProgress?.("response_headers", response.status);
-    requestId = response.headers?.get?.("x-request-id") || null;
-    httpStatus = response.status;
-    const data = await response.json().catch((error) => {
-      if (controller.signal.aborted || error.name === "AbortError") throw error;
-      return {};
-    });
-    onProgress?.("response_body");
-    if (!response.ok) {
-      const error = new Error(
-        data?.error?.message || `Erreur OpenAI (${response.status}).`,
-      );
-      error.status = response.status === 429 ? 429 : 502;
-      Object.assign(error, {
-        httpStatus: response.status,
-        openaiErrorType: data?.error?.type || null,
-        openaiErrorCode: data?.error?.code || null,
-        requestId,
-      });
-      throw error;
-    }
-    return captureMetadata
-      ? { body: data, httpStatus: response.status, requestId }
-      : data;
-  } catch (error) {
-    if (controller.signal.aborted || error.name === "AbortError") {
-      const timeoutError = new Error("Délai OpenAI dépassé. Réessayez.");
-      timeoutError.status = 504;
-      Object.assign(timeoutError, { requestId, httpStatus });
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const {openaiRequest,key}=require("./openai-transport");
 
 async function structured(
   instructions,
@@ -600,7 +532,8 @@ async function structured(
   onProgress,
   onResponse,
 ) {
-  const response = await openaiRequest(
+  let response;
+  try { response = await openaiRequest(
     "responses",
     {
       model,
@@ -611,10 +544,17 @@ async function structured(
       text: { format: { type: "json_schema", name, strict: true, schema } },
     },
     { timeout, onProgress },
-  );
+  ); } catch(error) {
+    // A complete late body is valuable even though the deadline remains a failure.
+    if(error.completeRawResponse)await onResponse?.(error.completeRawResponse);
+    throw error;
+  }
   // Persist a paid response before parsing or business validation can reject it.
   await onResponse?.(response);
-  return parseStructuredResponse(response, name, onProgress);
+  await onProgress?.("structured_parsing_started");
+  const result=parseStructuredResponse(response, name);
+  await onProgress?.("structured_parsing_completed");
+  return result;
 }
 
 function parseStructuredResponse(response, name, onProgress) {
@@ -1204,27 +1144,33 @@ async function generateImage(
   };
 }
 
-async function analyzeStructuralReference(captures, localMetadata, { onResponse, visionInput } = {}) {
+async function analyzeStructuralReference(captures, localMetadata, { onResponse, onProgress, visionInput, analysisContract,
+  responseStore, authorization, resumeOnly=false, manualRetrieval=false } = {}) {
   const {
     validateStructuralAnalysis,
     buildStructuralVisionRequest,
   } = require("./structural-reference.contract");
-  const request = buildStructuralVisionRequest(captures, localMetadata, visionInput);
-  const result = await structured(
-    request.instructions,
-    request.content,
-    request.schema,
-    "structural_reference_analysis",
-    MODEL_CONFIG.referenceAnalysisModel,
-    "medium",
-    120000,
-    undefined,
-    onResponse,
-  );
-  return validateStructuralAnalysis(result, localMetadata, captures, request.manifest);
+  const request = buildStructuralVisionRequest(captures, localMetadata, visionInput,{analysisVersion:analysisContract?.version||2});
+  // Credential failures are known pre-dispatch; never consume a creation slot
+  // merely to discover a missing local credential. No SDK or implicit retries.
+  if(!resumeOnly)key();
+  const assembledBody={model:MODEL_CONFIG.referenceAnalysisModel,store:false,service_tier:'default',background:true,
+    reasoning:{effort:'medium'},instructions:request.instructions,input:[{role:'user',content:request.content}],
+    text:{format:{type:'json_schema',name:'structural_reference_analysis',strict:true,schema:request.schema}}};
+  const body=resumeOnly?await responseStore?.readRequest?.():assembledBody;
+  if(!body)throw Object.assign(Error('Requête background originale absente ; aucun dispatch autorisé.'),{code:'OPENAI_BACKGROUND_REQUEST_MISSING',status:409});
+  const response=await require('./structural-vision-background').backgroundResponse(body,{
+    store:responseStore,request:openaiRequest,authorization,resumeOnly,manualRetrieval,onResponse,
+  });
+  if(response.pendingVision)return response;
+  await onProgress?.('structured_parsing_started');
+  const result=parseStructuredResponse(response,'structural_reference_analysis');
+  await onProgress?.('structured_parsing_completed');
+  return validateStructuralAnalysis(result, localMetadata, captures, request.manifest,request.analysisContract.version);
 }
 
 module.exports = {
+  openaiRequest,
   parseStructuredResponse,
   MODEL_CONFIG,
   directionPipelineSchemas: {

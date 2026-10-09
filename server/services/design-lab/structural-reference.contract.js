@@ -164,6 +164,43 @@ const structuralAnalysisSchema = object({
   suitableFor: list(),
   avoidWhen: list(),
 });
+const ARTISTIC_CONTRACT_VERSION=2;
+const qualitative=(choices)=>({type:'string',enum:choices});
+const boundedText={type:'string',minLength:1,maxLength:320};
+const structuredPrinciple=object({mechanism:boundedText,effect:boundedText,conditions:boundedText});
+const principlesV2={type:'array',minItems:1,maxItems:4,items:structuredPrinciple};
+const geometryV2=object({
+  imagePlacement:qualitative(['left','right','center','full','multiple','absent','unknown']),
+  textPlacement:qualitative(['left','right','center','full','multiple','absent','unknown']),
+  dominantMass:qualitative(['image','text','balanced','void','unknown']),
+  massRelationship:boundedText,
+  primaryAxis:qualitative(['left','right','center','multiple','full','unknown']),
+  imageTextRelationship:qualitative(['adjacent','overlapping','peripheral','separate','absent','unknown']),
+  gridRegularity:qualitative(['regular','offset','free','none','unknown']),
+  overlap:qualitative(['present','absent','uncertain']),
+  whitespaceTopology:qualitative(['central','peripheral','interstitial','oneSided','minimal','mixed','unknown']),
+});
+const proofLevel=qualitative(['direct','inferred','unknown']);
+const proofScope=qualitative(['wholeMoment','localFragment','sampledStates']);
+const structuralAnalysisSchemaV2=object({
+  analysisVersion:{type:'integer',minimum:2,maximum:2},
+  ...structuralAnalysisSchema.properties,
+  // Geometry and rhythm replace repeated prose fields, rather than stacking
+  // another long description on each of the twelve legacy moment fields.
+  structuralMoments:{type:'array',minItems:1,maxItems:18,items:object({
+    order:{type:'integer',minimum:1,maximum:18},layoutMode:qualitative(LAYOUT_MODES),role:boundedText,
+    layoutExplanation:text,geometry:geometryV2,transferablePrinciples:principlesV2,
+    evidence:object({...evidenceSchema.properties,scope:proofScope,level:proofLevel}),
+  })},
+  globalRelations:{type:'array',minItems:0,maxItems:8,items:object({
+    moments:{type:'array',minItems:2,maxItems:6,items:{type:'integer',minimum:1,maximum:18}},
+    mechanism:boundedText,effect:boundedText,level:proofLevel,
+    sourceViews:{...evidenceSchema.properties.sourceViews},
+  })},
+  transferablePrinciples:principlesV2,
+});
+const artisticV3=require('./structural-artistic-v3');
+const structuralAnalysisSchemaV3=artisticV3.schemaV3(structuralAnalysisSchemaV2,LAYOUT_MODES);
 function structuralCoverageContext(metadata = {}, captures = []) {
   const positive = (value) =>
     Number.isFinite(value) && value > 0 ? value : null;
@@ -220,7 +257,8 @@ function structuralViewGeometry(view, metadata = {}, captures = []) {
 }
 // This is the identity/geometry of the actual Vision inputs, not a positional
 // interpretation of their names. Persist it before the request and reuse it.
-function buildStructuralVisionRequest(captures, metadata = {}, recordedManifest) {
+function buildStructuralVisionRequest(captures, metadata = {}, recordedManifest, {analysisVersion=1}={}) {
+  if(![1,2,3].includes(analysisVersion))throw Object.assign(new Error('Version artistique inconnue.'),{status:422,code:'structural_contract_version_unknown'});
   const captureStrategy = metadata.captureCoverage?.captureStrategy || "continuous";
   const views = visionViewsForStrategy(captures, captureStrategy, metadata.captureCoverage);
   if (!views.length || views.length > 6 || views.some((view) => !view?.url) ||
@@ -254,11 +292,21 @@ function buildStructuralVisionRequest(captures, metadata = {}, recordedManifest)
   if (recordedManifest && JSON.stringify(manifest) !== JSON.stringify(recordedManifest))
     throw Object.assign(new Error("Le manifeste Vision ne correspond plus aux captures enregistrées."),
       { status: 409, code: "structural_vision_manifest_mismatch" });
-  const schema = structuredClone(structuralAnalysisSchema);
-  schema.properties.structuralMoments.items.properties.evidence.properties.sourceViews.items.enum = manifest.viewOrder;
+  const schema = structuredClone(analysisVersion===3?structuralAnalysisSchemaV3:analysisVersion===2?structuralAnalysisSchemaV2:structuralAnalysisSchema);
+  if(analysisVersion===3)artisticV3.configureV3(schema,captures,metadata,manifest);
+  else schema.properties.structuralMoments.items.properties.evidence.properties.sourceViews.items.enum = manifest.viewOrder;
+  if(analysisVersion>=2)schema.properties.globalRelations.items.properties.sourceViews.items.enum=manifest.viewOrder;
+  // Local archive identity is operational provenance, not visual information.
+  // Never inject machine paths/random archive IDs into historical contracts.
+  const inputMetadata=metadata.captureCoverage?.originalEvidence ? {
+    ...metadata,captureCoverage:Object.fromEntries(Object.entries(metadata.captureCoverage).filter(([key])=>key!=='originalEvidence')),
+  } : metadata;
   const content = [
     { type: "input_text", text: JSON.stringify({
-      captureStrategy, viewOrder: manifest.viewOrder, localMetadata: metadata,
+      captureStrategy, viewOrder: manifest.viewOrder, localMetadata: inputMetadata.captureCoverage?.mediaEvidence ? {
+        ...inputMetadata,captureCoverage:{...inputMetadata.captureCoverage,mediaEvidence:Object.fromEntries(
+          Object.entries(inputMetadata.captureCoverage.mediaEvidence).filter(([key])=>key!=='views'))},
+      } : inputMetadata,
       coverageRequirements: structuralCoverageContext(metadata, captures),
       geometryConvention: "absolute_page_pixels; pagePercent = 100 * absoluteY / totalHeight; scrollProgressPercent is not pagePercent",
       viewGeometry: manifest.views.map((view) => ({ type: view.id, ...view.geometry })),
@@ -280,20 +328,29 @@ function buildStructuralVisionRequest(captures, metadata = {}, recordedManifest)
       ];
     }),
   ];
-  return { manifest, content, schema,
-    instructions: structuralInstructions(captureStrategy, metadata.captureCoverage?.version === 3, manifest.viewOrder) };
+  const instructions=structuralInstructions(captureStrategy, metadata.captureCoverage?.version === 3, manifest.viewOrder,
+    require('./structural-vision-cleanup.service').visionInputsAreClean(metadata.captureCoverage),analysisVersion);
+  return { manifest, content, schema,instructions,analysisContract:{version:analysisVersion,
+    promptHash:require('crypto').createHash('sha256').update(instructions).digest('hex'),
+    schemaHash:require('crypto').createHash('sha256').update(JSON.stringify(schema)).digest('hex')} };
 }
-function validateStructuralAnalysis(value, metadata = {}, captures = [], visionInput) {
+function validateStructuralAnalysis(value, metadata = {}, captures = [], visionInput, expectedVersion, boundRequest) {
   const invalid = (field, details = {}) => {
     throw Object.assign(
       new Error(`Analyse structurelle invalide : ${field}.`),
       { status: 502, code: "invalid_structural_analysis", validation: { fieldPath: field, ...details } },
     );
   };
-  if (visionInput) buildStructuralVisionRequest(captures, metadata, visionInput);
-  const inputViews = visionViewsForStrategy(captures, metadata.captureCoverage?.captureStrategy,
+  const analysisVersion=[2,3].includes(value?.analysisVersion)?value.analysisVersion:1;
+  if(expectedVersion && expectedVersion!==analysisVersion)invalid('analysisVersion',{expectedVersion});
+  if (visionInput && !boundRequest) buildStructuralVisionRequest(captures, metadata, visionInput,{analysisVersion});
+  const inputViews = boundRequest ? captures.filter(v=>visionInput.viewOrder.includes(v.type)) : visionViewsForStrategy(captures, metadata.captureCoverage?.captureStrategy,
     metadata.captureCoverage).filter(Boolean);
   const check = (data, schema, field) => {
+    if(schema.anyOf) {
+      for(const child of schema.anyOf) {try {check(data,child,field);return;}catch(error){if(error.code!=='invalid_structural_analysis')throw error;}}
+      invalid(field,{reason:'no_consistent_schema_branch'});
+    }
     if (schema.type === "object") {
       if (!data || typeof data !== "object" || Array.isArray(data))
         invalid(field);
@@ -326,7 +383,7 @@ function validateStructuralAnalysis(value, metadata = {}, captures = [], visionI
     )
       invalid(field);
   };
-  check(value, structuralAnalysisSchema, "analysis");
+  check(value, boundRequest?.schema || (analysisVersion===3?buildStructuralVisionRequest(captures,metadata,visionInput,{analysisVersion:3}).schema:analysisVersion===2?structuralAnalysisSchemaV2:structuralAnalysisSchema), "analysis");
   if (
     value.structuralMoments.some(
       (moment, index) => moment.order !== index + 1,
@@ -396,6 +453,27 @@ function validateStructuralAnalysis(value, metadata = {}, captures = [], visionI
         });
     }
   });
+  if(analysisVersion>=2) {
+    value.structuralMoments.forEach((m,i)=>{
+      if(['staggeredColumns','offsetGrid'].includes(m.layoutMode)&&m.geometry.gridRegularity==='regular')
+        invalid(`structuralMoments.${i}.geometry.gridRegularity`,{reason:'label_geometry_contradiction'});
+    });
+    value.globalRelations.forEach((r,i)=>{
+      if(new Set(r.moments).size!==r.moments.length||r.moments.some(n=>!value.structuralMoments[n-1]))invalid(`globalRelations.${i}.moments`);
+      if(new Set(r.sourceViews).size!==r.sourceViews.length)invalid(`globalRelations.${i}.sourceViews`);
+      for(const source of r.sourceViews) {
+        if(!inputViews.some(v=>v.type===source)&&captures.length)invalid(`globalRelations.${i}.sourceViews`);
+        // Every source must support at least one linked moment, not simply
+        // appear somewhere in the page. Visual truth still needs human review.
+        if(!r.moments.some(n=>value.structuralMoments[n-1].evidence.sourceViews.includes(source)))
+          invalid(`globalRelations.${i}.sourceViews`,{reason:'unlinked_relation_source'});
+      }
+    });
+  }
+  if(analysisVersion===3) {
+    const manifest=visionInput||buildStructuralVisionRequest(captures,metadata,undefined,{analysisVersion:3}).manifest;
+    artisticV3.validateV3(value,captures,metadata,manifest,invalid);
+  }
   const context = structuralCoverageContext(metadata, captures);
   if (context.longPage) {
     const evidence = value.structuralMoments.flatMap(
@@ -441,7 +519,8 @@ Adapte le nombre de phases à la longueur et aux changements observés. Une page
 Utilise le layoutMode canonique le plus proche, avec layoutExplanation pour les nuances ; other reste possible pour une composition différente. Le vocabulaire n'est pas un template. Cite quelques signatureStructuralMoves réellement observés et une liste courte de principes transposables indépendamment du secteur. Exemple : grand vide entre deux masses denses ; image débordant après une grille structurée ; axe vertical partagé sans layout répété ; rupture d'échelle unique ; alternance panoramique/étroit.
 avoidCopying doit exclure explicitement layout exact, branding, logos, textes, illustrations propriétaires, motifs reconnaissables et toute composition signature trop spécifique pour être reprise littéralement. suitableFor/avoidWhen décrivent des situations de composition et des contraintes de contenu/lecture. Extrais une grammaire réinterprétable, jamais une œuvre à reproduire.
 Si localMetadata.externalEmbeds contient externalEmbedUnavailable=true, le rectangle correspondant est un placeholder neutre ajouté pour remplacer un document d'iframe externe inaccessible. Analyse uniquement son rôle spatial (position, échelle, place dans le flux ou la composition). N'infère ni ne décris l'apparence, le contenu ou le style interne de cet embed ; ne traite pas le gris du placeholder comme un choix visuel du site.`;
-function structuralInstructions(strategy = "continuous", adaptive = false, viewOrder) {
+function structuralInstructions(strategy = "continuous", adaptive = false, viewOrder, visionClean = false, analysisVersion=1) {
+  if(analysisVersion===3)return structuralInstructions(strategy,adaptive,viewOrder,visionClean,2)+artisticV3.instructionsV3;
   const original = legacyStructuralInstructions(strategy)
     .replace("Un sample MIDDLE à 50 % du scroll ne commence donc pas nécessairement à 50 % de la page. Les noms top/upper/middle/lower/bottom identifient les vues, sans imposer de vérité géométrique", "Le pourcentage de scroll ne situe pas directement un moment dans la page. Les identifiants des vues n'imposent aucune vérité géométrique")
     .replace("TOP montre le début réel ; MIDDLE la zone médiane ; BOTTOM la fin réelle.", "Les vues locales sont situées uniquement par leurs rectangles enregistrés, jamais par leur nom.");
@@ -455,10 +534,22 @@ function structuralInstructions(strategy = "continuous", adaptive = false, viewO
   if (viewOrder) instructions = instructions
     .replace(/Chaque moment possède evidence :[^\n]+/, `Chaque moment possède evidence : sourceViews contient uniquement ces identifiants réellement envoyés : ${JSON.stringify(viewOrder)}. Cite chaque observation locale uniquement pour son rectangle enregistré ; son nom ou numéro n'indique aucune région. La vue globale décrit le rythme macro. Ne cite aucune image absente du lot ni aucun crop éloigné du moment.`)
     + `\nIDENTIFIANTS DU LOT : ${JSON.stringify(viewOrder)}. Utilise exactement ces identifiants, sans renommage ou attribution d'une position depuis top/upper/middle/lower/bottom. Les labels et viewGeometry sont la géométrie réelle de chaque image.`;
+  if(visionClean){
+    const persistent="COUCHES PERSISTANTES : les interfaces commerciales et widgets périphériques certifiés non structurels ont été temporairement masqués dans TOUTES les images de ce lot, y compris la vue globale. Ils ne sont pas une composition, une superposition du hero ou un principe transférable. Navigation/header et sticky narratifs structurels sont conservés ; cite uniquement une structure réellement visible. Les metadata ne remplacent jamais la preuve visuelle.";
+    instructions=instructions.includes('COUCHES PERSISTANTES :')?instructions.replace(/COUCHES PERSISTANTES :[^\n]+/,persistent):instructions+'\n'+persistent;
+  }
+  if(analysisVersion===2) {
+    instructions+='\nCONTRAT ARTISTIQUE V2 : analysisVersion=2. Travaille dans cet ordre : masses et axes de toute la page ; frontières des situations spatiales ; comparaison proche et lointaine ; vérification de chaque affirmation ; classification en dernier. Les anciens champs descriptifs du moment sont remplacés par geometry et layoutExplanation ; ne répète pas rhythmSequence.\n'+
+      'geometry décrit placements, masse dominante, relation image/texte, axe, régularité, superposition et topologie du vide. massRelationship précise seulement le rapport distinctif non déjà exprimé par les enums. unknown/uncertain sont valides. Une photo absente des pixels ne peut être inventée. Le fragment vide d’une locale ne décrit pas automatiquement toute une phase : evidence.scope distingue wholeMoment, localFragment et sampledStates ; level distingue direct, inferred et unknown.\n'+
+      'globalRelations relie 2 à 6 orders de moments par un mécanisme spatial précis et son effet sur rythme/axes/densité/respiration, avec les vraies sourceViews et le niveau de preuve. Au plus huit relations, sans remplissage. Cherche les relations éloignées, par exemple image gauche puis droite puis gauche ; n’impose jamais cette alternance. Des états successifs montrant le même ancrage central avec des périphéries différentes ne deviennent pas des grilles fictives. Les différences d’états ne prouvent ni durée ni causalité ni ordre animé.\n'+
+      'Les transferablePrinciples sont des objets mechanism/effect/conditions, au plus quatre, indépendants de l’identité et de la succession exacte source. staggeredColumns exige un décalage des colonnes observable ; offsetGrid exige des offsets ; splitUnequal exige un partage visiblement inégal. Une rangée régulière ne reçoit pas un label de décalage ; other avec une géométrie précise est préférable. Une certification de propreté, peinture ou médias inspectés ne prouve jamais la fidélité intégrale : mediaEvidence indique son périmètre et ses exclusions.';
+  }
   return instructions;
 }
 const STRUCTURAL_INSTRUCTIONS = structuralInstructions("continuous");
 module.exports = {
+  ARTISTIC_CONTRACT_VERSION,structuralAnalysisSchemaV2,structuralAnalysisSchemaV3,geometryV2,
+  ARTISTIC_EXPERIMENT_VERSION:artisticV3.ARTISTIC_EXPERIMENT_VERSION,
   LAYOUT_MODES,
   PROFILE_FIELDS,
   MOMENT_FIELDS,

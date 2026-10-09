@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {phaseLabel,needsVisionConfirmation,responseIsRecoverable,responseCanBeRetrieved} from './structural-operation-display';
 import {
   api,
   button,
@@ -72,16 +73,19 @@ export function CaptureSanitizationStatus({ reference }) {
             {trace.consentLabel ? ` · ${trace.consentLabel}` : ""}
           </p>
         )}
-        <p>✓ Capture propre</p>
+        <p>✓ Couches périphériques nettoyées</p>
         <p>
           {reference.captureCoverage.captureStrategy === "sampled"
-            ? "Capture échantillonnée — animations liées au scroll détectées"
+            ? "Capture échantillonnée — états visuels observés"
             : "Capture continue"}
         </p>
         <p>✓ Cookies et popups nettoyés</p>
         <p>
           ✓ Page complète parcourue · {reference.captureCoverage.totalHeight} px
         </p>
+        <p>{reference.captureCoverage.mediaEvidence?.complete
+          ? 'Médias visibles admissibles inspectés ; hors petits médias, pseudo-éléments et contenu des intégrations tierces.'
+          : 'Complétude des médias non certifiée sur ces captures historiques.'}</p>
         {reference.captureCoverage.observationSelection && (
           <p>
             {reference.captureCoverage.observationSelection.mode === "adaptive"
@@ -138,7 +142,7 @@ function Principles({ title, items }) {
       {items?.length ? (
         <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed">
           {items.map((item, i) => (
-            <li key={i}>{item}</li>
+            <li key={i}><Principle value={item} /></li>
           ))}
         </ul>
       ) : (
@@ -146,6 +150,10 @@ function Principles({ title, items }) {
       )}
     </section>
   );
+}
+function Principle({value}) {
+  if(typeof value==='string')return value;
+  return <><strong>{value.mechanism}</strong> · {value.effect}<p className="text-darkBlue/65">Conditions : {value.conditions}</p></>;
 }
 export function StructuralAnalysis({ analysis }) {
   if (!analysis)
@@ -233,7 +241,7 @@ export function StructuralAnalysis({ analysis }) {
               </div>
             )}
             <dl className="grid gap-3 md:grid-cols-2">
-              {Object.entries(momentLabels).map(([key, label]) => (
+              {Object.entries(momentLabels).filter(([key])=>moment[key]).map(([key, label]) => (
                 <div key={key}>
                   <dt className="text-xs font-semibold text-darkBlue/55">
                     {label}
@@ -242,17 +250,28 @@ export function StructuralAnalysis({ analysis }) {
                 </div>
               ))}
             </dl>
+            {moment.geometry&&<dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+              {Object.entries({imagePlacement:'Placement des images',textPlacement:'Placement du texte',dominantMass:'Masse dominante',massRelationship:'Rapport des masses',primaryAxis:'Axe principal',imageTextRelationship:'Relation texte/image',gridRegularity:'Régularité',overlap:'Superposition',whitespaceTopology:'Organisation du vide'}).map(([key,label])=><div key={key}><dt className="text-darkBlue/55">{label}</dt><dd>{moment.geometry[key]}</dd></div>)}
+            </dl>}
+            {moment.evidence?.level&&<p className="mt-2 text-xs text-darkBlue/65">Niveau : {moment.evidence.level} · Portée : {moment.evidence.scope}</p>}
             <h4 className="mt-4 text-sm font-semibold">
               Principes transférables
             </h4>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
               {moment.transferablePrinciples.map((value, i) => (
-                <li key={i}>{value}</li>
+                <li key={i}><Principle value={value} /></li>
               ))}
             </ul>
           </article>
         ))}
       </section>
+      {analysis.globalRelations?.length>0&&<section className={panel}>
+        <h2 className="mb-3 text-lg font-semibold">Relations entre moments</h2>
+        <ul className="space-y-3 text-sm">{analysis.globalRelations.map((r,i)=><li key={i}>
+          <strong>Moments {r.moments.join(' → ')} : {r.mechanism}</strong><p>{r.effect}</p>
+          <p className="text-xs text-darkBlue/65">{r.level} · {r.sourceViews.join(' / ')}</p>
+        </li>)}</ul>
+      </section>}
       <div className="grid gap-4 md:grid-cols-2">
         <Principles
           title="Gestes structurels caractéristiques"
@@ -273,6 +292,15 @@ export function StructuralControls({ reference, onChange, onDelete }) {
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [attempts,setAttempts]=useState([]);
+  const [attemptError,setAttemptError]=useState('');
+  useEffect(()=>{
+    let active=true;
+    api('get',`/structural-references/${reference._id}/analysis-attempts`).then(result=>{
+      if(active){setAttempts(result.attempts||[]);setAttemptError('');}
+    }).catch(()=>{if(active)setAttemptError('Les tentatives conservées ne sont pas disponibles. Actualisez avant de relancer.');});
+    return()=>{active=false;};
+  },[reference._id,reference.updatedAt,reference.status]);
   const running = ["capturing", "analyzing"].includes(reference.status);
   // A crashed process can be retried explicitly after the server's operation lease expires.
   const stale =
@@ -281,6 +309,10 @@ export function StructuralControls({ reference, onChange, onDelete }) {
       15 * 60 * 1000;
   async function act(method, suffix, data) {
     if (lock.current) return;
+    if(suffix==='/analyze'&&needsVisionConfirmation(reference)) {
+      if(!window.confirm('Le précédent appel peut avoir été traité par OpenAI sans réponse conservée. Ce clic lancera un nouvel appel payant. Confirmez-vous cette relance ?'))return;
+      data={...data,confirmUncertainVision:true};
+    }
     lock.current = true;
     setBusy(true);
     setError("");
@@ -295,6 +327,9 @@ export function StructuralControls({ reference, onChange, onDelete }) {
       else onChange(result.reference);
     } catch (err) {
       setError(message(err));
+      // Read-only reconciliation of UI state; never repeat the mutation.
+      try{const current=await api('get',`/structural-references/${reference._id}`);onChange(current.reference);}
+      catch{/* The displayed error remains; no automatic paid retry. */}
     } finally {
       lock.current = false;
       setBusy(false);
@@ -313,6 +348,22 @@ export function StructuralControls({ reference, onChange, onDelete }) {
           {error || reference.lastError}
         </p>
       )}
+      {reference.operationDiagnostic && <div className="space-y-1 text-xs text-darkBlue/70" role="status">
+        <p>{phaseLabel(reference.operationDiagnostic.phase)} · {reference.operationDiagnostic.code}
+          {Number.isFinite(reference.operationDiagnostic.elapsedMs)?` · ${(reference.operationDiagnostic.elapsedMs/1000).toFixed(1)} s`:''}</p>
+        <p>Génération : {reference.operationDiagnostic.generationId}</p>
+        {reference.operationDiagnostic.recovery==='manual_confirmation_required'&&<p>Traitement OpenAI incertain. Aucune réponse exploitable conservée ; aucune relance automatique.</p>}
+        {reference.operationDiagnostic.recovery==='resume_existing_response'&&<p>La réponse existante peut être récupérée sans créer une nouvelle analyse payante.</p>}
+        {reference.analysis&&<p>L’analyse précédente est conservée.</p>}
+      </div>}
+      {attemptError&&<p role="alert" className="text-xs text-red">{attemptError}</p>}
+      {needsVisionConfirmation(reference)&&!reference.operationDiagnostic&&<p className="text-xs text-darkBlue/70">Le précédent appel OpenAI peut avoir été traité sans réponse conservée. Un nouvel appel exige votre confirmation ; aucune relance automatique.</p>}
+      {attempts.slice(0,5).map(attempt=><div key={attempt._id} className="space-y-1 text-xs">
+        <p>{responseIsRecoverable(attempt)?'Réponse conservée':'Aucune réponse exploitable conservée'} · génération {attempt.generationId} · {attempt.status}</p>
+        {attempt.operationDiagnostic&&<p>{phaseLabel(attempt.operationDiagnostic.phase)} · {attempt.operationDiagnostic.code}</p>}
+        {responseIsRecoverable(attempt)&&<button className={secondaryButton} disabled={busy||(running&&!stale)} onClick={()=>act('post',`/analysis-attempts/${attempt._id}/reprocess`)}>Retraiter la réponse conservée (sans Vision)</button>}
+        {responseCanBeRetrieved(attempt)&&<button className={secondaryButton} disabled={busy||(running&&!stale)} onClick={()=>act('post',`/analysis-attempts/${attempt._id}/resume`)}>Récupérer la réponse existante (sans nouvelle analyse)</button>}
+      </div>)}
       <div className="flex flex-wrap gap-2">
         <button
           className={button}

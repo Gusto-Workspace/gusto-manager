@@ -44,8 +44,10 @@ function remainingMs(deadline, maximum) {
   return Math.min(maximum, remaining);
 }
 
-function parseWebsiteUrl(value) {
-  if (typeof value !== "string" || !value.trim() || value.length > 2000)
+function parseWebsiteUrl(value, { maxLength = 2000 } = {}) {
+  if (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 16384)
+    throw websiteError('Limite d’adresse invalide.', 400);
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength)
     throw websiteError("Adresse du site existant invalide.", 400);
   const input = value.trim();
   if (

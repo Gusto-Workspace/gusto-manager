@@ -37,7 +37,14 @@ app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 // MONGOOSE
 mongoose
   .connect(process.env.CONNECTION_STRING_TEST, { connectTimeoutMS: 5000 })
-  .then(() => console.log("Connected to MongoDB Test BDD"))
+  .then(() => {
+    console.log("Connected to MongoDB Test BDD");
+    const service = require("./services/design-lab/structural-reference.service").createStructuralService();
+    require("./services/design-lab/structural-operation-recovery.service")
+      .startStructuralOperationRecovery(service.reconcileExpiredOperations, {
+        followResponses:service.resumePendingVisionResponses,
+      });
+  })
   .catch((err) => console.log("MongoDB connection error:", err));
 
 // CORS

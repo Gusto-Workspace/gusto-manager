@@ -55,11 +55,34 @@ test('gel refusé si l’enveloppe évolue ; une mutation du layout invalide le 
     assert.equal((await control.freeze()).length,1);
     try {
       await page.locator('img').first().evaluate(n=>n.style.height='280px');
-      assert.equal((await control.verify()).valid,false);
+      const integrity=await control.verify();
+      assert.equal(integrity.valid,false);
+      assert.deepEqual(integrity.failures,['visible_structure_or_source_changed']);
+      const changedImage=integrity.details[0].changedNodes.find(n=>n.before.tag==='IMG');
+      assert.equal(changedImage.before.rect.height,240);
+      assert.equal(changedImage.after.rect.height,280);
+      assert.equal(changedImage.before.source,changedImage.after.source,'this reason does not imply a media source change');
+      assert.deepEqual(integrity.details[0].sourceChanges,[]);
       throw Error('capture failure');
     } catch(e){assert.equal(e.message,'capture failure');}
     finally {await control.restore();}
     assert.equal(await page.locator('[data-gusto-animated-frame],[data-gusto-animated-style]').count(),0);
     assert.equal(await page.locator('img').first().evaluate(n=>n.style.height),'280px','external mutations are retained');
+    assert.equal((await control.freeze()).length,1);
+    await page.locator('.gallery').evaluate(n=>n.style.width=`${n.offsetWidth+5}px`);
+    const envelope=await control.verify();
+    assert.deepEqual(envelope.failures,['component_envelope_changed','visible_structure_or_source_changed']);
+    assert.equal(envelope.details[0].afterRect.width-envelope.details[0].beforeRect.width,5);
+    assert.equal(envelope.details[0].component.className,'gallery');
+    await control.restore();
+    assert.equal((await control.freeze()).length,1);
+    await page.locator('img').first().evaluate(n=>n.src=n.src+'#different-source');
+    await page.waitForFunction(()=>document.querySelector('img').currentSrc.endsWith('#different-source'));
+    const source=await control.verify();
+    assert.deepEqual(source.failures,['visible_structure_or_source_changed']);
+    assert.ok(source.details[0].changedNodes.some(n=>n.before.source!==n.after.source));
+    assert.equal(source.details[0].sourceChanges.length,1);
+    assert.ok(source.details[0].sourceChanges[0].afterSource.endsWith('#different-source'));
+    await control.restore();
   } finally {await browser.close();}
 });

@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "scope": "local_frozen_B1_snapshot_and_audit_bytes",
+  "snapshotAt": "2026-10-08T14:33:28.589Z",
+  "references": [
+    {
+      "id": "6ac3603eb929a05351c55263",
+      "generation": "8c04190b-81d6-4cc6-ba66-d57afc769e32",
+      "attempt": "6ac74b5d5b813a6c08e24b26",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "bbda495802a7f81c9e26479c2a5a28d6c350d661b1808fb5719b6523729037ef",
+      "manifestSha256": "b8ea1ca789263e746324aac6ec6939251fc578f5d28be0f8cf14bb03a7f0884b"
+    },
+    {
+      "id": "6ac37c4ca39769ebfb35d4ad",
+      "generation": "86951429-38eb-4917-b51b-421044235fb3",
+      "attempt": "6ac74c2f5b813a6c08e24c34",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "2a4d4d1f32254bb794fe54a4f173e8431319856335ee084ad4ac14a6d30982e4",
+      "manifestSha256": "8c6e4ea0f01ea3a2cc92e7c05eeefceea3388e52d4ca62c3ee37279c60ff567c"
+    },
+    {
+      "id": "6ac37d61a39769ebfb35d589",
+      "generation": "a7ee4148-75f8-4c09-8d46-d9798e40c968",
+      "attempt": "6ac74acd5b813a6c08e24a7c",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "c0a411214af1d415d2b660459036ff0484c6dcdf8dc5fb7493e61fa903a4cf2e",
+      "manifestSha256": "f515912b90c31f995509f707abbfd9d811ddcd57439183ac1d72db54ea32bd41"
+    },
+    {
+      "id": "6ac39cff599b9a26b2dc05d2",
+      "generation": "c5b09056-69a2-4c95-8d62-3c13afa86b39",
+      "attempt": "6ac74cd05b813a6c08e24d05",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 3,
+      "analysisSha256": "33d0ad8c1b75e418bc88434dd4523e2512e70f9de4d5f3a1bd14787a0425bb8c",
+      "manifestSha256": "dc700a30bb1f57de5b8efac020ef21ddb1b8615ac44c3699afd8b0cb6abff731"
+    },
+    {
+      "id": "6ac39d3c599b9a26b2dc0603",
+      "generation": "24a894e6-e000-4f26-a898-25d9b5b7e6bc",
+      "attempt": "6ac74ded5b813a6c08e24e45",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "f8ec2f1d11bc1ab6df2b3a7d603903c10915efc847f89ba8f38033d405d2f22b",
+      "manifestSha256": "4fa3dea5af02e54669bcc275a0760bd2e8a2eec9878349c3d2bcf0fb60055316"
+    },
+    {
+      "id": "6ac652aed3bfc71ea373557c",
+      "generation": "7ecccd46-93e3-4ea6-9771-59fd8c281274",
+      "attempt": "6ac748025b813a6c08e2472d",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "f756fe669ace82a80e64b667aef2d0f7331a5cb4f2e05714a3d4a2b2bf125ebb",
+      "manifestSha256": "59fd10d422e3977a5b0cac3993c94477208dd856c11170b10c2b540e63005a53"
+    },
+    {
+      "id": "6ac65489ac0bc16f77491344",
+      "generation": "0e5b4cf0-dc04-418f-95bf-4b0130564b6d",
+      "attempt": "6ac748be5b813a6c08e2480e",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 4,
+      "analysisSha256": "dcb67cdd4d5e017080e4e30df901c922ffc33d7e2621470642a6364b76033b45",
+      "manifestSha256": "46470b4e1e6f05c7ce790602c91b628530086bf59c0ea20da7e5b83ff089804d"
+    },
+    {
+      "id": "6ac74fff5b813a6c08e250b5",
+      "generation": "3a1ff431-dc9a-4512-8670-f0e100ff3832",
+      "attempt": "6ac7504b5b813a6c08e25109",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "b3e7507319a182e6792c3971d308fa19402133d50dc9a5747f621c2032816cb0",
+      "manifestSha256": "fca6b8577a47e90b41b3c80ef886dfa146d1e1e618826b90b5f0c0e093347971"
+    },
+    {
+      "id": "6ac752195b813a6c08e2531c",
+      "generation": "50fa79fc-a398-47cb-87ce-30c4fadaedca",
+      "attempt": "6ac757c4d7b33e9ce0039b97",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 4,
+      "analysisSha256": "4496b121bd8c667ef842aa39755f811e12f0c4a491bbd0e23f682099faadc4ee",
+      "manifestSha256": "16d5002cc45c60b3b88710f5d01bae1cbaf4a6e7d3bb43a7ca0a897f9e3c709b"
+    },
+    {
+      "id": "6ac758d7d7b33e9ce0039cea",
+      "generation": "e438b87d-3bbe-4c7a-a383-7df0f6b1f5e7",
+      "attempt": "6ac76c260423e958f07a5f46",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "f5a9d2b7d2f40471b0a48b7cec7498994eac24b4f2a09a9cefcf78e7d0a85ae0",
+      "manifestSha256": "31f982a87628f0761bb28dd7bd3d53c92cf4f61c5a1555f76d2a695c367e4397"
+    },
+    {
+      "id": "6ac76fe00423e958f07a6396",
+      "generation": "28238cb4-7ad2-4d32-b26d-4237b1d624c8",
+      "attempt": "6ac785e695ac4c5a6cc513d5",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 4,
+      "analysisSha256": "53bc1905c4d30f22ddf4b6cf0fead6018a6423a4617d79b66061f380d58b7033",
+      "manifestSha256": "fd76828eee32f225983675b9999d3a8b87954476f07f7c6a28f259f11fc72aa6"
+    },
+    {
+      "id": "6ac786fa95ac4c5a6cc51523",
+      "generation": "d1e9963c-2992-433f-aefa-cf254baca837",
+      "attempt": "6ac79d5dd643b0e9a0ccafe7",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 6,
+      "analysisSha256": "017700d6457d5279d6a70bef30af9fe7d3a807c7eaa6284d6d710c367efeb10f",
+      "manifestSha256": "38bf2a21644431cc193c70f5f531ab4ba11d22aacb45dfd4dae2ca0c12f8804e"
+    },
+    {
+      "id": "6ac789a195ac4c5a6cc51831",
+      "generation": "fc8ec3b6-2f1f-493c-9a03-e34fb0da00da",
+      "attempt": "6ac7a543d643b0e9a0ccbbce",
+      "contractVersion": 1,
+      "manifestMatches": true,
+      "rawParsedAppliedMatch": true,
+      "inputAssets": 4,
+      "analysisSha256": "f3a5173d536c34348a3bade8a230de8002b540b42e9683ef189a50cfedd76297",
+      "manifestSha256": "f4fcaffcb94c3b13d56e49c876f098b281329dd4abc1828eaa4b2ed3c9ee225b"
+    }
+  ],
+  "verifiedReferences": 13,
+  "verifiedAssets": 67,
+  "remoteReads": 0,
+  "remoteWrites": 0,
+  "visionCalls": 0,
+  "limitation": "Current audit asset hashes do not prove all historical dispatch bytes or live source fidelity."
+}

@@ -6,6 +6,7 @@ const test = require("node:test"),
 const {
   captureStructuralPage,
   coverageIsComplete,
+  optionalObservationBudget,
 } = require("../services/design-lab/structural-page-capture.service");
 const {
   sanitizeStructuralCapture,
@@ -21,6 +22,18 @@ const panels = () =>
         `<section style="height:700px;background:${color};font-size:60px">Moment ${i + 1}</section>`,
     )
     .join("");
+test("budget facultatif : coût réel et finalisation réservés, sans augmenter le budget ni admettre une capture tardive", () => {
+  // The previous 1500 ms guard admitted this operation, then screenshot ran
+  // after the deadline. Mandatory traversal/fixed samples remain unaffected.
+  const refused = optionalObservationBudget(1800, [2100, 3100, 2700]);
+  assert.equal(refused.admitted, false);
+  assert.equal(refused.estimatedCaptureMs, 3100);
+  assert.equal(refused.reserveMs, 3100);
+  assert.equal(optionalObservationBudget(6200, [3100]).admitted, false);
+  assert.equal(optionalObservationBudget(6201, [3100]).admitted, true);
+  assert.equal(optionalObservationBudget(10000, [3100], 4).admitted, false);
+  assert.equal(optionalObservationBudget(-597, [3100]).admitted, false);
+});
 test('Chromium : galerie RAF en perspective capturée intégralement sans relâcher la fiabilité adaptative',
  {skip:!fs.existsSync(chrome)},async()=>{
   const browser=await require('playwright-core').chromium.launch({executablePath:chrome,headless:true});
@@ -28,13 +41,20 @@ test('Chromium : galerie RAF en perspective capturée intégralement sans relâc
   await p.route('**/*',r=>r.abort());
   const image='data:image/svg+xml;base64,'+Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="240"><rect width="300" height="240" fill="teal"/></svg>').toString('base64');
   let diagnostic;
+  const observationTrace = {};
   try {
     await p.setContent(`<style>body{margin:0}.hero{height:900px;background:#334455;font-size:70px}.gallery{height:360px;width:100%;overflow:hidden;perspective:1200px}.track{display:flex;gap:20px;width:2000px;transform-style:preserve-3d}.track img{width:300px;height:300px;flex:none;transform:rotateY(12deg)}footer{height:740px;background:#ddddaa}</style><header class="hero">Complete structural hero</header><div class="gallery"><div class="track">${Array(6).fill(`<img src="${image}">`).join('')}</div></div><footer>Distinct footer</footer><script>let tick=0;function frame(){tick++;document.querySelector('.track').style.transform='translateX(-'+(tick%200)+'px)';requestAnimationFrame(frame)}frame()</script>`);
     const initial=await sanitizeStructuralCapture(p,Date.now()+90000);
-    const result=await captureStructuralPage(p,Date.now()+90000,initial,{onDiagnostic:d=>{diagnostic=d;}});
+    const result=await captureStructuralPage(p,Date.now()+90000,initial,{onDiagnostic:d=>{diagnostic=d;},observationTrace});
     assert.equal(coverageIsComplete(result),true);
     assert.equal(result.captureCoverage.captureStrategy,'sampled');
     assert.equal(result.captureCoverage.totalHeight,2000);
+    assert.equal(observationTrace.phaseAContext.reachedEnd,true);
+    assert.equal(observationTrace.phaseAContext.bottomConfirmations,3);
+    assert.ok(observationTrace.phaseA.every(v=>v.origin==='traversal'&&!v.afterCompleteTraversal));
+    assert.equal(observationTrace.fixedViews.length,5);
+    assert.ok(observationTrace.fixedViews.every(v=>v.origin==='fixed'&&v.afterCompleteTraversal));
+    assert.doesNotMatch(JSON.stringify(result.captureCoverage),/phaseAContext|observationTrace/);
     assert.ok(diagnostic.animationDiagnostics.some(d=>d.components[0].detectedMechanisms.includes('inline_motion_updates')));
     assert.ok(diagnostic.observations.some(o=>o.animatedComponents.length&&o.measures.unknown.length),'perspective remains unknown to adaptive collector');
     assert.equal(result.captureCoverage.observationSelection.mode,'fixed_fallback');
@@ -44,7 +64,7 @@ test('Chromium : galerie RAF en perspective capturée intégralement sans relâc
     assert.ok(diagnostic.observations.some(o=>o.position===1100));
   } finally {await browser.close();}
  });
-test("Chromium : fallback fixe inchangé et contrôles persistants dédupliqués uniquement dans les locales",{skip:!fs.existsSync(chrome)},async()=>{
+test("Chromium : fallback fixe inchangé et contrôle non structurel exclu de toutes les images Vision",{skip:!fs.existsSync(chrome)},async()=>{
   const browser=await require('playwright-core').chromium.launch({executablePath:chrome,headless:true});
   const p=await browser.newPage({viewport:{width:1440,height:900}});
   await p.route('**/*',r=>r.abort());
@@ -52,7 +72,7 @@ test("Chromium : fallback fixe inchangé et contrôles persistants dédupliqués
   try {
     await p.setContent(`<style>body{margin:0}header{position:fixed;top:0;left:0;width:100%;height:60px;background:#222;z-index:20}section{height:700px;background:#88bbcc}canvas{width:1440px;height:600px}#ui{position:fixed;left:0;bottom:45px;width:0;height:0;z-index:50}#ui>div{position:absolute;bottom:0;width:420px;height:250px;background:white}#moving{position:fixed;top:150px;right:0;width:100px;height:100px;background:blue}</style>
       <header>Structural navbar</header><main>${Array.from({length:6},()=>'<section><canvas width="1440" height="600"></canvas></section>').join('')}</main>
-      <div id="ui"><div><h2>Persistent offer</h2><button style="visibility:visible!important">Explore</button></div></div><div id="moving"></div>
+      <div id="ui"><div><h2>Special offer</h2><button style="visibility:visible!important">Explore</button></div></div><div id="moving"></div>
       <script>addEventListener('scroll',()=>document.querySelector('#moving').style.transform='translateX(-'+Math.min(180,Math.round(scrollY/20))+'px)')</script>`);
     const initial=await sanitizeStructuralCapture(p,Date.now()+90000);
     const result=await captureStructuralPage(p,Date.now()+90000,initial,{onDiagnostic:d=>{diagnostic=d;}});
@@ -61,15 +81,15 @@ test("Chromium : fallback fixe inchangé et contrôles persistants dédupliqués
     assert.equal(result.captureCoverage.positions.length,5);
     assert.deepEqual(result.captureCoverage.positions.map(v=>v.position),[0,660,1650,2640,3300]);
     const layer=diagnostic.persistentPresentation.find(l=>l.deduplicationEligible);
-    assert.ok(layer); assert.equal(layer.suppressedObservationIds.length,4);
-    assert.equal(layer.representativeObservationId,diagnostic.localViews[0].id);
+    assert.ok(layer); assert.equal(layer.suppressedObservationIds.length,diagnostic.observations.length);
+    assert.equal(layer.representativeObservationId,null);
     assert.equal(layer.occurrences[0].rect.height,250);
-    for(const view of diagnostic.localViews.slice(1)){
+    for(const view of diagnostic.localViews){
       const pixel=await sharp(view.buffer).extract({left:100,top:700,width:1,height:1}).removeAlpha().raw().toBuffer();
       assert.deepEqual([...pixel],[136,187,204]);
       const raw=diagnostic.observations.find(v=>v.id===view.id);
       const original=await sharp(raw.buffer).extract({left:100,top:700,width:1,height:1}).removeAlpha().raw().toBuffer();
-      assert.deepEqual([...original],[255,255,255]);
+      assert.deepEqual([...original],[136,187,204]);
     }
     assert.equal(await p.locator('#ui button').evaluate(n=>getComputedStyle(n).visibility),'visible');
     assert.equal(await p.locator('header').evaluate(n=>getComputedStyle(n).visibility),'visible');
@@ -357,8 +377,8 @@ test(
             await assert.rejects(
               capture(p),
               (error) =>
-                error.code === "incomplete_page_capture" &&
-                /identiques/.test(error.message),
+                (error.code === "incomplete_page_capture" && /identiques/.test(error.message)) ||
+                error.code === "structural_empty_visual_capture",
             );
           } finally {
             await p.close();

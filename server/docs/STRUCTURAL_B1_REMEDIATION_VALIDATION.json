@@ -1,0 +1,704 @@
+{
+  "version": 1,
+  "status": "local_technical_validation_artistic_maturity_not_demonstrated",
+  "evidenceDate": "2026-10-08",
+  "restrictions": {
+    "externalSiteVisits": 0,
+    "visionCalls": 0,
+    "remoteMutations": 0,
+    "commits": 0,
+    "automaticPaidRetries": 0
+  },
+  "finalStaticChecks": {
+    "javascriptSyntaxFilesPassed": 18,
+    "gitDiffCheckPassed": true,
+    "selectionConfigurationUnchanged": true,
+    "resourceLimitsUnchanged": true
+  },
+  "finalRuns": {
+    "technical": "final-technical-bounded-host.log",
+    "completeProduct": "product-host.log",
+    "finalTraceProtocol": "final-trace-protocol.log",
+    "ui": "client-tests.log",
+    "build": "manager-build.log",
+    "failedParallelRunRetained": "final-technical-host.log"
+  },
+  "caveat": "Test counts across runs overlap. Passing fixture and contract tests do not validate model reasoning or full live-source fidelity.",
+  "logs": [
+    {
+      "name": "b1-compatibility-preparation.log",
+      "sha256": "b55e5c6105ba65d771cb77d7eade65204373a65a253668d059306ec1a25ca224",
+      "tests": null,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "cancelled": null,
+      "durationMs": null,
+      "failures": []
+    },
+    {
+      "name": "client-tests.log",
+      "sha256": "6461e6d7bc9079bd533ac9083e738e7ecc0a30ef0e651e1a0183ad59f9676365",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 1716.165172,
+      "failures": []
+    },
+    {
+      "name": "complement-host.log",
+      "sha256": "282e52a48539b2ac5375739378e49922be3ecc51e45a3eb41388494bcca4bddb",
+      "tests": 55,
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 15648.671938,
+      "failures": []
+    },
+    {
+      "name": "final-service.log",
+      "sha256": "25df199dce062e163a03b4d1c971f9386ff8e75b1a3b8a9bd1fe1805f1f81747",
+      "tests": 112,
+      "passed": 112,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 4773.660572,
+      "failures": []
+    },
+    {
+      "name": "final-technical-bounded-host.log",
+      "sha256": "d6f0936ae1125d78a8fab4f693bd946c6071373aea412fb91b87aafb5fa9620f",
+      "tests": 256,
+      "passed": 256,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 94688.301954,
+      "failures": []
+    },
+    {
+      "name": "final-technical-host.log",
+      "sha256": "345fefbec02d4fd8462f0e2bc7e08dc029381ea6ea9212acda312f4414d64ed7",
+      "tests": 256,
+      "passed": 255,
+      "failed": 1,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 77473.850338,
+      "failures": [
+        "not ok 63 - Chromium : reveal attendu sans styles forcés ; contenu caché refusé ; espace blanc narratif permis"
+      ]
+    },
+    {
+      "name": "final-trace-protocol.log",
+      "sha256": "98810266674118cd5ebf9482a47509a753011ddb603ad0b2a2fb52846d45466e",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 794.881885,
+      "failures": []
+    },
+    {
+      "name": "lot1-initial.log",
+      "sha256": "4dc0f0875b36f2abb2b684cd3a0a88eac8bc9b8aa874c7a407dccc28cebba306",
+      "tests": 95,
+      "passed": 43,
+      "failed": 39,
+      "skipped": 0,
+      "cancelled": 13,
+      "durationMs": 2763.664841,
+      "failures": [
+        "not ok 19 - incident Grupo : warm-up rejeté journalisé et persisté même sans attempt ni captureTiming",
+        "not ok 20 - incident Cantina : timeout transport 120s, captures réutilisables, aucun retry et confirmation payante obligatoire",
+        "not ok 21 - transport : HTTP refusé identifié, sans prétendre une réponse exploitable ni relancer",
+        "not ok 22 - transport : réponse complète tardive checkpointée, timeout maintenu puis reprocessing sans OpenAI",
+        "not ok 23 - transport : erreur chaînée sans réponse, incertitude et cause conservées sans retry",
+        "not ok 24 - checkpoint pré-appel indisponible : phase précise, zéro dispatch et analyse précédente intacte",
+        "not ok 25 - nouvelle capture suivie d’un échec : evidence de l’ancienne analyse et ses buffers conservés",
+        "not ok 26 - retraitement d’une tentative sans réponse : refus sans appel ni perte de données",
+        "not ok 28 - erreur pendant la sauvegarde du statut d’échec : cause originale et phase de stockage conservées",
+        "not ok 29 - Tastavents v2 persisté : nouvelle analyse passe par le sélecteur actuel et checkpoint du lot adaptatif avant l'analyse mockée",
+        "not ok 31 - capture du nouveau pipeline normal acceptée sans capacité expérimentale, diagnostic exclu du contrat",
+        "not ok 33 - sampled v3 sans preuve sequencing : une nouvelle analyse recapture les entrées",
+        "not ok 34 - sampled v3 sans preuve visionCleanliness : une nouvelle analyse recapture les entrées",
+        "not ok 35 - sampled v3 sans preuve paintEvidence : une nouvelle analyse recapture les entrées",
+        "not ok 36 - worker sans preuve de nettoyage : arrêt avant upload, attempt et Vision",
+        "not ok 37 - worker sans preuve de peinture : aucun upload, attempt ni appel Vision",
+        "not ok 38 - sampled v3 adaptive et fallback courant réutilisés ; aucun quota ou recapture imposée",
+        "not ok 39 - capture sampled v2 renvoyée par un ancien worker : analyse et uploads refusés",
+        "not ok 40 - retraitement c0ffeea4 legacy : même rejet géométrique, brut intact, aucune recapture/analyse/upload",
+        "not ok 41 - réponse Vision rejetée : checkpoint avant validation, erreur conservée et analyse active intacte",
+        "not ok 42 - réponse JSON malformée : brut checkpointé avant parsing, sans remplacer l'analyse",
+        "not ok 43 - retraitement explicite d'une réponse conservée : succès sans OpenAI, capture ni upload",
+        "not ok 44 - retraitement : captures remplacées refusées sans paiement ni écrasement",
+        "not ok 45 - lease expirée avec réponse reçue : recovery puis retraitement existant sans OpenAI ni nouvelle capture",
+        "not ok 54 - analyse pauvre : un seul appel, pas de recapture, ancienne analyse conservée",
+        "not ok 62 - ancienne overview continuous : captures réutilisées, nouveau nom de preuve accepté sans migration",
+        "not ok 63 - ancienne overview en collage : recapture manuelle avant une seule analyse",
+        "not ok 66 - mode sampled fallback actuel : six uploads, une analyse et aucune full-page défectueuse",
+        "not ok 68 - ingestion complète : captures Cloudinary conservées avant un seul appel Vision mocké",
+        "not ok 69 - réanalyse : remplace l’analyse, préserve tags/captures, ne recapture pas",
+        "not ok 70 - quality gate bloqué : zéro Vision/upload, analyse précédente et captures conservées",
+        "not ok 71 - réanalyse : captures anciennes, invalides ou blocked imposent recapture avant un seul Vision",
+        "not ok 72 - popup ou couverture incomplète : zéro Vision/upload et analyse précédente intacte",
+        "not ok 73 - capture propre sans preuve de couverture : zéro Vision malgré un PNG disponible",
+        "not ok 74 - gel animé refusé avant attempt : trace corrélée avec rectangles/sources, aucune Vision/upload",
+        "not ok 75 - budget d'image structurelle dépassé : erreur explicite, zéro Vision/upload, ancienne analyse conservée",
+        "not ok 79 - timeout capture : erreur claire, aucune analyse Vision ni upload",
+        "not ok 80 - erreur Vision : conserve captures et tags, retry uniquement explicite",
+        "not ok 82 - upload Cloudinary partiel : nettoyage ciblé, pas de Vision",
+        "not ok 83 - concurrence : une analyse en cours refuse un second déclenchement",
+        "not ok 84 - opération interrompue : aucune reprise automatique, un retry manuel après expiration",
+        "not ok 85 - édition/activation : seules les propriétés manuelles sont modifiées",
+        "not ok 86 - suppression : détruit uniquement les captures appartenant à la référence",
+        "not ok 87 - API admin : ajout, lecture, analyse, édition et suppression avec stockage mocké",
+        "not ok 88 - API : capture désactivée et ID invalide ne déclenchent aucun travail",
+        "not ok 89 - API produit : anciennes requêtes non payantes refusées, réconciliation conservée à la lecture",
+        "not ok 90 - Vision continuous : un seul POST mocké, quatre images, master exclue, schéma strict",
+        "not ok 91 - Vision sampled : un seul POST mocké, storyboard low, 2 samples low et 3 high, sans full-page",
+        "not ok 92 - Vision adaptative : zéro/deux/cinq vues locales, une requête mockée, provenance macro et géométrie",
+        "not ok 93 - séparation : aucune consommation structurelle dans le moteur, DesignReference, Portfolio ou site existant",
+        "not ok 94 - UI : bibliothèque/détail, champs lisibles, tags manuels et aucune source future activée",
+        "not ok 95 - UI : une seule capture globale continuous, dérivée technique masquée ; sampled intact"
+      ]
+    },
+    {
+      "name": "lot1-recheck.log",
+      "sha256": "388faa26d67a7927d2f3e3f406f3f1953382a42fc102a6310ca3f1f88f078ab9",
+      "tests": 95,
+      "passed": 95,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 4325.111384,
+      "failures": []
+    },
+    {
+      "name": "lot1-specific-recheck.log",
+      "sha256": "cffcbd2fdf18bd6a2de890ee8aac314564fd479d28eeb08dced566afd646ec1e",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 945.854469,
+      "failures": []
+    },
+    {
+      "name": "lot1-specific.log",
+      "sha256": "3871ebcffcf63471dd3e79619553f2b80aa769eec5575397a4dfaf7e979872ca",
+      "tests": 18,
+      "passed": 13,
+      "failed": 5,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 852.542709,
+      "failures": [
+        "not ok 1 - last checkpoint failure: committed analysis stays analyzed and attempt can finalize without Vision",
+        "not ok 2 - uncertainty survives failed confirmed creation; next unconfirmed action never reaches analyzer",
+        "not ok 3 - timeout dispatch confirmation supersedes old uncertainty but retains new uncertain attempt",
+        "not ok 4 - confirmed pre-dispatch failure does not supersede old uncertainty",
+        "not ok 5 - late raw response survives recovery CAS without reapplying a lost generation"
+      ]
+    },
+    {
+      "name": "lot2-initial.log",
+      "sha256": "217338f468f8466fb5767351d7cf763d140c43f6e06affd0a5b597cf3168a30c",
+      "tests": 101,
+      "passed": 91,
+      "failed": 10,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 4071.027903,
+      "failures": [
+        "not ok 16 - Chromium : source enfant sélectionnable sans currentSrc reste un média à attendre, pas une omission",
+        "not ok 17 - Chromium : vidéo vide en initialisation attendue puis véritable poster peint ; attente de 5 s inchangée",
+        "not ok 35 - Tastavents v2 persisté : nouvelle analyse passe par le sélecteur actuel et checkpoint du lot adaptatif avant l'analyse mockée",
+        "not ok 36 - dry-run produit : capture neuve, mêmes callbacks/gates/contrat, aucun accès aux modèles ni Vision/upload",
+        "not ok 37 - capture du nouveau pipeline normal acceptée sans capacité expérimentale, diagnostic exclu du contrat",
+        "not ok 39 - sampled v3 sans preuve sequencing : une nouvelle analyse recapture les entrées",
+        "not ok 40 - sampled v3 sans preuve visionCleanliness : une nouvelle analyse recapture les entrées",
+        "not ok 41 - sampled v3 sans preuve paintEvidence : une nouvelle analyse recapture les entrées",
+        "not ok 44 - sampled v3 adaptive et fallback courant réutilisés ; aucun quota ou recapture imposée",
+        "not ok 72 - mode sampled fallback actuel : six uploads, une analyse et aucune full-page défectueuse"
+      ]
+    },
+    {
+      "name": "lot3-initial.log",
+      "sha256": "45c876131572ac65129ff0373c159c04a500638b4642966bf4e902a9f111410c",
+      "tests": 109,
+      "passed": 106,
+      "failed": 3,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 4488.377203,
+      "failures": [
+        "not ok 6 - Chromium : registre SVG, overflow, cadrages existants et primitives opaques",
+        "not ok 24 - Chromium : containing blocks réels, fixed host nul et protection des compositions",
+        "not ok 25 - Chromium : lignes réelles, clipping, navigation persistante et placeholders"
+      ]
+    },
+    {
+      "name": "lot4-initial.log",
+      "sha256": "5a3d568e12e820042066eb4e58dd48a1a334d9909de1dc0c9477d05bab42de9d",
+      "tests": 98,
+      "passed": 92,
+      "failed": 6,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 4460.86138,
+      "failures": [
+        "not ok 2 - V2 validates persistence; V1 persistence does not invent V2 relations",
+        "not ok 69 - mode sampled fallback actuel : six uploads, une analyse et aucune full-page défectueuse",
+        "not ok 93 - Vision continuous : un seul POST mocké, quatre images, master exclue, schéma strict",
+        "not ok 94 - Vision sampled : un seul POST mocké, storyboard low, 2 samples low et 3 high, sans full-page",
+        "not ok 95 - Vision adaptative : zéro/deux/cinq vues locales, une requête mockée, provenance macro et géométrie",
+        "not ok 97 - UI : bibliothèque/détail, champs lisibles, tags manuels et aucune source future activée"
+      ]
+    },
+    {
+      "name": "manager-build.log",
+      "sha256": "14ed8f8c5f5081674e856fbbfb085b45bdf2473351620c269f01e36c8d31ea68",
+      "tests": null,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "cancelled": null,
+      "durationMs": null,
+      "failures": [],
+      "buildCompleted": true
+    },
+    {
+      "name": "product-host.log",
+      "sha256": "aa8f0092fe7190d420e86067ae31bf43cdb1957d11662fd99a04d211a7b500e5",
+      "tests": 37,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 754778.179291,
+      "failures": []
+    },
+    {
+      "name": "protocol-tests.log",
+      "sha256": "6175474118777ae6274fa787c830a22f3e1a4cbdf600fd990b3c83ef27fc90ea",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 789.830389,
+      "failures": []
+    },
+    {
+      "name": "targeted-host.log",
+      "sha256": "be71c86f45b3e6127b12ddb434d179c25241b2e305d0710cc14e9837dd402cb7",
+      "tests": 20,
+      "passed": 19,
+      "failed": 1,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 3350.8464,
+      "failures": [
+        "not ok 13 - failure reading attempt history cannot erase legacy uncertainty even with no attempt record"
+      ]
+    },
+    {
+      "name": "technical-host.log",
+      "sha256": "c4b68c2486289eea38f52d66243d999c4266c39f29e809c61c1113c8b2dc773a",
+      "tests": 200,
+      "passed": 200,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 66036.863779,
+      "failures": []
+    },
+    {
+      "name": "video-repeat-1.log",
+      "sha256": "d5c6618ca3d32c52352ca15f578e94e0b1223b52b1203d4c79be7e733888cfa1",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 7288.142986,
+      "failures": []
+    },
+    {
+      "name": "video-repeat-2.log",
+      "sha256": "0d63574c013373186051a08b06255f06fbef96fb5637ef54808ffb56fa6deeec",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 7275.808264,
+      "failures": []
+    },
+    {
+      "name": "video-repeat-3.log",
+      "sha256": "52adaacc686eecc92bcf3bb1c7430d856fafaec1d573b28bd871d7c3be4b13dd",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "durationMs": 7628.492706,
+      "failures": []
+    }
+  ],
+  "baseline": {
+    "referenceCount": 13,
+    "verifiedAssets": 67,
+    "verificationFile": "STRUCTURAL_B1_COMPATIBILITY.json",
+    "historicalAnalysesModified": false
+  },
+  "codePreservation": {
+    "comparedFiles": 62,
+    "changed": [
+      {
+        "path": "server/services/design-lab/openai.service.js",
+        "beforeSha256": "7ff596f03dc57171af5ccde8015d45f28167aa46ca3dfff91ae505320d369cdf",
+        "afterSha256": "9f5918930d0deef51f41ce80ae65b068681f7fc4921f2554a551008baf1d0a33"
+      },
+      {
+        "path": "server/services/design-lab/structural-reference.contract.js",
+        "beforeSha256": "72f35a11b95daf18e59ae31ef3e944ae4d2e810fb8db77f7153a4c08078d04d0",
+        "afterSha256": "32e61f06935f9fd5aaa357a1b55b1ded416b273f0f46ee25e06ed68ce42a3bde"
+      },
+      {
+        "path": "server/services/design-lab/portfolio-capture.service.js",
+        "beforeSha256": "4c6cc2cdf1ab1931def7eae64dd66364b1a743bc5ea3e1b3a71be39dbe994399",
+        "afterSha256": "2843dfd53466288a5db2022ca1a7d4317aac3a43a726eda3c32e5092c1a36f47"
+      },
+      {
+        "path": "server/services/design-lab/structural-operation-recovery.service.js",
+        "beforeSha256": "c09eaa1c338677019d85c6c3123239d3c989232fb9a28bd72fac8288811428e4",
+        "afterSha256": "5f0c24404b2d7321d35c9d237d2fcb4b8c7afdbcdd8a544fbf3ee2780b98ddd5"
+      },
+      {
+        "path": "server/services/design-lab/structural-observation-selection.js",
+        "beforeSha256": "9d737536389b640440921a67efcb532bd338590bc3d35cfc67f7891a832f412a",
+        "afterSha256": "a4286eb5981d8dd0e511ec564964ca609309c0745f3a59848a98b327df3836b4"
+      },
+      {
+        "path": "server/services/design-lab/structural-operation-diagnostic.js",
+        "beforeSha256": "ee50c0bf1e3fc1b651ece5c6b7f4f9baf54578ec3c4ba0c49606afd08903baa6",
+        "afterSha256": "75d834d168bc165a6a9a603bb230264bc6064ddbbc55df9ba715243feda5911c"
+      },
+      {
+        "path": "server/services/design-lab/structural-page-capture.service.js",
+        "beforeSha256": "e01a03f5c91c9c1c434fa24fa91b03bb4a9d3b0d96543c94ca4d7d7961ee9602",
+        "afterSha256": "b68e5e499bb2828aad551b56a3bede4052702080fdd3eb248c7f990572c82034"
+      },
+      {
+        "path": "server/services/design-lab/structural-resource-policy.js",
+        "beforeSha256": "c8b51e4f52c393e94a8edb06fbb7b35ae2186e80e68b16408c7b09f3f641b48e",
+        "afterSha256": "814622edb99fe5d9f5bced970cc5b6768d8f81ed287f7fce9465654701e1d8d1"
+      },
+      {
+        "path": "server/services/design-lab/structural-reference.service.js",
+        "beforeSha256": "0c201d8802fe6f84bd3cacea5dfc53d4bdb8055e2e43ab52b5f9549cb9aad5e0",
+        "afterSha256": "6fc2b51f5235c1a529d9b79c89ee70bbdb46cf51527ccb0f7e728dc104b3619a"
+      },
+      {
+        "path": "server/services/design-lab/structural-reliability.service.js",
+        "beforeSha256": "0a0cd4330f6f45ae0d5fed63b24fc2c7677ac4698d2180f69f7e520a560cd9c2",
+        "afterSha256": "43616227721a7a94c43f3670637844e5bbc4e0c5ff6b8b519a434e7f9c06ac01"
+      },
+      {
+        "path": "server/models/structural-reference.model.js",
+        "beforeSha256": "fa459f6a7fe2a278d4a57fb41bbca89a40ee94e10aa3d42543eae44f5be4e6ff",
+        "afterSha256": "64fc90b13a797cf1f78086544d3a2ea2edc61823f59a04e9f43c4a75cc1a7f47"
+      },
+      {
+        "path": "server/models/structural-analysis-attempt.model.js",
+        "beforeSha256": "b2d668d4c5dead2a55bd810f76e667c5c4a102f59ab230ca6c14cb5ec133f44a",
+        "afterSha256": "6e682f885a91ffea389e12e08b3f5292b9362cc406c226827b17e9608195e30a"
+      },
+      {
+        "path": "server/tests/design-lab-structural-operation-recovery.test.js",
+        "beforeSha256": "0a22bcd45c0ea8c5836f5a046b3555743afe86e1211c42c263782161f8ce7f53",
+        "afterSha256": "7247213987132cabc1c95d23af195509b65fe6f0a2fbf6224ef2be5d31ca56f9"
+      },
+      {
+        "path": "server/tests/design-lab-structural.test.js",
+        "beforeSha256": "a770b141ada80530765d1c330b403437854db3e11d77abaa9397697f8663e0dc",
+        "afterSha256": "3042e92afa30d7ae1314cde4b21f1dc2fd7ab25cc71835c8d2e9c40e7e186e2b"
+      },
+      {
+        "path": "server/tests/design-lab-structural-paint-video.test.js",
+        "beforeSha256": "6a8c280386e3978d2f7775cb53fe69a4bf240f9e6d5d84a6343878f28716302d",
+        "afterSha256": "d75623bebd0e8e928cf85b90e04f42be2eeb158162712e7e5d6cebba01487c33"
+      },
+      {
+        "path": "client/src/components/dashboard/admin/sites/structural-operation-display.js",
+        "beforeSha256": "fab4f45e4a4e3e32624625b69e908b9934115d8c597b4eb8643dcb49a8960951",
+        "afterSha256": "c3d9a7f93a58bb24a51fff6011d5ad6c28a7d262829be5c5ebdc5dec3fc2188c"
+      },
+      {
+        "path": "client/src/components/dashboard/admin/sites/structural-reference.component.js",
+        "beforeSha256": "564aad45b7866118bc54877131418f33685a08735fb64147b307a99a573aeda3",
+        "afterSha256": "1b0df8cb407cffd273a369a3f418f2655937f91a030657f9c874b6afc3bcae7e"
+      },
+      {
+        "path": "server/docs/STRUCTURAL_B1_FINAL_AUDIT.md",
+        "beforeSha256": "fbb3aec6e46fea76f5757833817ec7b6aace13bffcd2dbaae8a6f2d0c400e656",
+        "afterSha256": "5680990008e1f137ae4e612ba0e53d9d5e93ee57583d1228f33ac20443662336"
+      },
+      {
+        "path": "server/docs/STRUCTURAL_B1_REMEDIATION_PLAN.md",
+        "beforeSha256": "1c217205a34468278abdf8d1984ae32ede65841855cd0b2a43f0cd8176c9ea8e",
+        "afterSha256": "ad619a9c2e87fc45ed809b791edde2b5135a2698953f36e458aef124d7209ed4"
+      }
+    ],
+    "unchanged": [
+      {
+        "path": "server/services/design-lab/design-lab.service.js",
+        "beforeSha256": "68e2dda4bfb1dd1b9d706fcad381732ba9b1372644e586c78454a2bb6909c6c9",
+        "afterSha256": "68e2dda4bfb1dd1b9d706fcad381732ba9b1372644e586c78454a2bb6909c6c9"
+      },
+      {
+        "path": "server/services/design-lab/image-assembly.service.js",
+        "beforeSha256": "5624cc1fd29dfc7d805ad4f770ff0b4e958e8601383bdff288979c771f41fc8c",
+        "afterSha256": "5624cc1fd29dfc7d805ad4f770ff0b4e958e8601383bdff288979c771f41fc8c"
+      },
+      {
+        "path": "server/services/design-lab/portfolio.service.js",
+        "beforeSha256": "dd12367b78041713d17241bc5341696ef5ad5a0cddc7c4580ecabf9c02f7b0e4",
+        "afterSha256": "dd12367b78041713d17241bc5341696ef5ad5a0cddc7c4580ecabf9c02f7b0e4"
+      },
+      {
+        "path": "server/services/design-lab/capture-sanitization.service.js",
+        "beforeSha256": "53b2f568e92ed58029f915fc8ae548ef4d6075c0600819f73baaf17d5edce870",
+        "afterSha256": "53b2f568e92ed58029f915fc8ae548ef4d6075c0600819f73baaf17d5edce870"
+      },
+      {
+        "path": "server/services/design-lab/structural-native-scroll.js",
+        "beforeSha256": "9c3a22dc8d4e3dd35ef0362c5b380ea53e8d2cb1fb4936dd9085e4625df4d82d",
+        "afterSha256": "9c3a22dc8d4e3dd35ef0362c5b380ea53e8d2cb1fb4936dd9085e4625df4d82d"
+      },
+      {
+        "path": "server/services/design-lab/structural-resource-diagnostics.js",
+        "beforeSha256": "ee687221319c63b53c2e9204709c94396ab38aaf5827895c051d50c769e34c2c",
+        "afterSha256": "ee687221319c63b53c2e9204709c94396ab38aaf5827895c051d50c769e34c2c"
+      },
+      {
+        "path": "server/services/design-lab/direction-versioning.service.js",
+        "beforeSha256": "617491f62379c0e47b15a589905a9b7ddb3c460d7156671d742f920b11410135",
+        "afterSha256": "617491f62379c0e47b15a589905a9b7ddb3c460d7156671d742f920b11410135"
+      },
+      {
+        "path": "server/services/design-lab/popup-sanitization.service.js",
+        "beforeSha256": "d027b89fea790b188f19863d7f73c4a1d61e55e1403268f9efa9816f97f29cf0",
+        "afterSha256": "d027b89fea790b188f19863d7f73c4a1d61e55e1403268f9efa9816f97f29cf0"
+      },
+      {
+        "path": "server/services/design-lab/design-engine-v2.service.js",
+        "beforeSha256": "9908ec9cc014240d44f8195b8e497075bfb65a7fe128f53c1db13dd18b174692",
+        "afterSha256": "9908ec9cc014240d44f8195b8e497075bfb65a7fe128f53c1db13dd18b174692"
+      },
+      {
+        "path": "server/services/design-lab/existing-website.service.js",
+        "beforeSha256": "11688fa884b699bf4f33a3f52795dbd2070069a9f112c21303853290f8e3c0c1",
+        "afterSha256": "11688fa884b699bf4f33a3f52795dbd2070069a9f112c21303853290f8e3c0c1"
+      },
+      {
+        "path": "server/services/design-lab/structural-capture-profile.js",
+        "beforeSha256": "acc83f5bb37d0761358458f2ccb65f13a8c580c950b67d1f22a1fef221264720",
+        "afterSha256": "acc83f5bb37d0761358458f2ccb65f13a8c580c950b67d1f22a1fef221264720"
+      },
+      {
+        "path": "server/services/design-lab/structural-observation-shadow.js",
+        "beforeSha256": "85c7ecd7f48284a208fd3074655f0fb2af157ce0fae32ac8edc6d0c83cc16739",
+        "afterSha256": "85c7ecd7f48284a208fd3074655f0fb2af157ce0fae32ac8edc6d0c83cc16739"
+      },
+      {
+        "path": "server/services/design-lab/structural-vision-cleanup.service.js",
+        "beforeSha256": "8722ff5f1f459686f0a4f63bbcfef00c9456bc7450d35f6b40f840f9c0a40962",
+        "afterSha256": "8722ff5f1f459686f0a4f63bbcfef00c9456bc7450d35f6b40f840f9c0a40962"
+      },
+      {
+        "path": "server/services/design-lab/directions-checkpoint.service.js",
+        "beforeSha256": "52c6bf2aff7a5006eb140837b2e4dfc57204604ffbcfad0e390be5ee56d30626",
+        "afterSha256": "52c6bf2aff7a5006eb140837b2e4dfc57204604ffbcfad0e390be5ee56d30626"
+      },
+      {
+        "path": "server/services/design-lab/style-frame.service.js",
+        "beforeSha256": "b3680a8dab4fbffac6ef0e47d346c3b5f6a984db5f6dcbf3a728f737f3ed8831",
+        "afterSha256": "b3680a8dab4fbffac6ef0e47d346c3b5f6a984db5f6dcbf3a728f737f3ed8831"
+      },
+      {
+        "path": "server/services/design-lab/reference-progress.service.js",
+        "beforeSha256": "87c431629f27b2f43e4ecd1107ee429f704c438396a8bd0ce7ed400945c0896e",
+        "afterSha256": "87c431629f27b2f43e4ecd1107ee429f704c438396a8bd0ce7ed400945c0896e"
+      },
+      {
+        "path": "server/services/design-lab/structural-consent-preferences.service.js",
+        "beforeSha256": "598865fc3718c091cdfb6cee33927b1cd93e6fc0134058764f6ba75590074fc0",
+        "afterSha256": "598865fc3718c091cdfb6cee33927b1cd93e6fc0134058764f6ba75590074fc0"
+      },
+      {
+        "path": "server/services/design-lab/structural-animated-components.js",
+        "beforeSha256": "70e1626cc0e4d43543ad704f6c3145ba5f3dc5c4ef06443b7a2f0a01fb2a3b6a",
+        "afterSha256": "70e1626cc0e4d43543ad704f6c3145ba5f3dc5c4ef06443b7a2f0a01fb2a3b6a"
+      },
+      {
+        "path": "server/services/design-lab/capture-image-visibility.js",
+        "beforeSha256": "37f34f1e8cd0fd494f6c668f0d21551610e81b336d729e79b1b27704d083689e",
+        "afterSha256": "37f34f1e8cd0fd494f6c668f0d21551610e81b336d729e79b1b27704d083689e"
+      },
+      {
+        "path": "server/services/design-lab/structural-consent-backdrop.service.js",
+        "beforeSha256": "5a5f279ac4c85051b181ff90c08142bd7c8c62b721c3eeaea961149264c8e3be",
+        "afterSha256": "5a5f279ac4c85051b181ff90c08142bd7c8c62b721c3eeaea961149264c8e3be"
+      },
+      {
+        "path": "server/services/design-lab/portfolio-analysis.service.js",
+        "beforeSha256": "29cb62a97250abcaedceb6966201dd668bff4d0893fc76d2402a57bf75065287",
+        "afterSha256": "29cb62a97250abcaedceb6966201dd668bff4d0893fc76d2402a57bf75065287"
+      },
+      {
+        "path": "server/services/design-lab/cloudinary-folders.js",
+        "beforeSha256": "431fdfc9bb62df244b859133b2c3977d8b511243b4cbc830cc44c24ee77912be",
+        "afterSha256": "431fdfc9bb62df244b859133b2c3977d8b511243b4cbc830cc44c24ee77912be"
+      },
+      {
+        "path": "server/services/design-lab/homepage-generation.service.js",
+        "beforeSha256": "6c5b40cb10b25024bebf8da62b1b544c0949886b840748296bc8c27c072d52b6",
+        "afterSha256": "6c5b40cb10b25024bebf8da62b1b544c0949886b840748296bc8c27c072d52b6"
+      },
+      {
+        "path": "server/services/design-lab/structural-persistent-elements.js",
+        "beforeSha256": "b7d3918a5c1cb2cf91a6bbfd2cea67351a509fd4c048420db43c23ec87d35198",
+        "afterSha256": "b7d3918a5c1cb2cf91a6bbfd2cea67351a509fd4c048420db43c23ec87d35198"
+      },
+      {
+        "path": "server/services/design-lab/approval.service.js",
+        "beforeSha256": "1800a8bdfc328d062bcdccff315f0a705a50ede0c9f149d6ed7569d6848329f4",
+        "afterSha256": "1800a8bdfc328d062bcdccff315f0a705a50ede0c9f149d6ed7569d6848329f4"
+      },
+      {
+        "path": "server/services/design-lab/structural-video.service.js",
+        "beforeSha256": "38d4c70ef4511521e701dcd6916c27e91117c5a2fd92b9f25d40223abeb3175c",
+        "afterSha256": "38d4c70ef4511521e701dcd6916c27e91117c5a2fd92b9f25d40223abeb3175c"
+      },
+      {
+        "path": "server/services/design-lab/structural-paint.service.js",
+        "beforeSha256": "cecd9d6f6e76c8b4749a2616b5207646d2dcfef41d375bd26e82d15e38b76c68",
+        "afterSha256": "cecd9d6f6e76c8b4749a2616b5207646d2dcfef41d375bd26e82d15e38b76c68"
+      },
+      {
+        "path": "server/services/design-lab/structural-product-diagnostics.js",
+        "beforeSha256": "23e7d271f659dc1d84f60f02269b1061c6e90197eac13ce1773b10fa3f7d0cbd",
+        "afterSha256": "23e7d271f659dc1d84f60f02269b1061c6e90197eac13ce1773b10fa3f7d0cbd"
+      },
+      {
+        "path": "server/tests/design-lab-structural-reliability-shadow.test.js",
+        "beforeSha256": "a502f82ddcb792c276d026b4428e7e05c99e52ab2c1db8e6c6e041a9baa1b242",
+        "afterSha256": "a502f82ddcb792c276d026b4428e7e05c99e52ab2c1db8e6c6e041a9baa1b242"
+      },
+      {
+        "path": "server/tests/design-lab-structural-sequencing.test.js",
+        "beforeSha256": "71e5cc21a60b3497e9ed3e948aa3cc64e2aada88d92cd93037bfcbe0990533bf",
+        "afterSha256": "71e5cc21a60b3497e9ed3e948aa3cc64e2aada88d92cd93037bfcbe0990533bf"
+      },
+      {
+        "path": "server/tests/design-lab-structural-consent-preferences.test.js",
+        "beforeSha256": "e8ae978cce205d2629ecc52071bafddb76485cb2596eeccb71f2679ab699fda6",
+        "afterSha256": "e8ae978cce205d2629ecc52071bafddb76485cb2596eeccb71f2679ab699fda6"
+      },
+      {
+        "path": "server/tests/design-lab-structural-product-path.test.js",
+        "beforeSha256": "9d5ab4763661dcb946f1ecc03c3580e55f85a5fbb9dde5c4819db08dfe7353c4",
+        "afterSha256": "9d5ab4763661dcb946f1ecc03c3580e55f85a5fbb9dde5c4819db08dfe7353c4"
+      },
+      {
+        "path": "server/tests/design-lab-structural-shadow.test.js",
+        "beforeSha256": "543581a39c337281d45fba22f85991d9eb4c2724b5fabd72b37935fb7a361fd8",
+        "afterSha256": "543581a39c337281d45fba22f85991d9eb4c2724b5fabd72b37935fb7a361fd8"
+      },
+      {
+        "path": "server/tests/design-lab-structural-selection.test.js",
+        "beforeSha256": "a9399ce21ccf23dde6dbbe0a85299a0ae752d449acae7444425ae5abc8e172e9",
+        "afterSha256": "a9399ce21ccf23dde6dbbe0a85299a0ae752d449acae7444425ae5abc8e172e9"
+      },
+      {
+        "path": "server/tests/design-lab-structural-vision-cleanup.test.js",
+        "beforeSha256": "4d4749f1d18d4bd45812bd211f3c20c4aecc52556fb5e785ea715808b4338687",
+        "afterSha256": "4d4749f1d18d4bd45812bd211f3c20c4aecc52556fb5e785ea715808b4338687"
+      },
+      {
+        "path": "server/tests/design-lab-structural-resource-recovery.test.js",
+        "beforeSha256": "f9e04352f01d388385a6b00dc901a70953818c8eff72b01b850609ce7dfa6745",
+        "afterSha256": "f9e04352f01d388385a6b00dc901a70953818c8eff72b01b850609ce7dfa6745"
+      },
+      {
+        "path": "server/tests/design-lab-structural-page-capture.test.js",
+        "beforeSha256": "bbede5b7bd74ee196c2d0def72528f9e1ce99936dc07758d72c27bdc93a6c87a",
+        "afterSha256": "bbede5b7bd74ee196c2d0def72528f9e1ce99936dc07758d72c27bdc93a6c87a"
+      },
+      {
+        "path": "server/tests/design-lab-structural-images.test.js",
+        "beforeSha256": "95b204c0921539f1aaf2b771ae947e7c761da5ea49f4bf79e9b67627e2acae33",
+        "afterSha256": "95b204c0921539f1aaf2b771ae947e7c761da5ea49f4bf79e9b67627e2acae33"
+      },
+      {
+        "path": "server/tests/design-lab-structural-capture-profile.test.js",
+        "beforeSha256": "829313dabd284086647cd604e57f597a0485d631ceef5afd34d435383ed5de4e",
+        "afterSha256": "829313dabd284086647cd604e57f597a0485d631ceef5afd34d435383ed5de4e"
+      },
+      {
+        "path": "server/tests/design-lab-structural-animation.test.js",
+        "beforeSha256": "9b2190b53618da4029143a8de8761024d1677e1abcd9d969254f4f6952b148fc",
+        "afterSha256": "9b2190b53618da4029143a8de8761024d1677e1abcd9d969254f4f6952b148fc"
+      },
+      {
+        "path": "server/tests/design-lab-structural-product-diagnostics.test.js",
+        "beforeSha256": "4bd6dc41c555a0207fcac91388fc402f7daeae080b1bf4b96f00173ea71ca3c9",
+        "afterSha256": "4bd6dc41c555a0207fcac91388fc402f7daeae080b1bf4b96f00173ea71ca3c9"
+      },
+      {
+        "path": "server/tests/design-lab-structural-image-diagnostics.test.js",
+        "beforeSha256": "c517fb754dcf53bad52c66a923534c19da1752cb6960fc25f097e4ec6e432166",
+        "afterSha256": "c517fb754dcf53bad52c66a923534c19da1752cb6960fc25f097e4ec6e432166"
+      },
+      {
+        "path": "client/src/components/dashboard/admin/sites/structural-capture-display.js",
+        "beforeSha256": "dd020690781fc4db37894f22439c8de22a5f334f94ec9f000c590d7d981376cf",
+        "afterSha256": "dd020690781fc4db37894f22439c8de22a5f334f94ec9f000c590d7d981376cf"
+      }
+    ],
+    "removedPreexistingComparedFiles": 0,
+    "baselineBranch": "site",
+    "baselineHead": "2bd44a3321ec11f9d3b5263ecb47673eccf3e3ef",
+    "currentHead": "2bd44a3321ec11f9d3b5263ecb47673eccf3e3ef",
+    "currentDirtyPaths": 76
+  },
+  "artistic": {
+    "minimumDesignLabUtility": 8,
+    "scale": 10,
+    "newVisionOutputs": 0,
+    "b2SitesLaunched": 0,
+    "readyForB2": false,
+    "everyApplicableB2SiteRequired": true,
+    "failuresMustRemainInEvaluation": true,
+    "independentVisualEvaluationRequired": true
+  },
+  "open": [
+    "Salterra fidelity and online resource obligation evidence",
+    "information gain of alternative local selection",
+    "V2 artistic utility and hallucination evaluation",
+    "high-concurrency Chromium test instability",
+    "historical MediaRecorder root cause not conclusively demonstrated",
+    "live capture and persistence overhead",
+    "AB monetary authorization"
+  ]
+}

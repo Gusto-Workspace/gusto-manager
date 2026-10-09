@@ -13,7 +13,8 @@ function animationCaptureDOM({mode, rootIds=[], tolerance=.5, config}) {
   const visible=n=>{let opacity=1;for(let p=n;p;p=parent(p)){const s=getComputedStyle(p);
     opacity*=Number(s.opacity);if(s.display==='none'||s.visibility==='hidden'||opacity<=.01)return false;}return true;};
   const scopeNodes=root=>[root,...root.querySelectorAll('*')].filter(n=>!n.matches('script,style,link,meta,source'));
-  const state=n=>{const s=getComputedStyle(n);return {id:id(n),rect:rect(n),
+  const state=n=>{const s=getComputedStyle(n);return {id:id(n),tag:n.tagName,elementId:n.id||null,
+    className:typeof n.className==='string'?n.className:null,rect:rect(n),
     layout:[n.offsetWidth||0,n.offsetHeight||0,s.display,s.position,s.overflowX,s.overflowY,s.clipPath],
     motion:[s.transform,s.translate,s.rotate,s.scale,s.opacity,s.left,s.top,s.backgroundPositionX,s.backgroundPositionY,s.offsetDistance],
     inline:[n.style.transform,n.style.translate,n.style.rotate,n.style.scale,n.style.opacity,n.style.left,n.style.top],
@@ -22,6 +23,7 @@ function animationCaptureDOM({mode, rootIds=[], tolerance=.5, config}) {
     webAnimation:n.getAnimations?.().some(a=>a.constructor.name==='Animation'&&a.playState==='running')||false};};
   const geometrySame=(a,b)=>['x','y','width','height'].every(k=>Math.abs(a[k]-b[k])<=tolerance);
   const inspectRoot=root=>{const nodes=scopeNodes(root);return {id:id(root),rect:rect(root),
+    ancestors:(()=>{const result=[];for(let p=parent(root);p&&result.length<8;p=parent(p))result.push(state(p));return result;})(),
     oversized:nodes.length>config.maxScopeNodes,
     nodes:nodes.slice(0,config.maxScopeNodes).map(state)};};
   const restore=()=>{
@@ -36,17 +38,29 @@ function animationCaptureDOM({mode, rootIds=[], tolerance=.5, config}) {
   };
   const verify=()=>{
     const active=registry.active;if(!active)return {valid:true,components:[]};
-    const failures=[];
+    const failures=[],details=[];
     for(const before of active.baselines){const root=registry.elements.get(before.id);
       if(!root?.isConnected){failures.push('component_disappeared');continue;}
       const after=inspectRoot(root);
       if(after.oversized||!geometrySame(before.rect,after.rect))failures.push('component_envelope_changed');
+      const changed=before.nodes.flatMap((n,i)=>{
+        const next=after.nodes[i];
+        return !next||n.id!==next.id||!geometrySame(n.rect,next.rect)||JSON.stringify(n.layout)!==JSON.stringify(next.layout)||n.source!==next.source
+          ? [{before:n,after:next||null}] : [];
+      });
       if(before.nodes.length!==after.nodes.length||before.nodes.some((n,i)=>{
         const next=after.nodes[i];return !next||n.id!==next.id||!geometrySame(n.rect,next.rect)||
           JSON.stringify(n.layout)!==JSON.stringify(next.layout)||n.source!==next.source;
       }))failures.push('visible_structure_or_source_changed');
+      if(after.oversized||!geometrySame(before.rect,after.rect)||changed.length||before.nodes.length!==after.nodes.length)
+        details.push({componentId:before.id,component:before.nodes[0],beforeRect:before.rect,afterRect:after.rect,
+          beforeAncestors:before.ancestors,afterAncestors:after.ancestors,changedNodes:changed.slice(0,32),
+          changedNodeCount:changed.length,
+          sourceChanges:changed.filter(n=>(n.before.source||n.after?.source)&&n.before.source!==n.after?.source)
+            .map(n=>({id:n.before.id,beforeSource:n.before.source,afterSource:n.after?.source||null})),
+          beforeNodeCount:before.nodes.length,afterNodeCount:after.nodes.length});
     }
-    return {valid:!failures.length,failures:[...new Set(failures)],components:active.components};
+    return {valid:!failures.length,failures:[...new Set(failures)],details,components:active.components};
   };
   if(mode==='restore')return restore();
   if(mode==='verify')return verify();
@@ -115,7 +129,7 @@ function animationCaptureDOM({mode, rootIds=[], tolerance=.5, config}) {
         mechanism:'scoped_computed_motion_snapshot',geometryPreserved:true});
     }
     const integrity=verify();
-    if(!integrity.valid){restore();return {valid:false,failures:integrity.failures,components:[]};}
+    if(!integrity.valid){restore();return {valid:false,failures:integrity.failures,details:integrity.details,components:[]};}
     return integrity;
   } catch(error){restore();throw error;}
 }
@@ -166,7 +180,7 @@ function createAnimatedCaptureController(page, deadline, config=MOTION_CONFIG) {
       }
       const roots=motionRoots(frames,config.geometryTolerance);if(!roots.length)return [];
       const frozen=await evaluate('freeze',{rootIds:roots.map(r=>r.id)});
-      if(!frozen.valid){lastDiagnostic={status:'snapshot_rejected',failures:frozen.failures,components:[]};return [];}
+      if(!frozen.valid){lastDiagnostic={status:'snapshot_rejected',failures:frozen.failures,details:frozen.details,components:[]};return [];}
       active=frozen.components.map(c=>({...c,detectedMechanisms:roots.find(r=>r.id===c.id).mechanisms}));
       lastDiagnostic={status:'controlled_snapshot',components:active};
       return active;

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "scope": "synthetic_local_trace_and_frozen_request_preparation_not_live_site_performance",
+  "trace": [
+    {
+      "candidateCount": 5,
+      "iterations": 20,
+      "traceBytes": 8940,
+      "meanTraceBuildMs": 0.7089377000000013
+    },
+    {
+      "candidateCount": 32,
+      "iterations": 20,
+      "traceBytes": 54292,
+      "meanTraceBuildMs": 1.8063654000000042
+    }
+  ],
+  "frozenRequests": [
+    {
+      "id": "6ac39cff599b9a26b2dc05d2",
+      "title": "Tastavents",
+      "variants": [
+        {
+          "variant": "A",
+          "analysisContract": {
+            "version": 1,
+            "promptHash": "c37d345b0fa479542a03f7da0f00469079c7266b44cd58d352a9a81ba3cab8ba",
+            "schemaHash": "1dbc82249c297f33794356ddc9161c90d3a34a095916c8e55dfcacd601d1f3b6"
+          },
+          "contentSha256": "6aa94cc2ce6b10f7c9e480042d30a937b9b096e192e34542c6ff3acba008ba7c",
+          "contentBytes": 21317,
+          "instructionsBytes": 9254,
+          "schemaBytes": 6481,
+          "preparationMs": 0.866608000000042
+        },
+        {
+          "variant": "B",
+          "analysisContract": {
+            "version": 2,
+            "promptHash": "97135846c94279720abdf5ad735750949ccd2e5cc7c59ac0c9b0e21d79891d55",
+            "schemaHash": "ad788ddd85bc3d003edd31f9f32d7f21f60b0e7f7ebf65c25d82b7a1b1394ee3"
+          },
+          "contentSha256": "6aa94cc2ce6b10f7c9e480042d30a937b9b096e192e34542c6ff3acba008ba7c",
+          "contentBytes": 21317,
+          "instructionsBytes": 11260,
+          "schemaBytes": 8390,
+          "preparationMs": 1.5539479999999912
+        }
+      ]
+    },
+    {
+      "id": "6ac758d7d7b33e9ce0039cea",
+      "title": "Cartapani",
+      "variants": [
+        {
+          "variant": "A",
+          "analysisContract": {
+            "version": 1,
+            "promptHash": "81d63503e0f8d1885681c431b53b72e72dc00151cadd17d6ffcf59d3329925f2",
+            "schemaHash": "faa4c4cd8c5ae221de782d8aa4a94f65cecb0fda95fbb554f57d66432005c2d0"
+          },
+          "contentSha256": "4f514611b4fdb769816fef9616500653d585139c22333fe2251603e63ca08862",
+          "contentBytes": 23293,
+          "instructionsBytes": 9344,
+          "schemaBytes": 6526,
+          "preparationMs": 0.7585360000000492
+        },
+        {
+          "variant": "B",
+          "analysisContract": {
+            "version": 2,
+            "promptHash": "7fc6b1a8f2ec122935164ce959dbd49c43dbaa925f876281f4c0bf9b7c48e4ad",
+            "schemaHash": "1a79cfdfb27f20de1abed02779c477b498a9343c1197b157e5fca937c7bc575a"
+          },
+          "contentSha256": "4f514611b4fdb769816fef9616500653d585139c22333fe2251603e63ca08862",
+          "contentBytes": 23293,
+          "instructionsBytes": 11350,
+          "schemaBytes": 8480,
+          "preparationMs": 0.7936010000000806
+        }
+      ]
+    },
+    {
+      "id": "6ac789a195ac4c5a6cc51831",
+      "title": "Grupo Isabellas",
+      "variants": [
+        {
+          "variant": "A",
+          "analysisContract": {
+            "version": 1,
+            "promptHash": "6bc2f20b4b113fc4bac2a4b06508cb9ca821f4e3de6e1a3d8b086b72bdabd0b6",
+            "schemaHash": "bd0cc25e4c2ce3e9c827cb7d873d5b4e5b578963fc665f088f4a5ed325bbdf46"
+          },
+          "contentSha256": "f21afdb93e850b988e896eb19ceafc0dbdd4590697331f7f70f3613345cf7019",
+          "contentBytes": 4811,
+          "instructionsBytes": 8356,
+          "schemaBytes": 6481,
+          "preparationMs": 0.8318389999999454
+        },
+        {
+          "variant": "B",
+          "analysisContract": {
+            "version": 2,
+            "promptHash": "f3d4fc4dbe767e8cf88a2e244d09e0af8c2ec17e9e2c5806a482631bfe205b67",
+            "schemaHash": "dc2c4bd7ca1d7f43d362c4cd87c49463d42118c68794cfb6b010987f52324c45"
+          },
+          "contentSha256": "f21afdb93e850b988e896eb19ceafc0dbdd4590697331f7f70f3613345cf7019",
+          "contentBytes": 4811,
+          "instructionsBytes": 10362,
+          "schemaBytes": 8390,
+          "preparationMs": 2.9595319999999674
+        }
+      ]
+    }
+  ],
+  "limits": {
+    "traceMaximumBytes": 262144,
+    "traceCandidateLimit": 160,
+    "resourceAdmissionEventLimit": 2048,
+    "persistedAdmissionEventLimit": 256
+  },
+  "liveCaptureOverheadMeasured": false,
+  "providerBillingMeasured": false
+}

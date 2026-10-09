@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "status": "prepared_not_authorized_not_executable",
+  "preparedAt": "2026-10-08T19:52:46.414Z",
+  "sourceProtocol": "STRUCTURAL_B1_AB_PREPARED.json",
+  "sourceProtocolSha256": "b7e211e6be4fa07457f12d97df8a27f8812c1aeeff2012525607e04ebd67a847",
+  "historicalRun": "diagnostics/structural-b1-ab-20261008/runs/2026-10-08T18-56-27-309Z-50c62f71",
+  "historicalCallsDispatched": 2,
+  "historicalCallsMaximum": 10,
+  "newCallsAuthorized": 0,
+  "potentialFutureCallsExcludingTastavents": 8,
+  "financial": {
+    "currency": "USD",
+    "taxesIncluded": false,
+    "originalCumulativeCapUSD": 1,
+    "knownUsageCostUSD": 0.00564705,
+    "unknownTastaventsV2CostUSD": null,
+    "uncertaintyReservedUSD": 0.36,
+    "conservativeExposureUSD": 0.36564705,
+    "conservativeAvailableUSD": 0.63435295,
+    "availableIsNotAuthorization": true,
+    "actualInvoiceTotalUnknown": true,
+    "reservationPerCreationUSD": 0.36
+  },
+  "transport": {
+    "createTimeoutMs": 30000,
+    "pollTimeoutMs": 15000,
+    "totalMs": 540000,
+    "pollIntervalMs": 5000,
+    "trackingLeaseMs": 45000,
+    "background": true,
+    "store": false,
+    "automaticCreationRetries": 0,
+    "fallbackToSynchronous": false,
+    "sharedCoordinator": "services/design-lab/structural-vision-background.js",
+    "stopCohortOnAnyHTTPTimeoutOrError": true,
+    "originalExecutorIsHistoricalOnly": true,
+    "fileAdapterAndStageLedgerRequiredBeforeExecution": true
+  },
+  "invariants": {
+    "reverifiedImages": 25,
+    "exactHistoricalRequestsReconstructed": 10,
+    "onlyProposedRequestBodyChange": "background:true",
+    "capture": false,
+    "localObservationChanges": false,
+    "artisticPromptChanges": false,
+    "artisticSchemaChanges": false,
+    "databaseConnection": false,
+    "remoteMutation": false
+  },
+  "evaluation": {
+    "criteria": [
+      "Capture/fidélité",
+      "Structure",
+      "Texte→image",
+      "Densité",
+      "Transitions",
+      "Principes",
+      "Prudence",
+      "Taxonomie",
+      "Utilité Design Lab"
+    ],
+    "minimumUtility": 8,
+    "unchangedScale": true,
+    "oldScoresUnchanged": true,
+    "reviewers": "independent of the paid generator; fresh-context or external review preferred; no extra paid evaluator call",
+    "blinding": "neutral random IDs; remove version/model and old scores; randomize presentation within each site; same neutral rendering; lock notes before unblinding",
+    "residualBias": "schema/style may reveal version; current implementer already knows V2; no claim of perfect blinding or full external independence",
+    "comparisonUnit": "visually grounded page interval/moment, not moment number which may differ between versions",
+    "perMoment": [
+      "geometry/dominance/axes/overlap/void",
+      "segmentation and scope of evidence",
+      "presence assertions/hallucinations",
+      "relations near and far",
+      "specific transferable mechanism/effect/conditions"
+    ],
+    "perSiteVerdict": [
+      "contemporary V1 scores",
+      "V2 scores",
+      "delta on all nine criteria",
+      "absolute V2 utility and whether >=8",
+      "corrected/persistent/new errors",
+      "hallucinations removed/introduced",
+      "relations/principles",
+      "probable input limitations",
+      "causal hypotheses with confidence"
+    ],
+    "causalLimit": "One pair per site measures prompt+schema jointly; no separation of their effects or proof of reliability on unknown sites. All <8 scores and failures remain visible.",
+    "remainingB1": "eight references remain in scope of improvement; no additional calls prepared; Salterra requires capture repair/certification before artistic evaluation"
+  },
+  "pairs": [
+    {
+      "siteId": "6ac39cff599b9a26b2dc05d2",
+      "title": "Tastavents",
+      "inputsReverified": true,
+      "imageCount": 3,
+      "manifestSha256": "741d4a0d8dcc23c80d9d4588acae25986fb88e26c5af717bf575525839e78beb",
+      "status": "incomplete_historical_pair_no_relaunch",
+      "potentialNewCalls": 0,
+      "authorizedCalls": 0,
+      "variants": [
+        {
+          "version": 1,
+          "originalRequestSha256": "fd22251dc30c92cb80feae730506b9f0050d184c1f79d104de80383a3ab425f6",
+          "proposedBackgroundRequestSha256": "16934b82f4f007023091bbf3a28cdd4b3399364990253aa2396c3a56ed71c50d",
+          "instructionsSha256": "c37d345b0fa479542a03f7da0f00469079c7266b44cd58d352a9a81ba3cab8ba",
+          "schemaSha256": "1dbc82249c297f33794356ddc9161c90d3a34a095916c8e55dfcacd601d1f3b6",
+          "inputSha256": "7daa0b29cc22b552e87df5038ecbb43cfd34e66d0934c64f46c782a851504188",
+          "authorized": false
+        },
+        {
+          "version": 2,
+          "originalRequestSha256": "18617550e289ebae55d259506bb6a6a0cf5e72fd6f7fe7c2bfa5ec4212d3c597",
+          "proposedBackgroundRequestSha256": "c13c6a4dbd301d694e46bdee3498aa8ca395b0c1755fa1478a5b5754b33ea05f",
+          "instructionsSha256": "97135846c94279720abdf5ad735750949ccd2e5cc7c59ac0c9b0e21d79891d55",
+          "schemaSha256": "ad788ddd85bc3d003edd31f9f32d7f21f60b0e7f7ebf65c25d82b7a1b1394ee3",
+          "inputSha256": "7daa0b29cc22b552e87df5038ecbb43cfd34e66d0934c64f46c782a851504188",
+          "authorized": false
+        }
+      ]
+    },
+    {
+      "siteId": "6ac758d7d7b33e9ce0039cea",
+      "title": "Cartapani",
+      "inputsReverified": true,
+      "imageCount": 6,
+      "manifestSha256": "d6e15f7518963f03199ee7d429f9c9048d1b14561a437a7db186d5066e9c24ec",
+      "status": "two_not_dispatched_require_new_authorization",
+      "potentialNewCalls": 2,
+      "authorizedCalls": 0,
+      "variants": [
+        {
+          "version": 1,
+          "originalRequestSha256": "09d3527fc7984d829567efe8060afb48cc73b0d25204f0b965b64a51541e2f17",
+          "proposedBackgroundRequestSha256": "2a0cab662b91799ab099c1efaab21c7bcf2e90f0219c5ce915cd0e2bd9ca017c",
+          "instructionsSha256": "81d63503e0f8d1885681c431b53b72e72dc00151cadd17d6ffcf59d3329925f2",
+          "schemaSha256": "faa4c4cd8c5ae221de782d8aa4a94f65cecb0fda95fbb554f57d66432005c2d0",
+          "inputSha256": "c2e2bac05bc4316e95fc98a918feb14d6655c8dcf6475f47612c33ee30a1a2b0",
+          "authorized": false
+        },
+        {
+          "version": 2,
+          "originalRequestSha256": "984ac4f522bce3975da6e183ea7a0f1cd5a701eb9a0c66eb985865c3e654fe54",
+          "proposedBackgroundRequestSha256": "1d2d6eda3767066e56a4bf2f162d43c2aa60b1e80bd3591cecf5be922aa62d59",
+          "instructionsSha256": "7fc6b1a8f2ec122935164ce959dbd49c43dbaa925f876281f4c0bf9b7c48e4ad",
+          "schemaSha256": "1a79cfdfb27f20de1abed02779c477b498a9343c1197b157e5fca937c7bc575a",
+          "inputSha256": "c2e2bac05bc4316e95fc98a918feb14d6655c8dcf6475f47612c33ee30a1a2b0",
+          "authorized": false
+        }
+      ]
+    },
+    {
+      "siteId": "6ac789a195ac4c5a6cc51831",
+      "title": "Grupo Isabellas",
+      "inputsReverified": true,
+      "imageCount": 4,
+      "manifestSha256": "a2b5f2b3dbddf67df726b80f75f616d380c2659a3c86c1f5e02f13cc5f1f6b29",
+      "status": "two_not_dispatched_require_new_authorization",
+      "potentialNewCalls": 2,
+      "authorizedCalls": 0,
+      "variants": [
+        {
+          "version": 1,
+          "originalRequestSha256": "9febd8849bdae5f9c300c06bc039f576a1cf0434e09cc8bfb81814aae2603f9d",
+          "proposedBackgroundRequestSha256": "12f158c13179e23adba6dfdcd1762cbf748eb57714827af7a928adc676c02017",
+          "instructionsSha256": "6bc2f20b4b113fc4bac2a4b06508cb9ca821f4e3de6e1a3d8b086b72bdabd0b6",
+          "schemaSha256": "bd0cc25e4c2ce3e9c827cb7d873d5b4e5b578963fc665f088f4a5ed325bbdf46",
+          "inputSha256": "4be53727fb6688eba64e5e815708c43e25cf295eb0c8fe17f9c57910061b082c",
+          "authorized": false
+        },
+        {
+          "version": 2,
+          "originalRequestSha256": "67716a656212dc9b91c44f8d0aff83021a62c33bf909224bb2ce16df66ebcc44",
+          "proposedBackgroundRequestSha256": "40bc92fe45d3a7f974de473145b665b59d0823f02b631f8d0072f62d2bd40d6b",
+          "instructionsSha256": "f3d4fc4dbe767e8cf88a2e244d09e0af8c2ec17e9e2c5806a482631bfe205b67",
+          "schemaSha256": "dc2c4bd7ca1d7f43d362c4cd87c49463d42118c68794cfb6b010987f52324c45",
+          "inputSha256": "4be53727fb6688eba64e5e815708c43e25cf295eb0c8fe17f9c57910061b082c",
+          "authorized": false
+        }
+      ]
+    },
+    {
+      "siteId": "6ac3603eb929a05351c55263",
+      "title": "Gucci Osteria Florence",
+      "inputsReverified": true,
+      "imageCount": 6,
+      "manifestSha256": "16f49bad9a19e58466efb1115389f39368709996e712d4333690995174590a9d",
+      "status": "two_not_dispatched_require_new_authorization",
+      "potentialNewCalls": 2,
+      "authorizedCalls": 0,
+      "variants": [
+        {
+          "version": 1,
+          "originalRequestSha256": "b51a2c8e3dc0a06e08a3d161de814124bf809c9e7ba910bd7ec7164ca37fcad8",
+          "proposedBackgroundRequestSha256": "695e3ca8914efe22658b37c60d3070656020fca2cb33bf9e3eff72f544a6f63d",
+          "instructionsSha256": "81d63503e0f8d1885681c431b53b72e72dc00151cadd17d6ffcf59d3329925f2",
+          "schemaSha256": "faa4c4cd8c5ae221de782d8aa4a94f65cecb0fda95fbb554f57d66432005c2d0",
+          "inputSha256": "abeec262b50df0bdcd627d0b8ffbfb0f3c8367f19ea3fe06aea6fc7d677620e1",
+          "authorized": false
+        },
+        {
+          "version": 2,
+          "originalRequestSha256": "19dc18f91298fb8c3cced1b0090d8cfb6beadb64f5e9f5b33ddf700253f815cc",
+          "proposedBackgroundRequestSha256": "b324d073afe578b6e550b1e02b8e7eb794c92c410eb99e71588e20cf328a28f1",
+          "instructionsSha256": "7fc6b1a8f2ec122935164ce959dbd49c43dbaa925f876281f4c0bf9b7c48e4ad",
+          "schemaSha256": "1a79cfdfb27f20de1abed02779c477b498a9343c1197b157e5fca937c7bc575a",
+          "inputSha256": "abeec262b50df0bdcd627d0b8ffbfb0f3c8367f19ea3fe06aea6fc7d677620e1",
+          "authorized": false
+        }
+      ]
+    },
+    {
+      "siteId": "6ac786fa95ac4c5a6cc51523",
+      "title": "Cantina del sol",
+      "inputsReverified": true,
+      "imageCount": 6,
+      "manifestSha256": "84a37d1ea03590f0333878794aa12cd67033506f4c5aed2e0d4e28b4f0d631b8",
+      "status": "two_not_dispatched_require_new_authorization",
+      "potentialNewCalls": 2,
+      "authorizedCalls": 0,
+      "variants": [
+        {
+          "version": 1,
+          "originalRequestSha256": "4f53386cf8cf8d7c18251eb43b1e221d93d7217da7c911f4940d8f963cf80a44",
+          "proposedBackgroundRequestSha256": "3ef38a8ecde4b849cbdb8f0b5af924ef18352e0b96532db3a044593212a44a20",
+          "instructionsSha256": "81d63503e0f8d1885681c431b53b72e72dc00151cadd17d6ffcf59d3329925f2",
+          "schemaSha256": "faa4c4cd8c5ae221de782d8aa4a94f65cecb0fda95fbb554f57d66432005c2d0",
+          "inputSha256": "e31eb133603e244ded2141088686d5d026a76222a50078412c786193f4c06e70",
+          "authorized": false
+        },
+        {
+          "version": 2,
+          "originalRequestSha256": "227f6c7003b54919163110a769ea15da485fe0a305e4cf9839034d6142190d50",
+          "proposedBackgroundRequestSha256": "b3484272187ea7f3aea474c0a60e4b54c5e45b97a0c63182591dae54f8d40830",
+          "instructionsSha256": "7fc6b1a8f2ec122935164ce959dbd49c43dbaa925f876281f4c0bf9b7c48e4ad",
+          "schemaSha256": "1a79cfdfb27f20de1abed02779c477b498a9343c1197b157e5fca937c7bc575a",
+          "inputSha256": "e31eb133603e244ded2141088686d5d026a76222a50078412c786193f4c06e70",
+          "authorized": false
+        }
+      ]
+    }
+  ],
+  "requiredBeforeExecution": [
+    "isolated file adapter for the shared coordinator and offline cohort tests",
+    "fresh explicit human authorization naming the new calls and cumulative monetary cap",
+    "freeze the operational amendment and a new durable stage lock/ledger without touching the old run"
+  ]
+}

@@ -5,6 +5,7 @@ async function inspectCaptureImagesDOM({
   visibleOnly = false,
   decode = false,
   maxWaitMs = 5000,
+  diagnostics = false,
 } = {}) {
   const visibility = (node) => {
     const rect = node.getBoundingClientRect();
@@ -130,7 +131,29 @@ async function inspectCaptureImagesDOM({
       )
     );
   });
-  const rows = images.map((image) => ({
+  const describe = (node, kind) => {
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node);
+    return { kind, tag: node.tagName, id: node.id || null,
+      geometry: { x: box.x, y: box.y, width: box.width, height: box.height },
+      visibility: { eligible: true, visibleOnly, display: style.display, visibility: style.visibility, opacity: style.opacity },
+      source: { currentSrc: node.currentSrc || '', src: node.getAttribute('src'),
+        srcset: node.getAttribute('srcset'), lazySrc: node.getAttribute('data-src'), loading: node.getAttribute('loading') } };
+  };
+  const rows = images.map((image) => {
+    // Site-owned lazy loaders may decode a detached Image before assigning src
+    // to the painted element. This is only a key for an already pending shared
+    // transfer, never an active source, a decode proof or a download instruction.
+    let pendingTransferUrl;
+    if (!image.currentSrc && !image.getAttribute('src')?.trim() &&
+      !image.getAttribute('srcset')?.trim() && !image.closest('picture')?.querySelector('source[srcset]') &&
+      !image.naturalWidth && image.getAttribute('data-src')?.trim()) {
+      try { const candidate = new URL(image.getAttribute('data-src'),document.baseURI);
+        if (['http:','https:'].includes(candidate.protocol)) pendingTransferUrl=candidate.href;
+      } catch {} // Invalid declarations do not become network instructions.
+    }
+    return {
+    ...(diagnostics ? describe(image, 'image') : {}),
+    ...(pendingTransferUrl ? { pendingTransferUrl } : {}),
     url:
       image.currentSrc ||
       (image.getAttribute("src")?.trim()
@@ -139,11 +162,13 @@ async function inspectCaptureImagesDOM({
     complete: image.complete,
     naturalWidth: image.naturalWidth,
     naturalHeight: image.naturalHeight,
+    awaitsActiveImageSource: !image.complete && !image.currentSrc,
     // Empty lazy placeholders are rediscovered before making a final decision.
     pending:
       !image.complete ||
       (!image.currentSrc && !image.getAttribute("src")?.trim()),
-  }));
+    };
+  });
   // CSS backgrounds have no complete/naturalWidth API. Probe only large,
   // actually rendered backgrounds, using the same intercepted/cached transport.
   // Keep these per-document probes outside the site's DOM and layout.
@@ -165,6 +190,7 @@ async function inspectCaptureImagesDOM({
         }
         if (!rows.some((row) => row.url === url))
           rows.push({
+            ...(diagnostics ? describe(node, 'css_background') : {}),
             url,
             complete: probe.complete,
             naturalWidth: probe.naturalWidth,
@@ -180,8 +206,9 @@ async function inspectCaptureImagesDOM({
         video.currentSrc ||
         (video.getAttribute("src")?.trim()
           ? new URL(video.getAttribute("src"), document.baseURI).href
-          : "");
-      if (!url) continue;
+          : [...video.querySelectorAll('source[src]')].find(source=>
+            source.getAttribute('src')?.trim()&&(!source.media||matchMedia(source.media).matches)&&
+            (!source.type||video.canPlayType(source.type)))?.src || "");
       if (video.readyState >= 2 && video.videoWidth) continue;
       const poster = video.getAttribute("poster");
       if (poster?.trim()) {
@@ -193,14 +220,21 @@ async function inspectCaptureImagesDOM({
           window.__gustoBackgroundProbes.set(posterUrl, probe);
         }
         rows.push({
+          ...(diagnostics ? { ...describe(video, 'video_poster'), readyState: video.readyState,
+            mediaNetworkState: video.networkState, mediaError: video.error?.code || null, poster: posterUrl } : {}),
           url: posterUrl,
           complete: probe.complete,
           naturalWidth: probe.naturalWidth,
+          ...(diagnostics ? { naturalHeight: probe.naturalHeight } : {}),
           pending: !probe.complete,
         });
       } else
         rows.push({
+          ...(diagnostics ? { ...describe(video, url?'video':'video_pending_source'), readyState: video.readyState,
+            mediaNetworkState: video.networkState, mediaError: video.error?.code || null,
+            videoWidth: video.videoWidth, videoHeight: video.videoHeight, naturalHeight: 0 } : {}),
           url,
+          awaitsDocumentLoad: !url && document.readyState !== 'complete',
           complete: Boolean(video.error),
           naturalWidth: 0,
           pending: !video.error,
@@ -222,8 +256,9 @@ async function inspectCaptureImagesDOM({
               );
             }),
           ]);
-        } catch {
+        } catch (error) {
           rows[index].pending = true;
+          if(diagnostics)rows[index].decodeFailure={name:error.name,message:error.message};
         } finally {
           clearTimeout(timer);
         }

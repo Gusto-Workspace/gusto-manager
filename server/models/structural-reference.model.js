@@ -9,6 +9,7 @@ const {
 const requiredText = { type: String, required: true, maxlength: 1200 };
 const analysisSchema = new mongoose.Schema(
   {
+    analysisVersion:{type:Number,enum:[1,2,3],default:undefined},
     overview: requiredText,
     layoutProfile: new mongoose.Schema(
       Object.fromEntries(PROFILE_FIELDS.map((key) => [key, requiredText])),
@@ -34,9 +35,10 @@ const analysisSchema = new mongoose.Schema(
           order: { type: Number, required: true },
           layoutMode: { type: String, enum: LAYOUT_MODES, required: true },
           ...Object.fromEntries(
-            MOMENT_FIELDS.map((key) => [key, requiredText]),
+            MOMENT_FIELDS.map((key) => [key, {...requiredText,required:function(){return ![2,3].includes(this.parent()?.analysisVersion);}}]),
           ),
-          transferablePrinciples: [String],
+          geometry:mongoose.Schema.Types.Mixed,
+          transferablePrinciples: [mongoose.Schema.Types.Mixed],
           evidence: {
             type: new mongoose.Schema(
               {
@@ -44,6 +46,9 @@ const analysisSchema = new mongoose.Schema(
                 startPercent: { type: Number, min: 0, max: 100 },
                 endPercent: { type: Number, min: 0, max: 100 },
                 observation: requiredText,
+                scope:{type:String,enum:['wholeMoment','localFragment','sampledStates']},
+                level:{type:String,enum:['direct','inferred','unknown']},
+                anchors:{type:[mongoose.Schema.Types.Mixed],default:undefined},
               },
               { _id: false },
             ),
@@ -54,7 +59,8 @@ const analysisSchema = new mongoose.Schema(
       ),
     ],
     signatureStructuralMoves: [String],
-    transferablePrinciples: [String],
+    transferablePrinciples: [mongoose.Schema.Types.Mixed],
+    globalRelations:{type:[mongoose.Schema.Types.Mixed],default:undefined},
     avoidCopying: [String],
     suitableFor: [String],
     avoidWhen: [String],
@@ -196,6 +202,8 @@ const schema = new mongoose.Schema(
       type: new mongoose.Schema(
         {
           version: Number,
+          paintEvidence:{version:Number,complete:Boolean,verifiedViewports:Number},
+          mediaEvidence:mongoose.Schema.Types.Mixed,
           strategy: String,
           captureStrategy: { type: String, enum: ["continuous", "sampled"] },
           totalHeight: Number,
@@ -210,7 +218,9 @@ const schema = new mongoose.Schema(
           // Bounded numeric geometry and selected summaries only. Descriptors,
           // rejected candidates and images remain diagnostic artifacts locally.
           storyboard: mongoose.Schema.Types.Mixed,
+          originalEvidence:{type:mongoose.Schema.Types.Mixed,default:undefined},
           observationSelection: mongoose.Schema.Types.Mixed,
+          visionCleanliness: mongoose.Schema.Types.Mixed,
           positions: [
             new mongoose.Schema(
               {
@@ -231,9 +241,16 @@ const schema = new mongoose.Schema(
     },
     analysis: { type: analysisSchema, default: null },
     analyzedAt: { type: Date, default: null },
+    // Written atomically with analysis, never inferred from matching prose.
+    analysisApplication: { type: mongoose.Schema.Types.Mixed, default: null },
+    visionConfirmationRequired: { type: Boolean, default: false },
     operationToken: { type: String, default: "", select: false },
     operationStartedAt: { type: Date, default: null },
     lastError: { type: String, default: "" },
+    operationDiagnostic: { type: mongoose.Schema.Types.Mixed, default: null },
+    // The evidence for a still-valid prior analysis survives a failed replacement.
+    analysisCaptureSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+    retainedCaptureIds: { type: [String], default: [] },
   },
   { timestamps: true },
 );

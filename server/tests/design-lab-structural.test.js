@@ -32,10 +32,31 @@ const {
   createRouter,
 } = require("../routes/admin/design-lab-structural.routes");
 const {
-  analyzeStructuralReference,
+  analyzeStructuralReference: analyzeStructuralReferenceImplementation,
   MODEL_CONFIG,
 } = require("../services/design-lab/openai.service");
 const id = "507f1f77bcf86cd799439011";
+// Upgrade old synchronous transport fixtures to explicit realistic Responses
+// envelopes. New background tests separately exercise missing/invalid metadata.
+async function analyzeStructuralReference(captures,metadata,options={}) {
+  let checkpoint=null,body=null,terminal=null,prepared=null;
+  const defaultStore={load:async()=>checkpoint,compareAndSet:async(expected,next,request)=>{
+    assert.deepEqual(expected,checkpoint);checkpoint=structuredClone(next);if(request)prepared=structuredClone(request);return checkpoint;
+  },archiveRawBody:async raw=>{body=raw;},readRawBody:async()=>body,readTerminalResponse:async()=>terminal,readRequest:async()=>prepared};
+  const originalFetch=global.fetch;
+  global.fetch=async(...args)=>{
+    const response=await originalFetch(...args);
+    if(typeof response.text==='function')return response;
+    const raw=await response.json();
+    if(response.ok)Object.assign(raw,{id:'resp_fixture',model:MODEL_CONFIG.referenceAnalysisModel,status:'completed',service_tier:'default',
+      usage:{input_tokens:100,output_tokens:100,total_tokens:200},...raw});
+    if(response.ok&&!/^resp_/.test(raw.id))raw.id='resp_fixture';
+    return new Response(JSON.stringify(raw),{status:response.status||(response.ok?200:403),headers:{'x-request-id':response.headers?.get?.('x-request-id')||'fixture-request'}});
+  };
+  try{return await analyzeStructuralReferenceImplementation(captures,metadata,{...options,responseStore:options.responseStore||defaultStore,
+    authorization:options.authorization||{id:'offline-test-only',maximumCalls:1,capUSD:.36},
+    onResponse:async raw=>{terminal=raw;await options.onResponse?.(raw);}});}finally{global.fetch=originalFetch;}
+}
 const cleanTrace = () => ({
   version: 3,
   consentDetected: false,
@@ -47,6 +68,7 @@ const cleanTrace = () => ({
   sanitizedAt: new Date(),
 });
 const publicLookup = async () => [{ address: "93.184.215.14" }];
+const cleanVisionProof=()=>({version:1,policy:"exclude_nonstructural_persistent_v1",complete:true,restorationVerified:true,verifiedViews:5});
 const completeCoverage = () => ({
   version: 2,
   captureStrategy: "continuous",
@@ -56,6 +78,9 @@ const completeCoverage = () => ({
   complete: true,
   reachedEnd: true,
   distinctViews: true,
+  visionCleanliness:cleanVisionProof(),
+  paintEvidence:{version:1,complete:true},
+  mediaEvidence:{version:1,scope:'visible_eligible_media_in_captured_viewports',complete:true,knownMissing:0,inspectedViewports:3},
   positions: [{ position: 0 }, { position: 1050 }, { position: 2100 }],
 });
 function fixture(
@@ -178,6 +203,9 @@ const gucciViews = () =>
   }));
 const sampledCoverage = () => ({
   version: 2,
+  mediaEvidence:{version:1,scope:'visible_eligible_media_in_captured_viewports',complete:true,knownMissing:0,inspectedViewports:5},
+  visionCleanliness:cleanVisionProof(),
+  paintEvidence:{version:1,complete:true},
   strategy: "document",
   captureStrategy: "sampled",
   totalHeight: 6128,
@@ -194,6 +222,15 @@ const sampledCoverage = () => ({
     stabilized: true,
     signature: `sample-${index}`,
   })),
+});
+test("contrat nettoyé : aucune locale commerciale représentative annoncée, legacy conservé",()=>{
+  const {structuralInstructions}=require('../services/design-lab/structural-reference.contract');
+  const current=structuralInstructions("sampled",true,["overview","observation1"],true);
+  assert.match(current,/masqués dans TOUTES les images/);
+  assert.doesNotMatch(current,/conservés dans OVERVIEW et une observation représentative/);
+  assert.match(current,/Navigation\/header et sticky narratifs structurels sont conservés/);
+  assert.match(structuralInstructions("sampled",true,["overview","observation1"]),/observation représentative/);
+  assert.match(structuralInstructions("continuous",false,["visionOverview","top"],true),/masqués dans TOUTES les images/);
 });
 const sampledViews = () =>
   SAMPLED_VIEW_TYPES.map((type) => {
@@ -219,7 +256,7 @@ const sampledViews = () =>
 function currentSampledCoverage(totalHeight = 11556, positions = [0, 3924, 10530], mode = "adaptive") {
   return {
     ...sampledCoverage(), version: 3, totalHeight,
-    observationSelection: { version: 1, mode, fallbackReasons: mode === "fixed_fallback" ? ["unreliable_geometry"] : [] },
+    observationSelection: { version: 1, sequencing: "phase_a_fixed_pool_v1", mode, fallbackReasons: mode === "fixed_fallback" ? ["unreliable_geometry"] : [] },
     positions: positions.map((position, i) => ({ role: `observation${i + 1}`, position,
       visibleRangePx: [position, Math.min(totalHeight, position + 900)], stabilized: true })),
     storyboard: { complete: true, width: 720, height: 2400,
@@ -445,10 +482,14 @@ function store(initial = {}) {
           return previous;
         },
       }),
-      find: () => ({
-        sort: () => ({ lean: async () => (record ? [copy()] : []) }),
-      }),
-      findById: () => ({ lean: async () => copy() }),
+      find: () => {
+        const query = { select: () => query, sort: () => query, lean: async () => (record ? [copy()] : []) };
+        return query;
+      },
+      findById: () => {
+        const query = { select: () => query, lean: async () => copy() };
+        return query;
+      },
       create: async (fields) => {
         Object.assign(record, fields);
         return copy();
@@ -459,7 +500,7 @@ function store(initial = {}) {
 function attemptStore() {
   const records = new Map();
   const copy = (value) => value && structuredClone(value);
-  const match = (row, filter) => Object.entries(filter).every(([key, value]) => String(row[key]) === String(value));
+  const match = require('./helpers/structural-product-path').matchesDocument;
   return {
     records,
     Model: {
@@ -473,7 +514,10 @@ function attemptStore() {
         Object.assign(row, structuredClone(update.$set)); return copy(row);
       } }),
       findOne: (filter) => ({ lean: async () => copy([...records.values()].find((row) => match(row, filter))) }),
-      find: (filter) => ({ select: () => ({ sort: () => ({ lean: async () => [...records.values()].filter((row) => match(row, filter)).map(copy) }) }) }),
+      find: (filter) => {
+        const q={select:()=>q,sort:()=>q,lean:async()=>[...records.values()].filter(row=>match(row,filter)).map(copy)};
+        return q;
+      },
     },
   };
 }
@@ -482,6 +526,7 @@ function harness(initial, overrides = {}) {
   const attempts = attemptStore();
   const calls = { capture: 0, analyze: 0, uploads: [], destroyed: [] };
   const service = createStructuralService({
+    analysisContractVersion:1,
     Model: db.Model,
     AttemptModel: attempts.Model,
     logger: { warn() {} },
@@ -534,6 +579,134 @@ function harness(initial, overrides = {}) {
   return { db, calls, service, attempts };
 }
 
+test('incident Grupo : warm-up rejeté journalisé et persisté même sans attempt ni captureTiming',async()=>{
+  const warnings=[];
+  const h=harness({captures:[],captureCoverage:null},{logger:{warn:(...args)=>warnings.push(args)},
+    capture:async(_url,options)=>{options.onStructuralPhase('capture_warmup');
+      throw new Error('page.evaluate: TypeError: r.getClientRects is not a function');}});
+  const result=await h.service.run(id),d=result.operationDiagnostic;
+  assert.equal(d.phase,'capture_warmup');assert.equal(d.code,'STRUCTURAL_CAPTURE_WARMUP_FAILED');
+  assert.match(d.message,/getClientRects/);assert.ok(d.generationId);assert.equal(d.referenceId,id);
+  assert.equal(d.visionState,'not_started');assert.equal(d.checkpoint.attemptId,null);
+  assert.ok(warnings.some(([event])=>event==='structural:operation_failed'));
+  assert.match(result.lastError,/capture/);assert.equal(result.operationToken,undefined);
+  assert.equal(h.calls.analyze,0);assert.equal(h.calls.uploads.length,0);
+});
+
+async function mockedStructuralTransport(fetchImpl,body) {
+  const key=process.env.OPENAI_API_KEY,fetch=global.fetch,setTimeout=global.setTimeout;
+  let fireDeadline;
+  process.env.OPENAI_API_KEY='mock-only';
+  global.setTimeout=(fn,delay,...args)=>delay===30000?(fireDeadline=fn,{mockDeadline:true}):setTimeout(fn,delay,...args);
+  global.fetch=(url,options)=>fetchImpl(url,options,()=>fireDeadline());
+  try{return await body();}finally{
+    global.fetch=fetch;global.setTimeout=setTimeout;
+    if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key;
+  }
+}
+const readySeed=()=>({captures:gucciViews(),localMetadata:gucciMetadata(),captureCoverage:gucciMetadata().captureCoverage});
+
+test('création background : timeout 30s sans ID, captures réutilisables, aucun retry et confirmation payante obligatoire',async()=>{
+  let requests=0;
+  await mockedStructuralTransport(async(_url,{signal},expire)=>{
+    requests++;return new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>reject(Object.assign(new Error('aborted'),{name:'AbortError'})),{once:true});
+      queueMicrotask(expire);
+    });
+  },async()=>{
+    const previous=fixture('Ancienne analyse intacte');
+    const h=harness({...readySeed(),analysis:previous},{analyze:analyzeStructuralReference});
+    const result=await h.service.run(id),a=[...h.attempts.records.values()][0];
+    assert.equal(result.operationDiagnostic.code,'OPENAI_TIMEOUT');assert.equal(result.operationDiagnostic.timeoutMs,30000);
+    assert.equal(result.operationDiagnostic.remainingMs,0);assert.equal(result.operationDiagnostic.recovery,'manual_confirmation_required');
+    assert.equal(a.rawResponse,undefined);assert.equal(a.status,'failed');assert.equal(a.visionTransport.state,'uncertain');
+    assert.equal(a.operationDiagnostic.generationId,result.operationDiagnostic.generationId);
+    assert.deepEqual(result.analysis,previous);assert.deepEqual(result.captures,gucciViews());
+    assert.equal(requests,1);assert.equal(h.calls.capture,0);assert.equal(h.calls.uploads.length,0);
+    const refused=await h.service.run(id);
+    assert.equal(refused.operationDiagnostic.code,'STRUCTURAL_UNCERTAIN_VISION_CONFIRMATION_REQUIRED');
+    assert.equal(requests,1);assert.equal(h.attempts.records.size,1);
+  });
+});
+
+test('transport : HTTP refusé identifié, sans prétendre une réponse exploitable ni relancer',async()=>{
+  let requests=0;
+  await mockedStructuralTransport(async()=>{requests++;return {ok:false,status:403,headers:{get:()=> 'request-rejected'},json:async()=>({error:{message:'request refused'}})};},async()=>{
+    const h=harness(readySeed(),{analyze:analyzeStructuralReference});const result=await h.service.run(id);
+    assert.equal(requests,1);assert.equal(result.operationDiagnostic.code,'OPENAI_HTTP_ERROR');
+    assert.equal(result.operationDiagnostic.requestId,'request-rejected');assert.equal(result.operationDiagnostic.httpStatus,403);
+    assert.equal(result.operationDiagnostic.visionState,'rejected');
+    assert.equal([...h.attempts.records.values()][0].rawResponse,undefined);
+  });
+});
+
+test('transport : réponse complète tardive checkpointée, timeout maintenu puis reprocessing sans OpenAI',async()=>{
+  const expected=fixture('Réponse tardive durable'),raw={id:'resp-late',output:[{content:[{type:'output_text',text:JSON.stringify(expected)}]}]};
+  let requests=0;
+  await mockedStructuralTransport(async(_url,_options,expire)=>{requests++;expire();return {ok:true,status:200,headers:{get:()=> 'request-late'},json:async()=>raw};},async()=>{
+    const h=harness({...readySeed(),analysis:fixture('Ancienne')},{analyze:analyzeStructuralReference});
+    const result=await h.service.run(id),a=[...h.attempts.records.values()][0];
+    assert.equal(result.status,'error');assert.equal(a.status,'failed');assert.deepEqual(a.rawResponse,raw);
+    assert.equal(result.operationDiagnostic.code,'OPENAI_TIMEOUT');assert.equal(result.operationDiagnostic.recovery,'reprocess_without_vision');
+    const recovered=await h.service.reprocess(id,a._id);
+    assert.equal(recovered.status,'analyzed');assert.deepEqual(recovered.analysis,expected);assert.equal(requests,1);
+  });
+});
+
+test('transport : erreur chaînée sans réponse, incertitude et cause conservées sans retry',async()=>{
+  await mockedStructuralTransport(async()=>{throw new TypeError('fetch failed',{cause:Object.assign(new Error('socket reset'),{code:'ECONNRESET'})});},async()=>{
+    const h=harness(readySeed(),{analyze:analyzeStructuralReference});const result=await h.service.run(id);
+    assert.equal(result.operationDiagnostic.recovery,'manual_confirmation_required');
+    assert.equal(result.operationDiagnostic.causes[1].code,'ECONNRESET');
+    assert.equal(result.operationDiagnostic.checkpoint.rawResponseAvailable,false);
+  });
+});
+
+test('checkpoint pré-appel indisponible : phase précise, zéro dispatch et analyse précédente intacte',async()=>{
+  let requests=0;
+  await mockedStructuralTransport(async()=>{requests++;throw Error('must not dispatch');},async()=>{
+    const previous=fixture();const h=harness({...readySeed(),analysis:previous},{analyze:analyzeStructuralReference,
+      AttemptModel:{...attemptStore().Model,create:async()=>{throw new Error('checkpoint unavailable');}}});
+    const result=await h.service.run(id);
+    assert.equal(result.operationDiagnostic.phase,'attempt_checkpoint');assert.equal(result.operationDiagnostic.visionState,'not_started');
+    assert.deepEqual(result.analysis,previous);assert.equal(requests,0);
+  });
+});
+
+test('nouvelle capture suivie d’un échec : evidence de l’ancienne analyse et ses buffers conservés',async()=>{
+  const previous=fixture();const h=harness({captures:views(),analysis:previous,captureSanitization:null},{
+    analyze:async()=>{throw new Error('mock analysis failure');}});
+  const result=await h.service.run(id);
+  assert.deepEqual(result.analysis,previous);assert.deepEqual(result.analysisCaptureSnapshot.captures,views());
+  assert.deepEqual(result.retainedCaptureIds,views().map(v=>v.publicId));
+  assert.equal(h.calls.destroyed.length,0);assert.ok(result.captures.length);
+});
+
+test('retraitement d’une tentative sans réponse : refus sans appel ni perte de données',async()=>{
+  const h=harness(readySeed());const a=await h.attempts.Model.create({referenceId:id,generationId:'without-response',status:'failed',captureSnapshot:{captures:gucciViews(),metadata:gucciMetadata()}});
+  const result=await h.service.reprocess(id,a._id);
+  assert.match(result.lastError,/Aucune réponse conservée/);assert.equal(h.calls.analyze,0);assert.equal(h.calls.capture,0);
+});
+
+test('diagnostic borné : secrets et query strings exclus de la chaîne des causes',()=>{
+  const {failureDiagnostic}=require('../services/design-lab/structural-operation-diagnostic');
+  const d=failureDiagnostic(new Error('Bearer secret sk-abc123 https://u:password@example.test/path?token=secret'),{referenceId:id,generationId:'test',phase:'capture_navigation',startedAt:Date.now()});
+  assert.doesNotMatch(JSON.stringify(d),/password|abc123|token=secret|Bearer secret/);
+});
+
+test('erreur pendant la sauvegarde du statut d’échec : cause originale et phase de stockage conservées',async()=>{
+  const db=store({captures:[],captureCoverage:null}),warnings=[];
+  const Model={...db.Model,findOneAndUpdate:(filter,update,options)=>update.$set.status==='error'
+    ?{lean:async()=>{throw new Error('state write unavailable');}}:db.Model.findOneAndUpdate(filter,update,options)};
+  const service=createStructuralService({Model,AttemptModel:attemptStore().Model,captureGate:()=>{},
+    capture:async()=>{throw new Error('original navigation failure');},logger:{warn:(...args)=>warnings.push(args)}});
+  await assert.rejects(service.run(id),error=>{
+    assert.equal(error.operationDiagnostic.phase,'failure_state_persistence');
+    assert.equal(error.cause.message,'original navigation failure');return true;
+  });
+  assert.equal(warnings.filter(([event])=>event==='structural:operation_failed').length,2);
+});
+
 test("Tastavents v2 persisté : nouvelle analyse passe par le sélecteur actuel et checkpoint du lot adaptatif avant l'analyse mockée", async () => {
   const legacy = failedTastaventsCase();
   const coverage = currentSampledCoverage();
@@ -567,6 +740,147 @@ test("Tastavents v2 persisté : nouvelle analyse passe par le sélecteur actuel 
   assert.equal(capturesMade, 1);
   assert.equal(h.calls.analyze, 1);
   assert.equal(h.calls.uploads.length, 4);
+});
+
+test("dry-run produit : capture neuve, mêmes callbacks/gates/contrat, aucun accès aux modèles ni Vision/upload", async () => {
+  const forbidden = () => { throw new Error("External side effect forbidden"); };
+  const Model = new Proxy({}, { get: () => forbidden });
+  let captures = 0;
+  const coverage = currentSampledCoverage();
+  const image = await sharp({ create: { width: 300, height: 900, channels: 3, background: "olive" } }).png().toBuffer();
+  const page = { buffer: image, captureCoverage: coverage, captureSanitization: cleanTrace(),
+    capturePerformance: { version: 1, elapsedMs: 1234, phases: { mandatory_traversal: 1234 } },
+    localMetadata: { viewport: { width: 300, height: 900 } },
+    viewBuffers: Object.fromEntries(["overview", ...coverage.positions.map((p) => p.role)].map((type) => [type, image])),
+    viewPositions: Object.fromEntries(coverage.positions.map((p) => [p.role, p.position])) };
+  const service = createStructuralService({ Model, AttemptModel: Model, captureGate: () => {},
+    analyze: forbidden, upload: forbidden, destroy: forbidden,
+    capture: async (_url, options) => {
+      captures++;
+      assert.equal(options.beforeScreenshot, require("../services/design-lab/capture-sanitization.service").sanitizeStructuralCapture);
+      assert.equal(options.capturePage, require("../services/design-lab/structural-page-capture.service").captureStructuralPage);
+      assert.deepEqual(Object.keys(options).sort(), ["beforeScreenshot","capturePage","collectSpatialMetadata","onOriginalObservation","onStructuralPhase","singlePage"]);
+      assert.equal(typeof options.onOriginalObservation,"function");
+      return { pages: [page] };
+    },
+  });
+  for (let i = 0; i < 2; i++) {
+    const result = await service.run(null, { dryRun: true, sourceUrl: "https://fixture.test/" });
+    assert.equal(result.status, "ready_for_vision");
+    assert.equal(result.captureCoverage.version, 3);
+    assert.deepEqual(result.capturePerformance, page.capturePerformance);
+    assert.ok(result.pipelinePerformance.operations.some((span) => span.operation === "image_preparation"));
+    assert.ok(result.pipelinePerformance.contractPreparationMs >= 0);
+    assert.doesNotMatch(JSON.stringify(result.metadata), /capturePerformance|pipelinePerformance/);
+    assert.doesNotMatch(JSON.stringify(result.vision), /capturePerformance|pipelinePerformance/);
+    assert.deepEqual(result.vision, buildStructuralVisionRequest(result.captures, result.metadata));
+    assert.deepEqual(result.vision.manifest.viewOrder, ["overview","observation1","observation2","observation3"]);
+    result.captures.forEach((c, index) => assert.deepEqual(Buffer.from(c.url.split(",")[1], "base64"), result.views[index].buffer));
+  }
+  assert.equal(captures, 2);
+  page.captureCoverage = { ...coverage, complete: false };
+  await assert.rejects(service.run(null, { dryRun: true, sourceUrl: "https://fixture.test/" }),
+    (e) => e.code === "incomplete_page_capture");
+});
+
+test("capture du nouveau pipeline normal acceptée sans capacité expérimentale, diagnostic exclu du contrat", async () => {
+  const coverage=currentSampledCoverage(11556,[0,10530]);
+  const image=await sharp({create:{width:1440,height:900,channels:3,background:"olive"}}).png().toBuffer();
+  const diagnostic={sequencing:"phase_a_fixed_pool_v1",registry:{status:"reliable"}};
+  const expected=sampledFixture();expected.structuralMoments.forEach(m=>{m.evidence.sourceViews=["overview"];});
+  let captures=0, productVision;
+  const uploadedBytes=[];
+  const diagnosticEvents=[];
+  const h = harness({ captureCoverage: null, captures: [] }, {
+    productDiagnostics:(referenceId,generationId,event)=>diagnosticEvents.push({referenceId,generationId,...event}),
+    capture: async (_url,options) => {
+      captures++;assert.equal(options.capturePage,require("../services/design-lab/structural-page-capture.service").captureStructuralPage);
+      return {pages:[{buffer:image,captureDiagnostics:diagnostic,captureCoverage:coverage,captureSanitization:cleanTrace(),
+        localMetadata:{viewport:{width:1440,height:900}},
+        viewBuffers:{overview:image,observation1:image,observation2:image},viewPositions:{observation1:0,observation2:10530}}]};
+    },
+    upload:async(buffer)=>{
+      uploadedBytes.push(buffer);
+      return {url:`https://res.cloudinary.com/mock/${uploadedBytes.length}.webp`,publicId:`mock/${uploadedBytes.length}`};
+    },
+    analyze:async(captures,metadata)=>{
+      assert.doesNotMatch(JSON.stringify(metadata),/captureDiagnostics|registry|localExperiment/);
+      productVision=buildStructuralVisionRequest(captures,metadata);
+      return expected;
+    },
+  });
+  const dryRun=await h.service.run(null,{dryRun:true,sourceUrl:"https://example.com/"});
+  assert.equal(dryRun.captureDiagnostics,diagnostic);
+  assert.equal(uploadedBytes.length,0);assert.equal(h.attempts.records.size,0);
+  const result = await h.service.run(id);
+  assert.equal(result.status,"analyzed");assert.equal(captures,2);
+  assert.equal(uploadedBytes.length,3);assert.equal(h.attempts.records.size,1);
+  assert.equal(diagnosticEvents.find(e=>e.captureDiagnostics)?.captureDiagnostics,diagnostic);
+  assert.deepEqual(diagnosticEvents.find(e=>e.visionInput)?.visionInput,productVision.manifest);
+  assert.equal(diagnosticEvents.at(-1).status,"applied");
+  assert.equal(diagnosticEvents.find(e=>e.status==="prepared_for_vision").captureReused,false);
+  const attempt=[...h.attempts.records.values()][0];
+  assert.deepEqual(attempt.captureSnapshot.visionInput.viewOrder,["overview","observation1","observation2"]);
+  assert.deepEqual(attempt.captureSnapshot.visionInput.views.slice(1).map(v=>v.geometry.scrollY),[0,10530]);
+  const withoutUrls=manifest=>({...manifest,views:manifest.views.map(({url,...view})=>view)});
+  assert.deepEqual(withoutUrls(productVision.manifest),withoutUrls(dryRun.vision.manifest));
+  assert.deepEqual(productVision.schema,dryRun.vision.schema);
+  assert.equal(productVision.instructions,dryRun.vision.instructions);
+  assert.deepEqual(productVision.content.filter(v=>v.type==="input_text"),dryRun.vision.content.filter(v=>v.type==="input_text"));
+  uploadedBytes.forEach((buffer,i)=>assert.deepEqual(buffer,dryRun.views[i].buffer));
+});
+
+test("service dry-run local : aucun modèle consulté avant le refus d'un run non dry-run", async () => {
+  const forbidden = () => { throw new Error("External access forbidden"); };
+  const Model = new Proxy({}, {get:forbidden});
+  const service = createStructuralService({localCaptureOnly:true,Model,AttemptModel:Model,
+    capture:forbidden,analyze:forbidden,upload:forbidden});
+  await assert.rejects(service.run(id), /dry-run obligatoire/);
+});
+
+for (const missing of ["sequencing", "visionCleanliness", "paintEvidence"]) test(`sampled v3 sans preuve ${missing} : une nouvelle analyse recapture les entrées`, async () => {
+  const oldCoverage=currentSampledCoverage();
+  if(missing === "sequencing") delete oldCoverage.observationSelection.sequencing;
+  else delete oldCoverage[missing];
+  const freshCoverage=currentSampledCoverage(11556,[0,10530]);
+  const image=await sharp({create:{width:300,height:900,channels:3,background:"olive"}}).png().toBuffer();
+  const expected=sampledFixture();expected.structuralMoments.forEach(m=>{m.evidence.sourceViews=["overview"];});
+  let captures=0;
+  const h=harness({captures:currentSampledViews(oldCoverage),captureCoverage:oldCoverage},{
+    capture:async(_url,options)=>{
+      captures++;
+      assert.equal(options.capturePage,require("../services/design-lab/structural-page-capture.service").captureStructuralPage);
+      return {pages:[{buffer:image,captureCoverage:freshCoverage,captureSanitization:cleanTrace(),
+        localMetadata:{viewport:{width:300,height:900}},viewBuffers:{overview:image,observation1:image,observation2:image},
+        viewPositions:{observation1:0,observation2:10530}}]};
+    },
+    analyze:async()=>expected,
+  });
+  const result=await h.service.run(id);
+  assert.equal(captures,1);assert.equal(h.calls.uploads.length,3);
+  assert.equal(result.captureCoverage.observationSelection.sequencing,"phase_a_fixed_pool_v1");
+  assert.deepEqual(result.captureCoverage.positions.map(v=>v.position),[0,10530]);
+  assert.equal(h.calls.destroyed.length,4);
+});
+
+test("worker sans preuve de nettoyage : arrêt avant upload, attempt et Vision", async () => {
+  const coverage=currentSampledCoverage();delete coverage.visionCleanliness;
+  const image=await png();
+  const h=harness({captures:[]},{capture:async()=>({pages:[{buffer:image,captureSanitization:cleanTrace(),captureCoverage:coverage}]})});
+  const result=await h.service.run(id);
+  assert.equal(result.status,"error");
+  assert.match(result.lastError,/Images Vision non certifiées propres/);
+  assert.equal(h.calls.uploads.length,0);assert.equal(h.attempts.records.size,0);
+  assert.equal(h.calls.analyze,0);
+});
+
+test("worker sans preuve de peinture : aucun upload, attempt ni appel Vision", async () => {
+  const coverage=currentSampledCoverage();delete coverage.paintEvidence;
+  const image=await png();
+  const h=harness({captures:[]},{capture:async()=>({pages:[{buffer:image,captureSanitization:cleanTrace(),captureCoverage:coverage}]})});
+  const result=await h.service.run(id);
+  assert.equal(result.status,"error");assert.match(result.lastError,/Peinture des captures non certifiée/);
+  assert.equal(h.calls.uploads.length,0);assert.equal(h.attempts.records.size,0);assert.equal(h.calls.analyze,0);
 });
 
 test("sampled v3 adaptive et fallback courant réutilisés ; aucun quota ou recapture imposée", async () => {
@@ -626,7 +940,7 @@ test("réponse Vision rejetée : checkpoint avant validation, erreur conservée 
   const previous = fixture("Analyse active antérieure");
   const rejected = fixture();
   rejected.structuralMoments[0].evidence.sourceViews = ["bottom"];
-  const raw = { id: "resp_mock", model: "mock-only", output: [{ content: [{ type: "output_text", text: JSON.stringify(rejected) }] }] };
+  const raw = { id: "resp_mock", model: MODEL_CONFIG.referenceAnalysisModel, output: [{ content: [{ type: "output_text", text: JSON.stringify(rejected) }] }] };
   const oldFetch = global.fetch;
   const oldKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "mock-only";
@@ -717,15 +1031,30 @@ test("retraitement : captures remplacées refusées sans paiement ni écrasement
   assert.equal(h.calls.capture, 0);
 });
 
+test("lease expirée avec réponse reçue : recovery puis retraitement existant sans OpenAI ni nouvelle capture", async () => {
+  const expected=fixture("Réponse durable récupérée"),old=new Date(Date.now()-OPERATION_TTL_MS-1000);
+  const h=harness({captures:gucciViews(),captureCoverage:gucciMetadata().captureCoverage,
+    localMetadata:gucciMetadata(),analysis:fixture("Ancienne analyse"),status:"analyzing",operationToken:"interrupted-generation",operationStartedAt:old});
+  const attempt=await h.attempts.Model.create({referenceId:id,generationId:"interrupted-generation",status:"received",updatedAt:old,
+    rawResponse:{output:[{content:[{type:"output_text",text:JSON.stringify(expected)}]}]},
+    captureSnapshot:{captures:gucciViews(),metadata:gucciMetadata()}});
+  const result=await h.service.reprocess(id,attempt._id);
+  assert.equal(result.status,"analyzed");assert.deepEqual(result.analysis,expected);
+  assert.equal(h.attempts.records.get(attempt._id).status,"applied");
+  assert.equal(h.attempts.records.get(attempt._id).interruption.code,"STRUCTURAL_OPERATION_INTERRUPTED");
+  assert.equal(h.calls.analyze,0);assert.equal(h.calls.capture,0);assert.equal(h.calls.uploads.length,0);
+});
+
 test("checkpoint indisponible avant l'appel : aucun OpenAI", async () => {
-  const h = harness({ captures: views() }, { AttemptModel: { create: async () => { throw new Error("mock storage failure"); } } });
+  const h = harness({ captures: views() }, { AttemptModel: { ...attemptStore().Model,
+    create: async () => { throw new Error("mock storage failure"); } } });
   await h.service.run(id);
   assert.equal(h.calls.analyze, 0);
   assert.equal(h.db.get().status, "error");
 });
 
 test("routes checkpoint : inspection et retraitement explicites, IDs invalides refusés", async () => {
-  let reprocessed = 0;
+  let reprocessed = 0, resumed = 0;
   const attemptId = "507f1f77bcf86cd799439012";
   const router = createRouter({
     auth: (_req, _res, next) => next(), role: (_req, _res, next) => next(),
@@ -733,6 +1062,11 @@ test("routes checkpoint : inspection et retraitement explicites, IDs invalides r
       listAttempts: async () => [{ _id: attemptId, status: "validation_failed" }],
       getAttempt: async () => ({ _id: attemptId, rawResponse: { output: [] } }),
       reprocess: async () => { reprocessed++; return { _id: id, status: "analyzed" }; },
+      resume: async (referenceId, responseAttemptId) => {
+        assert.equal(referenceId,id);assert.equal(responseAttemptId,attemptId);resumed++;
+        return {_id:id,status:'analyzing',operationToken:'private'};
+      },
+      run:async()=>{throw Error('New paid creation forbidden in retrieval route');},
     },
   });
   const res = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; } });
@@ -749,6 +1083,10 @@ test("routes checkpoint : inspection et retraitement explicites, IDs invalides r
   await handler(router, "post", "/:id/analysis-attempts/:attemptId/reprocess")({ params: { id, attemptId: "invalid" } }, invalid);
   assert.equal(invalid.statusCode, 400);
   assert.equal(reprocessed, 1);
+  const retrieved=res();await handler(router,'post','/:id/analysis-attempts/:attemptId/resume')({params:{id,attemptId}},retrieved);
+  assert.equal(resumed,1);assert.equal(retrieved.body.reference.status,'analyzing');assert.equal(retrieved.body.reference.operationToken,undefined);
+  const invalidResume=res();await handler(router,'post','/:id/analysis-attempts/:attemptId/resume')({params:{id,attemptId:'invalid'}},invalidResume);
+  assert.equal(invalidResume.statusCode,400);assert.equal(resumed,1);
 });
 function handler(router, method, suffix = "") {
   return router.stack
@@ -1198,6 +1536,7 @@ test("mode sampled fallback actuel : six uploads, une analyse et aucune full-pag
   let uploads = 0;
   let analyses = 0;
   const service = createStructuralService({
+    analysisContractVersion:1,
     Model: db.Model,
     AttemptModel: attemptStore().Model,
     logger: { warn() {} },
@@ -1254,6 +1593,8 @@ test("capture mono-page : warm-up, images/fonts avant screenshot, sécurité et 
   let closed = false;
   let routeHandler;
   const page = {
+    exposeBinding:async()=>{},
+    addInitScript:async()=>{},
     on() {},
     setDefaultTimeout() {},
     url: () => "https://example.com/",
@@ -1264,6 +1605,7 @@ test("capture mono-page : warm-up, images/fonts avant screenshot, sécurité et 
     },
     evaluate: async (fn) => {
       const source = fn.toString();
+      if(fn.name==='mainPaintDOM')return {painted:1,hidden:0,roots:[]};
       if (source.includes("highestObservedHeight")) {
         assert.match(source, /document.fonts/);
         assert.match(source, /scrollTo/);
@@ -1476,10 +1818,7 @@ test("réanalyse : captures anciennes, invalides ou blocked imposent recapture a
     assert.equal(reference.status, "analyzed");
     assert.equal(reference.captureSanitization.qualityPassed, true);
     assert.deepEqual(reference.analysis, fixture());
-    assert.deepEqual(
-      calls.destroyed,
-      views().map((view) => view.publicId),
-    );
+    assert.deepEqual(calls.destroyed,[],'buffers de l’analyse précédente conservés');
   }
 });
 test("popup ou couverture incomplète : zéro Vision/upload et analyse précédente intacte", async () => {
@@ -1527,6 +1866,31 @@ test("capture propre sans preuve de couverture : zéro Vision malgré un PNG dis
   assert.deepEqual(reference.captures, views());
   assert.equal(calls.analyze, 0);
   assert.equal(calls.uploads.length, 0);
+});
+test("gel animé refusé avant attempt : trace corrélée avec rectangles/sources, aucune Vision/upload", async () => {
+  const logs = [];
+  const animationIntegrity = { valid: false,
+    failures: ["component_envelope_changed", "visible_structure_or_source_changed"],
+    details: [{ componentId: 17, beforeRect: { x: 0, y: 0, width: 1440, height: 900 },
+      afterRect: { x: 0, y: 2, width: 1440, height: 900 },
+      changedNodes: [{ before: { source: "https://fixture.test/a.webp" }, after: { source: "https://fixture.test/a.webp" } }] }] };
+  const { service, calls, attempts } = harness({ captures: [], captureCoverage: null }, {
+    logger: { warn: (...args) => logs.push(args) },
+    capture: async () => { throw Object.assign(new Error("gel animé non conforme"),
+      { status: 422, code: "incomplete_page_capture", animationIntegrity }); },
+  });
+  const result = await service.run(id);
+  assert.equal(result.status, "incomplete_page_capture");
+  assert.equal(attempts.records.size, 0);
+  assert.equal(calls.analyze, 0);
+  assert.equal(calls.uploads.length, 0);
+  assert.equal(logs.length, 2);
+  assert.equal(logs[0][0], "structural:operation_failed");
+  assert.equal(logs[1][0], "structural:capture_failed");
+  const trace = JSON.parse(logs[1][1]);
+  assert.equal(trace.referenceId, id);
+  assert.match(trace.generationId, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(trace.animationIntegrity, animationIntegrity);
 });
 test("budget d'image structurelle dépassé : erreur explicite, zéro Vision/upload, ancienne analyse conservée", async () => {
   const {
@@ -1702,7 +2066,7 @@ test("erreur Vision : conserve captures et tags, retry uniquement explicite", as
   assert.deepEqual(reference.manualTags, ["editorial"]);
   assert.equal(calls.destroyed.length, 0);
   const next = harness(db.get());
-  await next.service.run(id);
+  await next.service.run(id,{confirmUncertainVision:true});
   assert.equal(next.calls.capture, 0);
   assert.equal(next.calls.analyze, 1);
 });
@@ -1864,6 +2228,20 @@ test("API : capture désactivée et ID invalide ne déclenchent aucun travail", 
   assert.equal(invalid.code, 400);
   assert.equal(work, 0);
 });
+test("API produit : anciennes requêtes non payantes refusées, réconciliation conservée à la lecture",async()=>{
+  let runs=0;const reconciliations=[];
+  const Model={find:()=>({sort:()=>({lean:async()=>[]})}),findById:()=>({lean:async()=>({_id:id,status:"error"})})};
+  const router=createRouter({Model,auth:(_q,_s,n)=>n(),role:(_q,_s,n)=>n(),service:{
+    run:async()=>{runs++;return {_id:id};},reconcileExpiredOperations:async options=>reconciliations.push(options),
+  }});
+  const obsolete=response();await handler(router,"post","/:id/analyze")({params:{id},body:{requirePlatformValidation:true}},obsolete);
+  assert.equal(obsolete.code,409);assert.equal(runs,0);
+  const normal={code:200,...response()};await handler(router,"post","/:id/analyze")({params:{id}},normal);
+  assert.equal(normal.code,200);assert.equal(runs,1);assert.equal(normal.body.reference.platformValidation,undefined);
+  await handler(router,"get")({params:{}},response());
+  await handler(router,"get","/:id")({params:{id}},response());
+  assert.deepEqual(reconciliations,[undefined,{referenceId:id}]);
+});
 test("Vision continuous : un seul POST mocké, quatre images, master exclue, schéma strict", async () => {
   const oldKey = process.env.OPENAI_API_KEY;
   const oldFetch = global.fetch;
@@ -1884,7 +2262,7 @@ test("Vision continuous : un seul POST mocké, quatre images, master exclue, sch
   };
   try {
     assert.deepEqual(
-      await analyzeStructuralReference(gucciViews(), gucciMetadata()),
+      await analyzeStructuralReference(gucciViews(), gucciMetadata(),{analysisContract:{version:1}}),
       fixture(),
     );
     assert.equal(requests.length, 1);
@@ -1948,6 +2326,7 @@ test("Vision continuous : un seul POST mocké, quatre images, master exclue, sch
         url: view.url.replace("visionOverview", "overview"),
       })),
       gucciMetadata(),
+      {analysisContract:{version:1}},
     );
     assert.equal(requests.length, 2); // one call for each explicit invocation
     const legacyImages = requests[1].body.input[0].content.filter(
@@ -1997,7 +2376,7 @@ test("Vision sampled : un seul POST mocké, storyboard low, 2 samples low et 3 h
       captureCoverage: sampledCoverage(),
     };
     assert.deepEqual(
-      await analyzeStructuralReference(sampledViews(), metadata),
+      await analyzeStructuralReference(sampledViews(), metadata,{analysisContract:{version:1}}),
       sampledFixture(),
     );
     assert.equal(requests.length, 1);
@@ -2078,7 +2457,7 @@ test("Vision adaptative : zéro/deux/cinq vues locales, une requête mockée, pr
         positions: captures.slice(1).map((c) => ({ role: c.type, position: c.sourceRect.top })),
         storyboard: { panels: [{ visibleRangePx: [0, 5900] }] } } };
       const before = calls;
-      assert.deepEqual(await analyzeStructuralReference(captures, metadata), analysis);
+      assert.deepEqual(await analyzeStructuralReference(captures, metadata,{analysisContract:{version:1}}), analysis);
       assert.equal(calls, before + 1);
       const images = body.input[0].content.filter((c) => c.type === "input_image");
       assert.equal(images.length, count + 1); assert.equal(images[0].detail, "low");
@@ -2138,7 +2517,7 @@ test("UI : bibliothèque/détail, champs lisibles, tags manuels et aucune source
   assert.match(detail, /Captures et vues de lecture/);
   assert.match(detail, /CaptureSanitizationStatus/);
   assert.match(component, /Overlay bloquant détecté — analyse non lancée/);
-  assert.match(component, /Capture propre/);
+  assert.match(component, /Couches périphériques nettoyées/);
   assert.match(component, /Consentement cookies supprimé/);
   for (const field of [...PROFILE_FIELDS, ...MOMENT_FIELDS])
     assert.ok(component.includes(field));

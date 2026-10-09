@@ -282,6 +282,21 @@ test("fiabilité : canvas/clip non mesurable, collecte tronquée, projection man
     ),
   );
 });
+test("budget adaptatif épuisé : lot fixe valide conservé et raison explicite, même avec des mesures fiables", () => {
+  const fixedPositions = [0, 2131, 5328, 8525, 10656];
+  const data = input(fixedPositions.map((position, i) => candidate(`fixed${i + 1}`, position)));
+  const adaptive = selectStructuralObservations(data);
+  assert.equal(adaptive.mode, "adaptive");
+  const fallback = selectStructuralObservations({ ...data, adaptiveBudgetExhausted: true });
+  assert.equal(fallback.mode, "fixed_fallback");
+  assert.deepEqual(fallback.fallbackReasons, ["adaptive_budget_exhausted"]);
+  assert.deepEqual(fallback.selectedIds, data.fixedIds);
+  assert.deepEqual(fallback.decisions.filter((d) => d.selected).map((d) => d.position), fixedPositions);
+  assert.ok(fallback.decisions.every((d) => d.reliability.reliable && d.scores));
+  assert.deepEqual(fallback.config, adaptive.config, "poids et seuil inchangés");
+  assert.equal(coverageIsComplete({ captureCoverage: { complete: false, reachedEnd: false,
+    observationSelection: fallback } }), false, "aucune étape obligatoire incomplète n'est rendue valide par ce fallback");
+});
 test("géométrie storyboard indépendante des vues locales et couverture v3 de zéro à cinq", async () => {
   const viewport = { width: 1440, height: 900 };
   const buffer = await sharp({

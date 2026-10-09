@@ -432,6 +432,10 @@ async function sanitizeStructuralCapture(
     return states;
   };
   let states = await scan();
+  const preferences = require('./structural-consent-preferences.service');
+  // Observe the consent interface while it still exists; retain only generic
+  // semantic/event provenance for its subsequently exposed preferences button.
+  await preferences.observeConsentPreferences(page,{token,mode:'sources',deadline:end});
   let clicks = 0;
   for (const { frame, state } of states) {
     for (const action of state.actions) {
@@ -507,6 +511,9 @@ async function sanitizeStructuralCapture(
       );
   }
   await page.waitForTimeout(Math.max(1, Math.min(300, deadline - Date.now())));
+  // Certify and temporarily mask only an orphaned backdrop associated with a
+  // hidden consent interface before the unchanged blocking-overlay gate.
+  await require('./structural-consent-backdrop.service').maskCertifiedConsentBackdrops(page);
   for (const frame of frames()) {
     try {
       const blockers = await frame.evaluate(inspectBlockingOverlays);
@@ -600,6 +607,8 @@ async function sanitizeStructuralCapture(
         captureSanitization: trace,
       },
     );
+  trace.consentPreferences=await preferences.observeConsentPreferences(page,{token,mode:'controls',deadline:end});
+  page.structuralConsentPreferenceDiagnostic=trace.consentPreferences;
   return { captureSanitization: trace };
 }
 module.exports = {
