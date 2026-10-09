@@ -56,6 +56,7 @@ app.use(
       "https://www.jacasse-montauban.fr", // Client Jacasse
       "https://www.lambassade-montauban.fr", // Client l'Ambassade
       "https://www.lejardindepauline82.fr", // Client Le jardin de Pauline
+      "https://www.le-ventadour-montauban.fr", // Client Le Ventadour
       // Tous les sites provisoires Gusto Manager
       /^https:\/\/[a-z0-9-]+\.gusto-manager\.com$/i,
     ],
