@@ -113,13 +113,13 @@ function futureRestaurant({ maxOrders = 1 } = {}) {
     slots:
       index === dayIndex
         ? [
-            {
-              start: "19:00",
-              end: "20:00",
-              intervalMinutes: 60,
-              maxOrders,
-            },
-          ]
+          {
+            start: "19:00",
+            end: "20:00",
+            intervalMinutes: 60,
+            maxOrders,
+          },
+        ]
         : [],
   }));
 
@@ -280,7 +280,8 @@ test("PaymentIntent creation uses a stable order-scoped idempotency key", async 
   let options;
   const stripe = {
     paymentIntents: {
-      create: async (_params, receivedOptions) => {
+      create: async (receivedParams, receivedOptions) => {
+        params = receivedParams;
         options = receivedOptions;
         return { id: "pi_created", client_secret: "secret_created" };
       },
@@ -292,6 +293,8 @@ test("PaymentIntent creation uses a stable order-scoped idempotency key", async 
     order,
     stripeInstance: stripe,
   });
+  assert.deepEqual(params.payment_method_types, ["card"]);
+  assert.equal(params.automatic_payment_methods, undefined);
   assert.equal(options.idempotencyKey, "takeaway-order-order-1-payment");
   assert.equal(order.stripePaymentIntentId, "pi_created");
 });
@@ -886,7 +889,7 @@ test("a customer upsert failure stays non-fatal after order creation", async (t)
     customerAttemptedAfterRelease = released;
     throw new Error("CRM unavailable");
   };
-  console.error = () => {};
+  console.error = () => { };
   t.after(() => {
     TakeAwayOrderModel.findOne = originals.orderFindOne;
     TakeAwayOrderModel.aggregate = originals.orderAggregate;
@@ -1179,7 +1182,7 @@ test("a failed Stripe refund keeps the cancellation and payment paid", async (t)
     Object.assign(order, update.$set || {});
     return order;
   };
-  console.error = () => {};
+  console.error = () => { };
   t.after(() => {
     TakeAwayOrderModel.findOne = originalFindOne;
     TakeAwayOrderModel.findOneAndUpdate = originalFindOneAndUpdate;

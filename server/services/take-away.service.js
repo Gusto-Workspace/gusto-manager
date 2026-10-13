@@ -215,7 +215,7 @@ function isTakeAwayDateBlocked(restaurantOrSettings, dateKey) {
   const normalizedDate = normalizeTakeAwayDateKey(dateKey);
   return Boolean(
     normalizedDate &&
-      getBlockedTakeAwayDates(settings).includes(normalizedDate),
+    getBlockedTakeAwayDates(settings).includes(normalizedDate),
   );
 }
 
@@ -261,10 +261,10 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     same_hours_as_restaurant: input.same_hours_as_restaurant !== false,
     ...(Object.prototype.hasOwnProperty.call(input, "preparationTimeMinutes")
       ? {
-          preparationTimeMinutes: normalizePreparationTimeMinutes(
-            input.preparationTimeMinutes,
-          ),
-        }
+        preparationTimeMinutes: normalizePreparationTimeMinutes(
+          input.preparationTimeMinutes,
+        ),
+      }
       : {}),
     defaultSlotIntervalMinutes: Math.max(
       5,
@@ -280,7 +280,7 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
       1,
       Number(
         input.completedOrderAutoDeleteMinutes ||
-          DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+        DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
       ),
     ),
     completedOrderAutoDeleteDays: Math.max(
@@ -289,47 +289,47 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     ),
     slots: Array.isArray(input.slots)
       ? input.slots.map((day) => ({
-          day: cleanString(day.day),
-          isClosed: Boolean(day.isClosed),
-          slots: Array.isArray(day.slots)
-            ? day.slots
-                .map((slot) => ({
-                  start: cleanString(slot.start),
-                  end: cleanString(slot.end),
-                  intervalMinutes: Math.max(
-                    5,
-                    Number(
-                      slot.intervalMinutes ||
-                        input.defaultSlotIntervalMinutes ||
-                        15,
-                    ),
-                  ),
-                  maxOrders: Math.max(
-                    1,
-                    Number(slot.maxOrders || input.defaultSlotMaxOrders || 6),
-                  ),
-                }))
-                .filter(
-                  (slot) =>
-                    minutesFromHHmm(slot.start) !== null &&
-                    minutesFromHHmm(slot.end) !== null &&
-                    minutesFromHHmm(slot.start) < minutesFromHHmm(slot.end),
-                )
-            : [],
-        }))
+        day: cleanString(day.day),
+        isClosed: Boolean(day.isClosed),
+        slots: Array.isArray(day.slots)
+          ? day.slots
+            .map((slot) => ({
+              start: cleanString(slot.start),
+              end: cleanString(slot.end),
+              intervalMinutes: Math.max(
+                5,
+                Number(
+                  slot.intervalMinutes ||
+                  input.defaultSlotIntervalMinutes ||
+                  15,
+                ),
+              ),
+              maxOrders: Math.max(
+                1,
+                Number(slot.maxOrders || input.defaultSlotMaxOrders || 6),
+              ),
+            }))
+            .filter(
+              (slot) =>
+                minutesFromHHmm(slot.start) !== null &&
+                minutesFromHHmm(slot.end) !== null &&
+                minutesFromHHmm(slot.start) < minutesFromHHmm(slot.end),
+            )
+          : [],
+      }))
       : [],
     deliveryZones: Array.isArray(input.deliveryZones)
       ? input.deliveryZones.map((zone) => ({
-          _id: zone._id,
-          name: cleanString(zone.name),
-          zipCodes: Array.isArray(zone.zipCodes)
-            ? zone.zipCodes.map(cleanString).filter(Boolean)
-            : [],
-          fee: normalizeMoney(zone.fee, 0),
-          minimumOrder: normalizeMoney(zone.minimumOrder, 0),
-          estimatedMinutes: Math.max(0, Number(zone.estimatedMinutes || 30)),
-          active: zone.active !== false,
-        }))
+        _id: zone._id,
+        name: cleanString(zone.name),
+        zipCodes: Array.isArray(zone.zipCodes)
+          ? zone.zipCodes.map(cleanString).filter(Boolean)
+          : [],
+        fee: normalizeMoney(zone.fee, 0),
+        minimumOrder: normalizeMoney(zone.minimumOrder, 0),
+        estimatedMinutes: Math.max(0, Number(zone.estimatedMinutes || 30)),
+        active: zone.active !== false,
+      }))
       : [],
     email_templates: {
       confirmationSubject: cleanString(
@@ -354,9 +354,9 @@ function mergeTakeAwaySettingsInput(currentSettings = {}, patch = {}) {
       "email_templates",
     )
       ? {
-          ...(current.email_templates || {}),
-          ...(nextPatch.email_templates || {}),
-        }
+        ...(current.email_templates || {}),
+        ...(nextPatch.email_templates || {}),
+      }
       : current.email_templates,
   });
 }
@@ -374,11 +374,11 @@ function normalizeCatalogItemInput(input = {}) {
     sortOrder: Number(input.sortOrder || 0),
     options: Array.isArray(input.options)
       ? input.options
-          .map((option) => ({
-            name: cleanString(option.name),
-            price: normalizeMoney(option.price, 0),
-          }))
-          .filter((option) => option.name)
+        .map((option) => ({
+          name: cleanString(option.name),
+          price: normalizeMoney(option.price, 0),
+        }))
+        .filter((option) => option.name)
       : [],
     syncedWithSource: false,
   };
@@ -1139,9 +1139,9 @@ async function cleanupCompletedTakeAwayOrders(
 
   const minutes = explicitlyEnabled
     ? Number(
-        settings?.completedOrderAutoDeleteMinutes ||
-          DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
-      )
+      settings?.completedOrderAutoDeleteMinutes ||
+      DEFAULT_COMPLETED_ORDER_AUTO_DELETE_MINUTES,
+    )
     : legacyDays * 24 * 60;
   if (!Number.isFinite(minutes) || minutes <= 0) {
     return { enabled: false, deleted: 0 };
@@ -1554,7 +1554,7 @@ async function runOrderEmailEffects(order, restaurant, explicitEvents = null) {
             $pull: { customerEmailEventsSent: eventType },
             $addToSet: { pendingCustomerEmailEvents: eventType },
           },
-        ).catch(() => {});
+        ).catch(() => { });
       }
       console.error("[take-away] customer email effect failed", {
         orderId: String(order._id),
@@ -1968,7 +1968,7 @@ async function createOrderPaymentIntent({
     {
       amount: getExpectedPaymentAmount(order),
       currency: order.currency || "eur",
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ["card"],
       metadata: {
         type: "takeaway_order",
         orderId: String(order._id),
@@ -2215,7 +2215,7 @@ function assertRefundMatchesOrder(refund, order) {
   if (
     refund.currency &&
     cleanString(refund.currency).toLowerCase() !==
-      cleanString(order.currency || "eur").toLowerCase()
+    cleanString(order.currency || "eur").toLowerCase()
   ) {
     throw serviceError("Devise du remboursement non correspondante", 400);
   }
@@ -2263,9 +2263,9 @@ async function applyRefundBusinessDecision({ order, targetStatus }) {
             : order.stripeRefundStatus || "pending",
           ...(statusChanged && order.customer
             ? {
-                pendingCrmPrevStatus: previousStatus,
-                pendingCrmNextStatus: targetStatus,
-              }
+              pendingCrmPrevStatus: previousStatus,
+              pendingCrmNextStatus: targetStatus,
+            }
             : {}),
           ...(statusChanged ? getStatusTimestampUpdate(targetStatus) : {}),
         },
@@ -2329,9 +2329,9 @@ async function finalizeRefund({ restaurant, order, refund, targetStatus }) {
           status: resolvedTarget,
           ...(statusChanged && order.customer
             ? {
-                pendingCrmPrevStatus: order.status,
-                pendingCrmNextStatus: resolvedTarget,
-              }
+              pendingCrmPrevStatus: order.status,
+              pendingCrmNextStatus: resolvedTarget,
+            }
             : {}),
           ...(statusChanged
             ? getStatusTimestampUpdate(resolvedTarget, now)
@@ -2385,9 +2385,8 @@ async function refundPaidOrder({
   }
 
   const previousFailedRefundId = cleanString(order.stripeRefundId);
-  const refundIdempotencyKey = `takeaway-order-${String(order._id)}-refund${
-    previousFailedRefundId ? `-after-${previousFailedRefundId}` : ""
-  }`;
+  const refundIdempotencyKey = `takeaway-order-${String(order._id)}-refund${previousFailedRefundId ? `-after-${previousFailedRefundId}` : ""
+    }`;
 
   let refund;
   try {
@@ -2642,9 +2641,9 @@ async function updateOrderStatus({
           ...paymentUpdate,
           ...(order.customer
             ? {
-                pendingCrmPrevStatus: prevStatus,
-                pendingCrmNextStatus: status,
-              }
+              pendingCrmPrevStatus: prevStatus,
+              pendingCrmNextStatus: status,
+            }
             : {}),
           ...getStatusTimestampUpdate(status),
         },
