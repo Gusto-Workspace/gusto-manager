@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { Check, Info, Loader2, MessageSquareText, Save } from "lucide-react";
+import { Check, ChevronDown, Info, Loader2, MessageSquareText, Save } from "lucide-react";
 import SmsTemplateEditor from "../_shared/reservations/sms-template-editor.reservations.component";
 import SmsPreviewModal from "../_shared/reservations/sms-preview-modal.reservations.component";
 import SmsDestinationsModalReservationsComponent from "../_shared/reservations/sms-destinations-modal.reservations.component";
@@ -29,6 +29,51 @@ const VARIABLE_LABELS = {
   refundAmount: "Montant du remboursement",
 };
 
+function normalizeSmsSettings(settings = {}) {
+  return {
+    enabled: settings.enabled === true,
+    events: Object.fromEntries(
+      Object.entries(settings.events || {}).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ).map(([key, event]) => [key, {
+        enabled: event?.enabled === true,
+        template: String(event?.template ?? ""),
+      }]),
+    ),
+  };
+}
+
+function normalizeSharedSmsSettings(settings = {}) {
+  const limit = settings.billingPeriodSpendingLimit;
+  return {
+    internationalEnabled: settings.internationalEnabled === true,
+    billingPeriodSpendingLimit:
+      limit === "" || limit == null ? null : Number(limit),
+  };
+}
+
+function createSavedSmsValues(settings, sharedSettings) {
+  return {
+    settings: normalizeSmsSettings(settings),
+    sharedSettings: normalizeSharedSmsSettings(sharedSettings),
+  };
+}
+
+function smsValuesKey(values) {
+  return JSON.stringify(values);
+}
+
+function hasSmsFormChanges(saved, current) {
+  return Boolean(saved && current && smsValuesKey(saved) !== smsValuesKey(current));
+}
+
+function getChangedSharedSmsKeys(saved, current) {
+  if (!saved || !current) return [];
+  return Object.keys(current.sharedSettings).filter(
+    (key) => current.sharedSettings[key] !== saved.sharedSettings[key],
+  );
+}
+
 function SmsEventEditor({
   event,
   selection,
@@ -38,6 +83,8 @@ function SmsEventEditor({
   destination,
   disabled,
   onPreview,
+  expanded,
+  onToggleDetails,
 }) {
   const variables = useMemo(
     () =>
@@ -80,17 +127,17 @@ function SmsEventEditor({
   return (
     <div className="grid gap-3 rounded-2xl border border-darkBlue/10 p-4">
       <div className="flex items-center justify-between gap-3">
-        <label className="flex min-w-0 items-center gap-3 text-sm font-semibold">
-          <input
-            type="checkbox"
-            className="m-0 size-4 shrink-0"
-            checked={selection.enabled}
-            disabled={disabled}
-            onChange={(e) => onChange({ enabled: e.target.checked })}
-          />
-          {event.label}
-        </label>
-        {selection.enabled ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <label className="flex min-w-0 items-center gap-3 text-sm font-semibold">
+            <input
+              type="checkbox"
+              className="m-0 size-4 shrink-0"
+              checked={selection.enabled}
+              disabled={disabled}
+              onChange={(e) => onChange({ enabled: e.target.checked })}
+            />
+            <span>{event.label}</span>
+          </label>
           <button
             type="button"
             aria-label={`Aperçu du SMS : ${event.label}`}
@@ -100,10 +147,20 @@ function SmsEventEditor({
           >
             <Info className="size-4" />
           </button>
-        ) : null}
+        </div>
+        <button
+          type="button"
+          aria-label={`${expanded ? "Masquer" : "Afficher"} les détails de ${event.label}`}
+          aria-expanded={expanded}
+          aria-controls={`take-away-sms-${event.key}-details`}
+          onClick={onToggleDetails}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-darkBlue/60 transition hover:bg-darkBlue/5"
+        >
+          <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </button>
       </div>
-      {selection.enabled ? (
-        <>
+      {expanded ? (
+        <div id={`take-away-sms-${event.key}-details`} className="grid gap-3">
           <label id={`take-away-sms-${event.key}-label`} className="text-sm">
             Message
           </label>
@@ -145,7 +202,7 @@ function SmsEventEditor({
               remboursement par Stripe.
             </p>
           ) : null}
-        </>
+        </div>
       ) : null}
     </div>
   );
@@ -155,32 +212,51 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
   const restaurantId = restaurant?._id;
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState(null);
+  const savedValues = useRef(null);
   const [sharedSettings, setSharedSettings] = useState({
     internationalEnabled: false,
     billingPeriodSpendingLimit: null,
   });
-  const [sharedDirtyKeys, setSharedDirtyKeys] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const [preview, setPreview] = useState(null);
   const [showDestinations, setShowDestinations] = useState(false);
+  const [expandedEventKey, setExpandedEventKey] = useState(null);
   const activation = useSmsModuleToggle({
-    restaurantId, module: "take_away", enabled: settings?.enabled, modules: data?.modules, commercial: data?.commercial,
+    restaurantId,
+    module: "take_away",
+    enabled: settings?.enabled,
+    modules: data?.modules,
+    commercial: data?.commercial,
     onUpdated: (response) => {
-      setData((current) => ({ ...current, commercial: response.commercial,
-        subscribed: Boolean(response.commercial?.active), modules: response.modules }));
-      setSettings((current) => ({ ...current, enabled: response.modules.take_away }));
+      setData((current) => ({
+        ...current,
+        commercial: response.commercial,
+        subscribed: Boolean(response.commercial?.active),
+        modules: response.modules,
+      }));
+      setSettings((current) => ({
+        ...current,
+        enabled: response.modules.take_away,
+      }));
+      if (savedValues.current) {
+        savedValues.current = {
+          ...savedValues.current,
+          settings: {
+            ...savedValues.current.settings,
+            enabled: response.modules.take_away === true,
+          },
+        };
+      }
     },
   });
   useEffect(() => {
     let active = true;
     setData(null);
     setSettings(null);
-    setSharedDirtyKeys([]);
+    savedValues.current = null;
     setError("");
-    setDirty(false);
     setSaved(false);
     const token = localStorage.getItem("token");
     axios
@@ -192,11 +268,16 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
         if (active) {
           setData(response);
           setSettings(response.settings);
-          setSharedSettings({
+          const initialSharedSettings = {
             internationalEnabled: response.internationalEnabled === true,
             billingPeriodSpendingLimit:
               response.billingPeriodSpendingLimit ?? null,
-          });
+          };
+          setSharedSettings(initialSharedSettings);
+          savedValues.current = createSavedSmsValues(
+            response.settings,
+            initialSharedSettings,
+          );
         }
       })
       .catch((failure) => {
@@ -212,7 +293,6 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
   }, [restaurantId, restaurant?.options?.sms_reminders]);
 
   function updateEvent(key, patch) {
-    setDirty(true);
     setSaved(false);
     setSettings((current) => ({
       ...current,
@@ -244,16 +324,19 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      if (sharedDirtyKeys.length) {
-        const refreshed = savedSettings.sharedSmsSettings;
-        setSharedSettings({
-          internationalEnabled: refreshed.internationalEnabled === true,
-          billingPeriodSpendingLimit:
-            refreshed.billingPeriodSpendingLimit ?? null,
-        });
-        setSharedDirtyKeys([]);
-      }
-      setDirty(false);
+      const confirmedSettings = normalizeSmsSettings(
+        savedSettings.restaurant?.takeAwaySettings?.smsNotifications ||
+          settings,
+      );
+      const confirmedSharedSettings = normalizeSharedSmsSettings(
+        savedSettings.sharedSmsSettings || sharedSettings,
+      );
+      setSettings(confirmedSettings);
+      setSharedSettings(confirmedSharedSettings);
+      savedValues.current = createSavedSmsValues(
+        confirmedSettings,
+        confirmedSharedSettings,
+      );
       setSaved(true);
     } catch (failure) {
       setError(
@@ -274,6 +357,17 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
   );
   const destination =
     destinations.find((item) => item.country === "FR") || destinations[0];
+  const currentSavedValues = settings
+    ? createSavedSmsValues(settings, sharedSettings)
+    : null;
+  const hasUnsavedChanges = hasSmsFormChanges(
+    savedValues.current,
+    currentSavedValues,
+  );
+  const sharedDirtyKeys = getChangedSharedSmsKeys(
+    savedValues.current,
+    currentSavedValues,
+  );
   const quota = getSmsQuotaPresentation(data?.usage);
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   return (
@@ -289,11 +383,13 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
               Envoyer des notifications sur les étapes de commande à emporter.
             </p>
           </div>
-          {data && settings && (dirty || saving || saved) ? (
+          {data && settings && (hasUnsavedChanges || saving || saved) ? (
             <button
               type="button"
               onClick={save}
-              disabled={!data.subscribed || saving || saved || activation.loading}
+              disabled={
+                !data.subscribed || saving || saved || activation.loading
+              }
               className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${saved ? "border border-darkBlue bg-white text-darkBlue opacity-60" : "bg-darkBlue text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-60`}
               aria-label="Enregistrer"
               title="Enregistrer"
@@ -349,31 +445,54 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                       className="peer sr-only"
                       checked={activation.enabled}
                       aria-busy={activation.loading}
-                      disabled={saving || activation.loading || (!data.subscribed && !data.commercial?.canSelfManage)}
-                      onChange={(event) => { setError(""); activation.changeModule(event.target.checked); }}
+                      disabled={
+                        saving ||
+                        activation.loading ||
+                        (!data.subscribed && !data.commercial?.canSelfManage)
+                      }
+                      onChange={(event) => {
+                        setError("");
+                        activation.changeModule(event.target.checked);
+                      }}
                     />
                     <span
                       className={`absolute left-1 top-1/2 size-6 -translate-y-1/2 rounded-full bg-white shadow-sm transition ${activation.enabled ? "translate-x-6" : ""}`}
                     />
                   </span>
                 </label>
-                {activation.statusText ? <p role="status" className="mt-2 text-xs text-darkBlue/60">{activation.statusText}</p> : null}
+                {activation.statusText ? (
+                  <p role="status" className="mt-2 text-xs text-darkBlue/60">
+                    {activation.statusText}
+                  </p>
+                ) : null}
               </div>
               {data.commercial?.status === "scheduled" ? (
                 <div className="rounded-2xl border border-orange/20 bg-orange/5 px-3 py-3 text-sm text-darkBlue/70">
-                  <p>Résiliation programmée au {new Intl.DateTimeFormat("fr-FR").format(new Date(data.commercial.effectiveAt))}. Le module reste actif jusque-là.</p>
-                  <button type="button" disabled={activation.loading || !data.commercial.canSelfManage}
+                  <p>
+                    Résiliation programmée au{" "}
+                    {new Intl.DateTimeFormat("fr-FR").format(
+                      new Date(data.commercial.effectiveAt),
+                    )}
+                    . Le module reste actif jusque-là.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      activation.loading || !data.commercial.canSelfManage
+                    }
                     className="mt-2 font-semibold text-blue underline"
-                    onClick={() => activation.cancelScheduledDeactivation(data.commercial)}>
+                    onClick={() =>
+                      activation.cancelScheduledDeactivation(data.commercial)
+                    }
+                  >
                     Annuler la résiliation
                   </button>
                 </div>
               ) : null}
               <p className="text-xs text-darkBlue/60">
-                Les commandes manuelles sont exclues. L’attente de validation
-                est notifiée après paiement confirmé ou pour un paiement sur
-                place. Les SMS sont déclenchés immédiatement ; les variables
-                peuvent augmenter le nombre de segments.
+                Le numéro de téléphone est obligatoire lorsque les notifications
+                sont activées. Les SMS sont envoyés selon les événements
+                sélectionnés ci-dessous.
               </p>
               <div className="border-t border-darkBlue/10 pt-5">
                 <div className="mb-4">
@@ -456,16 +575,10 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                               ? null
                               : Number(event.target.value);
                           setSaved(false);
-                          setDirty(true);
                           setSharedSettings((current) => ({
                             ...current,
                             billingPeriodSpendingLimit: value,
                           }));
-                          setSharedDirtyKeys((current) =>
-                            current.includes("billingPeriodSpendingLimit")
-                              ? current
-                              : [...current, "billingPeriodSpendingLimit"],
-                          );
                         }}
                         className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2"
                       />
@@ -488,16 +601,10 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                   }
                   onChange={(event) => {
                     setSaved(false);
-                    setDirty(true);
                     setSharedSettings((current) => ({
                       ...current,
                       internationalEnabled: event.target.checked,
                     }));
-                    setSharedDirtyKeys((current) =>
-                      current.includes("internationalEnabled")
-                        ? current
-                        : [...current, "internationalEnabled"],
-                    );
                   }}
                 />
                 Autoriser les SMS vers les destinations internationales
@@ -519,6 +626,12 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
               ) : null}
               {settings.enabled ? (
                 <>
+          <div className="grid gap-1">
+            <h3 className="text-sm font-semibold text-darkBlue">Événements de notification</h3>
+            <p className="text-sm text-darkBlue/60">
+              Sélectionnez les étapes d’une commande à emporter pour lesquelles vous souhaitez envoyer un SMS au client.
+            </p>
+          </div>
                   {data.events
                     .filter(
                       (event) =>
@@ -538,8 +651,12 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                         restaurantName={restaurant.name || "Restaurant"}
                         sender={data.sender}
                         destination={destination}
-                        disabled={!data.subscribed || saving || activation.loading}
+                        disabled={
+                          !data.subscribed || saving || activation.loading
+                        }
                         onPreview={setPreview}
+                        expanded={expandedEventKey === event.key}
+                        onToggleDetails={() => setExpandedEventKey((current) => current === event.key ? null : event.key)}
                       />
                     ))}
                 </>
@@ -558,8 +675,12 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
           />
         ) : null}
         <SmsSubscriptionActionModal
-          pending={activation.pending} loading={activation.confirming} preparing={activation.preparing} error={activation.error}
-          onClose={activation.close} onConfirm={activation.confirm}
+          pending={activation.pending}
+          loading={activation.confirming}
+          preparing={activation.preparing}
+          error={activation.error}
+          onClose={activation.close}
+          onConfirm={activation.confirm}
         />
       </div>
     </section>
