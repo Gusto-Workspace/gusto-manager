@@ -136,6 +136,20 @@ function match(doc, filter) {
   });
 }
 function update(doc, change) {
+  // Exercise the actual embedded casting before the atomic write. A plain
+  // object mock alone would silently accept invalid Boolean values.
+  for (const field of ["adjustments", "businessEvents"]) {
+    const pushed = change.$push?.[field];
+    const values =
+      change.$set?.[field] ?? (pushed ? pushed.$each || [pushed] : null);
+    if (values) {
+      const cast = Order.schema.path(field).cast(values);
+      for (const embedded of cast) {
+        const error = embedded.validateSync();
+        if (error) throw error;
+      }
+    }
+  }
   Object.assign(doc, structuredClone(change.$set || {}));
   for (const [key, value] of Object.entries(change.$inc || {}))
     doc[key] = (doc[key] || 0) + value;
@@ -306,13 +320,13 @@ test("Paris deadlines respect DST, J+3 validation and optional preparation", asy
   assert.equal(
     adjustment
       .deadlineFor(
-      {
-        takeAwaySettings: {
-          auto_accept: false,
-          confirmationDeadlineEnabled: false,
+        {
+          takeAwaySettings: {
+            auto_accept: false,
+            confirmationDeadlineEnabled: false,
+          },
         },
-      },
-      pickup,
+        pickup,
       )
       .toISOString(),
     "2026-10-13T17:30:00.000Z",
@@ -1044,4 +1058,230 @@ test("new schemas retain operation snapshots and reject fractional confirmation 
   assert.equal(doc.validateSync(), undefined);
   assert.equal(doc.toObject().adjustments[0].emailEnabled, false);
   assert.equal(doc.toObject().items[0].lineId, "burger");
+});
+
+test("termination: pending on-site rejection casts correctly and never calls Stripe", async (t) => {
+  const doc = memory(
+    t,
+    fixture({
+      fulfillmentMode: "pickup",
+      paymentMethod: "on_site",
+      paymentStatus: "not_required",
+      stripePaymentIntentId: "",
+      subtotal: 32,
+      total: 32,
+      deliveryFee: 0,
+      remainingAmountCents: 3200,
+      items: [
+        {
+          lineId: "burger",
+          catalogItemId: "burger",
+          name: "Burger",
+          quantity: 1,
+          unitPrice: 20,
+          optionsTotal: 0,
+          options: [],
+          lineTotal: 20,
+        },
+        {
+          lineId: "dessert",
+          catalogItemId: "dessert",
+          name: "Dessert",
+          quantity: 1,
+          unitPrice: 12,
+          optionsTotal: 0,
+          options: [],
+          lineTotal: 12,
+        },
+      ],
+    }),
+  );
+  const originalItems = structuredClone(doc.items);
+  const oldStripe = service.getStripeForRestaurant;
+  let stripeCalls = 0;
+  service.getStripeForRestaurant = () => {
+    stripeCalls += 1;
+    throw new Error("Stripe must not be used");
+  };
+  t.after(() => {
+    service.getStripeForRestaurant = oldStripe;
+  });
+  await service.updateOrderStatus({
+    restaurant,
+    orderId: doc._id,
+    status: "rejected",
+  });
+  const firstHistory = structuredClone({
+    adjustments: doc.adjustments,
+    events: doc.businessEvents,
+  });
+  await service.updateOrderStatus({
+    restaurant,
+    orderId: doc._id,
+    status: "rejected",
+  });
+  assert.equal(doc.status, "rejected");
+  assert.equal(doc.paymentStatus, "not_required");
+  assert.equal(doc.total, 32);
+  assert.equal(doc.refundedAmountCents, 0);
+  assert.equal(doc.remainingAmountCents, 0);
+  assert.deepEqual(
+    doc.items.map(({ refusedQuantity, ...item }) => item),
+    originalItems,
+  );
+  assert.ok(doc.items.every((item) => item.refusedQuantity === item.quantity));
+  assert.equal(doc.adjustments.length, 1);
+  const operation = doc.adjustments[0];
+  assert.equal(operation.type, "termination");
+  assert.equal(operation.requestKey, "terminal:rejected");
+  assert.equal(operation.amountCents, 3200);
+  assert.equal(operation.state, "not_required");
+  assert.equal(operation.emailEnabled, true);
+  assert.equal(operation.actorId, "");
+  assert.deepEqual(
+    { adjustments: doc.adjustments, events: doc.businessEvents },
+    firstHistory,
+  );
+  assert.ok(
+    doc.businessEvents.some(
+      (event) =>
+        event.type === "order_terminated" && event.operationId === operation.id,
+    ),
+  );
+  assert.ok(
+    !doc.businessEvents.some((event) => event.type.startsWith("refund_")),
+  );
+  assert.deepEqual(doc.customerEmailEventsSent, ["rejected"]);
+  assert.equal(emails.length, 1);
+  assert.equal(stripeCalls, 0);
+});
+
+test("termination: online rejection refunds once through the status workflow", async (t) => {
+  const doc = memory(t, fixture());
+  const originalItems = structuredClone(doc.items);
+  const remote = stripeMock(doc);
+  const oldStripe = service.getStripeForRestaurant;
+  service.getStripeForRestaurant = () => remote.stripe;
+  t.after(() => {
+    service.getStripeForRestaurant = oldStripe;
+  });
+  await service.updateOrderStatus({
+    restaurant,
+    orderId: doc._id,
+    status: "rejected",
+  });
+  const firstEvents = structuredClone(doc.businessEvents);
+  await service.updateOrderStatus({
+    restaurant,
+    orderId: doc._id,
+    status: "rejected",
+  });
+  assert.equal(doc.status, "rejected");
+  assert.equal(doc.paymentStatus, "refunded");
+  assert.equal(doc.total, 50);
+  assert.equal(doc.refundedAmountCents, 5000);
+  assert.deepEqual(
+    doc.items.map(({ refusedQuantity, ...item }) => item),
+    originalItems,
+  );
+  assert.equal(doc.adjustments.length, 1);
+  assert.equal(doc.adjustments[0].emailEnabled, true);
+  assert.equal(remote.calls(), 1);
+  assert.deepEqual(doc.businessEvents, firstEvents);
+  assert.equal(
+    doc.businessEvents.filter((event) => event.type === "refund_requested")
+      .length,
+    1,
+  );
+  assert.equal(
+    doc.businessEvents.filter((event) => event.type === "refund_confirmed")
+      .length,
+    1,
+  );
+  assert.equal(
+    emails.filter((email) => email.eventType === "rejected").length,
+    1,
+  );
+});
+
+test("termination: both terminal statuses accept optional or missing actor identifiers", async (t) => {
+  for (const targetStatus of ["rejected", "canceled"]) {
+    for (const actorId of [undefined, null, ""]) {
+      await t.test(
+        `${targetStatus}, actor ${JSON.stringify(actorId)}`,
+        async (subtest) => {
+          const doc = memory(
+            subtest,
+            fixture({
+              paymentMethod: "on_site",
+              paymentStatus: "not_required",
+            }),
+          );
+          await adjustment.recordDecision({
+            restaurant: {
+              ...restaurant,
+              takeAwaySettings: {
+                ...restaurant.takeAwaySettings,
+                partialRejectionEmailEnabled: false,
+              },
+            },
+            orderId: doc._id,
+            requestKey: `terminal:${targetStatus}`,
+            targetStatus,
+            actorId,
+          });
+          assert.equal(doc.adjustments[0].actorId, "");
+          assert.equal(doc.adjustments[0].emailEnabled, true);
+          assert.deepEqual(doc.pendingCustomerEmailEvents, [targetStatus]);
+          assert.equal(
+            doc.businessEvents[0].operationId,
+            doc.adjustments[0].id,
+          );
+        },
+      );
+    }
+  }
+});
+
+test("termination: cast and storage failures leave the decision entirely unchanged", async (t) => {
+  for (const failure of ["cast", "storage"]) {
+    await t.test(failure, async (subtest) => {
+      const doc = memory(subtest, fixture());
+      const before = structuredClone(doc);
+      const write = Order.findOneAndUpdate;
+      Order.findOneAndUpdate = (filter, change) => {
+        if (change.$push?.adjustments) {
+          if (failure === "storage") throw new Error("mock storage failure");
+          change.$push.adjustments.emailEnabled = "rejected";
+        }
+        return write(filter, change);
+      };
+      const oldStripe = service.getStripeForRestaurant;
+      let stripeCalls = 0;
+      service.getStripeForRestaurant = () => {
+        stripeCalls += 1;
+        throw new Error("Stripe must not be used");
+      };
+      subtest.after(() => {
+        service.getStripeForRestaurant = oldStripe;
+      });
+      await assert.rejects(
+        service.updateOrderStatus({
+          restaurant,
+          orderId: doc._id,
+          status: "rejected",
+        }),
+        (error) => {
+          if (failure === "storage")
+            return error.message === "mock storage failure";
+          assert.equal(error.name, "CastError");
+          assert.equal(error.reason.path, "emailEnabled");
+          return true;
+        },
+      );
+      assert.deepEqual(doc, before);
+      assert.equal(emails.length, 0);
+      assert.equal(stripeCalls, 0);
+    });
+  }
 });

@@ -542,7 +542,7 @@ export default function ListCustomersReservationsWebapp({
                 <option value="reservations">Réservations</option>
                 <option value="gift_cards">Cartes cadeaux</option>
                 {hasTakeAwayModule ? (
-                  <option value="take_away">Vente à emporter</option>
+                  <option value="take_away">Commandes</option>
                 ) : null}
               </select>
             </div>
@@ -874,6 +874,7 @@ export default function ListCustomersReservationsWebapp({
         hasTakeAwayModule={hasTakeAwayModule}
         defaultTab={sourceFilter === "take_away" ? "takeaway" : "reservations"}
         activityScope={sourceFilter === "take_away" ? "take_away" : "all"}
+        takeAwayLabel="Commandes"
         onUpdated={() => {
           invalidateCustomersCache?.(restaurantId);
           fetchCustomers({

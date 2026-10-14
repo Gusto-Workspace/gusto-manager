@@ -379,7 +379,7 @@ export default function ListTakeAwayWebapp() {
       year: "numeric",
     }).format(currentMonth),
   );
-  const currentName = restaurant?.name || "Vente à emporter";
+  const currentName = restaurant?.name || "Commandes";
   const takeAwayRestaurants = (restaurantContext.restaurantsList || []).filter(
     (candidate) => candidate?.options?.take_away === true,
   );
@@ -464,7 +464,7 @@ export default function ListTakeAwayWebapp() {
       <SidebarReservationsWebapp
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        title="Vente à emporter"
+        title="Commandes"
         module="take_away"
       />
 
@@ -474,7 +474,7 @@ export default function ListTakeAwayWebapp() {
         restaurantContext={restaurantContext}
         currentName={currentName}
         optionKey="take_away"
-        moduleLabel="Vente à emporter"
+        moduleLabel="Commandes"
       />
 
       {selectedDayKey ? (
@@ -491,7 +491,7 @@ export default function ListTakeAwayWebapp() {
             </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-semibold text-darkBlue midTablet:text-xl">
-                Vente à emporter
+                Commandes
               </p>
               <p className="truncate text-sm text-darkBlue/50">
                 {selectedDateLabel}

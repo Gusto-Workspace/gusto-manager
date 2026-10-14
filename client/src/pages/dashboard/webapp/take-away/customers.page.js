@@ -25,7 +25,7 @@ export default function TakeAwayWebappCustomersPage() {
   return (
     <>
       <Head>
-        <title>Gusto Manager</title>
+        <title>Commandes — Clients | Gusto Manager</title>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
@@ -44,7 +44,7 @@ export default function TakeAwayWebappCustomersPage() {
             <ListCustomersWebapp
               defaultSourceFilter="take_away"
               lockSourceFilter
-              sidebarTitle="Vente à emporter"
+              sidebarTitle="Commandes"
               sidebarModule="take_away"
             />
           )}

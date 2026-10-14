@@ -111,7 +111,7 @@ async function parseResponseBody(response) {
 }
 
 function getPushServiceWorkerConfig(module) {
-  const swVersion = "2026-09-08-webapp-notifications-1";
+  const swVersion = "2026-10-14-notification-badges-1";
   const configurations = {
     reservations: {
       swUrl: `/sw-reservations.js?v=${swVersion}`,

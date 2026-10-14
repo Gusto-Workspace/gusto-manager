@@ -249,7 +249,7 @@ async function recordDecision({
       reason: reason.trim(),
       actorId: String(actorId || ""),
       emailEnabled:
-        terminal ||
+        Boolean(terminal) ||
         restaurant.takeAwaySettings?.partialRejectionEmailEnabled !== false,
       lines: selected.length
         ? selected

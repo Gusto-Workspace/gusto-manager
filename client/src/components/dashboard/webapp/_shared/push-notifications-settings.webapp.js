@@ -21,7 +21,10 @@ const MODULE_LABELS = {
   take_away: "nouvelle commande à emporter",
 };
 
-export default function PushNotificationsSettingsWebapp({ module }) {
+export default function PushNotificationsSettingsWebapp({
+  module,
+  title = "Notifications",
+}) {
   const { restaurantContext } = useContext(GlobalContext);
   const [status, setStatus] = useState("loading");
   const [isLoading, setIsLoading] = useState(false);
@@ -154,7 +157,7 @@ export default function PushNotificationsSettingsWebapp({ module }) {
           ) : (
             <BellRing className="size-4 shrink-0 opacity-60" />
           )}
-          Notifications
+          {title}
         </h2>
         <button
           type="button"

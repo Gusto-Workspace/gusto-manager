@@ -12,7 +12,7 @@ export default function CatalogTakeAwayWebapp() {
       <SidebarReservationsWebapp
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        title="Vente à emporter"
+        title="Commandes"
         module="take_away"
       />
 

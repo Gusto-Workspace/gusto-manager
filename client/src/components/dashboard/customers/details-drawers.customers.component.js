@@ -63,6 +63,7 @@ export default function DetailsDrawerCustomersComponent({
   hasTakeAwayModule = true,
   defaultTab = "reservations",
   activityScope = "all",
+  takeAwayLabel = "À emporter",
   onUpdated,
   onAction,
 }) {
@@ -891,7 +892,7 @@ export default function DetailsDrawerCustomersComponent({
                     onClick={() => setTab("takeaway")}
                     type="button"
                   >
-                    À emporter ({takeAwayOrders.length})
+                    {takeAwayLabel} ({takeAwayOrders.length})
                   </button>
                 ) : null}
               </div>

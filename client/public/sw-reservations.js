@@ -31,7 +31,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: payload.message || "",
     icon: "/icons/android/reservations-192.png",
-    badge: "/img/logo-blanc.png",
+    badge: "/icons/android/reservations-notification-badge.png",
     data: {
       link: payload.link || "/dashboard/webapp/reservations",
       ...payload,
