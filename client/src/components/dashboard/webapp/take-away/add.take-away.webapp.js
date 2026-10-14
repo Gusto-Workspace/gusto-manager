@@ -98,6 +98,7 @@ export default function AddTakeAwayWebapp() {
         pickupEnabled={settings.pickupEnabled !== false}
         deliveryEnabled={settings.deliveryEnabled === true}
         restaurantId={restaurantId}
+        smsNotificationsEnabled={settings.smsNotifications?.enabled === true}
         loading={loading}
         onCreate={createOrder}
         title="Nouvelle commande"

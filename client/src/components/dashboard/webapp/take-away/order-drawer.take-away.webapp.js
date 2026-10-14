@@ -21,6 +21,7 @@ import {
 } from "../../take-away/take-away.utils";
 import useMobileDrawerSwipe from "@/components/_shared/use-mobile-drawer-swipe";
 import ConfirmModalTakeAwayWebapp from "./confirm-modal.take-away.webapp";
+import OrderAdjustmentsTakeAway from "../../take-away/order-adjustments.take-away.component";
 
 const CLOSE_MS = 280;
 
@@ -47,6 +48,8 @@ function formatDate(dateInput) {
 
 function getPaymentSummary(order) {
   if (order.paymentStatus === "refunded") return "Payée en ligne · remboursée";
+  if (order.refundedAmountCents > 0)
+    return "Payée en ligne · partiellement remboursée";
   if (order.paymentStatus === "paid") return "Payée en ligne";
   if (order.paymentMethod === "online") return "Paiement en ligne en attente";
   return "Paiement sur place ou à la livraison";
@@ -340,7 +343,17 @@ export default function TakeAwayOrderDrawerWebapp({
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-darkBlue">
-                          {item.quantity}× {item.name}
+                          {Math.max(
+                            0,
+                            item.quantity - (item.refusedQuantity || 0),
+                          )}
+                          × {item.name}
+                          {item.refusedQuantity ? (
+                            <span className="ml-2 text-xs text-red">
+                              {item.refusedQuantity} refusé(s) / {item.quantity}{" "}
+                              initialement
+                            </span>
+                          ) : null}
                         </p>
                         {(item.options || []).map((option) => (
                           <p
@@ -357,7 +370,14 @@ export default function TakeAwayOrderDrawerWebapp({
                         ) : null}
                       </div>
                       <span className="shrink-0 text-sm font-bold text-darkBlue">
-                        {toMoney(item.lineTotal)}
+                        {toMoney(
+                          Math.max(
+                            0,
+                            item.quantity - (item.refusedQuantity || 0),
+                          ) *
+                            (Number(item.unitPrice) +
+                              Number(item.optionsTotal || 0)),
+                        )}
                       </span>
                     </div>
                   </div>
@@ -365,7 +385,7 @@ export default function TakeAwayOrderDrawerWebapp({
               </div>
               <div className="mt-4 border-t border-darkBlue/10 pt-3 text-sm">
                 <p className="flex justify-between text-darkBlue/65">
-                  <span>Sous-total</span>
+                  <span>Sous-total initial</span>
                   <span>{toMoney(order.subtotal)}</span>
                 </p>
                 {order.fulfillmentMode === "delivery" ? (
@@ -375,12 +395,17 @@ export default function TakeAwayOrderDrawerWebapp({
                   </p>
                 ) : null}
                 <p className="mt-3 flex justify-between text-base font-bold text-darkBlue">
-                  <span>Total</span>
+                  <span>Total initial</span>
                   <span>{toMoney(order.total)}</span>
                 </p>
               </div>
             </section>
 
+            <OrderAdjustmentsTakeAway
+              order={order}
+              onAction={onAction}
+              busy={processing}
+            />
             {order.customerNote || order.restaurantNote ? (
               <section className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-darkBlue/45">

@@ -731,7 +731,7 @@ test("plage 08h-21h et too_late restent inchangés", () => {
 
 test("désactivation commerciale attend la disparition des Prices SMS", async () => {
   const deactivation = { status: "scheduled", stripeScheduleId: "sub_sched", effectiveAt: new Date("2027-02-01") };
-  const venue = restaurant({ smsReminder: { commercialDeactivation: deactivation } });
+  const venue = restaurant({ smsReminder: { enabled: false, commercialDeactivation: deactivation } });
   let updates = 0;
   let cancellations = 0;
   let effectiveUpdate = null;

@@ -1,4 +1,4 @@
-import { useRouter } from "next/router";
+import { useId } from "react";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -33,13 +33,17 @@ function SalesTooltip({ active, payload, label, currencySymbol }) {
   return null;
 }
 
-export default function MonthlyGiftCardSalesChart(props) {
+export default function MonthlySalesChart(props) {
   const { t } = useTranslation("index");
-  const router = useRouter();
-  const { locale } = router;
-  const currencySymbol = locale === "fr" ? "€" : "$";
+  const gradientId = useId().replace(/:/g, "");
+  const currencySymbol = new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: (props.currency || "eur").toUpperCase(),
+  })
+    .formatToParts(0)
+    .find((part) => part.type === "currency")?.value;
 
-  const data = props.monthlySales || [];
+  const data = props.data || [];
 
   const totalAmount = Array.isArray(data)
     ? data.reduce((sum, d) => sum + (d.total || 0), 0)
@@ -55,15 +59,19 @@ export default function MonthlyGiftCardSalesChart(props) {
   if (Array.isArray(data) && data.length > 0) {
     maxTotal = data.reduce((max, d) => {
       const v = typeof d.total === "number" ? d.total : Number(d.total) || 0;
-      return Math.max(max, v);
+      return Math.max(max, Math.abs(v));
     }, 0);
   }
 
-  const intMax = Math.floor(Math.abs(maxTotal));
-  const digits = String(intMax || 0).length;
-
-  const yAxisWidth =
-    digits === 1 ? 28 : digits === 2 ? 34 : digits === 3 ? 42 : 50;
+  const formattedMax = Math.abs(maxTotal).toLocaleString("fr-FR");
+  const hasNegativeTotal = data.some((point) => Number(point.total) < 0);
+  const yAxisDomain = hasNegativeTotal ? ["auto", "auto"] : [0, "auto"];
+  const yAxisWidth = Math.max(
+    44,
+    formattedMax.length * 6.5 +
+      String(currencySymbol || "€").length * 6.5 +
+      15,
+  );
 
   return (
     <section
@@ -79,17 +87,15 @@ export default function MonthlyGiftCardSalesChart(props) {
       <header className="relative z-10 mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
-            {t("labels.monthlySold")}
+            {props.title}
           </h2>
           <p className="text-[11px] tablet:text-xs text-darkBlue/60">
-            {t(
-              "labels.monthlySoldSubtitle",
-              "Montant des cartes cadeaux vendues les 6 derniers mois."
-            )}
+            {props.subtitle}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {props.children}
           <div className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-darkBlue/10 px-3 py-1">
             <span className="h-2 w-2 rounded-full bg-[#e66430]" />
             <span className="text-darkBlue/70">
@@ -115,13 +121,21 @@ export default function MonthlyGiftCardSalesChart(props) {
 
       {/* Chart */}
       <div className="relative z-10">
-        {props.monthlyDataLoading ? (
+        {props.loading ? (
           <div
             className="flex flex-col items-center justify-center gap-2 text-darkBlue/40"
             style={{ height }}
           >
             <Loader2 className="size-6 animate-spin" />
             <span className="text-sm italic">Chargement…</span>
+          </div>
+        ) : props.error ? (
+          <div
+            role="alert"
+            className="flex items-center justify-center text-sm text-red"
+            style={{ height }}
+          >
+            {props.error}
           </div>
         ) : !data.length ? (
           <div
@@ -138,13 +152,7 @@ export default function MonthlyGiftCardSalesChart(props) {
                 margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient
-                    id="giftSalesColor"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#e66430" stopOpacity={0.6} />
                     <stop offset="95%" stopColor="#e66430" stopOpacity={0} />
                   </linearGradient>
@@ -164,9 +172,23 @@ export default function MonthlyGiftCardSalesChart(props) {
                 />
                 <YAxis
                   type="number"
-                  domain={[0, "auto"]}
+                  domain={yAxisDomain}
                   allowDecimals={false}
-                  tick={{ fontSize: 11, fill: "rgba(19,30,54,0.6)" }}
+                  tick={(tickProps) => (
+                    <text
+                      x={0}
+                      y={tickProps.y}
+                      textAnchor="start"
+                      dominantBaseline="central"
+                      fontSize={11}
+                      fill="rgba(19,30,54,0.6)"
+                    >
+                      {tickProps.tickFormatter(tickProps.payload.value)}
+                    </text>
+                  )}
+                  tickFormatter={(value) =>
+                    `${Number(value).toLocaleString("fr-FR")} ${currencySymbol}`
+                  }
                   axisLine={false}
                   tickLine={false}
                   width={yAxisWidth}
@@ -179,7 +201,7 @@ export default function MonthlyGiftCardSalesChart(props) {
                   dataKey="total"
                   stroke="#e66430"
                   strokeWidth={1.2}
-                  fill="url(#giftSalesColor)"
+                  fill={`url(#${gradientId})`}
                   fillOpacity={1}
                   activeDot={{
                     r: 5,

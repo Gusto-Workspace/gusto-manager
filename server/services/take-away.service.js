@@ -13,6 +13,9 @@ const {
 const { broadcastToRestaurant } = require("./sse-bus.service");
 const { createAndBroadcastNotification } = require("./notifications.service");
 const { sendTakeAwayOrderEmail } = require("./take-away-mailer.service");
+const { sanitizeTakeAwaySmsSettings, orderStatusSmsEvent, addOrderStatusSmsEvent, addRefundConfirmedSmsEvent } = require("./sms/take-away-sms-settings.service");
+const { normalizeSmsPhone } = require("./sms/sms-phone.service");
+const adjustments = require("./take-away-adjustments.service");
 
 const ACTIVE_ORDER_STATUSES = [
   "pending",
@@ -77,7 +80,10 @@ function assertMaxLength(value, label, maxLength, { required = false } = {}) {
   return normalized;
 }
 
-function validateCustomerInput(payload = {}) {
+function validateCustomerInput(
+  payload = {},
+  { phoneRequired = true, normalizePhone = false } = {},
+) {
   const customerFirstName = assertMaxLength(
     payload.customerFirstName,
     "Prénom",
@@ -91,19 +97,28 @@ function validateCustomerInput(payload = {}) {
     { required: true },
   );
   const customerEmail = assertMaxLength(payload.customerEmail, "Email", 254);
-  const customerPhone = assertMaxLength(
+  let customerPhone = assertMaxLength(
     payload.customerPhone,
     "Téléphone",
     32,
-    { required: true },
+    { required: phoneRequired },
   );
 
   if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
     throw serviceError("Email invalide");
   }
   const phoneDigits = customerPhone.replace(/\D/g, "");
-  if (phoneDigits.length < 6 || phoneDigits.length > 20) {
+  if (customerPhone && (phoneDigits.length < 6 || phoneDigits.length > 20)) {
     throw serviceError("Téléphone invalide");
+  }
+  if (customerPhone && normalizePhone) {
+    const phone = normalizeSmsPhone(customerPhone);
+    if (!phone) {
+      throw serviceError(
+        "Téléphone invalide. Indiquez un numéro valide avec son indicatif pour un numéro international.",
+      );
+    }
+    customerPhone = phone.e164;
   }
 
   return {
@@ -162,11 +177,9 @@ function parseDateKey(dateKey) {
 }
 
 function buildScheduledDate(dateKey, hhmm) {
-  const date = parseDateKey(dateKey);
-  const minutes = minutesFromHHmm(hhmm);
-  if (!date || minutes === null) return null;
-  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-  return date;
+  if (!normalizeTakeAwayDateKey(dateKey) || minutesFromHHmm(hhmm) === null)
+    return null;
+  return adjustments.parisDate(dateKey, hhmm);
 }
 
 function getDayIndex(date) {
@@ -253,10 +266,19 @@ function sanitizeTakeAwaySettingsInput(input = {}) {
     : "on_site";
 
   return {
+    ...(input.smsNotifications ? { smsNotifications: input.smsNotifications } : {}),
     enabled: Boolean(input.enabled),
     pickupEnabled: input.pickupEnabled !== false,
     deliveryEnabled: Boolean(input.deliveryEnabled),
     auto_accept: input.auto_accept !== false,
+    confirmationDeadlineEnabled: true,
+    confirmationDeadlineMinutes: Object.prototype.hasOwnProperty.call(
+      input,
+      "confirmationDeadlineMinutes",
+    )
+      ? normalizePreparationTimeMinutes(input.confirmationDeadlineMinutes)
+      : 30,
+    partialRejectionEmailEnabled: input.partialRejectionEmailEnabled !== false,
     paymentPolicy,
     same_hours_as_restaurant: input.same_hours_as_restaurant !== false,
     ...(Object.prototype.hasOwnProperty.call(input, "preparationTimeMinutes")
@@ -349,6 +371,9 @@ function mergeTakeAwaySettingsInput(currentSettings = {}, patch = {}) {
   return sanitizeTakeAwaySettingsInput({
     ...current,
     ...nextPatch,
+    smsNotifications: Object.hasOwn(nextPatch, "smsNotifications")
+      ? sanitizeTakeAwaySmsSettings(nextPatch.smsNotifications || {}, current.smsNotifications)
+      : current.smsNotifications,
     email_templates: Object.prototype.hasOwnProperty.call(
       nextPatch,
       "email_templates",
@@ -874,10 +899,12 @@ function generateSlotsForDate(restaurant, dateKey) {
 
     for (let minutes = start; minutes <= end; minutes += interval) {
       const time = hhmmFromMinutes(minutes);
+      const scheduledFor = buildScheduledDate(dateKey, time);
+      if (!scheduledFor) continue;
       slots.push({
         slotId: `${dateKey}-${time}`,
         time,
-        scheduledFor: buildScheduledDate(dateKey, time),
+        scheduledFor,
         maxOrders,
       });
     }
@@ -901,14 +928,20 @@ async function getAvailableSlots({
     getPreparationTimeMinutes(getSettings(restaurant)) * 60 * 1000;
   const slots = generateSlotsForDate(restaurant, dateKey).filter(
     (slot) =>
-      !respectPreparationTime ||
-      slot.scheduledFor.getTime() >= minimumScheduledTime,
+      (!respectPreparationTime ||
+        slot.scheduledFor.getTime() >= minimumScheduledTime) &&
+      (!respectPublicBlock ||
+        !adjustments.deadlineFor(restaurant, slot.scheduledFor) ||
+        adjustments.deadlineFor(restaurant, slot.scheduledFor).getTime() >
+          now.getTime()),
   );
   if (!slots.length) return [];
 
-  const start = parseDateKey(dateKey);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const start = adjustments.parisDate(dateKey);
+  const { DateTime } = require("luxon");
+  const end = DateTime.fromJSDate(start, { zone: "Europe/Paris" })
+    .plus({ days: 1 })
+    .toJSDate();
 
   const counts = await TakeAwayOrderModel.aggregate([
     {
@@ -1042,6 +1075,7 @@ function buildOrderItems(restaurant, rawItems = []) {
     const lineTotal = Math.round(effectiveUnitPrice * quantity * 100) / 100;
 
     return {
+      lineId: crypto.randomUUID(),
       catalogItemId: catalogItem._id,
       sourceType: catalogItem.sourceType,
       sourceItemId: catalogItem.sourceItemId || null,
@@ -1151,6 +1185,15 @@ async function cleanupCompletedTakeAwayOrders(
   const result = await TakeAwayOrderModel.deleteMany({
     restaurant_id: restaurant._id,
     status: "completed",
+    // Preserve the command outbox until its SMS jobs are durable.
+    businessEvents: { $not: { $elemMatch: { smsProcessedAt: null } } },
+    adjustments: {
+      $not: {
+        $elemMatch: {
+          state: { $in: ["queued", "pending", "failed", "uncertain"] },
+        },
+      },
+    },
     $or: [
       { completedAt: { $lte: before } },
       { completedAt: null, updatedAt: { $lte: before } },
@@ -1345,6 +1388,21 @@ function resolveAuthoritativeSlot({
       "Ce créneau ne laisse pas assez de temps de préparation",
     );
   }
+  const confirmationDeadline = adjustments.deadlineFor(
+    restaurant,
+    scheduledFor,
+  );
+  if (
+    respectPreparationTime &&
+    confirmationDeadline &&
+    confirmationDeadline.getTime() <= now.getTime()
+  ) {
+    throw serviceError(
+      "Le délai de confirmation de ce créneau est dépassé",
+      409,
+      "CONFIRMATION_DEADLINE_PASSED",
+    );
+  }
 
   if (payload.scheduledFor !== undefined && payload.scheduledFor !== null) {
     const clientScheduledFor = new Date(payload.scheduledFor);
@@ -1474,8 +1532,9 @@ function getCustomerEmailEventForOrder(order) {
 }
 
 function getObsoleteCustomerEmailEvents(nextEvent) {
-  if (nextEvent === "confirmed") return ["received"];
-  if (["rejected", "canceled"].includes(nextEvent)) {
+  if (nextEvent === "confirmed" || nextEvent.startsWith("partial_rejection:"))
+    return ["received"];
+  if (["rejected", "canceled", "expired"].includes(nextEvent.split(":")[0])) {
     return ["received", "confirmed", "ready", "out_for_delivery"];
   }
   return [];
@@ -1647,7 +1706,11 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
     throw serviceError("Commande en ligne indisponible", 403);
   }
 
-  const contact = validateCustomerInput(payload);
+  const contact = validateCustomerInput(payload, {
+    phoneRequired:
+      source !== "dashboard" || settings.smsNotifications?.enabled === true,
+    normalizePhone: source === "dashboard",
+  });
   const fulfillmentMode =
     payload.fulfillmentMode === "delivery" ? "delivery" : "pickup";
   if (fulfillmentMode === "pickup" && settings.pickupEnabled === false) {
@@ -1755,9 +1818,15 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
       }
 
       try {
+        const orderNumber = generateOrderNumber();
+        const initialSmsEvent = orderStatusSmsEvent({
+          source, orderNumber, ...contact, fulfillmentMode, paymentMethod,
+          paymentStatus, scheduledFor: authoritativeSlot.scheduledFor, total, currency: "eur",
+        }, status);
         order = await TakeAwayOrderModel.create({
           restaurant_id: restaurant._id,
-          orderNumber: generateOrderNumber(),
+          orderNumber,
+          businessEvents: initialSmsEvent ? [initialSmsEvent] : [],
           customer: null,
           ...contact,
           fulfillmentMode,
@@ -1765,6 +1834,16 @@ async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
           ...getStatusTimestampUpdate(status),
           paymentStatus,
           paymentMethod,
+          financialVersion: 1,
+          remainingAmountCents: Math.round(total * 100),
+          confirmationRequired:
+            source === "public" && settings.auto_accept === false,
+          preparationTimeMinutesSnapshot: getPreparationTimeMinutes(settings),
+          confirmationDeadlineAt: adjustments.deadlineFor(
+            restaurant,
+            authoritativeSlot.scheduledFor,
+            source,
+          ),
           paymentExpiresAt:
             paymentStatus === "pending"
               ? new Date(Date.now() + TAKE_AWAY_PAYMENT_PENDING_TTL_MS)
@@ -1847,7 +1926,10 @@ function getStripeForRestaurant(restaurant, stripeInstance = null) {
   if (stripeInstance) return stripeInstance;
   const stripeSecretKey = getRestaurantStripeSecretKey(restaurant);
   if (!stripeSecretKey) {
-    throw serviceError("Le paiement en ligne est momentanément indisponible", 400);
+    throw serviceError(
+      "Le paiement en ligne est momentanément indisponible",
+      400,
+    );
   }
   return new Stripe(stripeSecretKey);
 }
@@ -1929,6 +2011,29 @@ async function createOrderPaymentIntent({
   ) {
     throw serviceError("Délai de paiement expiré", 409, "PAYMENT_EXPIRED");
   }
+  if (!["paid", "refunded"].includes(order.paymentStatus)) {
+    if (
+      order.confirmationDeadlineAt &&
+      new Date(order.confirmationDeadlineAt).getTime() <= Date.now()
+    ) {
+      throw serviceError(
+        "Le délai de confirmation est expiré",
+        409,
+        "CONFIRMATION_DEADLINE_PASSED",
+      );
+    }
+    if (
+      order.financialVersion === 1 &&
+      !order.confirmationRequired &&
+      new Date(order.scheduledFor).getTime() <
+        Date.now() + Number(order.preparationTimeMinutesSnapshot || 0) * 60000
+    ) {
+      throw serviceError(
+        "Ce créneau ne laisse plus assez de temps de préparation",
+        409,
+      );
+    }
+  }
 
   const stripe = getStripeForRestaurant(restaurant, stripeInstance);
   let previousPaymentIntent = null;
@@ -1982,6 +2087,42 @@ async function createOrderPaymentIntent({
   );
 
   order.stripePaymentIntentId = paymentIntent.id;
+  if (order.financialVersion === 1) {
+    const attached = await TakeAwayOrderModel.findOneAndUpdate(
+      {
+        _id: order._id,
+        restaurant_id: order.restaurant_id,
+        status: "pending",
+        paymentStatus: { $nin: ["paid", "refunded"] },
+        paymentExpiresAt: { $gt: new Date() },
+        $or: [
+          { confirmationDeadlineAt: null },
+          { confirmationDeadlineAt: { $gt: new Date() } },
+        ],
+      },
+      {
+        $set: {
+          stripePaymentIntentId: paymentIntent.id,
+          paymentStatus: "pending",
+          paymentFailedAt: null,
+        },
+      },
+      { new: true },
+    );
+    if (!attached) {
+      await stripe.paymentIntents
+        .cancel(
+          paymentIntent.id,
+          {},
+          {
+            idempotencyKey: `takeaway-order-${order._id}-unused-${paymentIntent.id}`,
+          },
+        )
+        .catch(() => {});
+      throw serviceError("La commande ne peut plus être payée", 409);
+    }
+    return paymentIntent;
+  }
   order.paymentStatus = "pending";
   order.paymentFailedAt = null;
   await order.save();
@@ -1994,17 +2135,35 @@ async function finalizePaidOrder({
   order,
   paymentIntent,
   activate = true,
+  finalizationAttempt = 0,
 }) {
+  if (finalizationAttempt >= 5)
+    throw serviceError(
+      "Paiement à réconcilier après des modifications concurrentes",
+      409,
+    );
   assertPaymentIntentMatchesOrder(paymentIntent, order);
   if (order.paymentStatus === "refunded") {
     return order;
   }
 
-  const nextStatus =
-    order.status === "pending" && getSettings(restaurant)?.auto_accept !== false
-      ? "confirmed"
-      : order.status;
   const now = new Date();
+  const automaticConfirmation =
+    order.status === "pending" &&
+    (order.financialVersion === 1
+      ? !order.confirmationRequired
+      : getSettings(restaurant)?.auto_accept !== false);
+  const preparationExpired =
+    automaticConfirmation &&
+    order.financialVersion === 1 &&
+    order.source === "public" &&
+    new Date(order.scheduledFor).getTime() <
+      now.getTime() + Number(order.preparationTimeMinutesSnapshot || 0) * 60000;
+  const nextStatus = automaticConfirmation
+    ? preparationExpired
+      ? "canceled"
+      : "confirmed"
+    : order.status;
   const set = {
     paymentStatus: "paid",
     paidAt: order.paidAt || now,
@@ -2013,11 +2172,17 @@ async function finalizePaidOrder({
     status: nextStatus,
   };
   if (nextStatus === "confirmed" && !order.confirmedAt) set.confirmedAt = now;
+  if (nextStatus === "canceled" && !order.canceledAt) set.canceledAt = now;
   const emailEvent = getCustomerEmailEventForOrder({
     ...(order.toObject ? order.toObject() : order),
     paymentStatus: "paid",
     status: nextStatus,
   });
+  const queuedEmailEvent =
+    order.financialVersion === 1 &&
+    ["canceled", "rejected"].includes(nextStatus)
+      ? ""
+      : emailEvent;
 
   const finalized = await TakeAwayOrderModel.findOneAndUpdate(
     {
@@ -2025,8 +2190,18 @@ async function finalizePaidOrder({
       restaurant_id: order.restaurant_id,
       stripePaymentIntentId: paymentIntent.id,
       paymentStatus: { $nin: ["paid", "refunded"] },
+      ...(order.financialVersion === 1
+        ? {
+            status: order.status,
+            financialRevision: Number(order.financialRevision || 0),
+          }
+        : {}),
     },
-    addCustomerEmailQueueUpdate({ $set: set }, emailEvent),
+    addOrderStatusSmsEvent(
+      addCustomerEmailQueueUpdate({ $set: set }, queuedEmailEvent),
+      { ...(order.toObject ? order.toObject() : order), ...set },
+      order.financialVersion === 1 && ["canceled", "rejected"].includes(nextStatus) ? "" : nextStatus, now,
+    ),
     { new: true },
   );
   const resolved =
@@ -2036,10 +2211,24 @@ async function finalizePaidOrder({
       restaurant_id: order.restaurant_id,
     }));
 
+  if (
+    resolved &&
+    order.financialVersion === 1 &&
+    finalized === null &&
+    !["paid", "refunded"].includes(resolved.paymentStatus)
+  ) {
+    return finalizePaidOrder({
+      restaurant,
+      order: resolved,
+      paymentIntent,
+      activate,
+      finalizationAttempt: finalizationAttempt + 1,
+    });
+  }
   if (!resolved || !["paid", "refunded"].includes(resolved.paymentStatus)) {
     throw serviceError("Le paiement n'a pas pu être enregistré", 409);
   }
-  if (!finalized && emailEvent) {
+  if (!finalized && emailEvent && order.financialVersion !== 1) {
     await TakeAwayOrderModel.updateOne(
       { _id: resolved._id, customerEmailEventsSent: { $ne: emailEvent } },
       { $addToSet: { pendingCustomerEmailEvents: emailEvent } },
@@ -2049,6 +2238,15 @@ async function finalizePaidOrder({
     resolved.paymentStatus === "paid" &&
     ["canceled", "rejected"].includes(resolved.status)
   ) {
+    if (preparationExpired) {
+      return adjustments.terminateOrder({
+        restaurant,
+        orderId: resolved._id,
+        targetStatus: "canceled",
+        reason:
+          "Le paiement a été finalisé trop tard pour respecter la préparation",
+      });
+    }
     return refundPaidOrder({
       restaurant,
       order: resolved,
@@ -2056,6 +2254,21 @@ async function finalizePaidOrder({
     });
   }
   if (resolved.paymentStatus === "paid" && activate) {
+    if (
+      resolved.status === "pending" &&
+      resolved.confirmationDeadlineAt &&
+      new Date(resolved.confirmationDeadlineAt) <= now
+    ) {
+      return adjustments.terminateOrder({
+        restaurant,
+        orderId: resolved._id,
+        targetStatus: "canceled",
+        expiration: true,
+        requestKey: "confirmation:expiration",
+        reason: "Absence de validation avant l'échéance",
+        now,
+      });
+    }
     await runOrderActivationEffects(resolved, restaurant, [emailEvent]);
   }
   return resolved;
@@ -2105,6 +2318,18 @@ async function confirmOrderPayment({
 }
 
 function assertStatusTransition(order, nextStatus) {
+  if (
+    order?.status === "pending" &&
+    nextStatus === "confirmed" &&
+    order.confirmationDeadlineAt &&
+    new Date(order.confirmationDeadlineAt).getTime() <= Date.now()
+  ) {
+    throw serviceError(
+      "Le délai de confirmation est expiré",
+      409,
+      "CONFIRMATION_DEADLINE_PASSED",
+    );
+  }
   const allowed = STATUS_TRANSITIONS[order?.status];
   if (!allowed || !allowed.includes(nextStatus)) {
     throw serviceError(
@@ -2184,6 +2409,25 @@ async function runOrderStatusEffects(
     }
   }
 
+  if (crmOrderWasRecorded && order.customer) {
+    for (const operationId of order.pendingCrmAdjustmentIds || []) {
+      try {
+        await onTakeAwayOrderStatusChanged(
+          order.customer,
+          order,
+          order.status,
+          order.status,
+          operationId,
+        );
+        await TakeAwayOrderModel.updateOne(
+          { _id: order._id },
+          { $pull: { pendingCrmAdjustmentIds: operationId } },
+        );
+      } catch (error) {
+        console.error("[take-away] CRM adjustment deferred", error.message);
+      }
+    }
+  }
   try {
     broadcastOrder(restaurantId, order);
   } catch (error) {
@@ -2252,8 +2496,9 @@ async function applyRefundBusinessDecision({ order, targetStatus }) {
       restaurant_id: order.restaurant_id,
       paymentStatus: "paid",
       status: previousStatus,
+      financialVersion: { $ne: 1 },
     },
-    addCustomerEmailQueueUpdate(
+    addOrderStatusSmsEvent(addCustomerEmailQueueUpdate(
       {
         $set: {
           status: targetStatus,
@@ -2271,7 +2516,7 @@ async function applyRefundBusinessDecision({ order, targetStatus }) {
         },
       },
       emailEvent,
-    ),
+    ), order, targetStatus),
     { new: true },
   );
   const resolved =
@@ -2318,7 +2563,7 @@ async function finalizeRefund({ restaurant, order, refund, targetStatus }) {
       stripePaymentIntentId: order.stripePaymentIntentId,
       paymentStatus: { $ne: "refunded" },
     },
-    addCustomerEmailQueueUpdate(
+    addRefundConfirmedSmsEvent(addCustomerEmailQueueUpdate(
       {
         $set: {
           paymentStatus: "refunded",
@@ -2339,7 +2584,7 @@ async function finalizeRefund({ restaurant, order, refund, targetStatus }) {
         },
       },
       emailEvent,
-    ),
+    ), order, resolvedTarget, refund, now),
     { new: true },
   );
   const resolved =
@@ -2364,6 +2609,14 @@ async function refundPaidOrder({
   targetStatus,
   stripeInstance = null,
 }) {
+  if (order.financialVersion === 1) {
+    return adjustments.terminateOrder({
+      restaurant,
+      orderId: order._id,
+      targetStatus,
+      stripeInstance,
+    });
+  }
   if (order.paymentStatus === "refunded") return order;
   if (order.paymentStatus !== "paid" || !order.stripePaymentIntentId) {
     throw serviceError("Aucun paiement encaissé à rembourser", 409);
@@ -2576,6 +2829,16 @@ async function updateOrderStatus({
 
   if (order.status === status) {
     if (
+      order.financialVersion === 1 &&
+      ["canceled", "rejected"].includes(status)
+    ) {
+      return adjustments.terminateOrder({
+        restaurant,
+        orderId: order._id,
+        targetStatus: status,
+      });
+    }
+    if (
       ["canceled", "rejected"].includes(status) &&
       order.paymentMethod === "online" &&
       order.paymentStatus === "paid"
@@ -2599,6 +2862,16 @@ async function updateOrderStatus({
     return order;
   }
   assertStatusTransition(order, status);
+  if (
+    order.financialVersion === 1 &&
+    ["canceled", "rejected"].includes(status)
+  ) {
+    return adjustments.terminateOrder({
+      restaurant,
+      orderId: order._id,
+      targetStatus: status,
+    });
+  }
 
   if (
     ["canceled", "rejected"].includes(status) &&
@@ -2634,8 +2907,23 @@ async function updateOrderStatus({
     status,
   });
   const updated = await TakeAwayOrderModel.findOneAndUpdate(
-    { _id: order._id, restaurant_id: resolvedRestaurantId, status: prevStatus },
-    addCustomerEmailQueueUpdate(
+    {
+      _id: order._id,
+      restaurant_id: resolvedRestaurantId,
+      status: prevStatus,
+      ...(prevStatus === "pending" && status === "confirmed"
+        ? {
+            $or: [
+              { confirmationDeadlineAt: null },
+              { confirmationDeadlineAt: { $gt: new Date() } },
+            ],
+          }
+        : {}),
+      ...(order.financialVersion === 1
+        ? { financialRevision: Number(order.financialRevision || 0) }
+        : {}),
+    },
+    addOrderStatusSmsEvent(addCustomerEmailQueueUpdate(
       {
         $set: {
           status,
@@ -2650,7 +2938,7 @@ async function updateOrderStatus({
         },
       },
       emailEvent,
-    ),
+    ), { ...(order.toObject ? order.toObject() : order), ...paymentUpdate }, status),
     { new: true },
   );
   if (!updated) {
@@ -2756,7 +3044,7 @@ async function markPaymentAttemptFailed({
         stripePaymentIntentId: paymentIntent.id,
         paymentStatus: { $nin: ["paid", "refunded"] },
       },
-      { $set: set },
+      canceled ? addOrderStatusSmsEvent({ $set: set }, order, "canceled", now) : { $set: set },
       { new: true },
     )) || order
   );
@@ -2795,6 +3083,14 @@ async function handleTakeAwayStripeWebhookEvent({ event, restaurant }) {
         return { handled: false };
       }
       const order = await loadWebhookOrder(restaurant, object);
+      if (order.financialVersion === 1) {
+        const reconciled = await adjustments.reconcileRefund({
+          restaurant,
+          order,
+          refund: object,
+        });
+        return { handled: true, order: reconciled };
+      }
       if (object.status === "succeeded") {
         const refunded = await finalizeRefund({
           restaurant,
@@ -2905,6 +3201,7 @@ async function expirePendingTakeAwayOrders({ now = new Date() } = {}) {
           paymentFailedAt: order.paymentFailedAt || now,
           canceledAt: now,
         },
+        $push: { businessEvents: orderStatusSmsEvent(order, "canceled", now) },
       },
       { new: true },
     );
@@ -2916,7 +3213,7 @@ async function expirePendingTakeAwayOrders({ now = new Date() } = {}) {
 
 async function replayPendingTakeAwayEffects() {
   const orders = await TakeAwayOrderModel.find({
-    securityVersion: 1,
+    $and: [{ $or: [{ securityVersion: 1 }, { financialVersion: 1 }] }],
     $or: [
       {
         $and: [
@@ -2936,6 +3233,7 @@ async function replayPendingTakeAwayEffects() {
         ],
       },
       { pendingCrmNextStatus: { $nin: ["", null] } },
+      { pendingCrmAdjustmentIds: { $exists: true, $ne: [] } },
       { pendingCustomerEmailEvents: { $exists: true, $ne: [] } },
     ],
   })
@@ -2957,7 +3255,7 @@ async function replayPendingTakeAwayEffects() {
       !order.crmRecordedAt ||
       (order.source === "public" && !order.restaurantNotifiedAt);
     if (needsActivation) await runOrderActivationEffects(order, restaurant);
-    if (order.pendingCrmNextStatus) {
+    if (order.pendingCrmNextStatus || order.pendingCrmAdjustmentIds?.length) {
       await runOrderStatusEffects(order, restaurant);
     } else if (!needsActivation && order.pendingCustomerEmailEvents?.length) {
       await runOrderEmailEffects(order, restaurant);
@@ -3017,4 +3315,6 @@ module.exports = {
   loadRestaurantForTakeAway,
   cleanupCompletedTakeAwayOrders,
   cleanupConfiguredCompletedTakeAwayOrders,
+  getStripeForRestaurant,
+  runOrderStatusEffects,
 };

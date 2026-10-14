@@ -25,6 +25,9 @@ const uiSource = fs.readFileSync(
     "../../client/src/components/dashboard/_shared/reservations/sms-reminders.reservations.component.js",
   ),
   "utf8",
+) + fs.readFileSync(
+  path.join(__dirname, "../../client/src/components/dashboard/_shared/sms-subscription-action-modal.component.js"),
+  "utf8",
 );
 const adminSubscriptionSource = fs.readFileSync(
   path.join(__dirname, "../routes/admin/subscriptions.routes.js"),

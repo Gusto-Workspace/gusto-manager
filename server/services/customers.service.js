@@ -316,9 +316,18 @@ async function onTakeAwayOrderCreated(customerId, order) {
               scheduledFor: order.scheduledFor,
               status: order.status,
               paymentStatus: order.paymentStatus,
-              total: order.total,
+              total:
+                order.remainingAmountCents == null
+                  ? order.total
+                  : order.remainingAmountCents / 100,
               itemCount: (order.items || []).reduce(
-                (sum, item) => sum + Number(item?.quantity || 0),
+                (sum, item) =>
+                  sum +
+                  Math.max(
+                    0,
+                    Number(item?.quantity || 0) -
+                      Number(item?.refusedQuantity || 0),
+                  ),
                 0,
               ),
             },
@@ -340,6 +349,7 @@ async function onTakeAwayOrderStatusChanged(
   order,
   prevStatus,
   nextStatus,
+  adjustmentId = "",
 ) {
   if (!customerId || !order?._id) return false;
 
@@ -353,7 +363,9 @@ async function onTakeAwayOrderStatusChanged(
   }
 
   const now = new Date();
-  const eventKey = `${String(order._id)}:${prevStatus}:${nextStatus}`;
+  const eventKey = adjustmentId
+    ? `${String(order._id)}:adjustment:${adjustmentId}`
+    : `${String(order._id)}:${prevStatus}:${nextStatus}`;
   const update = {
     $set: { lastActivityAt: now },
     $push: {
@@ -366,9 +378,18 @@ async function onTakeAwayOrderStatusChanged(
             scheduledFor: order.scheduledFor,
             status: nextStatus,
             paymentStatus: order.paymentStatus,
-            total: order.total,
+            total:
+              order.remainingAmountCents == null
+                ? order.total
+                : order.remainingAmountCents / 100,
             itemCount: (order.items || []).reduce(
-              (sum, item) => sum + Number(item?.quantity || 0),
+              (sum, item) =>
+                sum +
+                Math.max(
+                  0,
+                  Number(item?.quantity || 0) -
+                    Number(item?.refusedQuantity || 0),
+                ),
               0,
             ),
           },

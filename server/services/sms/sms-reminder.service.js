@@ -16,6 +16,7 @@ const { normalizeSmsPhone } = require("./sms-phone.service");
 const { computeSmsSchedule, getRestaurantTimezone } = require("./sms-schedule.service");
 const { buildStripeMeterEventParams } = require("./sms-meter.service");
 const SmsModeProvider = require("./smsmode-provider");
+const { syncTakeAwaySmsJobs, buildTakeAwayFinalMessage } = require("./take-away-sms.service");
 
 const INCLUDED_CREDITS = 100;
 const OVERAGE_UNIT_PRICE = 0.1;
@@ -249,6 +250,8 @@ async function syncReservationSmsJob(
   const skipReason = schedule.skipReason || (settings.deliveryMode === "eco" && hasUsableEmail(reservation.customerEmail) ? "eco_email" : "");
   const desiredStatus = skipReason ? "skipped" : "scheduled";
   const existing = await smsJobModel.findOne({ reservationId: reservation._id, type: "reservation_reminder", occurrenceKey });
+  if (existing?.skipReason === "module_disabled" ||
+      (settings.enabledAt && existing?.createdAt && new Date(existing.createdAt) < new Date(settings.enabledAt))) return existing;
   if (existing && FINAL_JOB_STATUSES.includes(existing.status)) return existing;
   if (existing?.status === "skipped" && !force) return existing;
   const skippedAt = desiredStatus === "skipped"
@@ -306,13 +309,13 @@ async function syncAllFutureSmsJobs({ force = false } = {}) {
     for (const reservation of reservations) await syncReservationSmsJob(reservation, restaurant, now, { force });
   }
   await SmsJobModel.updateMany(
-    { status: "scheduled", reservationStartsAt: { $lte: now } },
+    { status: "scheduled", type: "reservation_reminder", reservationStartsAt: { $lte: now } },
     { $set: { status: "skipped", skippedAt: now, skipReason: "too_late" } },
   );
 }
 
 async function cancelIneligibleScheduledJobs() {
-  const jobs = await SmsJobModel.find({ status: "scheduled" })
+  const jobs = await SmsJobModel.find({ status: "scheduled", type: "reservation_reminder" })
     .sort({ scheduledAt: 1 })
     .limit(500)
     .select("restaurantId reservationId");
@@ -347,7 +350,7 @@ async function finalizeDueSmsDeactivations(
     "reservationsSettings.smsReminder.commercialDeactivation.effectiveAt": {
       $lte: now,
     },
-  }).select("reservationsSettings.smsReminder.commercialDeactivation");
+  }).select("options.sms_reminders reservationsSettings.smsReminder.enabled reservationsSettings.smsReminder.commercialDeactivation reservationsSettings.smsReminder.selfServiceOperation.status takeAwaySettings.smsNotifications.enabled");
 
   const smsPriceIds = [
     String(process.env.STRIPE_SMS_FIXED_PRICE_ID || "").trim(),
@@ -356,6 +359,8 @@ async function finalizeDueSmsDeactivations(
 
   for (const restaurant of restaurants) {
     try {
+      if (restaurant.reservationsSettings?.smsReminder?.enabled ||
+          restaurant.takeAwaySettings?.smsNotifications?.enabled) continue;
       const context = await findSubscription({
         restaurantId: restaurant._id,
       });
@@ -375,11 +380,17 @@ async function finalizeDueSmsDeactivations(
             "scheduled",
           "reservationsSettings.smsReminder.commercialDeactivation.stripeScheduleId":
             deactivation?.stripeScheduleId || "",
+          "reservationsSettings.smsReminder.enabled": { $ne: true },
+          "takeAwaySettings.smsNotifications.enabled": { $ne: true },
+          "reservationsSettings.smsReminder.selfServiceOperation.status": {
+            $nin: ["processing", "stripe_applied"],
+          },
         },
         {
           $set: {
             "options.sms_reminders": false,
             "reservationsSettings.smsReminder.enabled": false,
+            "takeAwaySettings.smsNotifications.enabled": false,
             "reservationsSettings.smsReminder.commercialDeactivation.status":
               "effective",
           },
@@ -547,18 +558,29 @@ async function processClaimedJob(
     reportUsage = reportStripeUsage,
   } = {},
 ) {
+  const isTakeAway = String(job.type || "").startsWith("take_away_");
   const [reservation, restaurant] = await Promise.all([
-    reservationModel.findById(job.reservationId),
+    isTakeAway ? Promise.resolve(job.eventSnapshot) : reservationModel.findById(job.reservationId),
     restaurantModel.findById(job.restaurantId),
   ]);
   if (!reservation || !restaurant) return skipJob(job, !reservation ? "reservation_not_found" : "restaurant_not_found", usagePeriodModel);
   const settings = restaurant.reservationsSettings?.smsReminder || {};
-  if (!settings.enabled || !restaurant.options?.sms_reminders) return skipJob(job, "feature_disabled", usagePeriodModel);
-  if (reservation.status !== "Confirmed") return skipJob(job, "reservation_not_confirmed", usagePeriodModel);
-  const schedule = computeSmsSchedule({ reservation, restaurant, delayMinutes: settings.delayMinutes });
-  if (!schedule.reservationStartsAt || schedule.skipReason) return skipJob(job, schedule.skipReason || "too_late", usagePeriodModel);
-  if (buildOccurrenceKey(schedule.reservationStartsAt) !== job.occurrenceKey) return skipJob(job, "reservation_rescheduled", usagePeriodModel);
-  if (settings.deliveryMode === "eco" && hasUsableEmail(reservation.customerEmail)) return skipJob(job, "eco_email", usagePeriodModel);
+  const takeAwaySettings = restaurant.takeAwaySettings?.smsNotifications;
+  if (!restaurant.options?.sms_reminders || (isTakeAway
+    ? !restaurant.options?.take_away || !takeAwaySettings?.enabled || !takeAwaySettings.events?.[job.type.slice(10)]?.enabled
+    : !settings.enabled)) return skipJob(job, "feature_disabled", usagePeriodModel);
+  const enabledAt = (isTakeAway ? takeAwaySettings : settings)?.enabledAt;
+  const occurredAt = isTakeAway ? job.eventSnapshot?.eventOccurredAt || job.createdAt : job.createdAt;
+  if (enabledAt && occurredAt && new Date(occurredAt) < new Date(enabledAt))
+    return skipJob(job, "event_before_activation", usagePeriodModel);
+  if (isTakeAway && job.type === "take_away_refund_confirmed" && (reservation.state !== "succeeded" || reservation.stripeRefundStatus !== "succeeded")) return skipJob(job, "refund_not_confirmed", usagePeriodModel);
+  if (!isTakeAway) {
+    if (reservation.status !== "Confirmed") return skipJob(job, "reservation_not_confirmed", usagePeriodModel);
+    const schedule = computeSmsSchedule({ reservation, restaurant, delayMinutes: settings.delayMinutes });
+    if (!schedule.reservationStartsAt || schedule.skipReason) return skipJob(job, schedule.skipReason || "too_late", usagePeriodModel);
+    if (buildOccurrenceKey(schedule.reservationStartsAt) !== job.occurrenceKey) return skipJob(job, "reservation_rescheduled", usagePeriodModel);
+    if (settings.deliveryMode === "eco" && hasUsableEmail(reservation.customerEmail)) return skipJob(job, "eco_email", usagePeriodModel);
+  }
   const phone = normalizeSmsPhone(reservation.customerPhone, "FR");
   if (!phone) return skipJob(job, "no_phone", usagePeriodModel);
   if (phone.country !== "FR" && !settings.internationalEnabled) return skipJob(job, "international_disabled", usagePeriodModel);
@@ -576,12 +598,21 @@ async function processClaimedJob(
   if (!billingContext) return skipJob(job, "subscription_inactive", usagePeriodModel);
   const supportsRestaurantSender = ["alpha", "registered_alpha"].includes(policy.senderMode) && approvedSender;
   const sender = supportsRestaurantSender ? approvedSender : policy.fallbackSender || "";
-  const { message, analysis } = buildFinalMessage({ reservation, restaurant, settings, prefixRequired: !supportsRestaurantSender });
+  const { message, analysis } = isTakeAway
+    ? buildTakeAwayFinalMessage({ job, restaurant, prefixRequired: !supportsRestaurantSender })
+    : buildFinalMessage({ reservation, restaurant, settings, prefixRequired: !supportsRestaurantSender });
   if (!analysis.valid) return skipJob(job, "invalid_message", usagePeriodModel);
 
   const billingCredits = analysis.segmentCount * policy.billingCredits;
 
-  const usageReservation = await reserveUsage({ restaurant, billingContext, credits: billingCredits, usagePeriodModel });
+  // A recovered job can already hold credits. Reuse that reservation rather
+  // than committing the same credits twice after a worker interruption.
+  if (job.usageState === "reserved" && job.billingCredits !== billingCredits) {
+    return skipJob(job, "message_changed_before_submission", usagePeriodModel);
+  }
+  const usageReservation = job.usageState === "reserved"
+    ? { period: { _id: job.usagePeriodId }, includedApplied: job.includedCreditsApplied, overage: job.overageCredits }
+    : await reserveUsage({ restaurant, billingContext, credits: billingCredits, usagePeriodModel });
   if (!usageReservation) return skipJob(job, "budget_limit", usagePeriodModel);
   job.phone = phone.e164;
   job.destinationCountry = phone.country;
@@ -600,8 +631,34 @@ async function processClaimedJob(
   await job.save();
 
   if (!sendingEnabled()) return skipJob(job, "sending_disabled", usagePeriodModel);
+  // The toggle may have been disabled while billing/phone checks were running.
+  // Re-read its persisted state immediately before starting provider submission.
+  const latestRestaurant = await restaurantModel.findById(job.restaurantId);
+  const latestSettings = isTakeAway
+    ? latestRestaurant?.takeAwaySettings?.smsNotifications
+    : latestRestaurant?.reservationsSettings?.smsReminder;
+  const operation = latestRestaurant?.reservationsSettings?.smsReminder?.selfServiceOperation;
+  const disablingModule = ["processing", "stripe_applied"].includes(operation?.status) &&
+    operation.module === (isTakeAway ? "take_away" : "reservations") &&
+    operation.enabled === false && operation.action !== "cancel_deactivation";
+  if (!latestRestaurant?.options?.sms_reminders || !latestSettings?.enabled ||
+      disablingModule ||
+      String(latestSettings?.enabledAt || "") !== String(enabledAt || "") ||
+      (isTakeAway && !latestSettings.events?.[job.type.slice(10)]?.enabled))
+    return skipJob(job, "module_disabled", usagePeriodModel);
   job.providerSubmissionStartedAt = new Date();
-  await job.save();
+  // Mongoose includes $where in the atomic save filter. A pending job cancelled
+  // after the last module read must not subsequently start provider submission.
+  const previousWhere = job.$where;
+  job.$where = { ...previousWhere, status: "processing", providerSubmissionStartedAt: null };
+  try {
+    await job.save();
+  } catch (error) {
+    if (error.name === "DocumentNotFoundError") return;
+    throw error;
+  } finally {
+    job.$where = previousWhere;
+  }
   try {
     const result = await provider.send({
       to: phone.e164,
@@ -743,6 +800,11 @@ async function runSmsReminderWorker() {
   await recoverExpiredJobs();
   await cancelIneligibleScheduledJobs();
   await syncAllFutureSmsJobs();
+  try {
+    await syncTakeAwaySmsJobs();
+  } catch (error) {
+    console.error("[take-away-sms-outbox]", error?.message || error);
+  }
   for (let index = 0; index < 50; index += 1) {
     const now = new Date();
     const job = await SmsJobModel.findOneAndUpdate(

@@ -22,6 +22,8 @@ const orderOptionSchema = new mongoose.Schema(
 
 const orderItemSchema = new mongoose.Schema(
   {
+    lineId: { type: String, default: "" },
+    refusedQuantity: { type: Number, min: 0, default: 0 },
     catalogItemId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
@@ -100,11 +102,82 @@ const takeAwayOrderSchema = new mongoose.Schema(
       default: "on_site",
     },
     scheduledFor: { type: Date, required: true, index: true },
+    confirmationDeadlineAt: { type: Date, default: null, index: true },
+    confirmationRequired: { type: Boolean, default: false },
+    preparationTimeMinutesSnapshot: { type: Number, min: 0, default: 0 },
     slotId: { type: String, required: true, index: true },
     items: { type: [orderItemSchema], default: [] },
     subtotal: { type: Number, min: 0, required: true },
     deliveryFee: { type: Number, min: 0, default: 0 },
     total: { type: Number, min: 0, required: true },
+    // Original prices/quantities stay immutable; decisions and money movements
+    // are recorded separately, including for orders upgraded on first refusal.
+    financialVersion: { type: Number, default: 0 },
+    financialRevision: { type: Number, default: 0 },
+    refundedAmountCents: { type: Number, min: 0, default: 0 },
+    remainingAmountCents: { type: Number, min: 0, default: null },
+    refundLeaseOwner: { type: String, default: "" },
+    refundLeaseUntil: { type: Date, default: null },
+    adjustments: {
+      type: [
+        new mongoose.Schema(
+          {
+            id: { type: String, required: true },
+            requestKey: { type: String, required: true },
+            payloadHash: { type: String, required: true },
+            type: {
+              type: String,
+              enum: ["partial_rejection", "termination"],
+              required: true,
+            },
+            targetStatus: { type: String, default: "" },
+            reason: { type: String, default: "" },
+            actorId: { type: String, default: "" },
+            emailEnabled: { type: Boolean, default: true },
+            lines: { type: [mongoose.Schema.Types.Mixed], default: [] },
+            amountCents: { type: Number, min: 0, required: true },
+            state: {
+              type: String,
+              enum: [
+                "not_required",
+                "queued",
+                "pending",
+                "succeeded",
+                "failed",
+                "uncertain",
+              ],
+              required: true,
+            },
+            attempt: { type: Number, default: 0 },
+            stripeRefundId: { type: String, default: "" },
+            stripeRefundStatus: { type: String, default: "" },
+            submittedAt: { type: Date, default: null },
+            nextAttemptAt: { type: Date, default: null },
+            lastError: { type: String, default: "" },
+            createdAt: { type: Date, required: true },
+            updatedAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+    businessEvents: {
+      type: [
+        new mongoose.Schema(
+          {
+            id: { type: String, required: true },
+            type: { type: String, required: true },
+            operationId: { type: String, default: "" },
+            createdAt: { type: Date, required: true },
+            snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+            smsProcessedAt: { type: Date, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     currency: { type: String, default: "eur" },
     deliveryAddress: { type: orderAddressSchema, default: () => ({}) },
     deliveryZoneId: { type: String, default: "" },
@@ -139,6 +212,7 @@ const takeAwayOrderSchema = new mongoose.Schema(
     crmRecordedAt: { type: Date, default: null },
     pendingCrmPrevStatus: { type: String, default: "" },
     pendingCrmNextStatus: { type: String, default: "" },
+    pendingCrmAdjustmentIds: { type: [String], default: [] },
     pendingCustomerEmailEvents: {
       type: [String],
       default: [],
@@ -162,6 +236,8 @@ const takeAwayOrderSchema = new mongoose.Schema(
 );
 
 takeAwayOrderSchema.index({ restaurant_id: 1, scheduledFor: 1 });
+takeAwayOrderSchema.index({ status: 1, confirmationDeadlineAt: 1 });
+takeAwayOrderSchema.index({ financialVersion: 1, "adjustments.state": 1 });
 takeAwayOrderSchema.index(
   { restaurant_id: 1, idempotencyKey: 1 },
   {

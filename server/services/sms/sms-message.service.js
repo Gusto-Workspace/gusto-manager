@@ -113,21 +113,27 @@ function analyzeSingleSms(value) {
   };
 }
 
-function validateSmsTemplate(template) {
+function validateSmsTemplate(template, allowedVariables = ALLOWED_VARIABLES, previewValues = {}) {
   const normalization = normalizeToGsm7(normalizeDefaultSmsTemplate(template));
   const normalized = normalization.value.trim();
-  if (!normalized) throw new Error("Le modèle SMS est requis.");
+  if (!normalized) {
+    const error = new Error("Le modèle SMS est requis.");
+    error.statusCode = 400;
+    throw error;
+  }
 
   const unknown = Array.from(normalized.matchAll(/\{([^{}]+)\}/g))
     .map((match) => match[1])
-    .filter((name) => !ALLOWED_VARIABLES.has(name));
+    .filter((name) => !allowedVariables.has(name));
   if (unknown.length) {
     const error = new Error(`Variables SMS non autorisées : ${Array.from(new Set(unknown)).join(", ")}`);
     error.statusCode = 400;
     throw error;
   }
 
-  const preview = normalized.replace(/\{firstName\}/g, "Alexandre")
+  const preview = normalized.replace(/\{([^{}]+)\}/g, (token, name) =>
+    Object.hasOwn(previewValues, name) ? String(previewValues[name]) : token,
+  ).replace(/\{firstName\}/g, "Alexandre")
     .replace(/\{date\}/g, "31/12/2026")
     .replace(/\{time\}/g, "20:30")
     .replace(/\{guests\}/g, "12")
@@ -143,10 +149,10 @@ function validateSmsTemplate(template) {
   return normalized;
 }
 
-function renderSmsTemplate(template, values = {}) {
+function renderSmsTemplate(template, values = {}, allowedVariables = ALLOWED_VARIABLES) {
   return normalizeSmsTypography(template).replace(
-    /\{(firstName|date|time|guests|restaurantName)\}/g,
-    (_, name) => String(values[name] ?? ""),
+    /\{([^{}]+)\}/g,
+    (token, name) => allowedVariables.has(name) ? String(values[name] ?? "") : token,
   );
 }
 

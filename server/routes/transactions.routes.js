@@ -10,6 +10,18 @@ const {
 const RestaurantModel = require("../models/restaurant.model");
 const ReservationModel = require("../models/reservation.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
+const GiftCardOrderModel = require("../models/gift-card-order.model");
+const {
+  MODULES,
+  parsePeriod,
+  monthlyPeriod,
+  parseModules,
+  readFinancialTransactions,
+  monthlySeries,
+} = require("../services/transaction-financials.service");
+const {
+  renderTransactionsExport,
+} = require("../services/pdf/render-transactions-export.service");
 
 // CRYPTO
 const { decryptApiKey } = require("../services/encryption.service");
@@ -321,6 +333,8 @@ function normalizeTakeAwayOrderForTransaction(order) {
     orderStatus: String(order?.status || "").trim(),
     paymentStatus: String(order?.paymentStatus || "").trim(),
     total: Number(order?.total || 0),
+    refundedAmountCents: Number(order?.refundedAmountCents || 0),
+    remainingAmountCents: order?.remainingAmountCents ?? null,
     refundedAt: order?.refundedAt || null,
     stripeRefundId: String(order?.stripeRefundId || "").trim(),
   };
@@ -361,7 +375,7 @@ async function buildTakeAwayPaymentMaps({
     $or: filters,
   })
     .select(
-      "orderNumber customerFirstName customerLastName customerEmail customerPhone fulfillmentMode scheduledFor status paymentStatus total refundedAt stripeRefundId stripePaymentIntentId",
+      "orderNumber customerFirstName customerLastName customerEmail customerPhone fulfillmentMode scheduledFor status paymentStatus total refundedAmountCents remainingAmountCents refundedAt stripeRefundId stripePaymentIntentId",
     )
     .lean();
   const byPaymentIntent = new Map();
@@ -1258,90 +1272,209 @@ router.get(
   },
 );
 
-// Récupération des ventes mensuelles de cartes cadeaux (6 mois)
+// Common financial sources for the chart and PDF. Existing payment/refund flows
+// stay independent. Dashboard permission also applies to inactive-module history.
+async function loadFinancialRestaurant(id) {
+  const restaurant = await RestaurantModel.findById(id)
+    .select("name stripeSecretKey purchasesGiftCards")
+    .lean();
+  if (!restaurant)
+    throw Object.assign(new Error("Restaurant introuvable."), { status: 404 });
+  return restaurant;
+}
+
+function financialStripe(restaurant) {
+  if (!restaurant.stripeSecretKey)
+    throw Object.assign(
+      new Error("Clé Stripe introuvable pour ce restaurant."),
+      { status: 404 },
+    );
+  return require("stripe")(decryptApiKey(restaurant.stripeSecretKey), {
+    timeout: 15000,
+    maxNetworkRetries: 1,
+  });
+}
+
+function financialError(res, error) {
+  console.error("[transactions-financials]", error?.message);
+  return res
+    .status(error.status || 502)
+    .json({
+      message: error.status
+        ? error.message
+        : "Impossible de récupérer les données financières Stripe. Réessayez.",
+    });
+}
+
+// Discover local paid histories first; only scan Stripe for modules absent from
+// local history (e.g. deleted purchases). No current subscription flag is used.
+const moduleDiscoveryCache = new Map();
+router.get(
+  "/owner/restaurants/:id/payments/export-modules",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "dashboard" }),
+  async (req, res) => {
+    try {
+      res.set("Cache-Control", "private, no-store");
+      const restaurant = await loadFinancialRestaurant(req.params.id);
+      if (!restaurant.stripeSecretKey) return res.json({ modules: [] });
+      const cached = moduleDiscoveryCache.get(String(restaurant._id));
+      if (cached && cached.expires > Date.now())
+        return res.json({ modules: cached.modules });
+      const [gift, takeAway] = await Promise.all([
+        GiftCardOrderModel.exists({
+          restaurantId: restaurant._id,
+          paymentStatus: "succeeded",
+          paymentIntentId: { $regex: "^pi_" },
+        }),
+        TakeAwayOrderModel.exists({
+          restaurant_id: restaurant._id,
+          stripePaymentIntentId: { $regex: "^pi_" },
+          $or: [
+            { paidAt: { $ne: null } },
+            { paymentStatus: { $in: ["paid", "refunded"] } },
+          ],
+        }),
+      ]);
+      const found = new Set();
+      if (
+        gift ||
+        restaurant.purchasesGiftCards?.some((purchase) =>
+          /^(pi_|ch_)/.test(purchase.paymentIntentId || ""),
+        )
+      )
+        found.add("gift_card");
+      if (takeAway) found.add("take_away");
+      const missing = MODULES.filter((module) => !found.has(module));
+      if (missing.length) {
+        const stripe = financialStripe(restaurant);
+        // Indexed Stripe metadata searches avoid re-reading the entire account
+        // history on every dashboard visit. Local histories cover search delay.
+        if (stripe.paymentIntents?.search && stripe.charges?.search) {
+          for (const module of missing) {
+            const type =
+              module === "gift_card" ? "gift_card" : "takeaway_order";
+            const query = `metadata['restaurantId']:'${restaurant._id}' AND metadata['type']:'${type}' AND status:'succeeded'`;
+            const intents = await stripe.paymentIntents.search({
+              query,
+              limit: 1,
+            });
+            const paid = intents.data.some(
+              (intent) =>
+                intent.status === "succeeded" &&
+                intent.amount_received > 0 &&
+                String(intent.metadata?.restaurantId) ===
+                  String(restaurant._id) &&
+                intent.metadata?.type === type,
+            );
+            if (paid) {
+              found.add(module);
+              continue;
+            }
+            const charges = await stripe.charges.search({ query, limit: 1 });
+            if (
+              charges.data.some(
+                (charge) =>
+                  charge.status === "succeeded" &&
+                  charge.paid &&
+                  charge.captured &&
+                  String(charge.metadata?.restaurantId) ===
+                    String(restaurant._id) &&
+                  charge.metadata?.type === type,
+              )
+            )
+              found.add(module);
+          }
+        } else {
+          const { rows } = await readFinancialTransactions({
+            stripe,
+            restaurant,
+            modules: missing,
+            stopWhenModulesFound: true,
+          });
+          rows.forEach((row) => found.add(row.module));
+        }
+      }
+      const modules = MODULES.filter((module) => found.has(module));
+      if (moduleDiscoveryCache.size >= 100)
+        moduleDiscoveryCache.delete(moduleDiscoveryCache.keys().next().value);
+      moduleDiscoveryCache.set(String(restaurant._id), {
+        modules,
+        expires: Date.now() + 60000,
+      });
+      return res.json({ modules });
+    } catch (error) {
+      return financialError(res, error);
+    }
+  },
+);
+
+router.post(
+  "/owner/restaurants/:id/payments/export-pdf",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "dashboard" }),
+  async (req, res) => {
+    try {
+      const period = parsePeriod(req.body?.from, req.body?.to);
+      const modules = parseModules(req.body?.modules);
+      const restaurant = await loadFinancialRestaurant(req.params.id);
+      const { rows, notes } = await readFinancialTransactions({
+        stripe: financialStripe(restaurant),
+        restaurant,
+        period,
+        modules,
+      });
+      const pdf = await renderTransactionsExport({
+        restaurantName: restaurant.name,
+        period,
+        modules,
+        rows,
+        notes,
+      });
+      res.set("Cache-Control", "private, no-store");
+      res.set("Content-Type", "application/pdf");
+      res.set(
+        "Content-Disposition",
+        `attachment; filename="transactions-${req.params.id}-${period.from}-${period.to}.pdf"`,
+      );
+      return res.send(pdf);
+    } catch (error) {
+      return financialError(res, error);
+    }
+  },
+);
+
+// Six Paris calendar months, including the current month; zero-filled series.
 router.get(
   "/owner/restaurants/:id/payments/monthly-sales",
   authenticateToken,
-  authorizeRestaurantAccess({ paramName: "id" }),
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "dashboard" }),
   async (req, res) => {
-    const { id } = req.params;
-
     try {
-      const restaurant = await RestaurantModel.findById(id);
-      if (!restaurant || !restaurant.stripeSecretKey) {
-        return res
-          .status(404)
-          .json({ message: "Clé Stripe introuvable pour ce restaurant." });
-      }
-
-      const stripe = require("stripe")(
-        decryptApiKey(restaurant.stripeSecretKey),
-      );
-
-      const sixMonthsAgo =
-        Math.floor(Date.now() / 1000) - 6 * 30 * 24 * 60 * 60;
-
-      const params = {
-        limit: 100,
-        created: { gte: sixMonthsAgo },
-      };
-
-      const monthlySalesMap = Object.create(null);
-
-      let hasMore = true;
-      let startingAfter = undefined;
-
-      while (hasMore) {
-        const page = await stripe.balanceTransactions.list(
-          startingAfter ? { ...params, starting_after: startingAfter } : params,
-        );
-
-        for (const bt of page.data) {
-          // On ne garde que les paiements et remboursements
-          if (bt.type !== "charge" && bt.type !== "refund") continue;
-
-          // Date : paiement ou remboursement
-          const t = bt.created || bt.available_on;
-          const d = new Date(t * 1000);
-
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, "0");
-
-          const sortKey = `${year}-${month}`;
-          const displayMonth = `${month}/${year}`;
-
-          if (!monthlySalesMap[sortKey]) {
-            monthlySalesMap[sortKey] = { netCents: 0, displayMonth };
-          }
-
-          // charge => net positif / refund => net négatif
-          monthlySalesMap[sortKey].netCents += bt.net || 0;
-        }
-
-        hasMore = page.has_more;
-        startingAfter = page.data.length
-          ? page.data[page.data.length - 1].id
-          : undefined;
-        if (!startingAfter) break;
-      }
-
-      const monthlySales = Object.entries(monthlySalesMap)
-        .sort(([a], [b]) => (a < b ? -1 : 1))
-        .map(([, info]) => ({
-          month: info.displayMonth,
-          total: +(info.netCents / 100).toFixed(2),
-        }));
-
-      // petit cache côté client
+      const modules =
+        req.query.module === "all"
+          ? MODULES
+          : parseModules(req.query.module, ["gift_card"]);
+      const period = monthlyPeriod();
+      const restaurant = await loadFinancialRestaurant(req.params.id);
+      const { rows, notes } = await readFinancialTransactions({
+        stripe: financialStripe(restaurant),
+        restaurant,
+        period,
+        modules,
+      });
+      const seriesByModule = monthlySeries(rows, period, modules);
+      const selected = seriesByModule[modules[0]];
       res.set("Cache-Control", "private, max-age=60");
-
-      return res.status(200).json({ monthlySales });
+      return res.json({
+        seriesByModule,
+        period,
+        notes,
+        monthlySales: selected.length === 1 ? selected[0].monthlySales : [],
+        currency: selected.length === 1 ? selected[0].currency : null,
+      });
     } catch (error) {
-      console.error(
-        "Erreur lors de la récupération des ventes mensuelles :",
-        error,
-      );
-      return res.status(500).json({ message: "Erreur interne du serveur" });
+      return financialError(res, error);
     }
   },
 );

@@ -1,14 +1,21 @@
 const mongoose = require("mongoose");
+const { TAKE_AWAY_SMS_EVENTS } = require("../services/sms/take-away-sms-settings.service");
+function isReservationReminder() { return this.type === "reservation_reminder"; }
+function isTakeAwayNotification() { return String(this.type || "").startsWith("take_away_"); }
 
 const smsJobSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
-    reservationId: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", required: true, index: true },
-    type: { type: String, enum: ["reservation_reminder"], default: "reservation_reminder" },
+    reservationId: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", required: isReservationReminder, index: true },
+    takeAwayOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "TakeAwayOrder", required: isTakeAwayNotification },
+    eventId: { type: String, required: isTakeAwayNotification, default: "" },
+    eventSnapshot: { type: mongoose.Schema.Types.Mixed, required: isTakeAwayNotification, default: null },
+    templateSnapshot: { type: String, required: isTakeAwayNotification, default: "" },
+    type: { type: String, enum: ["reservation_reminder", ...Object.keys(TAKE_AWAY_SMS_EVENTS).map((key) => `take_away_${key}`)], default: "reservation_reminder" },
     occurrenceKey: { type: String, required: true },
-    reservationStartsAt: { type: Date, required: true },
-    reservationDateSnapshot: { type: Date, required: true },
-    reservationTimeSnapshot: { type: String, required: true },
+    reservationStartsAt: { type: Date, required: isReservationReminder },
+    reservationDateSnapshot: { type: Date, required: isReservationReminder },
+    reservationTimeSnapshot: { type: String, required: isReservationReminder },
     phone: { type: String, default: "" },
     destinationCountry: { type: String, default: "" },
     senderId: { type: String, default: "" },
@@ -60,6 +67,12 @@ const smsJobSchema = new mongoose.Schema(
 );
 
 smsJobSchema.index({ reservationId: 1, type: 1, occurrenceKey: 1 }, { unique: true });
+// Keep the historical index unchanged. Take-away occurrence keys include the
+// order ID, so null reservationId never causes cross-order collisions.
+smsJobSchema.index({ takeAwayOrderId: 1, eventId: 1 }, {
+  unique: true, name: "take_away_sms_event_unique",
+  partialFilterExpression: { takeAwayOrderId: { $type: "objectId" } },
+});
 smsJobSchema.index({ status: 1, scheduledAt: 1, nextAttemptAt: 1 });
 
 module.exports = mongoose.model("SmsJob", smsJobSchema);

@@ -8,8 +8,11 @@ export default function EditSenderIdAdminComponent({
   sender,
   onClose,
   onSaved,
+  restaurants = [],
 }) {
   const configured = Boolean(String(sender?.value || "").trim());
+  const [restaurantId, setRestaurantId] = useState(sender?.restaurantId || "");
+  const selectedRestaurant = configured ? sender : restaurants.find((restaurant) => String(restaurant.restaurantId) === String(restaurantId));
   const [value, setValue] = useState(sender?.value || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +25,7 @@ export default function EditSenderIdAdminComponent({
   async function save(event) {
     event.preventDefault();
     setError("");
-    if (!valid) {
+    if (!valid || !restaurantId) {
       setError("Le Sender ID doit contenir 3 à 11 caractères autorisés.");
       return;
     }
@@ -31,11 +34,11 @@ export default function EditSenderIdAdminComponent({
     try {
       const token = localStorage.getItem("admin-token");
       const { data } = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${sender.restaurantId}/sms-sender`,
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}/sms-sender`,
         { value: normalizedValue },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      await onSaved(data);
+      await onSaved(data, selectedRestaurant || sender);
     } catch (requestError) {
       setError(
         requestError?.response?.data?.message ||
@@ -70,7 +73,7 @@ export default function EditSenderIdAdminComponent({
               {configured ? "Modifier le Sender ID" : "Configurer le Sender ID"}
             </h2>
             <p className="mt-1 text-xs text-darkBlue/55">
-              {sender.restaurantName}
+              {selectedRestaurant?.restaurantName || "Choisissez un restaurant"}
             </p>
           </div>
           <button
@@ -85,6 +88,15 @@ export default function EditSenderIdAdminComponent({
         </div>
 
         <div className="grid gap-4 p-5">
+          {!configured && restaurants.length > 0 ? (
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-darkBlue">Restaurant</span>
+              <select required value={restaurantId} onChange={(event) => setRestaurantId(event.target.value)} className="rounded-xl border border-darkBlue/15 px-3 py-2.5">
+                <option value="">Choisir un restaurant</option>
+                {restaurants.map((restaurant) => <option key={restaurant.restaurantId} value={restaurant.restaurantId}>{restaurant.restaurantName}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label className="grid gap-1 text-sm">
             <span className="font-medium text-darkBlue">Sender ID</span>
             <input
@@ -102,6 +114,7 @@ export default function EditSenderIdAdminComponent({
             <span className="text-xs text-darkBlue/55">
               Le Sender ID doit correspondre à un expéditeur configuré chez le
               fournisseur SMS.
+              La demande et la validation chez smsmode restent extérieures à Gusto.
             </span>
           </label>
 
@@ -123,7 +136,7 @@ export default function EditSenderIdAdminComponent({
           </button>
           <button
             type="submit"
-            disabled={saving || !valid}
+            disabled={saving || !valid || !restaurantId}
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-darkBlue px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : null}
