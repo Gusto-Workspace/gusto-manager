@@ -36,7 +36,7 @@ export default function TakeAwayWebappPage() {
   return (
     <>
       <Head>
-        <title>Gusto Manager</title>
+        <title>Commandes | Gusto Manager</title>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
@@ -44,8 +44,8 @@ export default function TakeAwayWebappPage() {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Vente à emporter" />
-        <link rel="apple-touch-icon" href="/icons/android/gusto-192.png" />
+        <meta name="apple-mobile-web-app-title" content="Commandes" />
+        <link rel="apple-touch-icon" href="/icons/ios/take-away-180.png?v=1" />
         <meta name="format-detection" content="telephone=no" />
       </Head>
 

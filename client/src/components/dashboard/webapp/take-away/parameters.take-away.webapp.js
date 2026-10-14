@@ -13,7 +13,7 @@ export default function ParametersTakeAwayWebapp() {
       <SidebarReservationsWebapp
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        title="Vente à emporter"
+        title="Commandes"
         module="take_away"
       />
 
@@ -33,7 +33,10 @@ export default function ParametersTakeAwayWebapp() {
 
       <TakeAwayParametersComponent webapp />
 
-      <PushNotificationsSettingsWebapp module="take_away" />
+      <PushNotificationsSettingsWebapp
+        module="take_away"
+        title="Notifications de l’appareil"
+      />
     </div>
   );
 }

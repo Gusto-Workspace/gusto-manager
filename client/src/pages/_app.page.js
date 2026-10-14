@@ -4,7 +4,7 @@ import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
 // REACT
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import axios from "axios";
@@ -26,24 +26,6 @@ import {
   isPushDisabledForModule,
   setupPushForModule,
 } from "@/_assets/utils/webpush";
-
-const RESERVATIONS_IPAD_STARTUP_SCREENS = [
-  [768, 1024, 1536, 2048],
-  [810, 1080, 1620, 2160],
-  [820, 1180, 1640, 2360],
-  [834, 1112, 1668, 2224],
-  [834, 1194, 1668, 2388],
-  [1024, 1366, 2048, 2732],
-].flatMap(([deviceWidth, deviceHeight, imageWidth, imageHeight]) => [
-  {
-    href: `/icons/ios/startup/reservations-${imageWidth}x${imageHeight}.png`,
-    media: `screen and (device-width: ${deviceWidth}px) and (device-height: ${deviceHeight}px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)`,
-  },
-  {
-    href: `/icons/ios/startup/reservations-${imageHeight}x${imageWidth}.png`,
-    media: `screen and (device-width: ${deviceWidth}px) and (device-height: ${deviceHeight}px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)`,
-  },
-]);
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
@@ -433,71 +415,8 @@ function EmployeeDashboardAccessGuard({ children }) {
   return children;
 }
 
-function IosLaunchSnapshotShield({ enabled }) {
-  const shieldRef = useRef(null);
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-
-    const setShieldVisible = (nextVisible) => {
-      const shield = shieldRef.current;
-      if (!shield) return;
-
-      shield.style.display = nextVisible ? "block" : "none";
-
-      if (nextVisible) {
-        // Force WebKit à peindre le calque avant la capture système.
-        shield.getBoundingClientRect();
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      setShieldVisible(document.visibilityState === "hidden");
-    };
-    const showShield = () => setShieldVisible(true);
-    const hideShield = () => setShieldVisible(false);
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", showShield);
-    window.addEventListener("pagehide", showShield);
-    window.addEventListener("pageshow", hideShield);
-    window.addEventListener("focus", hideShield);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", showShield);
-      window.removeEventListener("pagehide", showShield);
-      window.removeEventListener("pageshow", hideShield);
-      window.removeEventListener("focus", hideShield);
-    };
-  }, [enabled]);
-
-  if (!enabled) return null;
-
-  return (
-    <div
-      ref={shieldRef}
-      aria-hidden="true"
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        zIndex: 2147483647,
-        display: "none",
-        backgroundColor: "#131E36",
-        pointerEvents: "none",
-      }}
-    />
-  );
-}
-
 function App({ Component, pageProps }) {
   const router = useRouter();
-  const isReservationsWebapp = (router.pathname || "").startsWith(
-    "/dashboard/webapp/reservations",
-  );
 
   // ✅ Choix du manifest selon le module (Android)
   const manifestHref = useMemo(() => {
@@ -629,23 +548,11 @@ function App({ Component, pageProps }) {
         {/* ✅ Android/Chrome : manifest par module */}
         <link rel="manifest" href={manifestHref} />
 
-        {isReservationsWebapp
-          ? RESERVATIONS_IPAD_STARTUP_SCREENS.map(({ href, media }) => (
-              <link
-                key={href}
-                rel="apple-touch-startup-image"
-                href={href}
-                media={media}
-              />
-            ))
-          : null}
-
         {/* (optionnel) utile pour l'UI navigateur Android */}
         <meta name="theme-color" content="#131E36" />
       </Head>
 
       <GlobalProvider>
-        <IosLaunchSnapshotShield enabled={isReservationsWebapp} />
         <WebAppNotificationBadgeSync />
         <WebAppPushSubscriptionSync />
         <AccountantDashboardAccessGuard>

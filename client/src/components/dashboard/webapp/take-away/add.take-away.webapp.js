@@ -81,7 +81,7 @@ export default function AddTakeAwayWebapp() {
           <h1 className="truncate text-lg font-semibold text-darkBlue midTablet:text-xl">
             Nouvelle commande
           </h1>
-          <p className="truncate text-sm text-darkBlue/50">Vente à emporter</p>
+          <p className="truncate text-sm text-darkBlue/50">Commandes</p>
         </div>
       </div>
 

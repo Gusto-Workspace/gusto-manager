@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   CalendarDays,
@@ -282,6 +282,7 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
   const [sectionUI, setSectionUI] = useState(createSectionUI);
   const [showConfirmationInfo, setShowConfirmationInfo] = useState(false);
   const skipHydrationForRestaurantRef = useRef(null);
+  const savedSectionsRef = useRef(null);
 
   const stripeReady = Boolean(String(restaurant?.stripeSecretKey || "").trim());
   const paymentRequiresStripe = ["online_required", "customer_choice"].includes(
@@ -297,6 +298,7 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
     }
 
     const settings = restaurant?.takeAwaySettings || {};
+    savedSectionsRef.current = null;
     const enabled = settings.enabled === true;
     setSettingsForm({
       enabled,
@@ -362,69 +364,100 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
     markSectionDirty(sectionKey);
   }
 
-  function getSectionPayload(sectionKey, hoursOverride = null) {
-    if (sectionKey === "availability") {
-      return {
-        enabled: settingsForm.enabled,
-        pickupEnabled: settingsForm.enabled
-          ? settingsForm.pickupEnabled
-          : false,
-        deliveryEnabled: settingsForm.enabled
-          ? settingsForm.deliveryEnabled
-          : false,
-      };
-    }
-    if (sectionKey === "operations") {
-      const preparationTime = getPreparationTimeValidation(
-        settingsForm.preparationTimeMinutes,
+  const getSectionPayload = useCallback(
+    (sectionKey, hoursOverride = null) => {
+      if (sectionKey === "availability") {
+        return {
+          enabled: settingsForm.enabled,
+          pickupEnabled: settingsForm.enabled
+            ? settingsForm.pickupEnabled
+            : false,
+          deliveryEnabled: settingsForm.enabled
+            ? settingsForm.deliveryEnabled
+            : false,
+        };
+      }
+      if (sectionKey === "operations") {
+        const preparationTime = getPreparationTimeValidation(
+          settingsForm.preparationTimeMinutes,
+        );
+        return {
+          auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
+          confirmationDeadlineEnabled: true,
+          confirmationDeadlineMinutes: Number(
+            settingsForm.confirmationDeadlineMinutes,
+          ),
+          partialRejectionEmailEnabled:
+            settingsForm.partialRejectionEmailEnabled,
+          ...(preparationTime.value === undefined
+            ? {}
+            : { preparationTimeMinutes: preparationTime.value }),
+          defaultSlotIntervalMinutes: Number(
+            settingsForm.defaultSlotIntervalMinutes,
+          ),
+          defaultSlotMaxOrders: Number(settingsForm.defaultSlotMaxOrders),
+          minimumPickupOrder: Number(settingsForm.minimumPickupOrder),
+        };
+      }
+      if (sectionKey === "payment") {
+        return { paymentPolicy: settingsForm.paymentPolicy };
+      }
+      if (sectionKey === "cleanup") {
+        return {
+          completedOrderAutoDeleteEnabled:
+            settingsForm.completedOrderAutoDeleteEnabled,
+          completedOrderAutoDeleteMinutes: Number(
+            settingsForm.completedOrderAutoDeleteMinutes,
+          ),
+          completedOrderAutoDeleteDays:
+            settingsForm.completedOrderAutoDeleteEnabled === true
+              ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
+                (24 * 60)
+              : 0,
+        };
+      }
+      if (sectionKey === "hours") {
+        const hours = hoursOverride || takeAwayHours;
+        return {
+          same_hours_as_restaurant: hoursOverride
+            ? false
+            : settingsForm.same_hours_as_restaurant,
+          ...(settingsForm.same_hours_as_restaurant && !hoursOverride
+            ? {}
+            : { slots: buildSlotsFromHours(hours, settingsForm) }),
+        };
+      }
+      if (sectionKey === "delivery") {
+        return { deliveryZones: buildDeliveryZonesPayload(deliveryZones) };
+      }
+      return {};
+    },
+    [settingsForm, takeAwayHours, deliveryZones],
+  );
+
+  useEffect(() => {
+    if (!settingsForm) return;
+    const current = Object.fromEntries(
+      Object.keys(createSectionUI()).map((key) => [
+        key,
+        getSectionPayload(key),
+      ]),
+    );
+    if (!savedSectionsRef.current) savedSectionsRef.current = current;
+    setSectionUI((previous) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(previous).map(([key, value]) => {
+          const dirty =
+            JSON.stringify(current[key]) !==
+            JSON.stringify(savedSectionsRef.current[key]);
+          if (dirty !== value.dirty) changed = true;
+          return [key, { ...value, dirty, saved: dirty ? false : value.saved }];
+        }),
       );
-      return {
-        auto_accept: settingsForm.enabled ? settingsForm.auto_accept : false,
-        confirmationDeadlineEnabled: true,
-        confirmationDeadlineMinutes: Number(
-          settingsForm.confirmationDeadlineMinutes,
-        ),
-        partialRejectionEmailEnabled: settingsForm.partialRejectionEmailEnabled,
-        ...(preparationTime.value === undefined
-          ? {}
-          : { preparationTimeMinutes: preparationTime.value }),
-        defaultSlotIntervalMinutes: settingsForm.defaultSlotIntervalMinutes,
-        defaultSlotMaxOrders: settingsForm.defaultSlotMaxOrders,
-        minimumPickupOrder: settingsForm.minimumPickupOrder,
-      };
-    }
-    if (sectionKey === "payment") {
-      return { paymentPolicy: settingsForm.paymentPolicy };
-    }
-    if (sectionKey === "cleanup") {
-      return {
-        completedOrderAutoDeleteEnabled:
-          settingsForm.completedOrderAutoDeleteEnabled,
-        completedOrderAutoDeleteMinutes:
-          settingsForm.completedOrderAutoDeleteMinutes,
-        completedOrderAutoDeleteDays:
-          settingsForm.completedOrderAutoDeleteEnabled === true
-            ? Number(settingsForm.completedOrderAutoDeleteMinutes || 0) /
-              (24 * 60)
-            : 0,
-      };
-    }
-    if (sectionKey === "hours") {
-      const hours = hoursOverride || takeAwayHours;
-      return {
-        same_hours_as_restaurant: hoursOverride
-          ? false
-          : settingsForm.same_hours_as_restaurant,
-        ...(settingsForm.same_hours_as_restaurant && !hoursOverride
-          ? {}
-          : { slots: buildSlotsFromHours(hours, settingsForm) }),
-      };
-    }
-    if (sectionKey === "delivery") {
-      return { deliveryZones: buildDeliveryZonesPayload(deliveryZones) };
-    }
-    return {};
-  }
+      return changed ? next : previous;
+    });
+  }, [settingsForm, getSectionPayload, sectionUI]);
 
   async function saveSection(sectionKey, { hoursOverride = null } = {}) {
     if (!settingsForm || sectionUI[sectionKey]?.saving) return false;
@@ -457,6 +490,15 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
       return false;
     }
 
+    const submitted = getSectionPayload(sectionKey, hoursOverride);
+    const previous = savedSectionsRef.current?.[sectionKey] || {};
+    const patch = Object.fromEntries(
+      Object.entries(submitted).filter(
+        ([key, value]) =>
+          JSON.stringify(value) !== JSON.stringify(previous[key]),
+      ),
+    );
+    if (!Object.keys(patch).length) return true;
     setSectionUI((current) => ({
       ...current,
       [sectionKey]: {
@@ -470,13 +512,17 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
       const { data } = await request({
         method: "put",
         url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/settings`,
-        data: { settings: getSectionPayload(sectionKey, hoursOverride) },
+        data: { settings: patch },
       });
       if (hoursOverride) setTakeAwayHours(hoursOverride);
       skipHydrationForRestaurantRef.current = String(
         data.restaurant?._id || "",
       );
       restaurantContext.setRestaurantData(data.restaurant);
+      savedSectionsRef.current = {
+        ...savedSectionsRef.current,
+        [sectionKey]: submitted,
+      };
       setSectionUI((current) => ({
         ...current,
         [sectionKey]: {
@@ -1189,7 +1235,11 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
             Ajouter une zone
           </button>
         </SectionCard>
-        <TakeAwaySmsNotifications key={restaurantId} restaurant={restaurant} />
+        <TakeAwaySmsNotifications
+          key={restaurantId}
+          restaurant={restaurant}
+          webapp={webapp}
+        />
       </div>
       {showConfirmationInfo ? (
         <SettingsInfoModal

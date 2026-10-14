@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { Check, ChevronDown, Info, Loader2, MessageSquareText, Save } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Info,
+  Loader2,
+  MessageSquareText,
+  Save,
+} from "lucide-react";
 import SmsTemplateEditor from "../_shared/reservations/sms-template-editor.reservations.component";
 import SmsPreviewModal from "../_shared/reservations/sms-preview-modal.reservations.component";
 import SmsDestinationsModalReservationsComponent from "../_shared/reservations/sms-destinations-modal.reservations.component";
@@ -33,12 +40,15 @@ function normalizeSmsSettings(settings = {}) {
   return {
     enabled: settings.enabled === true,
     events: Object.fromEntries(
-      Object.entries(settings.events || {}).sort(([left], [right]) =>
-        left.localeCompare(right),
-      ).map(([key, event]) => [key, {
-        enabled: event?.enabled === true,
-        template: String(event?.template ?? ""),
-      }]),
+      Object.entries(settings.events || {})
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, event]) => [
+          key,
+          {
+            enabled: event?.enabled === true,
+            template: String(event?.template ?? ""),
+          },
+        ]),
     ),
   };
 }
@@ -64,13 +74,29 @@ function smsValuesKey(values) {
 }
 
 function hasSmsFormChanges(saved, current) {
-  return Boolean(saved && current && smsValuesKey(saved) !== smsValuesKey(current));
+  return Boolean(
+    saved && current && smsValuesKey(saved) !== smsValuesKey(current),
+  );
 }
 
 function getChangedSharedSmsKeys(saved, current) {
   if (!saved || !current) return [];
   return Object.keys(current.sharedSettings).filter(
     (key) => current.sharedSettings[key] !== saved.sharedSettings[key],
+  );
+}
+
+function getChangedSmsEvents(saved, current) {
+  return Object.fromEntries(
+    Object.entries(current.settings.events).flatMap(([key, event]) => {
+      const previous = saved?.settings.events[key];
+      const changed = Object.fromEntries(
+        Object.entries(event).filter(
+          ([field, value]) => value !== previous?.[field],
+        ),
+      );
+      return Object.keys(changed).length ? [[key, changed]] : [];
+    }),
   );
 }
 
@@ -125,7 +151,7 @@ function SmsEventEditor({
   const invalid =
     !analysis.valid || !backendTemplate.trim() || unknownVariables;
   return (
-    <div className="grid gap-3 rounded-2xl border border-darkBlue/10 p-4">
+    <div className="grid min-w-0 gap-3 rounded-2xl border border-darkBlue/10 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <label className="flex min-w-0 items-center gap-3 text-sm font-semibold">
@@ -136,7 +162,7 @@ function SmsEventEditor({
               disabled={disabled}
               onChange={(e) => onChange({ enabled: e.target.checked })}
             />
-            <span>{event.label}</span>
+            <span className="break-words">{event.label}</span>
           </label>
           <button
             type="button"
@@ -154,13 +180,18 @@ function SmsEventEditor({
           aria-expanded={expanded}
           aria-controls={`take-away-sms-${event.key}-details`}
           onClick={onToggleDetails}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-darkBlue/60 transition hover:bg-darkBlue/5"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-darkBlue/60 transition hover:bg-darkBlue/5"
         >
-          <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
         </button>
       </div>
       {expanded ? (
-        <div id={`take-away-sms-${event.key}-details`} className="grid gap-3">
+        <div
+          id={`take-away-sms-${event.key}-details`}
+          className="grid min-w-0 gap-3"
+        >
           <label id={`take-away-sms-${event.key}-label`} className="text-sm">
             Message
           </label>
@@ -208,7 +239,10 @@ function SmsEventEditor({
   );
 }
 
-export default function TakeAwaySmsNotifications({ restaurant }) {
+export default function TakeAwaySmsNotifications({
+  restaurant,
+  webapp = false,
+}) {
   const restaurantId = restaurant?._id;
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -303,6 +337,7 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
     }));
   }
   async function save() {
+    if (!hasUnsavedChanges || saving || activation.loading) return;
     setSaving(true);
     setError("");
     setSaved(false);
@@ -312,7 +347,9 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
         `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/settings`,
         {
           settings: {
-            smsNotifications: settings,
+            ...(Object.keys(changedEvents).length
+              ? { smsNotifications: { events: changedEvents } }
+              : {}),
             ...(sharedDirtyKeys.length
               ? {
                   smsSharedSettings: Object.fromEntries(
@@ -368,19 +405,23 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
     savedValues.current,
     currentSavedValues,
   );
+  const changedEvents = currentSavedValues
+    ? getChangedSmsEvents(savedValues.current, currentSavedValues)
+    : {};
   const quota = getSmsQuotaPresentation(data?.usage);
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   return (
-    <section className={card}>
+    <section className={`${card} min-w-0`}>
       <div className="p-4 midTablet:p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-base font-semibold text-darkBlue">
               <MessageSquareText className="size-4 shrink-0 opacity-60" />
-              Notifications SMS
+              Notifications SMS clients
             </h2>
             <p className="text-sm text-darkBlue/60">
-              Envoyer des notifications sur les étapes de commande à emporter.
+              Envoyer des SMS aux clients selon les étapes de leur commande. Ces
+              réglages sont distincts des notifications de votre appareil.
             </p>
           </div>
           {data && settings && (hasUnsavedChanges || saving || saved) ? (
@@ -390,7 +431,7 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
               disabled={
                 !data.subscribed || saving || saved || activation.loading
               }
-              className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${saved ? "border border-darkBlue bg-white text-darkBlue opacity-60" : "bg-darkBlue text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-60`}
+              className={`inline-flex ${webapp ? "h-11" : "h-10"} shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${saved ? "border border-darkBlue bg-white text-darkBlue opacity-60" : "bg-darkBlue text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-60`}
               aria-label="Enregistrer"
               title="Enregistrer"
             >
@@ -401,11 +442,13 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
               ) : (
                 <Save className="size-4" />
               )}
-              {saving
-                ? "Enregistrement…"
-                : saved
-                  ? "Enregistré"
-                  : "Enregistrer"}
+              <span className={webapp ? "sr-only mobile:not-sr-only" : ""}>
+                {saving
+                  ? "Enregistrement…"
+                  : saved
+                    ? "Enregistré"
+                    : "Enregistrer"}
+              </span>
             </button>
           ) : null}
         </div>
@@ -498,6 +541,10 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                 <div className="mb-4">
                   <p className="font-semibold text-darkBlue">Quotas</p>
                   <p className="text-sm text-darkBlue/60">
+                    Les crédits, le plafond et les destinations sont communs aux
+                    Réservations et aux Commandes.
+                  </p>
+                  <p className="text-sm text-darkBlue/60">
                     100 crédits inclus par période de facturation, puis 0,10 €
                     par crédit.
                   </p>
@@ -580,7 +627,7 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                             billingPeriodSpendingLimit: value,
                           }));
                         }}
-                        className="rounded-xl border border-darkBlue/15 bg-white px-3 py-2"
+                        className="min-h-11 min-w-0 w-full rounded-xl border border-darkBlue/15 bg-white px-3 py-2"
                       />
                     </label>
                   </div>
@@ -626,12 +673,15 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
               ) : null}
               {settings.enabled ? (
                 <>
-          <div className="grid gap-1">
-            <h3 className="text-sm font-semibold text-darkBlue">Événements de notification</h3>
-            <p className="text-sm text-darkBlue/60">
-              Sélectionnez les étapes d’une commande à emporter pour lesquelles vous souhaitez envoyer un SMS au client.
-            </p>
-          </div>
+                  <div className="grid gap-1">
+                    <h3 className="text-sm font-semibold text-darkBlue">
+                      Événements de notification
+                    </h3>
+                    <p className="text-sm text-darkBlue/60">
+                      Sélectionnez les étapes d’une commande à emporter pour
+                      lesquelles vous souhaitez envoyer un SMS au client.
+                    </p>
+                  </div>
                   {data.events
                     .filter(
                       (event) =>
@@ -656,7 +706,11 @@ export default function TakeAwaySmsNotifications({ restaurant }) {
                         }
                         onPreview={setPreview}
                         expanded={expandedEventKey === event.key}
-                        onToggleDetails={() => setExpandedEventKey((current) => current === event.key ? null : event.key)}
+                        onToggleDetails={() =>
+                          setExpandedEventKey((current) =>
+                            current === event.key ? null : event.key,
+                          )
+                        }
                       />
                     ))}
                 </>

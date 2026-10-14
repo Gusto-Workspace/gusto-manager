@@ -25,7 +25,7 @@ export default function TakeAwayWebappAddPage() {
   return (
     <>
       <Head>
-        <title>Gusto Manager</title>
+        <title>Commandes — Nouvelle commande | Gusto Manager</title>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"

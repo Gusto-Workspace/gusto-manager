@@ -27,8 +27,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: payload.message || "",
-    icon: "/icons/android/gusto-192.png",
-    badge: "/img/logo-blanc.png",
+    icon: "/icons/android/take-away-192.png",
+    badge: "/icons/android/take-away-notification-badge.png",
     data: {
       link: payload.link || "/dashboard/webapp/take-away",
       ...payload,
