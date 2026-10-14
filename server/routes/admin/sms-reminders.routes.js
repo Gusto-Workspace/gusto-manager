@@ -13,6 +13,7 @@ const {
 } = require("../../services/sms/sms-reminder.service");
 const { DEFAULT_TIMEZONE } = require("../../services/sms/sms-schedule.service");
 const SmsModeProvider = require("../../services/sms/smsmode-provider");
+const { TAKE_AWAY_SMS_EVENTS } = require("../../services/sms/take-away-sms-settings.service");
 
 const SENDER_ID_PATTERN = /^[A-Za-z0-9 ._-]{3,11}$/;
 const ADMIN_SMS_SENDERS_QUERY = {
@@ -21,6 +22,14 @@ const ADMIN_SMS_SENDERS_QUERY = {
     $regex: /\S/,
   },
 };
+
+function assertSenderCreationEligible(restaurant) {
+  if (!String(restaurant.reservationsSettings?.smsReminder?.sender?.value || "").trim() && !restaurant.options?.sms_reminders) {
+    const error = new Error("Le restaurant doit avoir souscrit à l’option SMS pour ajouter un Sender ID.");
+    error.statusCode = 403;
+    throw error;
+  }
+}
 
 function resolveAdminSenderUpdate(currentSender = {}, input = {}) {
   const hasValue = Object.prototype.hasOwnProperty.call(input, "value");
@@ -166,6 +175,9 @@ function toIsoDate(value) {
 function serializeAdminSmsJob(job = {}) {
   return {
     ...job,
+    module: String(job.type || "").startsWith("take_away_") ? "take_away" : "reservations",
+    eventLabel: TAKE_AWAY_SMS_EVENTS[String(job.type || "").slice(10)]?.label || "Rappel de réservation",
+    orderNumber: job.eventSnapshot?.orderNumber || "",
     scheduledAt: toIsoDate(job.scheduledAt),
     providerSubmissionStartedAt: toIsoDate(job.providerSubmissionStartedAt),
     sentAt: toIsoDate(job.sentAt),
@@ -181,7 +193,10 @@ router.get("/admin/sms/jobs", authenticateAdmin, async (req, res) => {
   const query = {};
   if (req.query.status) query.status = req.query.status;
   if (req.query.restaurantId) query.restaurantId = req.query.restaurantId;
-  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt providerSubmissionStartedAt sentAt acceptedAt deliveredAt failedAt cancelledAt skippedAt createdAt").lean();
+  if (req.query.module === "take_away") query.type = /^take_away_/;
+  if (req.query.module === "reservations") query.type = "reservation_reminder";
+  if (req.query.type) query.type = String(req.query.type);
+  const jobs = await SmsJobModel.find(query).sort({ createdAt: -1 }).limit(200).select("restaurantId reservationId takeAwayOrderId type eventId eventSnapshot.orderNumber status skipReason failureCode failureReason destinationCountry billingCredits stripeUsageState stripeUsageFirstAttemptAt providerMessageId scheduledAt providerSubmissionStartedAt sentAt acceptedAt deliveredAt failedAt cancelledAt skippedAt createdAt").lean();
   const enrichedJobs = await withRestaurantNames(jobs);
   return res.json({ jobs: enrichedJobs.map(serializeAdminSmsJob) });
 });
@@ -201,11 +216,15 @@ function serializeAdminSenderRestaurant(restaurant = {}) {
 }
 
 router.get("/admin/sms/senders", authenticateAdmin, async (_req, res) => {
-  const restaurants = await RestaurantModel.find(ADMIN_SMS_SENDERS_QUERY)
+  const restaurants = await RestaurantModel.find({ $or: [ADMIN_SMS_SENDERS_QUERY, { "options.sms_reminders": true }] })
     .select("name options.sms_reminders reservationsSettings.smsReminder.sender")
     .sort({ name: 1 })
     .lean();
-  return res.json({ senders: restaurants.map(serializeAdminSenderRestaurant) });
+  const items = restaurants.map(serializeAdminSenderRestaurant);
+  return res.json({
+    senders: items.filter((item) => String(item.value || "").trim()),
+    eligibleRestaurants: items.filter((item) => item.moduleActive && !String(item.value || "").trim()),
+  });
 });
 
 function serializeAdminDestinationPolicy(policy = {}) {
@@ -325,6 +344,7 @@ router.put("/admin/restaurants/:id/sms-sender", authenticateAdmin, requireAdminR
     if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
     const input = req.body || {};
     if (Object.prototype.hasOwnProperty.call(input, "value")) {
+      assertSenderCreationEligible(restaurant);
       const result = await configureAdminSender(
         restaurant,
         input,
@@ -369,3 +389,4 @@ module.exports.serializeAdminDestinationPolicy = serializeAdminDestinationPolicy
 module.exports.serializeAdminSenderRestaurant = serializeAdminSenderRestaurant;
 module.exports.serializeAdminSmsJob = serializeAdminSmsJob;
 module.exports.verifyConfiguredSender = verifyConfiguredSender;
+module.exports.assertSenderCreationEligible = assertSenderCreationEligible;

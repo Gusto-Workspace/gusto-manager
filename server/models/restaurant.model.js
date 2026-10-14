@@ -178,10 +178,25 @@ const reservationWaitlistSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const { TAKE_AWAY_SMS_EVENTS } = require("../services/sms/take-away-sms-settings.service");
+const takeAwaySmsNotificationsSchema = new mongoose.Schema({
+  enabled: { type: Boolean, default: false },
+  enabledAt: { type: Date, default: null },
+  events: Object.fromEntries(Object.entries(TAKE_AWAY_SMS_EVENTS).map(([key, event]) => [key, {
+    type: new mongoose.Schema({
+      enabled: { type: Boolean, default: false },
+      enabledAt: { type: Date, default: null },
+      template: { type: String, default: event.template },
+    }, { _id: false }),
+    default: () => ({}),
+  }])),
+}, { _id: false });
+
 const smsReminderSchema = new mongoose.Schema(
   {
     selfServiceEligible: { type: Boolean, default: false },
     enabled: { type: Boolean, default: false },
+    enabledAt: { type: Date, default: null },
     delayMinutes: { type: Number, min: 1, default: 1440 },
     deliveryMode: {
       type: String,
@@ -216,7 +231,7 @@ const smsReminderSchema = new mongoose.Schema(
       idempotencyKey: { type: String, trim: true, default: "" },
       action: {
         type: String,
-        enum: ["", "schedule_deactivation", "cancel_deactivation", "reactivate"],
+        enum: ["", "set_module", "schedule_deactivation", "cancel_deactivation", "reactivate"],
         default: "",
       },
       status: {
@@ -225,6 +240,10 @@ const smsReminderSchema = new mongoose.Schema(
         default: "",
       },
       documentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document", default: null },
+      module: { type: String, enum: ["", "reservations", "take_away"], default: "" },
+      enabled: { type: Boolean, default: null },
+      commercialSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+      acceptance: { type: mongoose.Schema.Types.Mixed, default: null },
       updatedAt: { type: Date, default: null },
       error: { type: String, default: "" },
     },
@@ -369,10 +388,19 @@ const takeAwayEmailTemplatesSchema = new mongoose.Schema(
 
 const takeAwaySettingsSchema = new mongoose.Schema(
   {
+    smsNotifications: { type: takeAwaySmsNotificationsSchema, default: () => ({}) },
     enabled: { type: Boolean, default: false },
     pickupEnabled: { type: Boolean, default: true },
     deliveryEnabled: { type: Boolean, default: false },
     auto_accept: { type: Boolean, default: true },
+    confirmationDeadlineEnabled: { type: Boolean, default: true },
+    confirmationDeadlineMinutes: {
+      type: Number,
+      min: 1,
+      default: 30,
+      validate: Number.isInteger,
+    },
+    partialRejectionEmailEnabled: { type: Boolean, default: true },
     paymentPolicy: {
       type: String,
       enum: ["online_required", "on_site", "customer_choice"],

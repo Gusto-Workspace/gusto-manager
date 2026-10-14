@@ -5,6 +5,7 @@ const {
   replayPendingTakeAwayEffects,
   cleanupConfiguredCompletedTakeAwayOrders,
 } = require("../take-away.service");
+const { runAdjustmentLifecycle } = require("../take-away-adjustments.service");
 
 let runInProgress = false;
 
@@ -13,9 +14,10 @@ async function runTakeAwayLifecycleCron() {
   runInProgress = true;
   try {
     const expiration = await expirePendingTakeAwayOrders();
+    const adjustments = await runAdjustmentLifecycle();
     const effects = await replayPendingTakeAwayEffects();
     const cleanup = await cleanupConfiguredCompletedTakeAwayOrders();
-    return { expiration, effects, cleanup };
+    return { expiration, adjustments, effects, cleanup };
   } finally {
     runInProgress = false;
   }

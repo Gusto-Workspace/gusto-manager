@@ -6,6 +6,11 @@ const DocumentModel = require("../models/document.model");
 const EmployeeModel = require("../models/employee.model");
 const SmsUsagePeriodModel = require("../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../models/sms-destination-policy.model");
+const { userCanAccessRestaurant } = require("../middleware/authorize-restaurant-access");
+const {
+  smsModuleStates, planSmsModuleChange, setSmsModuleEnabled,
+  cancelModuleSmsJobs, serializeCommercialState, assertSmsActivationUnchanged, smsSettingsWriteFilter,
+} = require("../services/sms/sms-module-state.service");
 const {
   DEFAULT_SMS_TEMPLATE,
   normalizeDefaultSmsTemplate,
@@ -88,7 +93,7 @@ function applyRestaurantSmsSettings(settings, input = {}) {
     throw error;
   }
 
-  settings.enabled = Boolean(input.enabled);
+  if (Object.hasOwn(input, "enabled")) settings.enabled = Boolean(input.enabled);
   settings.delayMinutes = delayMinutes;
   settings.deliveryMode = input.deliveryMode;
   settings.template = template;
@@ -117,32 +122,16 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function serializeCommercialState(restaurant, summary = null) {
-  const deactivation =
-    restaurant.reservationsSettings?.smsReminder?.commercialDeactivation || {};
-  const fixedPriceId = normalizeString(process.env.STRIPE_SMS_FIXED_PRICE_ID);
-  const smsAddon = (summary?.addons || []).find(
-    (item) => item.code === SMS_ADDON_CODE || item.priceId === fixedPriceId,
-  );
-  return {
-    selfServiceEligible: Boolean(
-      restaurant.reservationsSettings?.smsReminder?.selfServiceEligible,
-    ),
-    canSelfManage: Boolean(
-      restaurant.reservationsSettings?.smsReminder?.selfServiceEligible,
-    ),
-    active: Boolean(restaurant.options?.sms_reminders),
-    status: deactivation.status || "none",
-    effectiveAt: deactivation.effectiveAt || null,
-    fixedMonthlyAmount: smsAddon ? Number(smsAddon.amount || 0) : 9.9,
-    currency: smsAddon?.currency || summary?.currency || "EUR",
-    includedCredits: 100,
-    overageUnitAmount: 0.1,
-    periodEnd:
-      Number(summary?.subscription?.current_period_end || 0) > 0
-        ? new Date(summary.subscription.current_period_end * 1000)
-        : null,
-  };
+async function resolveSmsModuleAction(restaurant, module, enabled) {
+  if (!enabled) return planSmsModuleChange(restaurant, module, false);
+  const context = await findRestaurantSubscription({ restaurantId: restaurant._id });
+  const subscription = context?.subscription;
+  const prices = new Set((subscription?.items?.data || []).map((item) => item.price?.id));
+  const active = ["active", "trialing"].includes(subscription?.status) &&
+    prices.has(process.env.STRIPE_SMS_FIXED_PRICE_ID) && prices.has(process.env.STRIPE_SMS_METERED_PRICE_ID);
+  if (!active) return "reactivate";
+  return restaurant.reservationsSettings.smsReminder.commercialDeactivation?.status === "scheduled"
+    ? "cancel_deactivation" : "local";
 }
 
 router.get("/restaurants/:id/sms-reminders", authenticateToken, async (req, res) => {
@@ -151,7 +140,7 @@ router.get("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
     if (!(await canManageSms(req.user, restaurant))) return res.status(403).json({ message: "Forbidden" });
     const [usage, destinations, billingContext] = await Promise.all([
-      SmsUsagePeriodModel.findOne({ restaurantId: restaurant._id, periodEnd: { $gt: new Date() } }).sort({ periodEnd: 1 }).lean(),
+      SmsUsagePeriodModel.findOne({ restaurantId: restaurant._id, periodStart: { $lte: new Date() }, periodEnd: { $gt: new Date() } }).sort({ periodEnd: 1 }).lean(),
       SmsDestinationPolicyModel.find({ enabled: true }).sort({ country: 1 }).lean(),
       findRestaurantSubscription({ restaurantId: restaurant._id }).catch(() => null),
     ]);
@@ -171,6 +160,7 @@ router.get("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     return res.json({
       subscribed: Boolean(restaurant.options?.sms_reminders),
       settings: serializeSettings(restaurant.reservationsSettings?.smsReminder),
+      modules: smsModuleStates(restaurant),
       usage: usage || { includedCredits: 100, reservedCredits: 0, consumedCredits: 0, includedCreditsConsumed: 0, overageCredits: 0, overageAmount: 0 },
       destinations: serializeAvailableDestinationPolicies(destinations),
       commercial: {
@@ -189,35 +179,48 @@ router.post(
   "/restaurants/:id/sms-subscription/actions",
   authenticateToken,
   async (req, res) => {
-    const action = normalizeString(req.body?.action);
+    const requestedAction = normalizeString(req.body?.action);
+    let action = requestedAction;
+    const module = requestedAction === "set_module"
+      ? normalizeString(req.body?.module) : "reservations";
+    const enabled = requestedAction === "set_module"
+      ? req.body?.enabled : requestedAction === "reactivate";
     const idempotencyKey = normalizeString(
       req.get("Idempotency-Key") || req.body?.idempotencyKey,
     );
     const allowedActions = new Set([
+      "set_module",
       "schedule_deactivation",
       "cancel_deactivation",
       "reactivate",
     ]);
-    if (!allowedActions.has(action) || idempotencyKey.length < 12) {
+    if (!allowedActions.has(action) || idempotencyKey.length < 12 ||
+        !["reservations", "take_away"].includes(module) ||
+        (requestedAction === "set_module" && typeof enabled !== "boolean")) {
       return res.status(400).json({ message: "Action ou clé d’idempotence invalide." });
     }
 
     try {
       let restaurant = await RestaurantModel.findById(req.params.id);
       if (!restaurant) return res.status(404).json({ message: "Restaurant not found" });
-      if (
-        req.user?.role !== "owner" ||
-        String(restaurant.owner_id) !== String(req.user.id)
-      ) {
+      const owner = req.user?.role === "owner" &&
+        String(restaurant.owner_id?._id || restaurant.owner_id) === String(req.user.id);
+      const allowed = requestedAction === "set_module" && (module === "reservations"
+        ? await canManageSms(req.user, restaurant)
+        : restaurant.options?.take_away && await userCanAccessRestaurant(req.user, restaurant, { requiredOption: "take_away" }));
+      if (!owner && !allowed) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      if (!restaurant.reservationsSettings?.smsReminder?.selfServiceEligible) {
-        return res.status(403).json({
-          message: "Le module Rappels SMS doit d’abord être configuré par le service client.",
-        });
+      if (module === "take_away" && !restaurant.options?.take_away) {
+        return res.status(403).json({ message: "Take-away module unavailable" });
       }
 
       let operation = restaurant.reservationsSettings.smsReminder.selfServiceOperation;
+      if (operation?.idempotencyKey === idempotencyKey &&
+          (operation.action !== requestedAction || (requestedAction === "set_module" &&
+           (operation.module !== module || operation.enabled !== enabled)))) {
+        return res.status(409).json({ message: "Clé d’idempotence déjà utilisée pour une autre action SMS." });
+      }
       if (
         operation?.idempotencyKey === idempotencyKey &&
         operation?.status === "completed"
@@ -225,8 +228,31 @@ router.post(
         return res.json({
           idempotent: true,
           commercial: serializeCommercialState(restaurant),
+          modules: smsModuleStates(restaurant),
           documentId: operation.documentId || null,
         });
+      }
+      if (operation?.idempotencyKey === idempotencyKey &&
+          ["stripe_applied", "document_failed"].includes(operation.status) &&
+          operation.acceptance && operation.commercialSnapshot) {
+        if (!operation.enabled && operation.action !== "cancel_deactivation") {
+          await cancelModuleSmsJobs(restaurant._id, operation.module);
+        }
+        if (operation.action !== "cancel_deactivation") {
+          setSmsModuleEnabled(restaurant, operation.module, operation.enabled);
+          await restaurant.save();
+        }
+        const finalized = await finalizeSelfServiceAmendment({
+          restaurantId: restaurant._id, stripeSnapshot: operation.commercialSnapshot,
+          acceptance: operation.acceptance,
+        });
+        operation.status = "completed";
+        operation.documentId = finalized._id;
+        operation.error = "";
+        operation.updatedAt = new Date();
+        await restaurant.save();
+        return res.json({ idempotent: true, commercial: serializeCommercialState(restaurant),
+          modules: smsModuleStates(restaurant), documentId: finalized._id });
       }
       if (
         operation?.idempotencyKey === idempotencyKey &&
@@ -249,8 +275,30 @@ router.post(
           return res.json({
             idempotent: true,
             commercial: serializeCommercialState(restaurant),
+            modules: smsModuleStates(restaurant),
             documentId: finalized._id,
           });
+        }
+      }
+      if (["document_failed", "stripe_applied"].includes(operation?.status)) {
+        return res.status(409).json({ message: "L’avenant SMS précédent doit être finalisé avant une nouvelle modification." });
+      }
+      if (requestedAction === "set_module") {
+        action = await resolveSmsModuleAction(restaurant, module, enabled);
+        if (action !== "local" && req.body?.confirm !== true) {
+          if (!owner || !restaurant.reservationsSettings?.smsReminder?.selfServiceEligible) {
+            return res.status(403).json({ message: "Le module Rappels SMS doit d’abord être configuré par le service client, puis géré par le propriétaire." });
+          }
+          const context = await findRestaurantSubscription({ restaurantId: restaurant._id });
+          const summary = context?.subscription ? await buildSubscriptionSummary(context.subscription) : null;
+          const commercial = serializeCommercialState(restaurant, summary);
+          if (action === "reactivate" && process.env.STRIPE_SMS_FIXED_PRICE_ID) {
+            const price = await stripe.prices.retrieve(process.env.STRIPE_SMS_FIXED_PRICE_ID);
+            commercial.fixedMonthlyAmount = Number(price.unit_amount || 0) / 100;
+            commercial.currency = String(price.currency || "EUR").toUpperCase();
+          }
+          return res.json({ confirmationRequired: action,
+            commercial, modules: smsModuleStates(restaurant) });
         }
       }
       const lockedRestaurant = await RestaurantModel.findOneAndUpdate(
@@ -259,7 +307,7 @@ router.post(
           $or: [
             {
               "reservationsSettings.smsReminder.selfServiceOperation.status": {
-                $ne: "processing",
+                $nin: ["processing", "stripe_applied"],
               },
             },
             {
@@ -273,11 +321,15 @@ router.post(
           $set: {
             "reservationsSettings.smsReminder.selfServiceOperation.idempotencyKey":
               idempotencyKey,
-            "reservationsSettings.smsReminder.selfServiceOperation.action": action,
+            "reservationsSettings.smsReminder.selfServiceOperation.action": requestedAction,
+            "reservationsSettings.smsReminder.selfServiceOperation.module": module,
+            "reservationsSettings.smsReminder.selfServiceOperation.enabled": enabled,
             "reservationsSettings.smsReminder.selfServiceOperation.status":
               "processing",
             "reservationsSettings.smsReminder.selfServiceOperation.documentId":
               null,
+            "reservationsSettings.smsReminder.selfServiceOperation.commercialSnapshot": null,
+            "reservationsSettings.smsReminder.selfServiceOperation.acceptance": null,
             "reservationsSettings.smsReminder.selfServiceOperation.updatedAt":
               new Date(),
             "reservationsSettings.smsReminder.selfServiceOperation.error": "",
@@ -291,27 +343,34 @@ router.post(
       restaurant = lockedRestaurant;
       operation = restaurant.reservationsSettings.smsReminder.selfServiceOperation;
 
-      if (action === "reactivate") {
-        const policies = await SmsDestinationPolicyModel.find({
-          enabled: true,
-        }).lean();
-        const senderRevalidation = await revalidateSmsSenderForReactivation({
-          settings: restaurant.reservationsSettings.smsReminder,
-          policies,
-        });
-        if (senderRevalidation.senderStatusChanged) {
-          await restaurant.save();
-        }
-        if (senderRevalidation.error) {
-          const error = new Error(senderRevalidation.error.message);
-          error.statusCode =
-            senderRevalidation.error.code ===
-            "SMS_SENDER_VERIFICATION_UNAVAILABLE"
-              ? 503
-              : 409;
-          error.code = senderRevalidation.error.code;
-          throw error;
-        }
+      // Re-evaluate under the shared lock: an opposite toggle may have changed
+      // since the modal was opened. All module activation writes use this lock.
+      if (requestedAction === "set_module") {
+        action = await resolveSmsModuleAction(restaurant, module, enabled);
+      } else if (action === "schedule_deactivation") {
+        action = planSmsModuleChange(restaurant, module, false);
+      } else if (action === "reactivate") {
+        action = await resolveSmsModuleAction(restaurant, module, true);
+      }
+      if (action === "local") {
+        if (enabled) restaurant.options.sms_reminders = true;
+        if (!enabled) await cancelModuleSmsJobs(restaurant._id, module);
+        setSmsModuleEnabled(restaurant, module, enabled);
+        await restaurant.save();
+        operation.status = "completed";
+        await restaurant.save();
+        return res.json({ commercial: serializeCommercialState(restaurant), modules: smsModuleStates(restaurant) });
+      }
+      if (!owner || !restaurant.reservationsSettings?.smsReminder?.selfServiceEligible) {
+        const error = new Error("Le module Rappels SMS doit d’abord être configuré par le service client, puis géré par le propriétaire.");
+        error.statusCode = 403;
+        throw error;
+      }
+      if (requestedAction === "set_module" && req.body?.confirm !== true) {
+        operation.status = "completed";
+        operation.idempotencyKey = "";
+        await restaurant.save();
+        return res.json({ confirmationRequired: action, commercial: serializeCommercialState(restaurant), modules: smsModuleStates(restaurant) });
       }
 
       const context = await findRestaurantSubscription({ restaurantId: restaurant._id });
@@ -327,6 +386,52 @@ router.post(
       const beforeSummary = await buildSubscriptionSummary(subscription);
       const beforeSnapshot = buildStripeCommercialSnapshot(beforeSummary, subscription);
       const deactivation = restaurant.reservationsSettings.smsReminder.commercialDeactivation;
+      if (!["active", "trialing"].includes(subscription.status)) {
+        const error = new Error("L’abonnement commercial doit être réactivé par le service client.");
+        error.statusCode = 409;
+        throw error;
+      }
+      const prices = new Set((subscription.items?.data || []).map((item) => item.price?.id));
+      const hasSmsPrices = prices.has(process.env.STRIPE_SMS_FIXED_PRICE_ID) &&
+        prices.has(process.env.STRIPE_SMS_METERED_PRICE_ID);
+      if (action === "cancel_deactivation" && !hasSmsPrices && !enabled) {
+        const error = new Error("La résiliation a pris effet. Utilisez le parcours de réactivation commerciale.");
+        error.statusCode = 409;
+        throw error;
+      }
+      if (enabled && hasSmsPrices) {
+        action = deactivation.status === "scheduled" ? "cancel_deactivation" : "local";
+      } else if (enabled && !hasSmsPrices) {
+        action = "reactivate";
+      }
+      if (action === "local") {
+        restaurant.options.sms_reminders = true;
+        setSmsModuleEnabled(restaurant, module, true);
+        operation.status = "completed";
+        await restaurant.save();
+        return res.json({ commercial: serializeCommercialState(restaurant, beforeSummary), modules: smsModuleStates(restaurant) });
+      }
+      if (requestedAction === "set_module" && req.body?.confirmedAction !== action) {
+        operation.status = "completed";
+        // No activation or commercial mutation has occurred. Allow confirming
+        // the updated decision with the same request key.
+        operation.idempotencyKey = "";
+        await restaurant.save();
+        return res.json({ confirmationRequired: action, commercial: serializeCommercialState(restaurant, beforeSummary), modules: smsModuleStates(restaurant) });
+      }
+      if (action === "reactivate") {
+        const policies = await SmsDestinationPolicyModel.find({ enabled: true }).lean();
+        const senderRevalidation = await revalidateSmsSenderForReactivation({
+          settings: restaurant.reservationsSettings.smsReminder, policies,
+        });
+        if (senderRevalidation.senderStatusChanged) await restaurant.save();
+        if (senderRevalidation.error) {
+          const error = new Error(senderRevalidation.error.message);
+          error.statusCode = senderRevalidation.error.code === "SMS_SENDER_VERIFICATION_UNAVAILABLE" ? 503 : 409;
+          error.code = senderRevalidation.error.code;
+          throw error;
+        }
+      }
       let effectiveAt = new Date();
       let actionType = "SMS_REACTIVATED";
       let afterSummary;
@@ -428,7 +533,6 @@ router.post(
         afterSummary = await buildSubscriptionSummary(subscription);
         afterSnapshot = buildStripeCommercialSnapshot(afterSummary, subscription);
         restaurant.options.sms_reminders = true;
-        restaurant.reservationsSettings.smsReminder.enabled = true;
         Object.assign(deactivation, {
           status: "cancelled",
           stripeScheduleId: "",
@@ -436,40 +540,38 @@ router.post(
         });
       }
 
+      if (action === "cancel_deactivation") restaurant.options.sms_reminders = true;
+      const actorName = [req.user?.firstname, req.user?.lastname]
+        .filter(Boolean).join(" ") || req.user?.email || "";
+      operation.commercialSnapshot = afterSnapshot;
+      operation.acceptance = {
+        mode: "SELF_SERVICE", actionType, acceptedAt: new Date(), effectiveAt,
+        acceptedByUserId: String(req.user.id), acceptedByName: actorName,
+        acceptedByEmail: req.user?.email || restaurant.email || "",
+        restaurantId: restaurant._id, ip: req.ip || "", userAgent: req.get("user-agent") || "",
+        idempotencyKey, previousCommercialSnapshot: beforeSnapshot, newCommercialSnapshot: afterSnapshot,
+        acceptedTerms: {
+          fixedMonthlyAmount: acceptedFixedAmount, includedCredits: 100, overageUnitAmount: 0.1,
+          prorationBehavior: action === "reactivate" ? "create_prorations" : "none",
+        },
+      };
       operation.status = "stripe_applied";
       operation.updatedAt = new Date();
       await restaurant.save();
+      if (!enabled && requestedAction !== "cancel_deactivation") {
+        await cancelModuleSmsJobs(restaurant._id, module);
+      }
+      if (requestedAction !== "cancel_deactivation") {
+        setSmsModuleEnabled(restaurant, module, enabled);
+        await restaurant.save();
+      }
 
-      const actorName = [req.user?.firstname, req.user?.lastname]
-        .filter(Boolean)
-        .join(" ") || req.user?.email || "";
       let document;
       try {
         document = await finalizeSelfServiceAmendment({
           restaurantId: restaurant._id,
           stripeSnapshot: afterSnapshot,
-          acceptance: {
-            mode: "SELF_SERVICE",
-            actionType,
-            acceptedAt: new Date(),
-            effectiveAt,
-            acceptedByUserId: String(req.user.id),
-            acceptedByName: actorName,
-            acceptedByEmail: req.user?.email || restaurant.email || "",
-            restaurantId: restaurant._id,
-            ip: req.ip || "",
-            userAgent: req.get("user-agent") || "",
-            idempotencyKey,
-            previousCommercialSnapshot: beforeSnapshot,
-            newCommercialSnapshot: afterSnapshot,
-            acceptedTerms: {
-              fixedMonthlyAmount: acceptedFixedAmount,
-              includedCredits: 100,
-              overageUnitAmount: 0.1,
-              prorationBehavior:
-                action === "reactivate" ? "create_prorations" : "none",
-            },
-          },
+          acceptance: operation.acceptance,
         });
         operation.status = "completed";
         operation.documentId = document._id;
@@ -483,12 +585,14 @@ router.post(
 
       return res.status(operation.status === "completed" ? 200 : 202).json({
         commercial: serializeCommercialState(restaurant, afterSummary || beforeSummary),
+        modules: smsModuleStates(restaurant),
         documentId: document?._id || null,
         documentPending: operation.status !== "completed",
       });
     } catch (error) {
       await RestaurantModel.updateOne(
-        { _id: req.params.id, "reservationsSettings.smsReminder.selfServiceOperation.idempotencyKey": idempotencyKey },
+        { _id: req.params.id, "reservationsSettings.smsReminder.selfServiceOperation.idempotencyKey": idempotencyKey,
+          "reservationsSettings.smsReminder.selfServiceOperation.status": "processing" },
         {
           $set: {
             "reservationsSettings.smsReminder.selfServiceOperation.status": "",
@@ -512,11 +616,17 @@ router.put("/restaurants/:id/sms-reminders", authenticateToken, async (req, res)
     if (!(await canManageSms(req.user, restaurant))) return res.status(403).json({ message: "Forbidden" });
     if (!restaurant.options?.sms_reminders) return res.status(403).json({ message: "Le module Rappels SMS n'est pas souscrit." });
     const input = req.body || {};
+    assertSmsActivationUnchanged(restaurant, "reservations", input);
+    const filter = smsSettingsWriteFilter(restaurant);
     applyRestaurantSmsSettings(
       restaurant.reservationsSettings.smsReminder,
       input,
     );
-    await restaurant.save();
+    const settings = serializeSettings(restaurant.reservationsSettings.smsReminder);
+    const written = await RestaurantModel.updateOne(filter, { $set: Object.fromEntries(
+      Object.entries(settings).map(([key, value]) => [`reservationsSettings.smsReminder.${key}`, value]),
+    ) }, { runValidators: true });
+    if (!written.matchedCount) return res.status(409).json({ message: "Les activations SMS ont changé. Rechargez les paramètres." });
     await syncAllFutureSmsJobs({ force: true });
     return res.json({ settings: serializeSettings(restaurant.reservationsSettings.smsReminder) });
   } catch (error) {

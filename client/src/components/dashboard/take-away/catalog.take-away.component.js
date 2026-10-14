@@ -190,7 +190,7 @@ export default function TakeAwayCatalogComponent({ webapp = false }) {
         ),
       );
       setPendingImportKey("");
-      setMessage(`${item.name} a été ajouté au catalogue Take-away.`);
+      setMessage("");
     } catch (error) {
       console.error(error);
       setMessage("Import impossible.");

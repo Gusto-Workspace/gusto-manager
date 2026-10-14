@@ -10,6 +10,7 @@ import { STATUS_LABELS, getStatusTone } from "./take-away.utils";
 
 function getPaymentLabel(order) {
   if (order.paymentStatus === "refunded") return "Remboursée";
+  if (order.refundedAmountCents > 0) return "Partiellement remboursée";
   if (order.paymentStatus === "paid") return "Payée";
   if (order.paymentMethod === "online") return "Paiement en attente";
   return "Sur place";
@@ -21,14 +22,22 @@ export default function TakeAwayOrderCardComponent({
   columnLayout = false,
 }) {
   const itemCount = (order.items || []).reduce(
-    (sum, item) => sum + Number(item.quantity || 0),
+    (sum, item) =>
+      sum +
+      Math.max(
+        0,
+        Number(item.quantity || 0) - Number(item.refusedQuantity || 0),
+      ),
     0,
   );
   const refundFailed =
-    order.paymentMethod === "online" &&
-    order.paymentStatus === "paid" &&
-    ["canceled", "rejected"].includes(order.status) &&
-    order.stripeRefundStatus === "failed";
+    (order.adjustments || []).some((operation) =>
+      ["failed", "uncertain"].includes(operation.state),
+    ) ||
+    (order.paymentMethod === "online" &&
+      order.paymentStatus === "paid" &&
+      ["canceled", "rejected"].includes(order.status) &&
+      order.stripeRefundStatus === "failed");
   const customerName = [order.customerFirstName, order.customerLastName]
     .filter(Boolean)
     .join(" ");

@@ -9,11 +9,14 @@ import { useTranslation } from "next-i18next";
 // COMPONENTS
 import PayoutsDashboardComponent from "./payouts.dashboard.component";
 import PaymentsDashboardComponent from "./payments.dashboard.component";
+import ExportTransactionsModal from "./export-transactions-modal.dashboard.component";
+import { Download } from "lucide-react";
 
 export default function TransactionsDashboardComponent(props) {
   const { t } = useTranslation("transactions");
 
   const [selectedOption, setSelectedOption] = useState("payouts");
+  const [exportOpen, setExportOpen] = useState(false);
   const [payoutTxMap, setPayoutTxMap] = useState({});
 
   const [payoutDataLoading, setPayoutDataLoading] = useState({});
@@ -130,37 +133,51 @@ export default function TransactionsDashboardComponent(props) {
               {t("title", "Transactions")}
             </h2>
             <p className="text-[11px] tablet:text-xs text-darkBlue/60 max-w-xl">
-              {selectedOption === "payouts"
-                ? t(
-                    "payouts.subtitle",
-                    "Visualisez les virements reçus et les paiements associés.",
-                  )
-                : t(
-                    "payments.subtitle",
-                    "Consultez les achats de cartes cadeaux et les empreintes bancaires capturées, puis filtrez par client.",
-                  )}
+              {props.hideDetails
+                ? "Exportez les transactions historiques de votre restaurant."
+                : selectedOption === "payouts"
+                  ? t(
+                      "payouts.subtitle",
+                      "Visualisez les virements reçus et les paiements associés.",
+                    )
+                  : t(
+                      "payments.subtitle",
+                      "Consultez les achats de cartes cadeaux et les empreintes bancaires capturées, puis filtrez par client.",
+                    )}
             </p>
           </div>
 
-          <div className="relative">
-            <select
-              value={selectedOption}
-              onChange={handleOptionChange}
-              className="
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 text-sm font-medium text-darkBlue hover:bg-darkBlue/5"
+            >
+              <Download className="size-4 text-[#e66430]" />
+              Exporter en PDF
+            </button>
+            {!props.hideDetails && (
+              <div className="relative">
+                <select
+                  value={selectedOption}
+                  onChange={handleOptionChange}
+                  className="
                 w-[220px] midTablet:w-[260px]
                 rounded-xl border border-darkBlue/20 bg-white px-3 py-2
                 text-sm text-darkBlue
                 shadow-sm
               "
-            >
-              <option value="payouts">{t("select.payouts")}</option>
-              <option value="payments">{t("select.payments")}</option>
-            </select>
+                >
+                  <option value="payouts">{t("select.payouts")}</option>
+                  <option value="payments">{t("select.payments")}</option>
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Info texte payouts */}
-        {selectedOption === "payouts" && (
+        {!props.hideDetails && selectedOption === "payouts" && (
           <p className="text-xs tablet:text-sm text-darkBlue/70 leading-relaxed">
             <span className="font-semibold uppercase tracking-wide">
               {t("payouts.information.title")}
@@ -170,7 +187,7 @@ export default function TransactionsDashboardComponent(props) {
         )}
 
         {/* Filtres payments */}
-        {selectedOption === "payments" && (
+        {!props.hideDetails && selectedOption === "payments" && (
           <div className="flex flex-col midTablet:flex-row gap-4 items-start midTablet:items-center">
             {/* Input + cross */}
             <div className="relative w-full midTablet:w-[320px]">
@@ -237,7 +254,7 @@ export default function TransactionsDashboardComponent(props) {
       </section>
 
       {/* Onglet "payouts" */}
-      {selectedOption === "payouts" && (
+      {!props.hideDetails && selectedOption === "payouts" && (
         <PayoutsDashboardComponent
           payouts={props.payouts}
           payoutTxMap={payoutTxMap}
@@ -250,7 +267,7 @@ export default function TransactionsDashboardComponent(props) {
       )}
 
       {/* Onglet "payments" */}
-      {selectedOption === "payments" && (
+      {!props.hideDetails && selectedOption === "payments" && (
         <PaymentsDashboardComponent
           payments={props.payments}
           hasMorePayments={props.hasMorePayments}
@@ -261,6 +278,16 @@ export default function TransactionsDashboardComponent(props) {
           restaurantId={props.restaurantId}
           fetchMonthlySales={props.fetchMonthlySales}
           isFiltered={props.isFiltered}
+        />
+      )}
+      {exportOpen && (
+        <ExportTransactionsModal
+          restaurantId={props.restaurantId}
+          availableModules={props.exportModules || []}
+          modulesLoading={props.exportModulesLoading}
+          modulesError={props.exportModulesError}
+          onRetry={props.onRetryExportModules}
+          onClose={() => setExportOpen(false)}
         />
       )}
     </section>

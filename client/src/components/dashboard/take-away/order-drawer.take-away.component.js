@@ -19,6 +19,7 @@ import {
   toMoney,
 } from "./take-away.utils";
 import ConfirmModalTakeAwayWebapp from "../webapp/take-away/confirm-modal.take-away.webapp";
+import OrderAdjustmentsTakeAway from "./order-adjustments.take-away.component";
 
 const CLOSE_MS = 220;
 
@@ -251,7 +252,14 @@ export default function TakeAwayOrderDrawerComponent({
                 >
                   <div>
                     <p className="text-sm font-semibold text-darkBlue">
-                      {item.quantity}x {item.name}
+                      {Math.max(0, item.quantity - (item.refusedQuantity || 0))}
+                      x {item.name}
+                      {item.refusedQuantity ? (
+                        <span className="ml-2 text-xs text-red">
+                          {item.refusedQuantity} refusé(s) / {item.quantity}{" "}
+                          initialement
+                        </span>
+                      ) : null}
                     </p>
                     {item.options?.length ? (
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -275,14 +283,18 @@ export default function TakeAwayOrderDrawerComponent({
                     </p>
                   </div>
                   <span className="text-sm font-bold text-darkBlue">
-                    {toMoney(item.lineTotal)}
+                    {toMoney(
+                      Math.max(0, item.quantity - (item.refusedQuantity || 0)) *
+                        (Number(item.unitPrice) +
+                          Number(item.optionsTotal || 0)),
+                    )}
                   </span>
                 </div>
               ))}
             </div>
             <div className="mt-4 border-t border-darkBlue/10 pt-3 text-sm">
               <div className="flex justify-between text-darkBlue/65">
-                <span>Sous-total</span>
+                <span>Sous-total initial</span>
                 <span>{toMoney(order.subtotal)}</span>
               </div>
               {order.fulfillmentMode === "delivery" ? (
@@ -292,12 +304,17 @@ export default function TakeAwayOrderDrawerComponent({
                 </div>
               ) : null}
               <div className="mt-3 flex justify-between text-base font-bold text-darkBlue">
-                <span>Total</span>
+                <span>Total initial</span>
                 <span>{toMoney(order.total)}</span>
               </div>
             </div>
           </div>
 
+          <OrderAdjustmentsTakeAway
+            order={order}
+            onAction={onAction}
+            busy={loading}
+          />
           {order.fulfillmentMode === "delivery" ? (
             <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
               <p className="text-xs text-darkBlue/50">Livraison</p>

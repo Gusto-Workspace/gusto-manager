@@ -1,15 +1,22 @@
 const express = require("express");
 const router = express.Router();
+const { DateTime } = require("luxon");
 
 const authenticateToken = require("../middleware/authentificate-token");
 const {
   userCanAccessRestaurant,
 } = require("../middleware/authorize-restaurant-access");
-const {
-  verifyServiceSignature,
-} = require("../middleware/service-signature");
+const { verifyServiceSignature } = require("../middleware/service-signature");
 const RestaurantModel = require("../models/restaurant.model");
+const EmployeeModel = require("../models/employee.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
+const SmsUsagePeriodModel = require("../models/sms-usage-period.model");
+const SmsDestinationPolicyModel = require("../models/sms-destination-policy.model");
+const { smsDestinationPolicyIsUsable } = require("../services/sms/sms-reminder.service");
+const {
+  smsModuleStates, serializeCommercialState, assertSmsActivationUnchanged, smsSettingsWriteFilter,
+} = require("../services/sms/sms-module-state.service");
+const { TAKE_AWAY_SMS_EVENTS, takeAwaySmsVariables, serializeTakeAwaySmsSettings } = require("../services/sms/take-away-sms-settings.service");
 const {
   mergeTakeAwaySettingsInput,
   normalizeCatalogItemInput,
@@ -30,6 +37,11 @@ const {
   getBlockedTakeAwayDates,
 } = require("../services/take-away.service");
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const {
+  rejectItems,
+  lineId,
+  remainingQuantity,
+} = require("../services/take-away-adjustments.service");
 
 async function loadAuthorizedRestaurant(req, res) {
   const restaurant = await loadRestaurantForTakeAway(req.params.restaurantId);
@@ -50,6 +62,26 @@ async function loadAuthorizedRestaurant(req, res) {
     return null;
   }
   return restaurant;
+}
+
+async function canManageSharedSmsSettings(user, restaurant) {
+  if (user?.role === "owner")
+    return (
+      String(restaurant.owner_id?._id || restaurant.owner_id || "") ===
+      String(user.id || "")
+    );
+  if (
+    user?.role !== "employee" ||
+    String(user.restaurantId) !== String(restaurant._id)
+  )
+    return false;
+  const employee = await EmployeeModel.findById(user.id).select(
+    "restaurantProfiles",
+  );
+  const profile = employee?.restaurantProfiles?.find(
+    (item) => String(item.restaurant) === String(restaurant._id),
+  );
+  return Boolean(profile?.options?.reservations);
 }
 
 function serializePublicCatalog(restaurant) {
@@ -87,7 +119,7 @@ async function loadPublicRestaurant(restaurantId) {
 }
 
 function handleError(res, error) {
-  const status = error?.status || 500;
+  const status = error?.status || error?.statusCode || 500;
   if (status >= 500) {
     console.error("Take-away route error:", error);
   }
@@ -126,8 +158,12 @@ function serializePublicOrder(input) {
     paymentStatus: order.paymentStatus,
     paymentMethod: order.paymentMethod,
     scheduledFor: order.scheduledFor,
+    confirmationDeadlineAt: order.confirmationDeadlineAt,
     slotId: order.slotId,
-    items: (order.items || []).map((item) => ({
+    items: (order.items || []).map((item, index) => ({
+      lineId: lineId(order, item, index),
+      refusedQuantity: Number(item.refusedQuantity || 0),
+      retainedQuantity: remainingQuantity(item),
       catalogItemId: String(item.catalogItemId || ""),
       name: item.name,
       description: item.description || "",
@@ -145,6 +181,19 @@ function serializePublicOrder(input) {
     subtotal: order.subtotal,
     deliveryFee: order.deliveryFee,
     total: order.total,
+    remainingAmountCents:
+      order.remainingAmountCents ?? Math.round(order.total * 100),
+    refundedAmountCents: order.refundedAmountCents || 0,
+    adjustments: (order.adjustments || []).map((operation) => ({
+      id: operation.id,
+      type: operation.type,
+      reason: operation.reason,
+      lines: operation.lines,
+      amountCents: operation.amountCents,
+      state: operation.state,
+      createdAt: operation.createdAt,
+      updatedAt: operation.updatedAt,
+    })),
     currency: order.currency,
     deliveryAddress:
       order.fulfillmentMode === "delivery" ? order.deliveryAddress : undefined,
@@ -174,7 +223,9 @@ router.post(
         return res.status(404).json({ message: "Restaurant not found" });
       }
       if (restaurant.options?.take_away !== true) {
-        return res.status(403).json({ message: "Take-away module unavailable" });
+        return res
+          .status(403)
+          .json({ message: "Take-away module unavailable" });
       }
 
       const result = await handleTakeAwayStripeWebhookEvent({
@@ -404,34 +455,32 @@ router.get(
         query.fulfillmentMode = req.query.fulfillmentMode;
       }
       if (req.query.date) {
-        const [year, month, day] = String(req.query.date)
-          .split("-")
-          .map(Number);
-        const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 1);
-        query.scheduledFor = { $gte: start, $lt: end };
+        const start = DateTime.fromISO(String(req.query.date), {
+          zone: "Europe/Paris",
+        }).startOf("day");
+        if (!start.isValid)
+          return res.status(400).json({ message: "Date invalide" });
+        query.scheduledFor = {
+          $gte: start.toJSDate(),
+          $lt: start.plus({ days: 1 }).toJSDate(),
+        };
       } else if (req.query.dateFrom || req.query.dateTo) {
         query.scheduledFor = {};
         if (req.query.dateFrom) {
-          const [year, month, day] = String(req.query.dateFrom)
-            .split("-")
-            .map(Number);
-          query.scheduledFor.$gte = new Date(year, month - 1, day, 0, 0, 0, 0);
+          const start = DateTime.fromISO(String(req.query.dateFrom), {
+            zone: "Europe/Paris",
+          }).startOf("day");
+          if (!start.isValid)
+            return res.status(400).json({ message: "Date invalide" });
+          query.scheduledFor.$gte = start.toJSDate();
         }
         if (req.query.dateTo) {
-          const [year, month, day] = String(req.query.dateTo)
-            .split("-")
-            .map(Number);
-          query.scheduledFor.$lt = new Date(
-            year,
-            month - 1,
-            day + 1,
-            0,
-            0,
-            0,
-            0,
-          );
+          const end = DateTime.fromISO(String(req.query.dateTo), {
+            zone: "Europe/Paris",
+          }).startOf("day");
+          if (!end.isValid)
+            return res.status(400).json({ message: "Date invalide" });
+          query.scheduledFor.$lt = end.plus({ days: 1 }).toJSDate();
         }
       }
 
@@ -511,6 +560,67 @@ router.patch(
   },
 );
 
+router.post(
+  "/restaurants/:restaurantId/take-away/orders/:orderId/rejections",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const restaurant = await loadAuthorizedRestaurant(req, res);
+      if (!restaurant) return;
+      const order = await rejectItems({
+        restaurant,
+        orderId: req.params.orderId,
+        requestKey: req.get("Idempotency-Key") || req.body?.requestKey,
+        lines: req.body?.lines,
+        reason: req.body?.reason || "",
+        actorId: req.user?.id || req.user?._id || req.user?.userId || "",
+      });
+      return res.status(200).json({ order });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
+
+router.get("/restaurants/:restaurantId/take-away/sms-notifications", authenticateToken, async (req, res) => {
+  try {
+    const restaurant = await loadAuthorizedRestaurant(req, res);
+    if (!restaurant) return;
+    const now = new Date();
+    const [usage, policies] = await Promise.all([
+      SmsUsagePeriodModel.findOne({ restaurantId: restaurant._id, periodStart: { $lte: now }, periodEnd: { $gt: now } }).sort({ periodEnd: 1 }).lean(),
+      SmsDestinationPolicyModel.find({ enabled: true }).sort({ country: 1 }).lean(),
+    ]);
+    const shared = restaurant.reservationsSettings?.smsReminder || {};
+    return res.json({
+      subscribed: restaurant.options?.sms_reminders === true,
+      settings: serializeTakeAwaySmsSettings(restaurant.takeAwaySettings?.smsNotifications),
+      modules: smsModuleStates(restaurant),
+      commercial: {
+        ...serializeCommercialState(restaurant),
+        canSelfManage: req.user?.role === "owner" && shared.selfServiceEligible === true,
+      },
+      canEditSharedSettings: await canManageSharedSmsSettings(
+        req.user,
+        restaurant,
+      ),
+      sender: { value: shared.sender?.value || "", status: shared.sender?.status || "pending" },
+      internationalEnabled: shared.internationalEnabled === true,
+      billingPeriodSpendingLimit: shared.billingPeriodSpendingLimit ?? null,
+      usage: usage || { includedCredits: 100, consumedCredits: 0, reservedCredits: 0, includedCreditsConsumed: 0, overageCredits: 0, overageAmount: 0 },
+      destinations: policies
+        .filter(smsDestinationPolicyIsUsable)
+        .map((policy) => ({
+          country: policy.country,
+          enabled: true,
+          billingCredits: policy.billingCredits,
+          senderMode: policy.senderMode,
+        })),
+      events: Object.entries(TAKE_AWAY_SMS_EVENTS).map(([key, event]) => ({ key, ...event, variables: [...takeAwaySmsVariables(key)] })),
+    });
+  } catch (error) { return handleError(res, error); }
+});
+
 router.put(
   "/restaurants/:restaurantId/take-away/settings",
   authenticateToken,
@@ -519,14 +629,81 @@ router.put(
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
 
+      const patch = req.body?.settings || req.body || {};
+      if (patch.smsNotifications || patch.smsSharedSettings) {
+        assertSmsActivationUnchanged(restaurant, "take_away", patch.smsNotifications);
+      }
+      const smsFilter = smsSettingsWriteFilter(restaurant);
+      if (patch.smsNotifications && !restaurant.options?.sms_reminders) {
+        return res.status(403).json({ message: "L’option SMS n’est pas souscrite." });
+      }
+
+      const sharedSmsPatch = patch.smsSharedSettings;
+      let spendingLimit;
+      if (sharedSmsPatch && typeof sharedSmsPatch === "object") {
+        if (!(await canManageSharedSmsSettings(req.user, restaurant))) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        if (Object.hasOwn(sharedSmsPatch, "billingPeriodSpendingLimit")) {
+          const rawLimit = sharedSmsPatch.billingPeriodSpendingLimit;
+          spendingLimit =
+            rawLimit === null || rawLimit === "" ? null : Number(rawLimit);
+          if (
+            spendingLimit !== null &&
+            (!Number.isFinite(spendingLimit) ||
+              spendingLimit < 0 ||
+              spendingLimit > 10000)
+          ) {
+            return res.status(400).json({
+              message: "Plafond de dépense invalide.",
+            });
+          }
+        }
+      }
       restaurant.takeAwaySettings = mergeTakeAwaySettingsInput(
         restaurant.takeAwaySettings,
-        req.body?.settings || req.body || {},
+        patch,
       );
-      await restaurant.save();
+      if (sharedSmsPatch && typeof sharedSmsPatch === "object") {
+        const sharedSms = restaurant.reservationsSettings.smsReminder;
+        if (Object.hasOwn(sharedSmsPatch, "internationalEnabled")) {
+          sharedSms.internationalEnabled =
+            sharedSmsPatch.internationalEnabled === true;
+        }
+        if (Object.hasOwn(sharedSmsPatch, "billingPeriodSpendingLimit")) {
+          sharedSms.billingPeriodSpendingLimit = spendingLimit;
+        }
+      }
+      if (patch.smsNotifications || patch.smsSharedSettings) {
+        const written = await RestaurantModel.updateOne(smsFilter, { $set: {
+          takeAwaySettings: restaurant.takeAwaySettings.toObject?.() || restaurant.takeAwaySettings,
+          "reservationsSettings.smsReminder.internationalEnabled": restaurant.reservationsSettings.smsReminder.internationalEnabled,
+          "reservationsSettings.smsReminder.billingPeriodSpendingLimit": restaurant.reservationsSettings.smsReminder.billingPeriodSpendingLimit,
+        } }, { runValidators: true });
+        if (!written.matchedCount) return res.status(409).json({ message: "Les activations SMS ont changé. Rechargez les paramètres." });
+      } else {
+        // Ordinary take-away settings must not overwrite an SMS activation
+        // that changed concurrently through the shared commercial route.
+        const settings = restaurant.takeAwaySettings.toObject?.() || restaurant.takeAwaySettings;
+        restaurant.unmarkModified?.("takeAwaySettings");
+        for (const key of Object.keys(settings)) {
+          if (key !== "smsNotifications") restaurant.markModified?.(`takeAwaySettings.${key}`);
+        }
+        await restaurant.save();
+      }
 
       const updatedRestaurant = await loadRestaurantForTakeAway(restaurant._id);
-      return res.status(200).json({ restaurant: updatedRestaurant });
+      return res.status(200).json({
+        restaurant: updatedRestaurant,
+        sharedSmsSettings: {
+          internationalEnabled:
+            restaurant.reservationsSettings.smsReminder.internationalEnabled ===
+            true,
+          billingPeriodSpendingLimit:
+            restaurant.reservationsSettings.smsReminder
+              .billingPeriodSpendingLimit ?? null,
+        },
+      });
     } catch (error) {
       return handleError(res, error);
     }

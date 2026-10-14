@@ -7,6 +7,9 @@ const EMAIL_EVENT_TYPES = new Set([
   "canceled",
   "ready",
   "out_for_delivery",
+  "partial_rejection",
+  "expired",
+  "refund_update",
 ]);
 
 function cleanString(value) {
@@ -51,6 +54,37 @@ function interpolateTemplate(value, variables) {
 }
 
 function getEventCopy(eventType, order, variables) {
+  const [kind, operationId] = eventType.split(":");
+  const operation = (order.adjustments || []).find(
+    (entry) => entry.id === operationId,
+  );
+  if (
+    ["partial_rejection", "expired", "refund_update"].includes(kind) &&
+    operation
+  ) {
+    const amount = formatMoney(operation.amountCents / 100, order.currency);
+    const financial =
+      operation.state === "succeeded"
+        ? `Le remboursement de ${amount} est confirmé. Le délai d'affichage dépend de votre banque.`
+        : operation.state === "not_required"
+          ? "Aucun paiement en ligne encaissé n'est à rembourser. Le montant à régler est ajusté."
+          : operation.state === "failed"
+            ? `Le remboursement de ${amount} a échoué. Le restaurant en est informé et le traitement sera repris.`
+            : operation.state === "uncertain"
+              ? `Le remboursement de ${amount} est en cours de vérification. Il n'est pas encore confirmé.`
+              : `Le montant à rembourser est de ${amount}. Le remboursement n'est pas encore confirmé.`;
+    const descriptions = {
+      partial_rejection: "Certains articles de votre commande ont été refusés",
+      expired:
+        "Votre commande a été annulée faute de validation dans le délai prévu",
+      refund_update: "Le remboursement de votre commande a été mis à jour",
+    };
+    return {
+      subject: `${kind === "expired" ? "Commande annulée" : kind === "partial_rejection" ? "Commande ajustée" : "Remboursement"} ${variables.orderNumber}`,
+      heading: descriptions[kind],
+      message: `${descriptions[kind]}. ${kind === "partial_rejection" ? "Les articles conservés restent confirmés. " : ""}${operation.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")}${operation.reason ? `. Motif : ${operation.reason}` : ""}. ${financial}`,
+    };
+  }
   const refunded = order?.paymentStatus === "refunded";
   const paidOnline =
     order?.paymentMethod === "online" && order?.paymentStatus === "paid";
@@ -81,9 +115,11 @@ function getEventCopy(eventType, order, variables) {
       heading: "Votre commande n’a pas pu être acceptée",
       message: refunded
         ? "Votre commande a été refusée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : paidOnline
-          ? "Votre commande a été refusée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
-          : "Votre commande a été refusée. Aucun paiement en ligne ne sera encaissé pour cette commande.",
+        : paidOnline && order.stripeRefundStatus === "failed"
+          ? "Votre commande a été refusée. Le remboursement n'a pas pu être confirmé et sera repris."
+          : paidOnline
+            ? "Votre commande a été refusée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
+            : "Votre commande a été refusée. Aucun paiement en ligne ne sera encaissé pour cette commande.",
     };
   }
   if (eventType === "canceled") {
@@ -92,9 +128,11 @@ function getEventCopy(eventType, order, variables) {
       heading: "Votre commande a été annulée",
       message: refunded
         ? "Votre commande a été annulée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : paidOnline
-          ? "Votre commande a été annulée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
-          : "Votre commande a été annulée. Pour toute question, vous pouvez contacter directement le restaurant.",
+        : paidOnline && order.stripeRefundStatus === "failed"
+          ? "Votre commande a été annulée. Le remboursement n'a pas pu être confirmé et sera repris."
+          : paidOnline
+            ? "Votre commande a été annulée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
+            : "Votre commande a été annulée. Pour toute question, vous pouvez contacter directement le restaurant.",
     };
   }
   if (eventType === "ready") {
@@ -125,8 +163,8 @@ function renderItems(order) {
         ? `<br><span style="color:#76635c;">${options}</span>`
         : "";
       return `<tr>
-        <td style="padding:10px 0;border-bottom:1px solid #eaded9;">${Number(item.quantity || 0)} × ${escapeHtml(item.name)}${detail}</td>
-        <td style="padding:10px 0;border-bottom:1px solid #eaded9;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(item.lineTotal, order.currency))}</td>
+        <td style="padding:10px 0;border-bottom:1px solid #eaded9;">${Math.max(0, Number(item.quantity || 0) - Number(item.refusedQuantity || 0))} × ${escapeHtml(item.name)}${item.refusedQuantity ? `<br><span style="color:#76635c;">${Number(item.refusedQuantity)} refusé(s) sur ${Number(item.quantity)} commandé(s)</span>` : ""}${detail}</td>
+        <td style="padding:10px 0;border-bottom:1px solid #eaded9;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(item.refusedQuantity ? Math.max(0, Number(item.quantity) - Number(item.refusedQuantity)) * (Number(item.unitPrice) + Number(item.optionsTotal || 0)) : item.lineTotal, order.currency))}</td>
       </tr>`;
     })
     .join("");
@@ -148,7 +186,8 @@ function renderAddress(order) {
 }
 
 function buildTakeAwayEmail({ eventType, order, restaurant }) {
-  if (!EMAIL_EVENT_TYPES.has(eventType) || !order) return null;
+  if (!EMAIL_EVENT_TYPES.has(String(eventType).split(":")[0]) || !order)
+    return null;
   const restaurantName = cleanString(restaurant?.name) || "Restaurant";
   const customerName = [order.customerFirstName, order.customerLastName]
     .map(cleanString)
@@ -199,7 +238,7 @@ function buildTakeAwayEmail({ eventType, order, restaurant }) {
             ${escapeHtml(payment)}
           </div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;border-collapse:collapse;font-size:14px;">${renderItems(order)}</table>
-          <p style="margin:18px 0 0;text-align:right;font-size:18px;"><strong>Total : ${escapeHtml(formatMoney(order.total, order.currency))}</strong></p>
+          <p style="margin:18px 0 0;text-align:right;font-size:18px;"><strong>Total initial : ${escapeHtml(formatMoney(order.total, order.currency))}</strong>${order.remainingAmountCents != null ? `<br>Montant conservé : ${escapeHtml(formatMoney(order.remainingAmountCents / 100, order.currency))}<br>Remboursement confirmé : ${escapeHtml(formatMoney((order.refundedAmountCents || 0) / 100, order.currency))}` : ""}</p>
           ${renderAddress(order)}
           ${order.customerNote ? `<p style="margin:18px 0 0;"><strong>Votre note</strong><br>${escapeHtml(order.customerNote)}</p>` : ""}
         </div>

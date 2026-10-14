@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Check, Plus, Trash2 } from "lucide-react";
 
@@ -64,6 +64,7 @@ export default function ManualTakeAwayOrderComponent({
   pickupEnabled = true,
   deliveryEnabled = true,
   restaurantId = "",
+  smsNotificationsEnabled = false,
 }) {
   const [manualOrder, setManualOrder] = useState(() =>
     createInitialManualOrder(initialDate),
@@ -71,6 +72,8 @@ export default function ManualTakeAwayOrderComponent({
   const [errors, setErrors] = useState({});
   const [existingCustomers, setExistingCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const creationAttempt = useRef(null);
+  const submitting = useRef(false);
 
   useEffect(() => {
     if (!pickupEnabled && deliveryEnabled) {
@@ -232,13 +235,26 @@ export default function ManualTakeAwayOrderComponent({
   }
 
   async function submit() {
+    if (loading || submitting.current) return;
     const nextErrors = {};
     if (!manualOrder.customerFirstName.trim())
       nextErrors.customerFirstName = "Prénom obligatoire.";
     if (!manualOrder.customerLastName.trim())
       nextErrors.customerLastName = "Nom obligatoire.";
-    if (!manualOrder.customerPhone.trim())
-      nextErrors.customerPhone = "Téléphone obligatoire.";
+    const customerPhone = manualOrder.customerPhone.trim();
+    const phoneDigits = customerPhone.replace(/\D/g, "");
+    if (!customerPhone && smsNotificationsEnabled) {
+      nextErrors.customerPhone =
+        "Téléphone obligatoire lorsque les notifications SMS sont activées.";
+    } else if (
+      customerPhone &&
+      (!/^\+?[\d\s().-]+$/.test(customerPhone) ||
+        phoneDigits.length < 6 ||
+        phoneDigits.length > 20)
+    ) {
+      nextErrors.customerPhone =
+        "Téléphone invalide. Ajoutez l’indicatif pour un numéro international.";
+    }
     if (!manualOrder.date) nextErrors.date = "Date obligatoire.";
     if (!manualOrder.time) nextErrors.time = "Heure obligatoire.";
 
@@ -278,19 +294,38 @@ export default function ManualTakeAwayOrderComponent({
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
-    const success = await onCreate({
+    const payload = {
       ...manualOrder,
+      customerPhone,
       items: items.map((line) => ({
         catalogItemId: line.catalogItemId,
         optionIds: line.selectedOptionId ? [line.selectedOptionId] : [],
         quantity: Number(line.quantity || 1),
       })),
-    });
-
-    if (success) {
-      setManualOrder(createInitialManualOrder(initialDate));
-      setSelectedCustomerId("");
-      setErrors({});
+    };
+    const fingerprint = JSON.stringify({ restaurantId, payload });
+    if (creationAttempt.current?.fingerprint !== fingerprint) {
+      creationAttempt.current = {
+        fingerprint,
+        idempotencyKey:
+          globalThis.crypto?.randomUUID?.() ||
+          `manual:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      };
+    }
+    submitting.current = true;
+    try {
+      const success = await onCreate({
+        ...payload,
+        idempotencyKey: creationAttempt.current.idempotencyKey,
+      });
+      if (success) {
+        creationAttempt.current = null;
+        setManualOrder(createInitialManualOrder(initialDate));
+        setSelectedCustomerId("");
+        setErrors({});
+      }
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -366,8 +401,19 @@ export default function ManualTakeAwayOrderComponent({
               }
             />
           </FormField>
-          <FormField label="Téléphone" error={errors.customerPhone}>
+          <FormField
+            label={smsNotificationsEnabled ? "Téléphone *" : "Téléphone"}
+            hint={
+              smsNotificationsEnabled
+                ? "Obligatoire pour les notifications SMS. Pour un numéro international, indiquez l’indicatif (ex. +32)."
+                : "Facultatif. Pour un numéro international, indiquez l’indicatif (ex. +32)."
+            }
+            error={errors.customerPhone}
+          >
             <input
+              type="tel"
+              required={smsNotificationsEnabled}
+              aria-required={smsNotificationsEnabled}
               className={fieldClass(errors.customerPhone)}
               value={manualOrder.customerPhone}
               onChange={(e) =>

@@ -654,7 +654,7 @@ test("take-away customer emails use business wording for every useful event", ()
   assert.match(rejectedPending.htmlContent, /remboursement.*initié/i);
   assert.doesNotMatch(rejectedPending.htmlContent, /a été remboursé/i);
   assert.match(canceledPending.htmlContent, /commande a été annulée/i);
-  assert.match(canceledPending.htmlContent, /remboursement.*initié/i);
+  assert.match(canceledPending.htmlContent, /remboursement.*confirmé.*repris/i);
   assert.doesNotMatch(canceledPending.htmlContent, /a été remboursé/i);
   assert.match(rejectedRefunded.htmlContent, /a été remboursé/i);
   assert.match(canceledRefunded.htmlContent, /a été remboursé/i);

@@ -11,20 +11,20 @@ export const SMS_TEMPLATE_VARIABLES = [
   { backend: "{restaurantName}", display: "{Nom du restaurant}" },
 ];
 
-function replaceExactPlaceholders(value, sourceKey, targetKey) {
-  return SMS_TEMPLATE_VARIABLES.reduce(
+function replaceExactPlaceholders(value, sourceKey, targetKey, variables = SMS_TEMPLATE_VARIABLES) {
+  return variables.reduce(
     (template, variable) =>
       template.split(variable[sourceKey]).join(variable[targetKey]),
     String(value || ""),
   );
 }
 
-export function smsTemplateToDisplay(value) {
-  return replaceExactPlaceholders(value, "backend", "display");
+export function smsTemplateToDisplay(value, variables = SMS_TEMPLATE_VARIABLES) {
+  return replaceExactPlaceholders(value, "backend", "display", variables);
 }
 
-export function smsTemplateToBackend(value) {
-  return replaceExactPlaceholders(value, "display", "backend");
+export function smsTemplateToBackend(value, variables = SMS_TEMPLATE_VARIABLES) {
+  return replaceExactPlaceholders(value, "display", "backend", variables);
 }
 
 export function insertSmsTemplateVariable(value, variable, start, end) {
@@ -43,13 +43,13 @@ export function insertSmsTemplateVariable(value, variable, start, end) {
   };
 }
 
-export function splitSmsTemplateTokens(value) {
-  const template = smsTemplateToDisplay(value);
+export function splitSmsTemplateTokens(value, variables = SMS_TEMPLATE_VARIABLES) {
+  const template = smsTemplateToDisplay(value, variables);
   const tokensByDisplay = new Map(
-    SMS_TEMPLATE_VARIABLES.map((variable) => [variable.display, variable]),
+    variables.map((variable) => [variable.display, variable]),
   );
   const tokenPattern = new RegExp(
-    `(${SMS_TEMPLATE_VARIABLES.map((variable) =>
+    `(${variables.map((variable) =>
       variable.display.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     ).join("|")})`,
     "g",
@@ -106,10 +106,10 @@ export function normalizeToGsm7(value) {
   };
 }
 
-export function normalizeSmsTemplateToGsm7(value) {
+export function normalizeSmsTemplateToGsm7(value, variables = SMS_TEMPLATE_VARIABLES) {
   let adapted = false;
   const incompatibleCharacters = new Set();
-  const normalized = splitSmsTemplateTokens(value)
+  const normalized = splitSmsTemplateTokens(value, variables)
     .map((part) => {
       if (part.type === "token") return part.value;
       const result = normalizeToGsm7(part.value);
@@ -128,7 +128,7 @@ export function normalizeSmsTemplateToGsm7(value) {
   };
 }
 
-export function normalizeSmsTemplateSelectionToGsm7(value, start, end) {
+export function normalizeSmsTemplateSelectionToGsm7(value, start, end, variables = SMS_TEMPLATE_VARIABLES) {
   const template = String(value || "");
   const selectionStart = Math.min(
     template.length,
@@ -138,14 +138,15 @@ export function normalizeSmsTemplateSelectionToGsm7(value, start, end) {
     template.length,
     Math.max(selectionStart, Number.isInteger(end) ? end : selectionStart),
   );
-  const normalized = normalizeSmsTemplateToGsm7(template);
+  const normalized = normalizeSmsTemplateToGsm7(template, variables);
 
   return {
     ...normalized,
     start: normalizeSmsTemplateToGsm7(
       template.slice(0, selectionStart),
+      variables,
     ).value.length,
-    end: normalizeSmsTemplateToGsm7(template.slice(0, selectionEnd)).value
+    end: normalizeSmsTemplateToGsm7(template.slice(0, selectionEnd), variables).value
       .length,
   };
 }
@@ -155,15 +156,16 @@ export function deleteSmsTemplateSelection(
   start,
   end,
   direction,
+  variables = SMS_TEMPLATE_VARIABLES,
 ) {
-  const template = smsTemplateToDisplay(value);
+  const template = smsTemplateToDisplay(value, variables);
   let selectionStart = Math.min(Math.max(0, start), template.length);
   let selectionEnd = Math.min(
     template.length,
     Math.max(selectionStart, end),
   );
   let offset = 0;
-  const tokenRanges = splitSmsTemplateTokens(template)
+  const tokenRanges = splitSmsTemplateTokens(template, variables)
     .map((part) => {
       const range = {
         type: part.type,
@@ -276,9 +278,9 @@ export function analyzeSingleSms(value) {
   };
 }
 
-export function renderSmsPreview(template, values) {
+export function renderSmsPreview(template, values, variables = SMS_TEMPLATE_VARIABLES) {
   return normalizeSmsTypography(template).replace(
-    /\{(firstName|date|time|guests|restaurantName)\}/g,
-    (_, key) => String(values[key] ?? ""),
+    /\{([^{}]+)\}/g,
+    (token, key) => variables.some((variable) => variable.backend === `{${key}}`) ? String(values[key] ?? "") : token,
   );
 }

@@ -49,6 +49,13 @@ const DIAGNOSTIC_LABELS = {
   worker_crash_after_submission_started:
     "Traitement interrompu après soumission",
   provider_delivery_failed: "Échec de livraison",
+  manual_order: "Commande manuelle exclue",
+  event_before_activation: "Événement antérieur à l’activation",
+  event_obsolete: "Événement devenu obsolète",
+  fulfillment_not_applicable: "Événement non applicable au mode de commande",
+  refund_not_confirmed: "Remboursement non confirmé",
+  covered_by_partial_rejection: "Confirmation incluse dans le refus partiel",
+  message_changed_before_submission: "Message modifié avant soumission",
   network_or_timeout: "Erreur réseau ou délai dépassé",
 };
 

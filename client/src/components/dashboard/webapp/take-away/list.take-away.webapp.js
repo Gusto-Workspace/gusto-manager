@@ -420,9 +420,9 @@ export default function ListTakeAwayWebapp() {
     setDrawerError("");
     try {
       const { data } = await request({
-        method: "patch",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/status`,
-        data: { status },
+        method: typeof status === "object" ? "post" : "patch",
+        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/${typeof status === "object" ? "rejections" : "status"}`,
+        data: typeof status === "object" ? status : { status },
       });
       const updatedOrder = data?.order;
       if (!updatedOrder) throw new Error("Missing order");

@@ -89,6 +89,9 @@ export default function AddTakeAwayComponent() {
         pickupEnabled={restaurant?.takeAwaySettings?.pickupEnabled !== false}
         deliveryEnabled={restaurant?.takeAwaySettings?.deliveryEnabled === true}
         restaurantId={restaurantId}
+        smsNotificationsEnabled={
+          restaurant?.takeAwaySettings?.smsNotifications?.enabled === true
+        }
         loading={loading}
         onCreate={createOrder}
         title="Nouvelle commande"

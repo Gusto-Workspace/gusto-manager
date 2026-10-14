@@ -262,16 +262,19 @@ export default function ListTakeAwayComponent() {
     setDrawerError("");
     try {
       const { data } = await request({
-        method: "patch",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/status`,
-        data: { status },
+        method: typeof status === "object" ? "post" : "patch",
+        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/${typeof status === "object" ? "rejections" : "status"}`,
+        data: typeof status === "object" ? status : { status },
       });
       applyTakeAwayOrderUpdate?.(data.order, restaurantId);
       setSelectedOrder(data.order);
       return true;
     } catch (error) {
       console.error(error);
-      setDrawerError("Changement de statut impossible.");
+      setDrawerError(
+        error?.response?.data?.message ||
+          "Opération impossible. Réessayez la même décision.",
+      );
       return false;
     } finally {
       setLoading(false);

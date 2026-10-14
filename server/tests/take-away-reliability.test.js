@@ -334,6 +334,13 @@ test("the lifecycle runs completed-order cleanup server-side", async (t) => {
   );
   const originalCronCache = require.cache[cronPath];
   const originalServiceExports = require.cache[servicePath].exports;
+  const adjustments = require("../services/take-away-adjustments.service");
+  const originalAdjustmentsLifecycle = adjustments.runAdjustmentLifecycle;
+  let adjustmentsCalls = 0;
+  adjustments.runAdjustmentLifecycle = async () => {
+    adjustmentsCalls += 1;
+    return { expired: 0 };
+  };
   let cleanupCalls = 0;
 
   require.cache[cronPath] = {
@@ -355,6 +362,7 @@ test("the lifecycle runs completed-order cleanup server-side", async (t) => {
   t.after(() => {
     delete require.cache[lifecyclePath];
     require.cache[servicePath].exports = originalServiceExports;
+    adjustments.runAdjustmentLifecycle = originalAdjustmentsLifecycle;
     if (originalCronCache) require.cache[cronPath] = originalCronCache;
     else delete require.cache[cronPath];
   });
@@ -362,6 +370,7 @@ test("the lifecycle runs completed-order cleanup server-side", async (t) => {
   const runLifecycle = require(lifecyclePath);
   const result = await runLifecycle();
   assert.equal(cleanupCalls, 1);
+  assert.equal(adjustmentsCalls, 1);
   assert.deepEqual(result.cleanup, { checked: 1, deleted: 2 });
 });
 

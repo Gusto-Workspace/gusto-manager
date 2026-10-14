@@ -8,27 +8,27 @@ import {
   splitSmsTemplateTokens,
 } from "./sms-message.utils";
 
-function tokenDisplayFromElement(element) {
+function tokenDisplayFromElement(element, variables) {
   const backend = element?.dataset?.smsToken;
   return (
-    SMS_TEMPLATE_VARIABLES.find((variable) => variable.backend === backend)
+    variables.find((variable) => variable.backend === backend)
       ?.display || ""
   );
 }
 
-function readEditorText(editor) {
+function readEditorText(editor, variables) {
   return Array.from(editor?.childNodes || [])
     .map((node) => {
       if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || "";
       if (node.nodeType !== Node.ELEMENT_NODE) return "";
-      if (node.dataset?.smsToken) return tokenDisplayFromElement(node);
+      if (node.dataset?.smsToken) return tokenDisplayFromElement(node, variables);
       if (node.tagName === "BR") return "\n";
       return node.textContent || "";
     })
     .join("");
 }
 
-function selectionOffsets(editor, fallback) {
+function selectionOffsets(editor, fallback, variables) {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return fallback;
   const range = selection.getRangeAt(0);
@@ -40,7 +40,7 @@ function selectionOffsets(editor, fallback) {
     const prefix = document.createRange();
     prefix.selectNodeContents(editor);
     prefix.setEnd(node, offset);
-    return smsTemplateToDisplay(prefix.toString()).length;
+    return smsTemplateToDisplay(prefix.toString(), variables).length;
   }
 
   return {
@@ -49,7 +49,7 @@ function selectionOffsets(editor, fallback) {
   };
 }
 
-function placeCaret(editor, requestedOffset) {
+function placeCaret(editor, requestedOffset, variables) {
   const offset = Math.max(0, requestedOffset);
   const range = document.createRange();
   const selection = window.getSelection();
@@ -58,7 +58,7 @@ function placeCaret(editor, requestedOffset) {
   for (const node of editor.childNodes) {
     const token =
       node.nodeType === Node.ELEMENT_NODE && node.dataset?.smsToken
-        ? tokenDisplayFromElement(node)
+        ? tokenDisplayFromElement(node, variables)
         : "";
     const length = token.length || node.nodeValue?.length || 0;
     if (offset <= consumed + length) {
@@ -81,9 +81,9 @@ function placeCaret(editor, requestedOffset) {
   selection.addRange(range);
 }
 
-function renderEditorValue(editor, value, caretOffset = null) {
+function renderEditorValue(editor, value, caretOffset = null, variables = SMS_TEMPLATE_VARIABLES) {
   const fragment = document.createDocumentFragment();
-  splitSmsTemplateTokens(value).forEach((part) => {
+  splitSmsTemplateTokens(value, variables).forEach((part) => {
     if (part.type === "text") {
       fragment.appendChild(document.createTextNode(part.value));
       return;
@@ -97,14 +97,14 @@ function renderEditorValue(editor, value, caretOffset = null) {
     fragment.appendChild(token);
   });
   editor.replaceChildren(fragment);
-  if (caretOffset !== null) placeCaret(editor, caretOffset);
+  if (caretOffset !== null) placeCaret(editor, caretOffset, variables);
 }
 
-function editorNeedsNormalization(editor, rawValue) {
-  if (smsTemplateToDisplay(rawValue) !== rawValue) return true;
+function editorNeedsNormalization(editor, rawValue, variables) {
+  if (smsTemplateToDisplay(rawValue, variables) !== rawValue) return true;
   return Array.from(editor.childNodes).some((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      return SMS_TEMPLATE_VARIABLES.some((variable) =>
+      return variables.some((variable) =>
         String(node.nodeValue || "").includes(variable.display),
       );
     }
@@ -119,6 +119,10 @@ export default function SmsTemplateEditorReservationsComponent({
   onChange,
   invalid = false,
   compact = false,
+  variables = SMS_TEMPLATE_VARIABLES,
+  id = "sms_reminder_template",
+  labelId = "sms_reminder_template_label",
+  disabled = false,
 }) {
   const editorRef = useRef(null);
   const [charactersAdapted, setCharactersAdapted] = useState(false);
@@ -129,19 +133,20 @@ export default function SmsTemplateEditorReservationsComponent({
     const offsets = selectionOffsets(
       editorRef.current,
       lastSelectionRef.current,
+      variables,
     );
     lastSelectionRef.current = offsets;
     return offsets;
-  }, []);
+  }, [variables]);
 
   const replaceSelection = useCallback(
     (text) => {
       const editor = editorRef.current;
       if (!editor) return;
-      const selection = selectionOffsets(editor, lastSelectionRef.current);
+      const selection = selectionOffsets(editor, lastSelectionRef.current, variables);
       const insertion = insertSmsTemplateVariable(
         value,
-        smsTemplateToDisplay(text),
+        smsTemplateToDisplay(text, variables),
         selection.start,
         selection.end,
       );
@@ -149,8 +154,9 @@ export default function SmsTemplateEditorReservationsComponent({
         insertion.value,
         insertion.cursor,
         insertion.cursor,
+        variables,
       );
-      renderEditorValue(editor, normalized.value, normalized.end);
+      renderEditorValue(editor, normalized.value, normalized.end, variables);
       lastSelectionRef.current = {
         start: normalized.start,
         end: normalized.end,
@@ -159,31 +165,32 @@ export default function SmsTemplateEditorReservationsComponent({
       editor.focus();
       onChange(normalized.value);
     },
-    [onChange, value],
+    [onChange, value, variables],
   );
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    const logicalValue = smsTemplateToDisplay(value);
-    if (readEditorText(editor) !== logicalValue) {
-      renderEditorValue(editor, logicalValue);
+    const logicalValue = smsTemplateToDisplay(value, variables);
+    if (readEditorText(editor, variables) !== logicalValue) {
+      renderEditorValue(editor, logicalValue, null, variables);
       lastSelectionRef.current = {
         start: logicalValue.length,
         end: logicalValue.length,
       };
     }
-  }, [value]);
+  }, [value, variables]);
 
   function handleInput() {
     const editor = editorRef.current;
     if (!editor) return;
-    const selection = selectionOffsets(editor, lastSelectionRef.current);
-    const rawValue = readEditorText(editor);
+    const selection = selectionOffsets(editor, lastSelectionRef.current, variables);
+    const rawValue = readEditorText(editor, variables);
     const normalized = normalizeSmsTemplateSelectionToGsm7(
       rawValue,
       selection.start,
       selection.end,
+      variables,
     );
     const logicalValue = normalized.value;
     const logicalSelection = {
@@ -191,8 +198,8 @@ export default function SmsTemplateEditorReservationsComponent({
       end: normalized.end,
     };
 
-    if (normalized.adapted || editorNeedsNormalization(editor, rawValue)) {
-      renderEditorValue(editor, logicalValue, logicalSelection.end);
+    if (normalized.adapted || editorNeedsNormalization(editor, rawValue, variables)) {
+      renderEditorValue(editor, logicalValue, logicalSelection.end, variables);
     }
     lastSelectionRef.current = logicalSelection;
     setCharactersAdapted(normalized.adapted);
@@ -213,11 +220,12 @@ export default function SmsTemplateEditorReservationsComponent({
       selection.start,
       selection.end,
       event.key === "Backspace" ? "backward" : "forward",
+      variables,
     );
     if (!deletion) return;
 
     event.preventDefault();
-    renderEditorValue(editorRef.current, deletion.value, deletion.cursor);
+    renderEditorValue(editorRef.current, deletion.value, deletion.cursor, variables);
     lastSelectionRef.current = {
       start: deletion.cursor,
       end: deletion.cursor,
@@ -254,12 +262,12 @@ export default function SmsTemplateEditorReservationsComponent({
       <div className="min-w-0">
         <div
           ref={editorRef}
-          id="sms_reminder_template"
+          id={id}
           role="textbox"
-          aria-labelledby="sms_reminder_template_label"
+          aria-labelledby={labelId}
           aria-multiline="true"
           aria-invalid={invalid}
-          contentEditable
+          contentEditable={!disabled}
           suppressContentEditableWarning
           spellCheck
           onBeforeInput={handleBeforeInput}
@@ -287,10 +295,11 @@ export default function SmsTemplateEditorReservationsComponent({
           Variables
         </p>
         <div className="flex flex-wrap gap-2">
-          {SMS_TEMPLATE_VARIABLES.map((variable) => (
+          {variables.map((variable) => (
             <button
               key={variable.backend}
               type="button"
+              disabled={disabled}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => replaceSelection(variable.display)}
               className="rounded-full border border-darkBlue/10 bg-darkBlue/[0.035] px-2.5 py-1.5 text-left text-xs font-medium text-darkBlue transition hover:border-blue/30 hover:bg-blue/5"

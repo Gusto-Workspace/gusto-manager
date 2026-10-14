@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Loader2, Pencil, RefreshCw, X } from "lucide-react";
+import { Loader2, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import EditDestinationPolicyAdminComponent from "./edit-destination-policy.admin.component";
 import EditSenderIdAdminComponent from "./edit-sender-id.admin.component";
 import SenderStatusModalAdminComponent from "./sender-status-modal.admin.component";
@@ -39,6 +39,7 @@ export default function SmsMonitoringAdminComponent() {
   const [editingSender, setEditingSender] = useState(null);
   const [verifyingSender, setVerifyingSender] = useState("");
   const [senderFeedback, setSenderFeedback] = useState(null);
+  const [eligibleRestaurants, setEligibleRestaurants] = useState([]);
 
   const pendingSenders = data.senders.filter(
     (sender) => sender.value && sender.status === "pending",
@@ -59,6 +60,7 @@ export default function SmsMonitoringAdminComponent() {
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/admin/sms/senders`, config),
       ]);
       setData({ jobs: jobs.data.jobs || [], usage: usage.data.usage || [], policies: policies.data.policies || [], senders: senders.data.senders || [] });
+      setEligibleRestaurants(senders.data.eligibleRestaurants || []);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || "Impossible de charger le suivi SMS.");
     } finally {
@@ -73,16 +75,17 @@ export default function SmsMonitoringAdminComponent() {
     setSenderAction({ sender, status });
   }
 
-  function applySenderResult(restaurantId, result) {
+  function applySenderResult(restaurantId, result, restaurant = {}) {
     if (!result?.sender) return;
     setData((current) => ({
       ...current,
-      senders: current.senders.map((sender) =>
+      senders: current.senders.some((sender) => String(sender.restaurantId) === String(restaurantId)) ? current.senders.map((sender) =>
         String(sender.restaurantId) === String(restaurantId)
           ? { ...sender, ...result.sender }
           : sender,
-      ),
+      ) : [...current.senders, { ...restaurant, restaurantId, ...result.sender }],
     }));
+    setEligibleRestaurants((current) => current.filter((item) => String(item.restaurantId) !== String(restaurantId)));
     setSenderFeedback(
       result.verification?.status === "unavailable"
         ? {
@@ -162,6 +165,8 @@ export default function SmsMonitoringAdminComponent() {
                 <tr className="border-b">
                   <th className="p-2">État</th>
                   <th className="p-2">Restaurant</th>
+                  <th className="p-2">Module / événement</th>
+                  <th className="p-2">Référence</th>
                   <th className="p-2">Suivi</th>
                   <th className="p-2">Pays</th>
                   <th className="p-2">Crédits</th>
@@ -179,6 +184,8 @@ export default function SmsMonitoringAdminComponent() {
                     <td className="p-2">
                       {job.restaurantName || "Restaurant supprimé"}
                     </td>
+                    <td className="p-2">{job.module === "take_away" ? "Vente à emporter" : "Réservations"}<span className="block text-darkBlue/55">{job.eventLabel || "Rappel"}</span></td>
+                    <td className="p-2">{job.orderNumber || job.reservationId || "—"}</td>
                     <td className="p-2 align-top">
                       <SmsJobTracking job={job} />
                     </td>
@@ -200,7 +207,11 @@ export default function SmsMonitoringAdminComponent() {
           </div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">Consommation par période</h2><table className="min-w-full text-left text-xs"><thead><tr className="border-b"><th className="p-2">Restaurant</th><th className="p-2">Période</th><th className="p-2">Crédits en cours</th><th className="p-2">Consommés</th><th className="p-2">Inclus</th><th className="p-2">Dépassement</th></tr></thead><tbody>{data.usage.map((period) => <tr key={period._id} className="border-b border-darkBlue/5"><td className="p-2">{period.restaurantName || "Restaurant supprimé"}</td><td className="p-2">{new Date(period.periodStart).toLocaleDateString("fr-FR")} – {new Date(period.periodEnd).toLocaleDateString("fr-FR")}</td><td className="p-2">{period.reservedCredits}</td><td className="p-2">{period.consumedCredits}</td><td className="p-2">{period.includedCreditsConsumed}/{period.includedCredits}</td><td className="p-2">{period.overageCredits} · {Number(period.overageAmount || 0).toFixed(2)} €</td></tr>)}</tbody></table></div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4">
-            <h2 className="mb-3 font-semibold">Sender IDs</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="font-semibold">Sender IDs</h2>
+              <button type="button" onClick={() => setEditingSender({ restaurantId: "", value: "" })} disabled={!eligibleRestaurants.length} className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/15 px-3 py-2 text-sm disabled:opacity-50"><Plus className="size-4" />Ajouter un Sender ID</button>
+            </div>
+            {!eligibleRestaurants.length ? <p className="mb-3 text-xs text-darkBlue/55">Aucun restaurant abonné aux SMS sans Sender ID.</p> : null}
             {senderFeedback ? (
               <p
                 className={`mb-3 rounded-xl border px-3 py-2 text-sm ${
@@ -316,7 +327,7 @@ export default function SmsMonitoringAdminComponent() {
         </>
       )}
       {editingPolicy ? <EditDestinationPolicyAdminComponent policy={editingPolicy} onClose={() => setEditingPolicy(null)} onSaved={async () => { await load(); setEditingPolicy(null); }} /> : null}
-      {editingSender ? <EditSenderIdAdminComponent sender={editingSender} onClose={() => setEditingSender(null)} onSaved={async (result) => { applySenderResult(editingSender.restaurantId, result); setEditingSender(null); }} /> : null}
+      {editingSender ? <EditSenderIdAdminComponent sender={editingSender} restaurants={eligibleRestaurants} onClose={() => setEditingSender(null)} onSaved={async (result, restaurant) => { applySenderResult(restaurant.restaurantId, result, restaurant); setEditingSender(null); }} /> : null}
       <SenderStatusModalAdminComponent
         action={senderAction}
         error={senderError}

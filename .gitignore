@@ -19,6 +19,9 @@
 # next.js
 /client/.next/
 
+# Sorties locales reproductibles de diagnostic et benchmark
+/server/diagnostics/
+
 # production
 /client/build
 client/public/.DS_Store
