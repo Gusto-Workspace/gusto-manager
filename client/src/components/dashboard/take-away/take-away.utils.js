@@ -30,12 +30,12 @@ export const NEXT_STATUS = {
 
 export const STATUS_UI = {
   pending: {
-    color: "#93c5fd",
-    tone: "border-[#93c5fd] bg-[#eff6ff] text-[#2563eb]",
+    color: "#93C5FD",
+    tone: "border-[#93C5FD] bg-[#93C5FD26] text-[#1D4ED8]",
   },
   confirmed: {
-    color: "#4583ff",
-    tone: "border-blue/20 bg-blue/10 text-blue",
+    color: "#22C55E",
+    tone: "border-[#22C55E99] bg-[#22C55E26] text-[#16A34A]",
   },
   preparing: {
     color: "#634fd2",
@@ -50,8 +50,8 @@ export const STATUS_UI = {
     tone: "border-[#0ea5e933] bg-[#0ea5e91a] text-[#0369a1]",
   },
   completed: {
-    color: "#4ead7a",
-    tone: "border-green/20 bg-green/10 text-green",
+    color: "#94A3B8",
+    tone: "border-[#94A3B899] bg-[#94A3B826] text-[#64748B]",
   },
   canceled: {
     color: "#ff7664",

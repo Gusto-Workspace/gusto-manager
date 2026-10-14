@@ -679,40 +679,44 @@ export default function TakeAwayParametersComponent({ webapp = false }) {
               title="Accepter automatiquement les commandes"
               description="Si désactivé, les nouvelles commandes restent en attente jusqu’à validation."
             />
-            <div className="flex flex-col gap-1.5">
-              <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-darkBlue">
-                <label htmlFor="take-away-confirmation-deadline">
-                  Délai limite de validation avant retrait ou livraison
-                </label>
-                <button
-                  type="button"
-                  aria-label="Afficher l’explication du délai limite de validation"
-                  onClick={() => setShowConfirmationInfo(true)}
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-darkBlue/15 text-darkBlue/65 transition hover:bg-darkBlue/5"
-                >
-                  <Info className="size-3.5" />
-                </button>
+            {settingsForm.enabled && settingsForm.auto_accept ? (
+              <div aria-hidden="true" />
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-darkBlue">
+                  <label htmlFor="take-away-confirmation-deadline">
+                    Délai limite de validation avant retrait ou livraison
+                  </label>
+                  <button
+                    type="button"
+                    aria-label="Afficher l’explication du délai limite de validation"
+                    onClick={() => setShowConfirmationInfo(true)}
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-darkBlue/15 text-darkBlue/65 transition hover:bg-darkBlue/5"
+                  >
+                    <Info className="size-3.5" />
+                  </button>
+                </div>
+                <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
+                  <input
+                    id="take-away-confirmation-deadline"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    className="h-full min-w-0 flex-1 bg-transparent outline-none"
+                    value={settingsForm.confirmationDeadlineMinutes}
+                    onChange={(event) =>
+                      updateSettings("operations", {
+                        confirmationDeadlineMinutes: event.target.value,
+                      })
+                    }
+                  />
+                  <span className="ml-2 text-sm font-semibold text-darkBlue/55">
+                    minutes
+                  </span>
+                </div>
               </div>
-              <div className="flex h-11 items-center rounded-xl border border-darkBlue/10 bg-white px-3 focus-within:border-blue/60 focus-within:ring-2 focus-within:ring-blue/20">
-                <input
-                  id="take-away-confirmation-deadline"
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputMode="numeric"
-                  className="h-full min-w-0 flex-1 bg-transparent outline-none"
-                  value={settingsForm.confirmationDeadlineMinutes}
-                  onChange={(event) =>
-                    updateSettings("operations", {
-                      confirmationDeadlineMinutes: event.target.value,
-                    })
-                  }
-                />
-                <span className="ml-2 text-sm font-semibold text-darkBlue/55">
-                  minutes
-                </span>
-              </div>
-            </div>
+            )}
             <ToggleField
               checked={settingsForm.partialRejectionEmailEnabled}
               onChange={(checked) =>
