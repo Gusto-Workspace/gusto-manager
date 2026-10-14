@@ -460,7 +460,9 @@ export default function DashboardComponent(props) {
               )}
             </MonthlyGiftCardSalesChart>
           </div>
-          <div className="grid grid-cols-1 gap-2 midTablet:gap-4 w-full">
+          <div className={`grid grid-cols-1 gap-2 midTablet:gap-4 w-full ${
+            !hasGiftCardModule ? "desktop:flex desktop:flex-col desktop:justify-end" : ""
+          }`}>
             {hasGiftCardModule &&
               giftDashboardData.map(
                 ({ key, title, IconComponent, getCounts, emptyLabel }) => {
