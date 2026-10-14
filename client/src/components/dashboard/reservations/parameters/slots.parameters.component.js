@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
-import { Clock, Save, Check, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  Info,
+  Save,
+  Check,
+  Loader2,
+} from "lucide-react";
+import SettingsInfoModal from "../../_shared/settings-info-modal.component";
+import { getSmartAvailabilitySetupState } from "./smart-availability.guard";
 import {
   generateReservationTimeOptions,
   sortReservationTimesByServiceOrder,
@@ -54,9 +63,23 @@ function resolveSlotLimit(limits, day, time) {
   };
 }
 
+function formatCustomPendingDuration(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const duration = [
+    hours ? `${hours} h` : "",
+    remainingMinutes ? `${remainingMinutes} min` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return `${duration} (durée actuelle)`;
+}
+
 export default function SlotsParametersComponent({
   register,
   watch,
+  setValue,
   errors,
   auto_accept,
   restaurantData,
@@ -70,6 +93,7 @@ export default function SlotsParametersComponent({
   onSlotCoverLimitsChange,
 }) {
   const [selectedDay, setSelectedDay] = useState(0);
+  const [showPendingDurationInfo, setShowPendingDurationInfo] = useState(false);
 
   const card = "rounded-3xl border border-darkBlue/10 bg-white/70 shadow-sm";
   const cardInner = "px-2 py-4 mobile:p-4 midTablet:p-6";
@@ -225,6 +249,27 @@ export default function SlotsParametersComponent({
 
   const selectedDayLabel =
     DAYS.find((day) => day.value === selectedDay)?.label || "ce jour";
+  const pendingDurationOptions = [60, 120, 300, 720, 1440];
+  const pendingDurationMinutes = Number(watch("pending_duration_minutes") ?? 120);
+  const pendingDurationUntilReservation =
+    watch("pending_duration_unlimited") === true;
+  const hasCustomPendingDuration =
+    Number.isFinite(pendingDurationMinutes) &&
+    pendingDurationMinutes > 0 &&
+    !pendingDurationOptions.includes(pendingDurationMinutes);
+  const floorplan = restaurantData?.reservationsSettings?.floorplan;
+  const floorplanCanBeUsed =
+    floorplan?.enabled === true &&
+    getSmartAvailabilitySetupState({
+      tablesCatalog: restaurantData?.reservationsSettings?.tables,
+      floorplanRooms: floorplan?.rooms,
+    }).canEnable;
+  const showLongPendingDurationWarning =
+    !auto_accept &&
+    floorplanCanBeUsed &&
+    (pendingDurationUntilReservation ||
+      pendingDurationMinutes === 720 ||
+      pendingDurationMinutes === 1440);
 
   return (
     <div className={card}>
@@ -284,70 +329,6 @@ export default function SlotsParametersComponent({
         <div className={divider} />
 
         <div className="grid grid-cols-1 midTablet:grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-            <p className="font-semibold text-darkBlue">
-              Intervalle entre les créneaux
-            </p>
-            <p className="text-xs text-darkBlue/50">
-              Temps minimum entre deux créneaux.
-            </p>
-
-            <div className="mt-3">
-              <select
-                id="interval"
-                {...register("interval", { required: true })}
-                className={selectBase}
-              >
-                <option value="15">15 min</option>
-                <option value="30">30 min</option>
-                <option value="45">45 min</option>
-                <option value="60">1 h</option>
-              </select>
-
-              {errors?.interval && (
-                <p className="mt-2 text-xs text-red">
-                  Veuillez choisir un intervalle.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 h-fit">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-darkBlue">
-                  Accepter automatiquement les demandes de réservations de votre
-                  site internet
-                </p>
-                <p className="text-xs text-darkBlue/50 mt-1">
-                  Les réservations du site passent directement en “Confirmée”.
-                </p>
-              </div>
-
-              <label className={toggleWrap}>
-                <span
-                  className={[
-                    toggleBase,
-                    watch("auto_accept") ? toggleOn : toggleOff,
-                  ].join(" ")}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    id="auto_accept"
-                    {...register("auto_accept")}
-                  />
-                  <span
-                    className={[
-                      toggleDot,
-                      watch("auto_accept") ? toggleDotOn : toggleDotOff,
-                    ].join(" ")}
-                  />
-                </span>
-              </label>
-            </div>
-          </div>
-
           <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 h-fit">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -389,34 +370,154 @@ export default function SlotsParametersComponent({
             </div>
           </div>
 
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3 h-fit">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-darkBlue">
+                  Accepter automatiquement les demandes de réservations de votre
+                  site internet
+                </p>
+                <p className="text-xs text-darkBlue/50 mt-1">
+                  Les réservations du site passent directement en “Confirmée”.
+                </p>
+              </div>
+
+              <label className={toggleWrap}>
+                <span
+                  className={[
+                    toggleBase,
+                    watch("auto_accept") ? toggleOn : toggleOff,
+                  ].join(" ")}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    id="auto_accept"
+                    {...register("auto_accept")}
+                  />
+                  <span
+                    className={[
+                      toggleDot,
+                      watch("auto_accept") ? toggleDotOn : toggleDotOff,
+                    ].join(" ")}
+                  />
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
+            <p className="font-semibold text-darkBlue">
+              Intervalle entre les créneaux
+            </p>
+            <p className="text-xs text-darkBlue/50">
+              Temps minimum entre deux créneaux.
+            </p>
+
+            <div className="mt-3">
+              <select
+                id="interval"
+                {...register("interval", { required: true })}
+                className={selectBase}
+              >
+                <option value="15">15 min</option>
+                <option value="30">30 min</option>
+                <option value="45">45 min</option>
+                <option value="60">1 h</option>
+              </select>
+
+              {errors?.interval && (
+                <p className="mt-2 text-xs text-red">
+                  Veuillez choisir un intervalle.
+                </p>
+              )}
+            </div>
+          </div>
+
           {!auto_accept && (
             <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-3">
-              <p className="font-semibold text-darkBlue mb-3">
-                Durée de maintien d’une réservation en attente (minutes)
-              </p>
+              <div className="mb-3 flex items-center gap-2">
+                <label
+                  htmlFor="pending_duration_minutes"
+                  className="font-semibold text-darkBlue"
+                >
+                  Durée de validation d’une réservation en attente
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPendingDurationInfo(true)}
+                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-darkBlue/15 text-darkBlue/60 transition hover:bg-darkBlue/5"
+                  aria-label="Informations sur la durée de validation"
+                >
+                  <Info className="size-3" />
+                </button>
+              </div>
 
-              <input
-                type="number"
-                min="1"
-                onWheel={(e) => e.currentTarget.blur()}
-                className={inputBase}
+              <select
+                id="pending_duration_minutes"
+                value={
+                  pendingDurationUntilReservation
+                    ? "until-reservation"
+                    : String(pendingDurationMinutes || 120)
+                }
+                className={selectBase}
                 {...register("pending_duration_minutes", {
-                  required: !auto_accept,
                   min: 1,
                   valueAsNumber: true,
                 })}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "until-reservation") {
+                    setValue("pending_duration_unlimited", true, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    });
+                    return;
+                  }
+
+                  setValue("pending_duration_minutes", Number(value), {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setValue("pending_duration_unlimited", false, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              >
+                {hasCustomPendingDuration && !pendingDurationUntilReservation && (
+                  <option value={String(pendingDurationMinutes)}>
+                    {formatCustomPendingDuration(pendingDurationMinutes)}
+                  </option>
+                )}
+                <option value="60">1 heure</option>
+                <option value="120">2 heures</option>
+                <option value="300">5 heures</option>
+                <option value="720">12 heures</option>
+                <option value="1440">24 heures</option>
+                <option value="until-reservation">
+                  Jusqu’à l’heure de la réservation
+                </option>
+              </select>
+
+              <input
+                type="hidden"
+                {...register("pending_duration_unlimited")}
               />
 
-              <p className="text-xs text-darkBlue/50 mt-2">
-                Lorsqu’une réservation est en attente de validation, elle
-                bloque la table pendant cette durée. Si la fermeture survient
-                avant la fin du délai, le temps restant est reporté au prochain
-                créneau d’ouverture.
-              </p>
-
               {errors?.pending_duration_minutes && (
-                <p className="text-red text-sm mt-1">
-                  Veuillez saisir une durée valide supérieure à 0.
+                <p className="mt-1 text-sm text-red">
+                  Veuillez choisir une durée valide.
+                </p>
+              )}
+
+              {showLongPendingDurationWarning && (
+                <p className="mt-2 flex items-start gap-2 rounded-xl border border-orange/20 bg-orange/10 p-2 text-xs text-darkBlue/70">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange" />
+                  <span>
+                    Une réservation en attente peut bloquer une table pendant
+                    une longue période, jusqu’à l’heure prévue de la réservation.
+                  </span>
                 </p>
               )}
             </div>
@@ -589,6 +690,24 @@ export default function SlotsParametersComponent({
           </div>
         </div>
       </div>
+      {showPendingDurationInfo && (
+        <SettingsInfoModal
+          title="Durée de validation d’une réservation en attente"
+          onClose={() => setShowPendingDurationInfo(false)}
+        >
+          {floorplanCanBeUsed
+            ? "La réservation reste en attente jusqu’à sa validation ou son expiration et bloque la table pendant ce temps."
+            : "La réservation reste en attente jusqu’à sa validation ou son expiration et compte dans les disponibilités pendant ce temps."}{" "}
+          Le délai suit les horaires d’ouverture : s’il est interrompu par une
+          fermeture, il reprend à la prochaine ouverture. Il ne dépasse jamais
+          l’heure prévue de la réservation. À l’échéance, elle passe au statut
+          « Expirée » et libère les disponibilités. L’option « Jusqu’à l’heure
+          de la réservation » supprime le délai avant cette échéance. Si les
+          horaires d’ouverture ne sont pas configurés, un délai de secours de
+          12 heures est appliqué. La réservation expirée reste consultable
+          selon la durée de conservation configurée dans les automatisations.
+        </SettingsInfoModal>
+      )}
     </div>
   );
 }

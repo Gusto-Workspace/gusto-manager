@@ -287,6 +287,7 @@ const reservationParametersSchema = new mongoose.Schema({
   auto_accept: { type: Boolean, default: true },
   interval: { type: Number, default: 30 },
   pending_duration_minutes: { type: Number, min: 1, default: 120 },
+  pending_duration_unlimited: { type: Boolean, default: false },
   slot_cover_limits: {
     type: [reservationSlotCoverLimitSchema],
     default: [],

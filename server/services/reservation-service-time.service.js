@@ -65,6 +65,46 @@ function buildReservationDateTime(reservationDateUTC, reservationTime) {
   return reservationDateTime;
 }
 
+function capPendingReservationDeadline(
+  pendingDeadline,
+  reservationDate,
+  reservationTime,
+) {
+  const reservationStart = reservationDate
+    ? buildReservationDateTime(reservationDate, reservationTime)
+    : null;
+  if (!reservationStart) {
+    return pendingDeadline ? new Date(pendingDeadline) : null;
+  }
+
+  if (!pendingDeadline) return reservationStart;
+
+  const deadline = new Date(pendingDeadline);
+  if (Number.isNaN(deadline.getTime()) || deadline > reservationStart) {
+    return reservationStart;
+  }
+
+  return deadline;
+}
+
+function isPendingReservationExpired({
+  pendingExpiresAt,
+  reservationDate,
+  reservationTime,
+  now = new Date(),
+} = {}) {
+  const currentTime = new Date(now).getTime();
+  if (!Number.isFinite(currentTime)) return false;
+
+  const deadline = pendingExpiresAt ? new Date(pendingExpiresAt).getTime() : NaN;
+  if (Number.isFinite(deadline) && currentTime >= deadline) return true;
+
+  const reservationStart = reservationDate
+    ? buildReservationDateTime(reservationDate, reservationTime)
+    : null;
+  return Boolean(reservationStart && currentTime >= reservationStart.getTime());
+}
+
 function buildServiceRangeDateTimes(serviceDate, openTime, closeTime) {
   const date = new Date(serviceDate);
   if (Number.isNaN(date.getTime())) return null;
@@ -92,8 +132,10 @@ function buildServiceRangeDateTimes(serviceDate, openTime, closeTime) {
 
 module.exports = {
   buildReservationDateTime,
+  capPendingReservationDeadline,
   buildServiceRangeDateTimes,
   getServiceBucketFromTime,
+  isPendingReservationExpired,
   isOvernightServiceRange,
   isTimeWithinServiceRange,
   minutesFromHHmm,
