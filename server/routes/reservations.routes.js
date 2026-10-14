@@ -59,6 +59,7 @@ const {
 } = require("../services/reservation-service-closure.service");
 const {
   buildReservationDateTime,
+  capPendingReservationDeadline,
   getServiceBucketFromTime,
   isOvernightServiceRange,
   isTimeWithinServiceRange,
@@ -1236,8 +1237,20 @@ function getSmartAvailabilitySetupStatus(parameters = {}) {
   };
 }
 
-function computePendingExpiresAt(restaurant, anchorDate = null) {
+function computePendingExpiresAt(
+  restaurant,
+  anchorDate = null,
+  reservationDate = null,
+  reservationTime = null,
+) {
   const now = anchorDate instanceof Date ? anchorDate : new Date();
+  const capAtReservationStart = (expiresAt) =>
+    capPendingReservationDeadline(expiresAt, reservationDate, reservationTime);
+
+  if (restaurant?.reservationsSettings?.pending_duration_unlimited === true) {
+    return capAtReservationStart(null);
+  }
+
   const opening = restaurant?.opening_hours;
 
   const PENDING_MINUTES = Math.max(
@@ -1247,7 +1260,9 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
 
   try {
     if (!Array.isArray(opening) || opening.length !== 7) {
-      return new Date(now.getTime() + 12 * 60 * 60 * 1000);
+      return capAtReservationStart(
+        new Date(now.getTime() + 12 * 60 * 60 * 1000),
+      );
     }
 
     let minutesRemaining = PENDING_MINUTES;
@@ -1292,7 +1307,9 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
         const availableMinutes = Math.floor((closeTime - start) / 60000);
 
         if (availableMinutes >= minutesRemaining) {
-          return new Date(start.getTime() + minutesRemaining * 60000);
+          return capAtReservationStart(
+            new Date(start.getTime() + minutesRemaining * 60000),
+          );
         }
 
         minutesRemaining -= availableMinutes;
@@ -1304,9 +1321,13 @@ function computePendingExpiresAt(restaurant, anchorDate = null) {
       cursor.setHours(0, 0, 0, 0);
     }
 
-    return new Date(now.getTime() + 12 * 60 * 60 * 1000);
+    return capAtReservationStart(
+      new Date(now.getTime() + 12 * 60 * 60 * 1000),
+    );
   } catch {
-    return new Date(now.getTime() + 12 * 60 * 60 * 1000);
+    return capAtReservationStart(
+      new Date(now.getTime() + 12 * 60 * 60 * 1000),
+    );
   }
 }
 
@@ -2610,7 +2631,12 @@ async function updateReservationDetailsInternal({
     nextUpdateData.status = autoAccept ? "Confirmed" : "Pending";
     nextUpdateData.pendingExpiresAt = autoAccept
       ? null
-      : computePendingExpiresAt(restaurantLean);
+      : computePendingExpiresAt(
+          restaurantLean,
+          null,
+          candidateDate,
+          candidateTime,
+        );
   }
 
   const statusExplicit = Object.prototype.hasOwnProperty.call(
@@ -3201,7 +3227,12 @@ async function updateReservationStatusInternal({
 
     if (nextStatus === "Pending") {
       if (!reservation.pendingExpiresAt) {
-        reservation.pendingExpiresAt = computePendingExpiresAt(restaurant);
+        reservation.pendingExpiresAt = computePendingExpiresAt(
+          restaurant,
+          null,
+          reservation.reservationDate,
+          reservation.reservationTime,
+        );
       }
     } else {
       reservation.pendingExpiresAt = null;
@@ -4178,7 +4209,14 @@ async function finalizePublicBankHoldReservation({
   });
 
   const pendingExpiresAt =
-    finalStatus === "Pending" ? computePendingExpiresAt(restaurant) : null;
+    finalStatus === "Pending"
+      ? computePendingExpiresAt(
+          restaurant,
+          now,
+          reservation.reservationDate,
+          reservation.reservationTime,
+        )
+      : null;
 
   const finalizedReservation = await ReservationModel.findOneAndUpdate(
     {
@@ -6002,7 +6040,12 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
         const activeEnd = getActiveBlockedRangeEnd(params, now);
         const anchor = activeEnd || now;
 
-        pendingExpiresAt = computePendingExpiresAt(restaurant, anchor);
+        pendingExpiresAt = computePendingExpiresAt(
+          restaurant,
+          anchor,
+          normalizedDay,
+          normalizedTime,
+        );
       }
 
       let assignedTable = null;

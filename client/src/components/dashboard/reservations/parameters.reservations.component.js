@@ -186,6 +186,7 @@ export default function ParametersReservationComponent(props) {
       auto_accept: true,
       interval: "30",
       pending_duration_minutes: 120,
+      pending_duration_unlimited: false,
       refuse_public_reservations_during_service: false,
       max_covers_lunch: "",
       max_covers_dinner: "",
@@ -425,6 +426,8 @@ export default function ParametersReservationComponent(props) {
         auto_accept: parameters.auto_accept ?? true,
         interval: String(parameters.interval ?? "30"),
         pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+        pending_duration_unlimited:
+          parameters.pending_duration_unlimited === true,
         refuse_public_reservations_during_service:
           parameters.refuse_public_reservations_during_service ?? false,
         max_covers_lunch: nextMaxCoversLunch,
@@ -476,6 +479,8 @@ export default function ParametersReservationComponent(props) {
           auto_accept: parameters.auto_accept ?? true,
           interval: String(parameters.interval ?? "30"),
           pending_duration_minutes: parameters.pending_duration_minutes ?? 120,
+          pending_duration_unlimited:
+            parameters.pending_duration_unlimited === true,
           refuse_public_reservations_during_service:
             parameters.refuse_public_reservations_during_service ?? false,
           max_covers_lunch: nextMaxCoversLunch,
@@ -544,6 +549,7 @@ export default function ParametersReservationComponent(props) {
 
   const interval = watch("interval");
   const pending_duration_minutes = watch("pending_duration_minutes");
+  const pending_duration_unlimited = watch("pending_duration_unlimited");
   const max_covers_lunch = watch("max_covers_lunch");
   const max_covers_dinner = watch("max_covers_dinner");
   const deletion_duration_minutes = watch("deletion_duration_minutes");
@@ -627,6 +633,7 @@ export default function ParametersReservationComponent(props) {
       auto_accept: Boolean(auto_accept),
       interval: String(interval ?? ""),
       pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+      pending_duration_unlimited: Boolean(pending_duration_unlimited),
       refuse_public_reservations_during_service: Boolean(
         refuse_public_reservations_during_service,
       ),
@@ -640,6 +647,7 @@ export default function ParametersReservationComponent(props) {
     auto_accept,
     interval,
     pending_duration_minutes,
+    pending_duration_unlimited,
     refuse_public_reservations_during_service,
     max_covers_lunch,
     max_covers_dinner,
@@ -819,6 +827,9 @@ export default function ParametersReservationComponent(props) {
         partial = {
           auto_accept: aa,
           interval: Number(interval),
+          pending_duration_unlimited: Boolean(
+            pending_duration_unlimited,
+          ),
           pending_duration_minutes: aa
             ? currentParams.pending_duration_minutes || 120
             : Number(pending_duration_minutes),
@@ -992,6 +1003,9 @@ export default function ParametersReservationComponent(props) {
           auto_accept: Boolean(auto_accept),
           interval: String(interval ?? ""),
           pending_duration_minutes: Number(pending_duration_minutes ?? 0),
+          pending_duration_unlimited: Boolean(
+            pending_duration_unlimited,
+          ),
           refuse_public_reservations_during_service: Boolean(
             refuse_public_reservations_during_service,
           ),
@@ -1157,6 +1171,7 @@ export default function ParametersReservationComponent(props) {
           <SlotsParametersComponent
             register={register}
             watch={watch}
+            setValue={setValue}
             errors={errors}
             auto_accept={auto_accept}
             restaurantData={

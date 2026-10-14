@@ -13,6 +13,7 @@ const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
 const {
   buildReservationDateTime,
   getServiceBucketFromTime,
+  isPendingReservationExpired,
 } = require("../reservation-service-time.service");
 
 const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
@@ -134,6 +135,40 @@ async function transitionReservationStatus({ reservation, nextStatus }) {
   return true;
 }
 
+async function expirePendingReservation(reservation) {
+  const expiredAt = new Date();
+  const updatedReservation = await ReservationModel.findOneAndUpdate(
+    { _id: reservation?._id, status: "Pending" },
+    {
+      $set: {
+        status: "Expired",
+        activatedAt: null,
+        finishedAt: null,
+        expiredAt,
+        noShowAt: null,
+        reminder24hDueAt: null,
+        reminder24hSentAt: null,
+        reminder24hLockedAt: null,
+      },
+    },
+    { new: true },
+  );
+
+  if (!updatedReservation) return false;
+
+  if (updatedReservation.customer) {
+    await onReservationStatusChanged(
+      updatedReservation.customer,
+      updatedReservation,
+      "Pending",
+      "Expired",
+    );
+  }
+
+  await broadcastReservationUpdated(updatedReservation);
+  return true;
+}
+
 function getRestaurantStripeSecretKey(restaurant) {
   const encrypted = String(restaurant?.stripeSecretKey || "").trim();
   if (!encrypted) return null;
@@ -240,6 +275,7 @@ async function runReservationLifecycleCron() {
         status: {
           $in: [
             "Confirmed",
+            "Pending",
             "Active",
             "Late",
             "Waitlist",
@@ -324,6 +360,31 @@ async function runReservationLifecycleCron() {
         reservation,
         nextStatus: "Expired",
       });
+    }
+
+    const expiredPendingReservations = await ReservationModel.find({
+      status: "Pending",
+      $or: [
+        { pendingExpiresAt: { $ne: null, $lte: now } },
+        { reservationDate: { $lte: getCurrentServiceDayEnd(now) } },
+      ],
+    }).select(
+      "_id restaurant_id customer customerFirstName customerLastName reservationDate reservationTime status pendingExpiresAt activatedAt finishedAt expiredAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",
+    );
+
+    for (const reservation of expiredPendingReservations) {
+      if (
+        !isPendingReservationExpired({
+          pendingExpiresAt: reservation.pendingExpiresAt,
+          reservationDate: reservation.reservationDate,
+          reservationTime: reservation.reservationTime,
+          now,
+        })
+      ) {
+        continue;
+      }
+
+      await expirePendingReservation(reservation);
     }
 
     const deletionGroups =
