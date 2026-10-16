@@ -67,6 +67,21 @@ Cordialement,
 L'équipe de {{restaurantName}}`,
   },
   {
+    key: "rejected",
+    type: "rejected",
+    label: "Réservation refusée",
+    allowedVariables: COMMON_TEMPLATE_VARIABLES,
+    defaultSubject: "Votre demande de réservation a été refusée",
+    defaultBody: `Bonjour {{customerName}},
+
+Nous sommes désolés, mais nous ne pouvons pas accepter votre demande de réservation pour {{guestCountLabel}} le {{reservationDate}} à {{reservationTime}}.
+
+N’hésitez pas à réserver un nouveau créneau sur notre site internet.
+
+Cordialement,
+L'équipe de {{restaurantName}}`,
+  },
+  {
     key: "bank_hold_action_required",
     type: "bankHoldActionRequired",
     label: "Validation de l’empreinte bancaire",
@@ -90,17 +105,6 @@ L'équipe de {{restaurantName}}`,
 ];
 
 const NON_EDITABLE_TEMPLATE_DEFINITIONS = {
-  rejected: {
-    subject: "Votre demande de réservation a été refusée",
-    body: `Bonjour {{customerName}},
-
-Nous sommes désolés, mais nous ne pouvons pas accepter votre demande de réservation pour {{guestCountLabel}} le {{reservationDate}} à {{reservationTime}}.
-
-N’hésitez pas à réserver un nouveau créneau sur notre site internet.
-
-Cordialement,
-L'équipe de {{restaurantName}}`,
-  },
   reminder24h: {
     subject: "Rappel de votre réservation demain",
     body: `Bonjour {{customerName}},

@@ -65,6 +65,22 @@ Cordialement,
 L'équipe de {{restaurantName}}`,
   },
   {
+    key: "rejected",
+    title: "Réservation refusée",
+    description:
+      "Envoyé quand le restaurant refuse une réservation en attente.",
+    allowedVariables: COMMON_TEMPLATE_VARIABLES,
+    defaultSubject: "Votre demande de réservation a été refusée",
+    defaultBody: `Bonjour {{customerName}},
+
+Nous sommes désolés, mais nous ne pouvons pas accepter votre demande de réservation pour {{guestCountLabel}} le {{reservationDate}} à {{reservationTime}}.
+
+N’hésitez pas à réserver un nouveau créneau sur notre site internet.
+
+Cordialement,
+L'équipe de {{restaurantName}}`,
+  },
+  {
     key: "bank_hold_action_required",
     title: "Validation de l’empreinte bancaire",
     description:

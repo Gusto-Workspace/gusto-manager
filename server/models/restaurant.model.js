@@ -158,6 +158,10 @@ const reservationEmailTemplatesSchema = new mongoose.Schema(
       type: reservationEmailTemplateContentSchema,
       default: () => ({}),
     },
+    rejected: {
+      type: reservationEmailTemplateContentSchema,
+      default: () => ({}),
+    },
     bank_hold_action_required: {
       type: reservationEmailTemplateContentSchema,
       default: () => ({}),
