@@ -14,6 +14,7 @@ const EmployeeModel = require("../models/employee.model");
 const PushSubscriptionModel = require("../models/push-subscription.model");
 const RestaurantModel = require("../models/restaurant.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
+const NotificationModel = require("../models/notification.model");
 const {
   cleanupCompletedTakeAwayOrders,
   listImportableSourceItems,
@@ -23,10 +24,28 @@ const {
 } = require("../services/take-away.service");
 const { onTakeAwayOrderCreated } = require("../services/customers.service");
 const {
+  createAndBroadcastNotification,
   buildNotificationContent,
   buildNotificationMeta,
   buildPushLink,
 } = require("../services/notifications.service");
+
+test("a durable duplicate notification is reused without another push or broadcast", async (t) => {
+  const create = NotificationModel.create;
+  const find = NotificationModel.findOne;
+  const count = NotificationModel.countDocuments;
+  const existing = { _id: "notification-existing" };
+  NotificationModel.create = async () => { throw Object.assign(new Error("duplicate"), { code: 11000 }); };
+  NotificationModel.findOne = async (filter) => {
+    assert.equal(filter.dedupeKey, "takeaway_order:order-1:created");
+    return existing;
+  };
+  NotificationModel.countDocuments = async () => { throw new Error("A duplicate must stop before broadcasting"); };
+  t.after(() => { NotificationModel.create = create; NotificationModel.findOne = find; NotificationModel.countDocuments = count; });
+  assert.equal(await createAndBroadcastNotification({ restaurantId: "restaurant-1",
+    module: "take_away", type: "takeaway_order_created", data: {},
+    dedupeKey: "takeaway_order:order-1:created" }), existing);
+});
 const transactionsRouter = require("../routes/transactions.routes");
 const pushRouter = require("../routes/push-subscription.routes");
 const notificationsRouter = require("../routes/notifications.routes");

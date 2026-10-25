@@ -32,11 +32,11 @@ const {
   updateOrderStatus,
   loadRestaurantForTakeAway,
   validateTakeAwayStripeEventEnvelope,
-  handleTakeAwayStripeWebhookEvent,
   normalizeTakeAwayDateKey,
   getBlockedTakeAwayDates,
 } = require("../services/take-away.service");
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const { processTakeAwayStripeEvent } = require("../services/take-away-stripe-events.service");
 const {
   rejectItems,
   lineId,
@@ -184,6 +184,7 @@ function serializePublicOrder(input) {
     remainingAmountCents:
       order.remainingAmountCents ?? Math.round(order.total * 100),
     refundedAmountCents: order.refundedAmountCents || 0,
+    stripeRefundStatus: order.stripeRefundStatus || "",
     adjustments: (order.adjustments || []).map((operation) => ({
       id: operation.id,
       type: operation.type,
@@ -220,21 +221,27 @@ router.post(
 
       const restaurant = await loadRestaurantForTakeAway(restaurantId);
       if (!restaurant) {
-        return res.status(404).json({ message: "Restaurant not found" });
+        return res.status(404).json({ error: "Restaurant not found", code: "TAKE_AWAY_RESTAURANT_NOT_FOUND" });
       }
-      if (restaurant.options?.take_away !== true) {
-        return res
-          .status(403)
-          .json({ message: "Take-away module unavailable" });
-      }
-
-      const result = await handleTakeAwayStripeWebhookEvent({
+      // Existing payments still need reconciliation after a module is disabled.
+      const result = await processTakeAwayStripeEvent({
         event,
         restaurant,
       });
       return res.status(200).json({ received: true, handled: result.handled });
     } catch (error) {
-      return handleError(res, error);
+      console.error("[take-away-stripe-event-error]", {
+        eventId: req.body?.event?.id,
+        eventType: req.body?.event?.type,
+        restaurantId: req.body?.restaurantId,
+        status: error.status || 500,
+        code: error.code || "STRIPE_PROCESSING_FAILED",
+        errorType: error.name || "Error",
+      });
+      return res.status(error.status || 500).json({
+        error: "Traitement webhook impossible",
+        code: error.code || "STRIPE_PROCESSING_FAILED",
+      });
     }
   },
 );
@@ -374,8 +381,18 @@ router.post(
         restaurant,
         order,
       });
+      // Creation/reuse can reconcile a success or race a cancellation. Return
+      // the stored state, not the document loaded before the Stripe request.
+      const currentOrder = await findPublicOrderByAccessToken({
+        restaurantId: req.params.restaurantId,
+        orderId: req.params.orderId,
+        token: getPublicOrderToken(req),
+      });
+      if (!currentOrder) {
+        return res.status(503).json({ message: "Le statut de la commande doit être vérifié. Veuillez réessayer." });
+      }
       return res.status(200).json({
-        order: serializePublicOrder(order),
+        order: serializePublicOrder(currentOrder),
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
       });

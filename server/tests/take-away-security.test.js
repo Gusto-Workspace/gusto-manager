@@ -25,12 +25,14 @@ const takeAwayMailerServicePath = require.resolve(
 );
 const { buildTakeAwayEmail } = require(takeAwayMailerServicePath);
 const emailCalls = [];
+let emailError = null;
 require.cache[takeAwayMailerServicePath] = {
   id: takeAwayMailerServicePath,
   filename: takeAwayMailerServicePath,
   loaded: true,
   exports: {
     sendTakeAwayOrderEmail: async (payload) => {
+      if (emailError) throw emailError;
       emailCalls.push(payload);
       return { messageId: `email-${emailCalls.length}` };
     },
@@ -41,6 +43,7 @@ const {
   assertStatusTransition,
   buildOrderItems,
   confirmOrderPayment,
+  finalizePaidOrder,
   createOrderPaymentIntent,
   createTakeAwayOrder,
   expirePendingTakeAwayOrders,
@@ -451,6 +454,292 @@ test("a public order cannot be loaded with its id alone", async (t) => {
     }),
     order,
   );
+});
+
+test("late failures/cancellations never rewrite a paid, refunded or replaced payment", async (t) => {
+  const find = TakeAwayOrderModel.findOne;
+  const write = TakeAwayOrderModel.findOneAndUpdate;
+  let writes = 0;
+  TakeAwayOrderModel.findOneAndUpdate = async () => { writes++; throw new Error("Unexpected payment rewrite"); };
+  t.after(() => { TakeAwayOrderModel.findOne = find; TakeAwayOrderModel.findOneAndUpdate = write; });
+  for (const state of [
+    { paymentStatus: "paid" }, { paymentStatus: "refunded" },
+    { paymentStatus: "pending", stripePaymentIntentId: "pi_replacement" },
+    { paymentStatus: "failed", status: "canceled" },
+  ]) {
+    const current = orderDocument({ stripePaymentIntentId: "pi_original", ...state });
+    TakeAwayOrderModel.findOne = async () => current;
+    const intent = matchingPaymentIntent({ ...current, stripePaymentIntentId: "pi_original" }, { status: "canceled" });
+    for (const type of ["payment_intent.payment_failed", "payment_intent.canceled"]) {
+      await handleTakeAwayStripeWebhookEvent({ restaurant: { _id: current.restaurant_id },
+        event: { type, data: { object: intent } } });
+    }
+  }
+  assert.equal(writes, 0);
+});
+
+test("an on-site order can never create a Stripe PaymentIntent", async () => {
+  let stripeCalls = 0;
+  await assert.rejects(createOrderPaymentIntent({ restaurant: {},
+    order: orderDocument({ paymentMethod: "on_site", paymentStatus: "not_required" }),
+    stripeInstance: { paymentIntents: { create: async () => { stripeCalls++; } } },
+  }), /Paiement en ligne non requis/);
+  assert.equal(stripeCalls, 0);
+  const onSite = orderDocument({ paymentMethod: "on_site", stripePaymentIntentId: "pi_legacy" });
+  assert.throws(() => assertPaymentIntentMatchesOrder(matchingPaymentIntent(onSite), onSite),
+    { code: "ORDER_PAYMENT_METHOD_MISMATCH" });
+});
+
+test("preflight: historical payment finalization preserves a concurrent status change", async (t) => {
+  const find = TakeAwayOrderModel.findOne;
+  const write = TakeAwayOrderModel.findOneAndUpdate;
+  const snapshot = orderDocument({ stripePaymentIntentId: "pi_historical", financialVersion: 0 });
+  const current = orderDocument({ stripePaymentIntentId: "pi_historical", financialVersion: 0 });
+  let attempts = 0;
+  let paymentWrites = 0;
+  TakeAwayOrderModel.findOne = async () => current;
+  TakeAwayOrderModel.findOneAndUpdate = async (filter, update) => {
+    if (++attempts === 1) current.status = "preparing";
+    if (filter.status && filter.status !== current.status) return null;
+    paymentWrites++;
+    Object.assign(current, update.$set);
+    return current;
+  };
+  t.after(() => { TakeAwayOrderModel.findOne = find; TakeAwayOrderModel.findOneAndUpdate = write; });
+  const result = await finalizePaidOrder({ restaurant: { _id: current.restaurant_id,
+    takeAwaySettings: { auto_accept: true } }, order: snapshot,
+    paymentIntent: matchingPaymentIntent(snapshot), activate: false });
+  assert.equal(result.status, "preparing");
+  assert.equal(result.paymentStatus, "paid");
+  assert.equal(paymentWrites, 1);
+  assert.equal(attempts, 2);
+});
+
+test("preflight: a crash after activation does not leave the replay marker stuck", async (t) => {
+  const find = TakeAwayOrderModel.find;
+  const write = TakeAwayOrderModel.updateOne;
+  const restaurantFind = RestaurantModel.findById;
+  const order = orderDocument({ status: "confirmed", paymentStatus: "paid", securityVersion: 1,
+    activationEffectsPending: true, crmRecordedAt: new Date(), restaurantNotifiedAt: new Date(),
+    pendingCustomerEmailEvents: [] });
+  TakeAwayOrderModel.find = () => {
+    const result = Promise.resolve([order]); result.select = () => result;
+    result.limit = () => result; return result;
+  };
+  RestaurantModel.findById = () => {
+    const result = Promise.resolve({ _id: order.restaurant_id }); result.populate = () => result; return result;
+  };
+  let cleared = 0;
+  TakeAwayOrderModel.updateOne = async (_filter, update) => {
+    if (update.$set?.activationEffectsPending === false) cleared++;
+    return { modifiedCount: 1 };
+  };
+  t.after(() => { TakeAwayOrderModel.find = find; TakeAwayOrderModel.updateOne = write; RestaurantModel.findById = restaurantFind; });
+  const { replayPendingTakeAwayEffects } = require("../services/take-away.service");
+  await replayPendingTakeAwayEffects();
+  assert.equal(cleared, 1);
+});
+
+test("preflight: the order idempotency index uses a supported nonempty string filter", () => {
+  const index = TakeAwayOrderModel.schema.indexes().find(([keys]) => keys.restaurant_id === 1 && keys.idempotencyKey === 1);
+  assert.equal(index[1].unique, true);
+  assert.deepEqual(index[1].partialFilterExpression, { idempotencyKey: { $type: "string", $gt: "" } });
+});
+
+test("preflight: replaying an unpaid cancellation email never activates the order", async (t) => {
+  const find = TakeAwayOrderModel.find;
+  const write = TakeAwayOrderModel.updateOne;
+  const claim = TakeAwayOrderModel.findOneAndUpdate;
+  const restaurantFind = RestaurantModel.findById;
+  const before = notificationCalls;
+  const order = orderDocument({ status: "canceled", paymentStatus: "failed", securityVersion: 1,
+    crmRecordedAt: null, restaurantNotifiedAt: null, pendingCustomerEmailEvents: ["canceled"] });
+  TakeAwayOrderModel.find = () => {
+    const result = Promise.resolve([order]); result.select = () => result;
+    result.limit = () => result; return result;
+  };
+  RestaurantModel.findById = () => {
+    const result = Promise.resolve({ _id: order.restaurant_id }); result.populate = () => result; return result;
+  };
+  let emailClaims = 0;
+  TakeAwayOrderModel.findOneAndUpdate = async (filter) => {
+    assert.equal(filter.pendingCustomerEmailEvents, "canceled"); emailClaims++; return order;
+  };
+  TakeAwayOrderModel.updateOne = async () => ({ modifiedCount: 1 });
+  t.after(() => { TakeAwayOrderModel.find = find; TakeAwayOrderModel.updateOne = write;
+    TakeAwayOrderModel.findOneAndUpdate = claim; RestaurantModel.findById = restaurantFind; });
+  const { replayPendingTakeAwayEffects } = require("../services/take-away.service");
+  await replayPendingTakeAwayEffects();
+  assert.equal(notificationCalls, before);
+  assert.equal(emailClaims, 1);
+  assert.equal(order.paymentStatus, "failed");
+});
+
+test("preflight: a completed paid order stays unchanged after browser confirmation and webhook retries", async (t) => {
+  const find = TakeAwayOrderModel.findOne;
+  const write = TakeAwayOrderModel.findOneAndUpdate;
+  const update = TakeAwayOrderModel.updateOne;
+  const beforeNotifications = notificationCalls;
+  const beforeEmails = emailCalls.length;
+  const paidAt = new Date("2026-10-13T09:39:59Z");
+  const current = orderDocument({ stripePaymentIntentId: "pi_completed_synthetic",
+    status: "completed", paymentStatus: "paid", financialVersion: 0, customer: "customer-1",
+    crmRecordedAt: paidAt, restaurantNotifiedAt: paidAt, paidAt, confirmedAt: paidAt });
+  let paymentWrites = 0;
+  TakeAwayOrderModel.findOne = async () => current;
+  TakeAwayOrderModel.findOneAndUpdate = async (filter) => {
+    if (filter.paymentStatus?.$nin?.includes(current.paymentStatus)) return null;
+    paymentWrites++; throw new Error("Unexpected business rewrite");
+  };
+  TakeAwayOrderModel.updateOne = async () => { throw new Error("Unexpected effect queue update"); };
+  t.after(() => { TakeAwayOrderModel.findOne = find; TakeAwayOrderModel.findOneAndUpdate = write;
+    TakeAwayOrderModel.updateOne = update; });
+  const restaurant = { _id: current.restaurant_id, takeAwaySettings: { auto_accept: true } };
+  const intent = matchingPaymentIntent(current);
+  for (let retry = 0; retry < 2; retry++) {
+    await handleTakeAwayStripeWebhookEvent({ restaurant,
+      event: { type: "payment_intent.succeeded", data: { object: intent } } });
+    await confirmOrderPayment({ restaurant, orderId: current._id,
+      stripeInstance: { paymentIntents: { retrieve: async () => intent } } });
+  }
+  assert.equal(current.status, "completed");
+  assert.equal(current.paymentStatus, "paid");
+  assert.equal(current.paidAt, paidAt);
+  assert.equal(current.confirmedAt, paidAt);
+  assert.equal(paymentWrites, 0);
+  assert.equal(notificationCalls, beforeNotifications);
+  assert.equal(emailCalls.length, beforeEmails);
+});
+
+test("payment audit: order creation, PaymentIntent reuse, browser success and repeated webhooks activate once", async (t) => {
+  const originals = {
+    orderFind: TakeAwayOrderModel.findOne, orderWrite: TakeAwayOrderModel.findOneAndUpdate,
+    orderUpdate: TakeAwayOrderModel.updateOne, orderCreate: TakeAwayOrderModel.create,
+    aggregate: TakeAwayOrderModel.aggregate, lock: TakeAwaySlotLockModel.findOneAndUpdate,
+    unlock: TakeAwaySlotLockModel.deleteOne, customerUpsert: CustomerModel.findOneAndUpdate,
+    customerWrite: CustomerModel.updateOne, customerFind: CustomerModel.findById,
+  };
+  let current = null; let paymentWrites = 0; let crmWrites = 0; let stripeCreates = 0;
+  const beforeNotifications = notificationCalls; const beforeEmails = emailCalls.length;
+  function apply(change) {
+    Object.assign(current, change.$set || {});
+    for (const [key, value] of Object.entries(change.$addToSet || {})) {
+      if (!(current[key] || []).includes(value)) current[key] = [...(current[key] || []), value];
+    }
+    for (const [key, value] of Object.entries(change.$pull || {}))
+      current[key] = (current[key] || []).filter((item) => value?.$in ? !value.$in.includes(item) : item !== value);
+    for (const [key, value] of Object.entries(change.$push || {}))
+      current[key] = [...(current[key] || []), ...(value.$each || [value])];
+  }
+  TakeAwayOrderModel.findOne = () => {
+    const result = Promise.resolve(current); result.select = () => result; return result;
+  };
+  TakeAwayOrderModel.create = async (input) => {
+    current = orderDocument({ ...input, _id: "order-flow-synthetic", restaurantNotifiedAt: null,
+      pendingCustomerEmailEvents: input.pendingCustomerEmailEvents || [], customerEmailEventsSent: [] });
+    return current;
+  };
+  TakeAwayOrderModel.findOneAndUpdate = async (filter, change) => {
+    if (filter.paymentStatus?.$nin?.includes(current.paymentStatus)) return null;
+    if (filter.status && filter.status !== current.status) return null;
+    if (filter.pendingCustomerEmailEvents && (!current.pendingCustomerEmailEvents.includes(filter.pendingCustomerEmailEvents) ||
+      current.customerEmailEventsSent.includes(filter.customerEmailEventsSent.$ne))) return null;
+    if (change.$set?.paymentStatus === "paid") paymentWrites++;
+    apply(change); return current;
+  };
+  TakeAwayOrderModel.updateOne = async (_filter, change) => { apply(change); return { modifiedCount: 1 }; };
+  TakeAwayOrderModel.aggregate = async () => [];
+  TakeAwaySlotLockModel.findOneAndUpdate = async (_filter, change) => ({ owner: change.$set.owner });
+  TakeAwaySlotLockModel.deleteOne = async () => ({ deletedCount: 1 });
+  CustomerModel.findOneAndUpdate = async () => ({ _id: "customer-flow-synthetic",
+    firstName: "Ada", lastName: "Lovelace", phone: "+33612345678" });
+  CustomerModel.updateOne = async (_filter, change) => {
+    if (change.$inc?.["stats.takeAwayOrdersTotal"]) crmWrites++;
+    return { modifiedCount: 1 };
+  };
+  CustomerModel.findById = () => { const q = Promise.resolve(null); q.select = () => q; q.lean = () => q; return q; };
+  t.after(() => {
+    TakeAwayOrderModel.findOne = originals.orderFind; TakeAwayOrderModel.findOneAndUpdate = originals.orderWrite;
+    TakeAwayOrderModel.updateOne = originals.orderUpdate; TakeAwayOrderModel.create = originals.orderCreate;
+    TakeAwayOrderModel.aggregate = originals.aggregate; TakeAwaySlotLockModel.findOneAndUpdate = originals.lock;
+    TakeAwaySlotLockModel.deleteOne = originals.unlock; CustomerModel.findOneAndUpdate = originals.customerUpsert;
+    CustomerModel.updateOne = originals.customerWrite; CustomerModel.findById = originals.customerFind;
+  });
+  const restaurant = futureRestaurant();
+  const payload = validPayload("checkout-flow-synthetic");
+  const created = await createTakeAwayOrder({ restaurant, payload });
+  assert.equal(created.paymentStatus, "pending"); assert.equal(created.status, "pending");
+  assert.equal(notificationCalls, beforeNotifications);
+  assert.equal(crmWrites, 0); assert.equal(emailCalls.length, beforeEmails);
+  assert.equal(await createTakeAwayOrder({ restaurant, payload }), current);
+  assert.equal(await findPublicOrderByAccessToken({ restaurantId: restaurant._id, orderId: current._id,
+    token: payload.publicAccessToken }), current);
+  assert.equal(await findPublicOrderByAccessToken({ restaurantId: restaurant._id, orderId: current._id,
+    token: "wrong-token" }), null);
+  let remote;
+  const stripe = { paymentIntents: {
+    create: async (params) => { stripeCreates++; remote = { ...params, id: "pi_flow_synthetic",
+      status: "requires_payment_method", amount_received: 0, client_secret: "synthetic_only" }; return remote; },
+    retrieve: async () => remote,
+  } };
+  await createOrderPaymentIntent({ restaurant, order: current, stripeInstance: stripe });
+  await createOrderPaymentIntent({ restaurant, order: current, stripeInstance: stripe });
+  assert.equal(stripeCreates, 1); assert.equal(remote.amount, 1250);
+  remote = { ...remote, status: "succeeded", amount_received: 1250 };
+  await confirmOrderPayment({ restaurant, orderId: current._id, stripeInstance: stripe });
+  for (let retry = 0; retry < 2; retry++) await handleTakeAwayStripeWebhookEvent({ restaurant,
+    event: { id: "evt_flow_synthetic", type: "payment_intent.succeeded", data: { object: remote } } });
+  assert.equal(current.paymentStatus, "paid"); assert.equal(current.status, "confirmed");
+  assert.equal(paymentWrites, 1); assert.equal(crmWrites, 1);
+  assert.equal(notificationCalls - beforeNotifications, 1);
+  assert.equal(emailCalls.length - beforeEmails, 1);
+  assert.equal(emailCalls.at(-1).eventType, "confirmed");
+});
+
+test("payment audit: declined, canceled or processing intents cannot confirm a payment", async (t) => {
+  const find = TakeAwayOrderModel.findOne;
+  const write = TakeAwayOrderModel.findOneAndUpdate;
+  const order = orderDocument({ stripePaymentIntentId: "pi_unsettled_synthetic" });
+  TakeAwayOrderModel.findOne = async () => order;
+  TakeAwayOrderModel.findOneAndUpdate = async () => { throw new Error("No payment write allowed"); };
+  t.after(() => { TakeAwayOrderModel.findOne = find; TakeAwayOrderModel.findOneAndUpdate = write; });
+  for (const status of ["requires_payment_method", "requires_action", "processing", "canceled"]) {
+    await assert.rejects(confirmOrderPayment({ restaurant: { _id: order.restaurant_id }, orderId: order._id,
+      stripeInstance: { paymentIntents: { retrieve: async () => matchingPaymentIntent(order,
+        { status, amount_received: 0 }) } } }), { code: "PAYMENT_NOT_SUCCEEDED", status: 409 });
+    assert.equal(order.paymentStatus, "pending"); assert.equal(order.status, "pending");
+  }
+});
+
+test("an uncertain email delivery is persisted and cannot be sent twice", async (t) => {
+  const { runOrderEmailEffects } = require("../services/take-away.service");
+  const find = TakeAwayOrderModel.findOneAndUpdate;
+  const write = TakeAwayOrderModel.updateOne;
+  const sentBefore = emailCalls.length;
+  const order = orderDocument({ pendingCustomerEmailEvents: ["confirmed"],
+    customerEmailEventsSent: [], customerEmailEventsInFlight: [], customerEmailEventsUncertain: [] });
+  function apply(update) {
+    for (const [key, value] of Object.entries(update.$pull || {})) {
+      order[key] = (order[key] || []).filter((item) => item !== value);
+    }
+    for (const [key, value] of Object.entries(update.$addToSet || {})) {
+      if (!(order[key] || []).includes(value)) order[key] = [...(order[key] || []), value];
+    }
+  }
+  TakeAwayOrderModel.findOneAndUpdate = async (filter, update) => {
+    if (!order.pendingCustomerEmailEvents.includes(filter.pendingCustomerEmailEvents) ||
+        order.customerEmailEventsSent.includes(filter.customerEmailEventsSent.$ne)) return null;
+    apply(update); return order;
+  };
+  TakeAwayOrderModel.updateOne = async (_filter, update) => { apply(update); return { modifiedCount: 1 }; };
+  t.after(() => { emailError = null; TakeAwayOrderModel.findOneAndUpdate = find; TakeAwayOrderModel.updateOne = write; });
+  emailError = Object.assign(new Error("Provider response lost"), { deliveryUncertain: true });
+  await runOrderEmailEffects(order, {}, ["confirmed"]);
+  assert.deepEqual(order.customerEmailEventsUncertain, ["confirmed"]);
+  assert.deepEqual(order.customerEmailEventsSent, ["confirmed"]);
+  emailError = null;
+  await runOrderEmailEffects(order, {}, ["confirmed"]);
+  assert.equal(emailCalls.length, sentBefore);
 });
 
 test("a lost create response can recover the order with the attempt secrets", async (t) => {

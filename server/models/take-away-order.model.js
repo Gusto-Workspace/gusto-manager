@@ -210,6 +210,7 @@ const takeAwayOrderSchema = new mongoose.Schema(
     refundedAt: { type: Date, default: null },
     restaurantNotifiedAt: { type: Date, default: null },
     crmRecordedAt: { type: Date, default: null },
+    activationEffectsPending: { type: Boolean, default: false },
     pendingCrmPrevStatus: { type: String, default: "" },
     pendingCrmNextStatus: { type: String, default: "" },
     pendingCrmAdjustmentIds: { type: [String], default: [] },
@@ -223,6 +224,10 @@ const takeAwayOrderSchema = new mongoose.Schema(
       default: [],
       select: false,
     },
+    // A crash/uncertain provider response requires reconciliation, never an
+    // automatic second email. The sent marker is claimed before the API call.
+    customerEmailEventsInFlight: { type: [String], default: [], select: false },
+    customerEmailEventsUncertain: { type: [String], default: [], select: false },
     securityVersion: { type: Number, default: 0 },
     confirmedAt: { type: Date, default: null },
     preparingAt: { type: Date, default: null },
@@ -242,7 +247,8 @@ takeAwayOrderSchema.index(
   { restaurant_id: 1, idempotencyKey: 1 },
   {
     unique: true,
-    partialFilterExpression: { idempotencyKey: { $type: "string", $ne: "" } },
+    // $ne is not accepted in a MongoDB partial index filter.
+    partialFilterExpression: { idempotencyKey: { $type: "string", $gt: "" } },
   },
 );
 

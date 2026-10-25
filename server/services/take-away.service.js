@@ -1568,6 +1568,7 @@ async function runOrderEmailEffects(order, restaurant, explicitEvents = null) {
 
   for (const eventType of events) {
     let claimed;
+    let emailAccepted = false;
     try {
       const obsoleteEvents = getObsoleteCustomerEmailEvents(eventType);
       if (obsoleteEvents.length) {
@@ -1585,7 +1586,10 @@ async function runOrderEmailEffects(order, restaurant, explicitEvents = null) {
         },
         {
           $pull: { pendingCustomerEmailEvents: eventType },
-          $addToSet: { customerEmailEventsSent: eventType },
+          $addToSet: {
+            customerEmailEventsSent: eventType,
+            customerEmailEventsInFlight: eventType,
+          },
         },
         { new: true },
       );
@@ -1605,12 +1609,21 @@ async function runOrderEmailEffects(order, restaurant, explicitEvents = null) {
       if (result?.skipped && result.reason === "missing_brevo_key") {
         throw serviceError("Configuration Brevo absente", 503);
       }
+      emailAccepted = true;
+      await TakeAwayOrderModel.updateOne(
+        { _id: order._id },
+        { $pull: { customerEmailEventsInFlight: eventType } },
+      );
     } catch (error) {
       if (claimed) {
+        const uncertain = emailAccepted || error.deliveryUncertain === true;
         await TakeAwayOrderModel.updateOne(
           { _id: order._id, customerEmailEventsSent: eventType },
-          {
-            $pull: { customerEmailEventsSent: eventType },
+          uncertain ? {
+            $pull: { customerEmailEventsInFlight: eventType },
+            $addToSet: { customerEmailEventsUncertain: eventType },
+          } : {
+            $pull: { customerEmailEventsSent: eventType, customerEmailEventsInFlight: eventType },
             $addToSet: { pendingCustomerEmailEvents: eventType },
           },
         ).catch(() => { });
@@ -1675,6 +1688,12 @@ async function runOrderActivationEffects(
   }
 
   await runOrderEmailEffects(order, restaurant, explicitEmailEvents);
+  if (order.activationEffectsPending && order.crmRecordedAt && (order.source !== "public" || order.restaurantNotifiedAt)) {
+    await TakeAwayOrderModel.updateOne(
+      { _id: order._id, activationEffectsPending: true },
+      { $set: { activationEffectsPending: false } },
+    );
+  }
 }
 
 async function createTakeAwayOrder({ restaurant, payload, source = "public" }) {
@@ -1929,6 +1948,7 @@ function getStripeForRestaurant(restaurant, stripeInstance = null) {
     throw serviceError(
       "Le paiement en ligne est momentanément indisponible",
       400,
+      "RESTAURANT_STRIPE_NOT_CONFIGURED",
     );
   }
   return new Stripe(stripeSecretKey);
@@ -1944,30 +1964,33 @@ function assertPaymentIntentMatchesOrder(
   { requireSucceeded = true } = {},
 ) {
   if (!paymentIntent || !order?.stripePaymentIntentId) {
-    throw serviceError("PaymentIntent de la commande introuvable", 409);
+    throw serviceError("PaymentIntent de la commande introuvable", 409, "ORDER_PAYMENT_INTENT_MISSING");
+  }
+  if (order.paymentMethod !== "online") {
+    throw serviceError("Paiement Stripe incompatible avec le règlement sur place", 409, "ORDER_PAYMENT_METHOD_MISMATCH");
   }
   if (String(paymentIntent.id) !== String(order.stripePaymentIntentId)) {
-    throw serviceError("PaymentIntent non correspondant", 400);
+    throw serviceError("PaymentIntent non correspondant", 400, "ORDER_PAYMENT_INTENT_MISMATCH");
   }
   if (requireSucceeded && paymentIntent.status !== "succeeded") {
-    throw serviceError("Paiement non confirmé", 409);
+    throw serviceError("Paiement non confirmé", 409, "PAYMENT_NOT_SUCCEEDED");
   }
 
   const expectedAmount = getExpectedPaymentAmount(order);
   if (Number(paymentIntent.amount) !== expectedAmount) {
-    throw serviceError("Montant du paiement non correspondant", 400);
+    throw serviceError("Montant du paiement non correspondant", 400, "PAYMENT_AMOUNT_MISMATCH");
   }
   if (
     requireSucceeded &&
     Number(paymentIntent.amount_received) !== expectedAmount
   ) {
-    throw serviceError("Montant encaissé non correspondant", 400);
+    throw serviceError("Montant encaissé non correspondant", 400, "PAYMENT_RECEIVED_AMOUNT_MISMATCH");
   }
   if (
     cleanString(paymentIntent.currency).toLowerCase() !==
     cleanString(order.currency || "eur").toLowerCase()
   ) {
-    throw serviceError("Devise du paiement non correspondante", 400);
+    throw serviceError("Devise du paiement non correspondante", 400, "PAYMENT_CURRENCY_MISMATCH");
   }
 
   const metadata = paymentIntent.metadata || {};
@@ -1976,7 +1999,7 @@ function assertPaymentIntentMatchesOrder(
     String(metadata.restaurantId || "") !== String(order.restaurant_id) ||
     String(metadata.orderId || "") !== String(order._id)
   ) {
-    throw serviceError("Métadonnées du paiement non correspondantes", 400);
+    throw serviceError("Métadonnées du paiement non correspondantes", 400, "PAYMENT_METADATA_MISMATCH");
   }
   return true;
 }
@@ -2053,9 +2076,22 @@ async function createOrderPaymentIntent({
             paymentIntent: previousPaymentIntent,
           });
         } else if (order.paymentStatus === "failed") {
+          // A success/cancellation can arrive while Stripe is being read. Never
+          // overwrite that newer state with this stale retry snapshot.
+          const rearmed = await TakeAwayOrderModel.findOneAndUpdate(
+            { _id: order._id, restaurant_id: order.restaurant_id,
+              stripePaymentIntentId: previousPaymentIntent.id,
+              status: "pending", paymentStatus: "failed",
+              paymentExpiresAt: { $gt: new Date() } },
+            { $set: { paymentStatus: "pending", paymentFailedAt: null } },
+            { new: true },
+          );
+          if (!rearmed) {
+            throw serviceError("État du paiement modifié, actualisez la commande", 409,
+              "ORDER_PAYMENT_STATE_CHANGED");
+          }
           order.paymentStatus = "pending";
           order.paymentFailedAt = null;
-          await order.save();
         }
         return previousPaymentIntent;
       }
@@ -2166,6 +2202,7 @@ async function finalizePaidOrder({
     : order.status;
   const set = {
     paymentStatus: "paid",
+    activationEffectsPending: !["canceled", "rejected"].includes(nextStatus),
     paidAt: order.paidAt || now,
     paymentFailedAt: null,
     paymentExpiresAt: null,
@@ -2190,9 +2227,9 @@ async function finalizePaidOrder({
       restaurant_id: order.restaurant_id,
       stripePaymentIntentId: paymentIntent.id,
       paymentStatus: { $nin: ["paid", "refunded"] },
+      status: order.status,
       ...(order.financialVersion === 1
         ? {
-            status: order.status,
             financialRevision: Number(order.financialRevision || 0),
           }
         : {}),
@@ -2213,7 +2250,6 @@ async function finalizePaidOrder({
 
   if (
     resolved &&
-    order.financialVersion === 1 &&
     finalized === null &&
     !["paid", "refunded"].includes(resolved.paymentStatus)
   ) {
@@ -3010,7 +3046,7 @@ async function loadWebhookOrder(restaurant, stripeObject) {
     _id: cleanString(metadata.orderId),
     restaurant_id: restaurant._id,
   });
-  if (!order) throw serviceError("Commande webhook introuvable", 404);
+  if (!order) throw serviceError("Commande webhook introuvable", 404, "TAKE_AWAY_ORDER_NOT_FOUND");
   return order;
 }
 
@@ -3020,10 +3056,14 @@ async function markPaymentAttemptFailed({
   canceled = false,
 }) {
   const order = await loadWebhookOrder(restaurant, paymentIntent);
+  // Replaying an old failed/replaced attempt cannot invalidate a paid order.
+  if (["paid", "refunded"].includes(order.paymentStatus)) return order;
+  if (order.stripePaymentIntentId &&
+      String(order.stripePaymentIntentId) !== String(paymentIntent.id)) return order;
   assertPaymentIntentMatchesOrder(paymentIntent, order, {
     requireSucceeded: false,
   });
-  if (["paid", "refunded"].includes(order.paymentStatus)) return order;
+  if (["canceled", "rejected"].includes(order.status)) return order;
 
   const now = new Date();
   const set = {
@@ -3042,6 +3082,7 @@ async function markPaymentAttemptFailed({
         restaurant_id: restaurant._id,
         stripePaymentIntentId: paymentIntent.id,
         paymentStatus: { $nin: ["paid", "refunded"] },
+        status: { $nin: ["canceled", "rejected"] },
       },
       canceled ? addOrderStatusSmsEvent({ $set: set }, order, "canceled", now) : { $set: set },
       { new: true },
@@ -3212,8 +3253,14 @@ async function expirePendingTakeAwayOrders({ now = new Date() } = {}) {
 
 async function replayPendingTakeAwayEffects() {
   const orders = await TakeAwayOrderModel.find({
-    $and: [{ $or: [{ securityVersion: 1 }, { financialVersion: 1 }] }],
+    $and: [{ $or: [
+      { securityVersion: 1 },
+      { financialVersion: 1 },
+      { activationEffectsPending: true },
+      { pendingCustomerEmailEvents: { $exists: true, $ne: [] } },
+    ] }],
     $or: [
+      { activationEffectsPending: true },
       {
         $and: [
           {
@@ -3250,9 +3297,15 @@ async function replayPendingTakeAwayEffects() {
     }
     if (!restaurant) continue;
 
-    const needsActivation =
+    // An unpaid cancellation can have an email to replay, but must never be
+    // activated as a new restaurant order by that replay.
+    const activationAllowed = order.paymentMethod !== "online" ||
+      ["paid", "refunded"].includes(order.paymentStatus);
+    const needsActivation = activationAllowed && (
+      order.activationEffectsPending ||
       !order.crmRecordedAt ||
-      (order.source === "public" && !order.restaurantNotifiedAt);
+      (order.source === "public" && !order.restaurantNotifiedAt)
+    );
     if (needsActivation) await runOrderActivationEffects(order, restaurant);
     if (order.pendingCrmNextStatus || order.pendingCrmAdjustmentIds?.length) {
       await runOrderStatusEffects(order, restaurant);
