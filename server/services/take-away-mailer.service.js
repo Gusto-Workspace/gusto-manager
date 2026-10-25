@@ -271,7 +271,15 @@ async function sendTakeAwayOrderEmail({ eventType, order, restaurant }) {
   payload.to = [{ email: email.toEmail, name: email.toName }];
   payload.subject = email.subject;
   payload.htmlContent = email.htmlContent;
-  return brevoClient().sendTransacEmail(payload);
+  try {
+    return await brevoClient().sendTransacEmail(payload);
+  } catch (error) {
+    // A network failure/5xx can occur after acceptance. Retrying blindly can
+    // send a second confirmation. Only explicit 4xx rejections are retryable.
+    const status = Number(error?.status || error?.response?.status);
+    error.deliveryUncertain = !(status >= 400 && status < 500 && status !== 408);
+    throw error;
+  }
 }
 
 module.exports = {

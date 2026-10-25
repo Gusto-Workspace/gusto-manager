@@ -1011,6 +1011,43 @@ test("new PaymentIntents cannot attach after a concurrent cancellation", async (
   assert.equal(canceled, true);
 });
 
+test("payment audit: retrying a declined card cannot overwrite a concurrent success or cancellation", async (t) => {
+  for (const next of [{ status: "confirmed", paymentStatus: "paid" },
+    { status: "canceled", paymentStatus: "failed" }]) {
+    await t.test(next.status, async (subtest) => {
+      const doc = memory(subtest, fixture({ paymentStatus: "failed",
+        paymentExpiresAt: new Date(Date.now() + 900000) }));
+      const stale = structuredClone(doc);
+      // Exercise the old document.save path as well: it would revert paid/canceled.
+      stale.save = async () => Object.assign(doc, { paymentStatus: stale.paymentStatus });
+      const stripe = { paymentIntents: { retrieve: async () => {
+        Object.assign(doc, next);
+        return { id: stale.stripePaymentIntentId, status: "requires_payment_method",
+          amount: 5000, amount_received: 0, currency: "eur", metadata: {
+            type: "takeaway_order", restaurantId: stale.restaurant_id, orderId: stale._id } };
+      }, create: async () => { throw new Error("No second PaymentIntent"); } } };
+      await assert.rejects(service.createOrderPaymentIntent({ restaurant, order: stale,
+        stripeInstance: stripe }), { code: "ORDER_PAYMENT_STATE_CHANGED", status: 409 });
+      assert.equal(doc.status, next.status);
+      assert.equal(doc.paymentStatus, next.paymentStatus);
+    });
+  }
+});
+
+test("payment audit: a declined card can retry the same PaymentIntent before expiry", async (t) => {
+  const doc = memory(t, fixture({ paymentStatus: "failed",
+    paymentExpiresAt: new Date(Date.now() + 900000) }));
+  const paymentIntent = { id: doc.stripePaymentIntentId, status: "requires_payment_method",
+    amount: 5000, amount_received: 0, currency: "eur", metadata: {
+      type: "takeaway_order", restaurantId: doc.restaurant_id, orderId: doc._id } };
+  const result = await service.createOrderPaymentIntent({ restaurant, order: structuredClone(doc),
+    stripeInstance: { paymentIntents: { retrieve: async () => paymentIntent,
+      create: async () => { throw new Error("No second PaymentIntent"); } } } });
+  assert.equal(result.id, paymentIntent.id);
+  assert.equal(doc.paymentStatus, "pending");
+  assert.equal(doc.status, "pending");
+});
+
 test("an externally reduced Stripe balance never produces an excessive refund", async (t) => {
   const doc = memory(t, fixture());
   const remote = stripeMock(doc);
