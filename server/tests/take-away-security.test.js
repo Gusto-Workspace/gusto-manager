@@ -937,13 +937,13 @@ test("take-away customer emails use business wording for every useful event", ()
   assert.match(received.htmlContent, /doit encore la confirmer/);
   assert.match(confirmed.htmlContent, /commande est confirmée/i);
   assert.match(rejectedPending.htmlContent, /commande a été refusée/i);
-  assert.match(rejectedPending.htmlContent, /remboursement.*initié/i);
+  assert.match(rejectedPending.htmlContent, /remboursement.*demandé.*pas encore confirmée/i);
   assert.doesNotMatch(rejectedPending.htmlContent, /a été remboursé/i);
   assert.match(canceledPending.htmlContent, /commande a été annulée/i);
-  assert.match(canceledPending.htmlContent, /remboursement.*confirmé.*repris/i);
+  assert.match(canceledPending.htmlContent, /remboursement.*vérification.*pas encore confirmé/i);
   assert.doesNotMatch(canceledPending.htmlContent, /a été remboursé/i);
-  assert.match(rejectedRefunded.htmlContent, /a été remboursé/i);
-  assert.match(canceledRefunded.htmlContent, /a été remboursé/i);
+  assert.match(rejectedRefunded.htmlContent, /remboursement.*est confirmé/i);
+  assert.match(canceledRefunded.htmlContent, /remboursement.*est confirmé/i);
   assert.match(ready.htmlContent, /commande est prête/i);
   assert.match(delivery.htmlContent, /commande est en route/i);
 });

@@ -206,6 +206,8 @@ const takeAwayOrderSchema = new mongoose.Schema(
     idempotencyPayloadHash: { type: String, default: "" },
     paymentExpiresAt: { type: Date, default: null, index: true },
     paidAt: { type: Date, default: null },
+    // Hiding an order never removes its financial records or Stripe linkage.
+    deletedAt: { type: Date, default: null, index: true },
     paymentFailedAt: { type: Date, default: null },
     refundedAt: { type: Date, default: null },
     restaurantNotifiedAt: { type: Date, default: null },
@@ -241,6 +243,7 @@ const takeAwayOrderSchema = new mongoose.Schema(
 );
 
 takeAwayOrderSchema.index({ restaurant_id: 1, scheduledFor: 1 });
+takeAwayOrderSchema.index({ restaurant_id: 1, deletedAt: 1, _id: -1 });
 takeAwayOrderSchema.index({ status: 1, confirmationDeadlineAt: 1 });
 takeAwayOrderSchema.index({ financialVersion: 1, "adjustments.state": 1 });
 takeAwayOrderSchema.index(

@@ -7,6 +7,7 @@ import axios from "axios";
 // JWT
 import { jwtDecode } from "jwt-decode";
 import { createAuthenticatedEventSource } from "@/_assets/utils/authenticated-events";
+import { isTakeAwayOrderVisible } from "@/_assets/utils/take-away-visibility";
 
 const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
@@ -88,6 +89,7 @@ function getTakeAwayOrderDateKey(order) {
 }
 
 function isTakeAwayOrderInRange(order, from, to) {
+  if (!isTakeAwayOrderVisible(order)) return false;
   const dateKey = getTakeAwayOrderDateKey(order);
   return Boolean(dateKey && dateKey >= from && dateKey <= to);
 }
@@ -95,6 +97,14 @@ function isTakeAwayOrderInRange(order, from, to) {
 function getTakeAwayOrderRestaurantId(order, fallback = "") {
   const value = order?.restaurant_id || order?.restaurantId || fallback;
   return value?._id ? String(value._id) : String(value || "");
+}
+
+function compareTakeAwayOrders(a, b) {
+  return (
+    new Date(b.scheduledFor) - new Date(a.scheduledFor) ||
+    new Date(b.createdAt || 0) - new Date(a.createdAt || 0) ||
+    String(b._id).localeCompare(String(a._id))
+  );
 }
 
 function trimOldestMapEntries(map, limit) {
@@ -160,6 +170,7 @@ export default function RestaurantContext() {
   const activeReservationPeriodRef = useRef(null);
   const takeAwayPeriodsCacheRef = useRef(new Map());
   const takeAwayPeriodRequestsRef = useRef(new Map());
+  const takeAwayPendingUpdatesRef = useRef(new Set());
   const takeAwayMutationOverridesRef = useRef(new Map());
   const activeTakeAwayPeriodRef = useRef(null);
   const takeAwayCacheGenerationRef = useRef(0);
@@ -849,41 +860,65 @@ export default function RestaurantContext() {
 
       if (activate && canActivate()) setActiveTakeAwayPeriodLoading(true);
 
+      // Keep every mutation observed during this read, even if the bounded
+      // long-lived override cache rolls over while several pages are loading.
+      const pendingUpdates = {
+        restaurantId: rid,
+        orders: new Map(takeAwayMutationOverridesRef.current),
+      };
+      takeAwayPendingUpdatesRef.current.add(pendingUpdates);
       const requestPromise = (async () => {
         try {
-          const { data } = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/take-away/orders`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              params: { dateFrom: period.from, dateTo: period.to, limit: 300 },
-            },
-          );
-          let orders = Array.isArray(data?.orders) ? data.orders : [];
+          const ordersById = new Map();
+          let cursor = null;
+          do {
+            const { data } = await axios.get(
+              `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/take-away/orders`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+                params: {
+                  dateFrom: period.from, dateTo: period.to, limit: 200,
+                  pagination: "cursor", ...(cursor ? { cursor } : {}),
+                },
+              },
+            );
+            if (
+              requestGeneration !== takeAwayCacheGenerationRef.current ||
+              !canActivate() ||
+              takeAwayPeriodRequestsRef.current.get(cacheKey) !== requestPromise
+            ) return null;
+            const pagination = data?.pagination;
+            if (
+              !Array.isArray(data?.orders) ||
+              typeof pagination?.hasMore !== "boolean" ||
+              (pagination.hasMore && (
+                !/^[a-f\d]{24}$/i.test(pagination.nextCursor || "") ||
+                (cursor && pagination.nextCursor >= cursor) ||
+                data.orders.length === 0
+              ))
+            ) throw new Error("Invalid Take-away pagination response");
+            data.orders.forEach((order) => {
+              if (isTakeAwayOrderVisible(order)) ordersById.set(String(order._id), order);
+            });
+            cursor = pagination.hasMore ? pagination.nextCursor : null;
+          } while (cursor);
 
-          if (
-            requestGeneration !== takeAwayCacheGenerationRef.current ||
-            !canActivate() ||
-            takeAwayPeriodRequestsRef.current.get(cacheKey) !== requestPromise
-          ) {
-            return null;
-          }
-
-          takeAwayMutationOverridesRef.current.forEach((override, orderId) => {
+          pendingUpdates.orders.forEach((override, orderId) => {
             const overrideOrder = override?.order || override;
             const overrideRestaurantId =
               override?.restaurantId ||
               getTakeAwayOrderRestaurantId(overrideOrder);
             if (overrideRestaurantId !== period.restaurantId) return;
-            orders = orders.filter(
-              (item) => String(item?._id) !== String(orderId),
-            );
+            ordersById.delete(String(orderId));
             if (
               overrideOrder &&
               isTakeAwayOrderInRange(overrideOrder, period.from, period.to)
             ) {
-              orders.unshift(overrideOrder);
+              ordersById.set(String(orderId), overrideOrder);
             }
           });
+
+          const orders = Array.from(ordersById.values()).sort(compareTakeAwayOrders);
 
           takeAwayPeriodsCacheRef.current.set(cacheKey, {
             ...period,
@@ -899,6 +934,7 @@ export default function RestaurantContext() {
           return null;
         }
       })().finally(() => {
+        takeAwayPendingUpdatesRef.current.delete(pendingUpdates);
         if (
           takeAwayPeriodRequestsRef.current.get(cacheKey) === requestPromise
         ) {
@@ -976,9 +1012,24 @@ export default function RestaurantContext() {
       restaurantId || currentRestaurantIdRef.current,
     );
     if (!rid) return;
+    if (order.deletedAt) {
+      customersCacheRef.current.clear();
+      customerDetailsRequestsRef.current.clear();
+    }
+    // A delayed SSE or HTTP response cannot undo a logical deletion.
+    const previousOverride = takeAwayMutationOverridesRef.current.get(orderId);
+    const deletedDuringRead = Array.from(takeAwayPendingUpdatesRef.current).some(
+      (pending) => pending.restaurantId === rid && pending.orders.get(orderId)?.order?.deletedAt,
+    );
+    if ((previousOverride?.order?.deletedAt || deletedDuringRead) && !order.deletedAt) return;
     takeAwayMutationOverridesRef.current.set(orderId, {
       order,
       restaurantId: rid,
+    });
+    takeAwayPendingUpdatesRef.current.forEach((pending) => {
+      if (pending.restaurantId === rid) {
+        pending.orders.set(orderId, { order, restaurantId: rid });
+      }
     });
     trimOldestMapEntries(
       takeAwayMutationOverridesRef.current,
@@ -994,7 +1045,7 @@ export default function RestaurantContext() {
         (item) => String(item?._id) !== orderId,
       );
       const orders = isTakeAwayOrderInRange(order, entry.from, entry.to)
-        ? [{ ...previous, ...order }, ...withoutOrder]
+        ? [{ ...previous, ...order }, ...withoutOrder].sort(compareTakeAwayOrders)
         : withoutOrder;
       takeAwayPeriodsCacheRef.current.set(key, { ...entry, orders });
     });
@@ -1008,9 +1059,13 @@ export default function RestaurantContext() {
       if (!isTakeAwayOrderInRange(order, activePeriod.from, activePeriod.to)) {
         return withoutOrder;
       }
-      return [{ ...previous, ...order }, ...withoutOrder];
+      return [{ ...previous, ...order }, ...withoutOrder].sort(compareTakeAwayOrders);
     });
   }, []);
+
+  const isTakeAwayOrderDeleted = useCallback((orderId) => Boolean(
+    takeAwayMutationOverridesRef.current.get(String(orderId))?.order?.deletedAt,
+  ), []);
 
   const reconnectRealtime = useCallback(() => {
     if (sseRef.current) {
@@ -1244,6 +1299,21 @@ export default function RestaurantContext() {
           customersCacheRef.current.clear();
           customerDetailsRequestsRef.current.clear();
           applyTakeAwayOrderUpdate(payload.order, payload.restaurantId);
+        }
+
+        if (payload.type === "takeaway_order_deleted" && payload.orderId) {
+          applyTakeAwayOrderUpdate({
+            _id: payload.orderId,
+            restaurant_id: payload.restaurantId,
+            deletedAt: new Date().toISOString(),
+          }, payload.restaurantId);
+        }
+
+        if (payload.type === "takeaway_orders_deleted" && Array.isArray(payload.orderIds)) {
+          payload.orderIds.forEach((orderId) => applyTakeAwayOrderUpdate({
+            _id: orderId, restaurant_id: payload.restaurantId,
+            deletedAt: new Date().toISOString(),
+          }, payload.restaurantId));
         }
 
         if (payload.type === "takeaway_availability_updated") {
@@ -2230,7 +2300,9 @@ export default function RestaurantContext() {
     }
 
     if (shouldRefreshTakeAway) {
-      takeAwayMutationOverridesRef.current.clear();
+      takeAwayMutationOverridesRef.current.forEach((override, orderId) => {
+        if (!override?.order?.deletedAt) takeAwayMutationOverridesRef.current.delete(orderId);
+      });
       const activeCacheKey = `${activeTakeAwayPeriod.restaurantId}:${activeTakeAwayPeriod.from}:${activeTakeAwayPeriod.to}`;
       takeAwayPeriodsCacheRef.current.forEach((_entry, cacheKey) => {
         if (cacheKey !== activeCacheKey) {
@@ -2394,6 +2466,7 @@ export default function RestaurantContext() {
     getCachedTakeAwayOrdersMonth,
     loadTakeAwayOrderPeriod,
     applyTakeAwayOrderUpdate,
+    isTakeAwayOrderDeleted,
     logout,
     setCloseEditing,
     closeEditing,

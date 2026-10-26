@@ -6,6 +6,14 @@ import { STATUS_LABELS } from "../../take-away/take-away.utils";
 const CLOSE_MS = 220;
 
 const ACTION_CONTENT = {
+  delete: {
+    title: "Supprimer la commande",
+    text: "La commande sera retirée de votre historique visible. Les informations financières et de paiement seront conservées. Aucun remboursement ne sera déclenché.",
+    label: "Supprimer la commande",
+    cancelLabel: "Conserver",
+    destructive: true,
+    icon: AlertTriangle,
+  },
   retry_refund: {
     title: "Relancer le remboursement",
     text: "Voulez-vous relancer le remboursement ?",
@@ -160,7 +168,7 @@ export default function ConfirmModalTakeAwayWebapp({
             disabled={processing}
             className="inline-flex w-full items-center justify-center rounded-2xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue transition canHover:hover:bg-darkBlue/5 disabled:opacity-60"
           >
-            Annuler
+            {content.cancelLabel || "Annuler"}
           </button>
           <button
             type="button"

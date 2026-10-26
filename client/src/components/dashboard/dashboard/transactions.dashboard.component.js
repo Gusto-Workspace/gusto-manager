@@ -130,24 +130,17 @@ export default function TransactionsDashboardComponent(props) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
-              {t("title", "Transactions")}
+              {t("title", "Liste des opérations")}
             </h2>
             <p className="text-[11px] tablet:text-xs text-darkBlue/60 max-w-xl">
-              {props.hideDetails
-                ? "Exportez les transactions historiques de votre restaurant."
-                : selectedOption === "payouts"
-                  ? t(
-                      "payouts.subtitle",
-                      "Visualisez les virements reçus et les paiements associés.",
-                    )
-                  : t(
-                      "payments.subtitle",
-                      "Consultez les achats de cartes cadeaux et les empreintes bancaires capturées, puis filtrez par client.",
-                    )}
+              {t(
+                "subtitle",
+                "Visualisez les virements reçus et les paiements en ligne associés.",
+              )}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex max-w-full flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => setExportOpen(true)}
@@ -157,12 +150,12 @@ export default function TransactionsDashboardComponent(props) {
               Exporter en PDF
             </button>
             {!props.hideDetails && (
-              <div className="relative">
+              <div className="relative max-w-full">
                 <select
                   value={selectedOption}
                   onChange={handleOptionChange}
                   className="
-                w-[220px] midTablet:w-[260px]
+                w-[260px] max-w-full
                 rounded-xl border border-darkBlue/20 bg-white px-3 py-2
                 text-sm text-darkBlue
                 shadow-sm

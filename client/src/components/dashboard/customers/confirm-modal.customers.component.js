@@ -38,7 +38,7 @@ export default function ConfirmModalCustomersComponent({
   };
 
   return (
-    <div className="fixed inset-0 z-[140]" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[280]" role="dialog" aria-modal="true">
       {/* Overlay */}
       <div
         onClick={closeIfAllowed}

@@ -1050,7 +1050,10 @@ export default function DetailsDrawerCustomersComponent({
 
             <button
               type="button"
-              onClick={() => onAction?.(baseCustomer, "delete")}
+              onClick={() => {
+                closeWithAnimation();
+                onAction?.(baseCustomer, "delete");
+              }}
               className="ml-auto inline-flex items-center justify-center gap-2 rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold"
             >
               <Trash2 className="size-4" />

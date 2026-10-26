@@ -53,26 +53,139 @@ function interpolateTemplate(value, variables) {
   );
 }
 
+function paymentLocation(order) {
+  return order.fulfillmentMode === "delivery" ? "à la livraison" : "au retrait";
+}
+
+function refundOperations(order) {
+  if (order.adjustments?.length) return order.adjustments;
+  // Historical orders have a single refund. A local pending marker alone
+  // does not prove that Stripe has received the request.
+  let state = "queued";
+  if (order.paymentStatus === "refunded") state = "succeeded";
+  else if (order.stripeRefundId) {
+    if (["failed", "canceled"].includes(order.stripeRefundStatus))
+      state = "failed";
+    else if (order.stripeRefundStatus === "succeeded") state = "succeeded";
+    else if (["pending", "requires_action"].includes(order.stripeRefundStatus))
+      state = "pending";
+    else state = "uncertain";
+  } else if (order.stripeRefundStatus === "failed") state = "uncertain";
+  else if (order.paymentStatus === "failed") state = "not_required";
+  return [
+    {
+      amountCents: Math.round(Number(order.total || 0) * 100),
+      state,
+    },
+  ];
+}
+
+function refundMessage(order, operations = refundOperations(order)) {
+  if (order.paymentMethod !== "online") return "";
+  const paid = ["paid", "refunded"].includes(order.paymentStatus);
+  if (!paid) {
+    return operations.some((operation) => operation.state !== "not_required")
+      ? "La situation du paiement en ligne est en cours de vérification. Aucun remboursement n'est confirmé à ce stade."
+      : "Le paiement en ligne n'a pas été finalisé.";
+  }
+  const amounts = new Map();
+  for (const operation of operations) {
+    if (operation.amountCents > 0 && operation.state !== "not_required") {
+      amounts.set(
+        operation.state,
+        (amounts.get(operation.state) || 0) + operation.amountCents,
+      );
+    }
+  }
+  return [...amounts]
+    .map(([state, cents]) => {
+      const amount = formatMoney(cents / 100, order.currency);
+      if (state === "succeeded")
+        return `Le remboursement de ${amount} est confirmé. Le délai d'affichage dépend de votre banque.`;
+      if (state === "pending")
+        return `Le remboursement de ${amount} est en cours de traitement. Il n'est pas encore confirmé.`;
+      if (state === "failed")
+        return `Le remboursement de ${amount} a échoué ou a été annulé. Veuillez contacter le restaurant.`;
+      if (state === "uncertain")
+        return `Le remboursement de ${amount} est en cours de vérification. Il n'est pas encore confirmé.`;
+      return `Le remboursement de ${amount} est demandé. Sa prise en charge par le prestataire de paiement n'est pas encore confirmée.`;
+    })
+    .join(" ");
+}
+
+function paymentLabel(order) {
+  if (order.paymentMethod !== "online")
+    return `Paiement ${paymentLocation(order)}`;
+  if (order.paymentStatus === "refunded") return "Payé en ligne · remboursé";
+  if (order.paymentStatus !== "paid") return "Paiement en ligne non finalisé";
+  const operations = order.adjustments?.length
+    ? order.adjustments
+    : ["canceled", "rejected"].includes(order.status)
+      ? refundOperations(order)
+      : [];
+  const outstanding = operations.filter(
+    (operation) =>
+      operation.amountCents > 0 &&
+      !["succeeded", "not_required"].includes(operation.state),
+  );
+  if (outstanding.some((operation) => operation.state === "uncertain"))
+    return "Payé en ligne · remboursement en cours de vérification";
+  if (outstanding.some((operation) => operation.state === "failed"))
+    return "Payé en ligne · remboursement échoué ou annulé";
+  if (outstanding.length) return "Payé en ligne · remboursement à confirmer";
+  return "Payé en ligne";
+}
+
+function renderTotals(order) {
+  const lines = [
+    `<strong>Total initial : ${escapeHtml(formatMoney(order.total, order.currency))}</strong>`,
+  ];
+  if (order.remainingAmountCents != null) {
+    const label =
+      order.paymentMethod === "on_site" &&
+      !["rejected", "canceled"].includes(order.status)
+        ? `Montant à régler ${paymentLocation(order)}`
+        : "Montant ajusté";
+    lines.push(
+      `${escapeHtml(label)} : ${escapeHtml(formatMoney(order.remainingAmountCents / 100, order.currency))}`,
+    );
+  }
+  if (
+    order.paymentMethod === "online" &&
+    ["paid", "refunded"].includes(order.paymentStatus)
+  ) {
+    const confirmedCents = refundOperations(order)
+      .filter((operation) => operation.state === "succeeded")
+      .reduce((sum, operation) => sum + operation.amountCents, 0);
+    if (confirmedCents > 0)
+      lines.push(
+        `Remboursement confirmé : ${escapeHtml(formatMoney(confirmedCents / 100, order.currency))}`,
+      );
+  }
+  return lines.join("<br>");
+}
+
 function getEventCopy(eventType, order, variables) {
   const [kind, operationId] = eventType.split(":");
   const operation = (order.adjustments || []).find(
     (entry) => entry.id === operationId,
   );
+  if (kind === "refund_update" && order.paymentMethod !== "online") return null;
   if (
     ["partial_rejection", "expired", "refund_update"].includes(kind) &&
     operation
   ) {
-    const amount = formatMoney(operation.amountCents / 100, order.currency);
+    // A delayed partial email may be sent after a later full cancellation.
+    const partialActive =
+      kind === "partial_rejection" &&
+      !["rejected", "canceled"].includes(order.status);
     const financial =
-      operation.state === "succeeded"
-        ? `Le remboursement de ${amount} est confirmé. Le délai d'affichage dépend de votre banque.`
-        : operation.state === "not_required"
-          ? "Aucun paiement en ligne encaissé n'est à rembourser. Le montant à régler est ajusté."
-          : operation.state === "failed"
-            ? `Le remboursement de ${amount} a échoué. Le restaurant en est informé et le traitement sera repris.`
-            : operation.state === "uncertain"
-              ? `Le remboursement de ${amount} est en cours de vérification. Il n'est pas encore confirmé.`
-              : `Le montant à rembourser est de ${amount}. Le remboursement n'est pas encore confirmé.`;
+      order.paymentMethod === "on_site" && partialActive
+        ? `Le montant à régler ${paymentLocation(order)} a été ajusté.`
+        : refundMessage(
+            order,
+            kind === "expired" ? refundOperations(order) : [operation],
+          );
     const descriptions = {
       partial_rejection: "Certains articles de votre commande ont été refusés",
       expired:
@@ -82,12 +195,10 @@ function getEventCopy(eventType, order, variables) {
     return {
       subject: `${kind === "expired" ? "Commande annulée" : kind === "partial_rejection" ? "Commande ajustée" : "Remboursement"} ${variables.orderNumber}`,
       heading: descriptions[kind],
-      message: `${descriptions[kind]}. ${kind === "partial_rejection" ? "Les articles conservés restent confirmés. " : ""}${operation.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")}${operation.reason ? `. Motif : ${operation.reason}` : ""}. ${financial}`,
+      message:
+        `${descriptions[kind]}. ${partialActive ? "Les articles conservés restent confirmés. " : kind === "partial_rejection" ? `Votre commande a depuis été ${order.status === "rejected" ? "refusée" : "annulée"}. ` : ""}Articles concernés : ${operation.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")}${operation.reason ? `. Motif : ${operation.reason}` : ""}. ${financial}`.trim(),
     };
   }
-  const refunded = order?.paymentStatus === "refunded";
-  const paidOnline =
-    order?.paymentMethod === "online" && order?.paymentStatus === "paid";
 
   if (eventType === "received") {
     return {
@@ -113,26 +224,22 @@ function getEventCopy(eventType, order, variables) {
     return {
       subject: `Commande ${variables.orderNumber} refusée`,
       heading: "Votre commande n’a pas pu être acceptée",
-      message: refunded
-        ? "Votre commande a été refusée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : paidOnline && order.stripeRefundStatus === "failed"
-          ? "Votre commande a été refusée. Le remboursement n'a pas pu être confirmé et sera repris."
-          : paidOnline
-            ? "Votre commande a été refusée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
-            : "Votre commande a été refusée. Aucun paiement en ligne ne sera encaissé pour cette commande.",
+      message: ["Votre commande a été refusée.", refundMessage(order)]
+        .filter(Boolean)
+        .join(" "),
     };
   }
   if (eventType === "canceled") {
     return {
       subject: `Commande ${variables.orderNumber} annulée`,
       heading: "Votre commande a été annulée",
-      message: refunded
-        ? "Votre commande a été annulée. Votre paiement en ligne a été remboursé. Le délai d’affichage dépend ensuite de votre banque."
-        : paidOnline && order.stripeRefundStatus === "failed"
-          ? "Votre commande a été annulée. Le remboursement n'a pas pu être confirmé et sera repris."
-          : paidOnline
-            ? "Votre commande a été annulée. Le remboursement de votre paiement a été initié. Sa finalisation n’est pas encore confirmée."
-            : "Votre commande a été annulée. Pour toute question, vous pouvez contacter directement le restaurant.",
+      message: [
+        "Votre commande a été annulée.",
+        refundMessage(order),
+        "Pour toute question, vous pouvez contacter directement le restaurant.",
+      ]
+        .filter(Boolean)
+        .join(" "),
     };
   }
   if (eventType === "ready") {
@@ -207,18 +314,7 @@ function buildTakeAwayEmail({ eventType, order, restaurant }) {
   if (!copy) return null;
 
   const mode = order.fulfillmentMode === "delivery" ? "Livraison" : "Retrait";
-  const payment =
-    order.paymentMethod === "online"
-      ? order.paymentStatus === "refunded"
-        ? "Payé en ligne · remboursé"
-        : order.paymentStatus === "paid"
-          ? ["canceled", "rejected"].includes(order.status)
-            ? "Payé en ligne · remboursement à confirmer"
-            : "Payé en ligne"
-          : "Paiement en ligne non finalisé"
-      : order.fulfillmentMode === "delivery"
-        ? "Paiement à la livraison"
-        : "Paiement au retrait";
+  const payment = paymentLabel(order);
 
   return {
     subject: copy.subject,
@@ -238,7 +334,7 @@ function buildTakeAwayEmail({ eventType, order, restaurant }) {
             ${escapeHtml(payment)}
           </div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;border-collapse:collapse;font-size:14px;">${renderItems(order)}</table>
-          <p style="margin:18px 0 0;text-align:right;font-size:18px;"><strong>Total initial : ${escapeHtml(formatMoney(order.total, order.currency))}</strong>${order.remainingAmountCents != null ? `<br>Montant conservé : ${escapeHtml(formatMoney(order.remainingAmountCents / 100, order.currency))}<br>Remboursement confirmé : ${escapeHtml(formatMoney((order.refundedAmountCents || 0) / 100, order.currency))}` : ""}</p>
+          <p style="margin:18px 0 0;text-align:right;font-size:18px;">${renderTotals(order)}</p>
           ${renderAddress(order)}
           ${order.customerNote ? `<p style="margin:18px 0 0;"><strong>Votre note</strong><br>${escapeHtml(order.customerNote)}</p>` : ""}
         </div>

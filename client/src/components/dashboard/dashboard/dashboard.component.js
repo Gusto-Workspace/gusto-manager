@@ -415,6 +415,8 @@ export default function DashboardComponent(props) {
               loading={monthlyDataLoading}
               data={chart.data}
               currency={chart.currency}
+              showPaymentBreakdown={chart.module === "take_away"}
+              onlineAvailable={chart.onlineAvailable}
               title={
                 activeModules.length > 1 ? (
                   <select

@@ -432,8 +432,12 @@ function App({ Component, pageProps }) {
       return "/manifest-time-clock.webmanifest";
     if (p.startsWith("/dashboard/admin")) return "/manifest-admin.webmanifest";
     // ajoute ici les autres modules...
-    return "/manifest.webmanifest";
+    return "/manifest.webmanifest?v=2";
   }, [router.pathname]);
+
+  const isManagerApp =
+    router.pathname.startsWith("/dashboard") &&
+    manifestHref === "/manifest.webmanifest?v=2";
 
   useEffect(() => {
     const scrollToTopEverywhere = () => {
@@ -547,6 +551,31 @@ function App({ Component, pageProps }) {
       <Head>
         {/* ✅ Android/Chrome : manifest par module */}
         <link rel="manifest" href={manifestHref} />
+
+        {isManagerApp && (
+          <>
+            <meta name="application-name" content="Gusto Manager" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+            <meta name="apple-mobile-web-app-title" content="Gusto Manager" />
+            <link
+              rel="apple-touch-icon"
+              sizes="152x152"
+              href="/icons/ios/gusto-152.png?v=2"
+            />
+            <link
+              rel="apple-touch-icon"
+              sizes="167x167"
+              href="/icons/ios/gusto-167.png?v=2"
+            />
+            <link
+              rel="apple-touch-icon"
+              sizes="180x180"
+              href="/icons/ios/gusto-180.png?v=2"
+            />
+          </>
+        )}
 
         {/* (optionnel) utile pour l'UI navigateur Android */}
         <meta name="theme-color" content="#131E36" />

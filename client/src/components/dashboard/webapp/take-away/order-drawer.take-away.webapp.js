@@ -16,12 +16,14 @@ import {
   NEXT_STATUS,
   STATUS_LABELS,
   formatTime,
+  getPaymentSummary,
   getStatusTone,
-  toMoney,
 } from "../../take-away/take-away.utils";
 import useMobileDrawerSwipe from "@/components/_shared/use-mobile-drawer-swipe";
 import ConfirmModalTakeAwayWebapp from "./confirm-modal.take-away.webapp";
 import OrderAdjustmentsTakeAway from "../../take-away/order-adjustments.take-away.component";
+import OrderDetailsTakeAway from "../../take-away/order-details.take-away.component";
+import { canDeleteTakeAwayOrder } from "@/_assets/utils/take-away-visibility";
 
 const CLOSE_MS = 280;
 
@@ -44,15 +46,6 @@ function formatDate(dateInput) {
     month: "long",
     year: "numeric",
   }).format(date);
-}
-
-function getPaymentSummary(order) {
-  if (order.paymentStatus === "refunded") return "Payée en ligne · remboursée";
-  if (order.refundedAmountCents > 0)
-    return "Payée en ligne · partiellement remboursée";
-  if (order.paymentStatus === "paid") return "Payée en ligne";
-  if (order.paymentMethod === "online") return "Paiement en ligne en attente";
-  return "Paiement sur place ou à la livraison";
 }
 
 export default function TakeAwayOrderDrawerWebapp({
@@ -330,76 +323,7 @@ export default function TakeAwayOrderDrawerWebapp({
               </section>
             ) : null}
 
-            <section className="rounded-2xl border border-darkBlue/10 bg-white/70 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
-                Commande
-              </p>
-              <div className="mt-3 space-y-3">
-                {(order.items || []).map((item, index) => (
-                  <div
-                    key={`${item.catalogItemId}-${index}`}
-                    className="border-b border-darkBlue/10 pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="flex justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-darkBlue">
-                          {Math.max(
-                            0,
-                            item.quantity - (item.refusedQuantity || 0),
-                          )}
-                          × {item.name}
-                          {item.refusedQuantity ? (
-                            <span className="ml-2 text-xs text-red">
-                              {item.refusedQuantity} refusé(s) / {item.quantity}{" "}
-                              initialement
-                            </span>
-                          ) : null}
-                        </p>
-                        {(item.options || []).map((option) => (
-                          <p
-                            key={`${item.catalogItemId}-${option.name}`}
-                            className="mt-1 text-xs text-darkBlue/55"
-                          >
-                            {option.name} · {toMoney(option.price)}
-                          </p>
-                        ))}
-                        {item.note ? (
-                          <p className="mt-2 text-xs italic text-darkBlue/60">
-                            {item.note}
-                          </p>
-                        ) : null}
-                      </div>
-                      <span className="shrink-0 text-sm font-bold text-darkBlue">
-                        {toMoney(
-                          Math.max(
-                            0,
-                            item.quantity - (item.refusedQuantity || 0),
-                          ) *
-                            (Number(item.unitPrice) +
-                              Number(item.optionsTotal || 0)),
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 border-t border-darkBlue/10 pt-3 text-sm">
-                <p className="flex justify-between text-darkBlue/65">
-                  <span>Sous-total initial</span>
-                  <span>{toMoney(order.subtotal)}</span>
-                </p>
-                {order.fulfillmentMode === "delivery" ? (
-                  <p className="mt-2 flex justify-between text-darkBlue/65">
-                    <span>Frais de livraison</span>
-                    <span>{toMoney(order.deliveryFee)}</span>
-                  </p>
-                ) : null}
-                <p className="mt-3 flex justify-between text-base font-bold text-darkBlue">
-                  <span>Total initial</span>
-                  <span>{toMoney(order.total)}</span>
-                </p>
-              </div>
-            </section>
+            <OrderDetailsTakeAway order={order} />
 
             <OrderAdjustmentsTakeAway
               order={order}
@@ -436,7 +360,7 @@ export default function TakeAwayOrderDrawerWebapp({
             ) : null}
           </div>
 
-          {availableActions.length ? (
+          {availableActions.length || canDeleteTakeAwayOrder(order) ? (
             <footer className="shrink-0 border-t border-darkBlue/10 bg-white/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(19,30,54,0.08)] mobile:px-5">
               <div className="grid grid-cols-2 gap-2">
                 {availableActions.map((status, index) => {
@@ -462,6 +386,16 @@ export default function TakeAwayOrderDrawerWebapp({
                   );
                 })}
               </div>
+              {canDeleteTakeAwayOrder(order) ? (
+                <button
+                  type="button"
+                  disabled={processing}
+                  onClick={() => runAction("delete")}
+                  className="w-full inline-flex items-center justify-center rounded-xl border border-red/20 bg-red/10 text-red hover:bg-red/15 transition px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                >
+                  Supprimer
+                </button>
+              ) : null}
             </footer>
           ) : null}
         </aside>
