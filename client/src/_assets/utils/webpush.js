@@ -1,3 +1,5 @@
+import { canUsePushModule } from "./push-window";
+
 export function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -111,7 +113,7 @@ async function parseResponseBody(response) {
 }
 
 function getPushServiceWorkerConfig(module) {
-  const swVersion = "2026-10-14-notification-badges-1";
+  const swVersion = "2026-10-26-isolation-1";
   const configurations = {
     reservations: {
       swUrl: `/sw-reservations.js?v=${swVersion}`,
@@ -127,7 +129,10 @@ function getPushServiceWorkerConfig(module) {
     },
   };
 
-  return configurations[module] || configurations.reservations;
+  if (!Object.prototype.hasOwnProperty.call(configurations, module)) {
+    throw createPushError("Module de notifications inconnu.", "INVALID_MODULE");
+  }
+  return configurations[module];
 }
 
 async function cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl }) {
@@ -149,20 +154,27 @@ async function cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl }) {
 
     if (legacySubscription) {
       try {
-        await fetch(`${String(apiUrl).replace(/\/+$/, "")}/push/unsubscribe`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+        const response = await fetch(
+          `${String(apiUrl).replace(/\/+$/, "")}/push/unsubscribe`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              restaurantId,
+              module: "take_away",
+              endpoint: legacySubscription.endpoint,
+            }),
           },
-          body: JSON.stringify({
-            restaurantId,
-            module: "take_away",
-            endpoint: legacySubscription.endpoint,
-          }),
-        });
+        );
+        if (!response.ok) return;
+        const result = await parseResponseBody(response);
+        if (result?.hasOtherRestaurants) return;
       } catch {
-        // La souscription locale obsolète doit tout de même être supprimée.
+        // Keep the legacy subscription until the backend confirms detachment.
+        return;
       }
 
       await legacySubscription.unsubscribe();
@@ -182,6 +194,15 @@ export async function setupPushForModule({
   requestPermission = false,
 }) {
   const { swUrl, scope } = getPushServiceWorkerConfig(module);
+  const assertWindowModule = () => {
+    if (!canUsePushModule(module)) {
+      throw createPushError(
+        "Ouvrez la webapp correspondante pour activer ses notifications.",
+        "WINDOW_MODULE_MISMATCH",
+      );
+    }
+  };
+  assertWindowModule();
 
   try {
     const initialStatus = getPushPermissionStatus();
@@ -228,16 +249,17 @@ export async function setupPushForModule({
       );
     }
 
-    if (module === "take_away") {
-      await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
-    }
-
     // 1) register SW spécifique
-    const reg = await navigator.serviceWorker.register(swUrl, { scope });
+    assertWindowModule();
+    const reg = await navigator.serviceWorker.register(swUrl, {
+      scope,
+      updateViaCache: "none",
+    });
     try {
       await reg.update();
     } catch {}
     await waitForActiveServiceWorker(reg);
+    assertWindowModule();
 
     // 2) subscribe
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
@@ -250,7 +272,19 @@ export async function setupPushForModule({
       });
     }
 
+    let previousEndpoint = null;
+    if (module === "take_away") {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const legacy = registrations.find(
+        (entry) =>
+          new URL(entry.scope).pathname.replace(/\/+$/, "") ===
+          "/dashboard/take-away",
+      );
+      previousEndpoint =
+        (await legacy?.pushManager.getSubscription())?.endpoint || null;
+    }
     // 3) envoyer au backend
+    assertWindowModule();
     const response = await fetch(
       `${String(apiUrl).replace(/\/+$/, "")}/push/subscribe`,
       {
@@ -259,7 +293,12 @@ export async function setupPushForModule({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ restaurantId, module, subscription: sub }),
+        body: JSON.stringify({
+          restaurantId,
+          module,
+          subscription: sub,
+          previousEndpoint,
+        }),
       },
     );
 
@@ -275,6 +314,14 @@ export async function setupPushForModule({
       throw error;
     }
 
+    // Retire only this historical take-away registration, after the replacement
+    // is durably subscribed. Current scopes/subscriptions are never migrated.
+    if (
+      module === "take_away" &&
+      (!previousEndpoint || responseBody?.legacyTransferred === true)
+    ) {
+      await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
+    }
     return {
       status: "subscribed",
       subscription: sub,
@@ -307,7 +354,11 @@ export async function disablePushForModule({
 
   const { scope } = getPushServiceWorkerConfig(module);
   const registration = await navigator.serviceWorker.getRegistration(scope);
-  const subscription = await registration?.pushManager.getSubscription();
+  const exactScope =
+    registration && new URL(registration.scope).pathname === scope;
+  const subscription = exactScope
+    ? await registration.pushManager.getSubscription()
+    : null;
 
   if (!subscription) {
     if (module === "take_away") {
@@ -341,7 +392,8 @@ export async function disablePushForModule({
     );
   }
 
-  await subscription.unsubscribe();
+  // Keep the browser endpoint: other restaurants/windows can still use it, or
+  // subscribe concurrently. Only the requested backend association is disabled.
   if (module === "take_away") {
     await cleanupLegacyTakeAwayPush({ restaurantId, token, apiUrl });
   }
