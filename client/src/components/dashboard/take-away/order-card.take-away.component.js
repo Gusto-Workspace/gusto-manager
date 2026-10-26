@@ -6,14 +6,18 @@ import {
   ShoppingBag,
 } from "lucide-react";
 
-import { STATUS_LABELS, getStatusTone } from "./take-away.utils";
+import {
+  STATUS_LABELS,
+  getPaymentSummary,
+  getStatusTone,
+} from "./take-away.utils";
 
 function getPaymentLabel(order) {
-  if (order.paymentStatus === "refunded") return "Remboursée";
-  if (order.refundedAmountCents > 0) return "Partiellement remboursée";
+  if (order.paymentMethod !== "online") return getPaymentSummary(order);
+  if (order.paymentStatus === "refunded") return "Remboursé";
+  if (order.refundedAmountCents > 0) return "Partiellement remboursé";
   if (order.paymentStatus === "paid") return "Payée";
-  if (order.paymentMethod === "online") return "Paiement en attente";
-  return "Sur place";
+  return "Paiement en attente";
 }
 
 export default function TakeAwayOrderCardComponent({

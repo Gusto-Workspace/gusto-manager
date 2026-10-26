@@ -24,7 +24,7 @@ const TYPES = new Set([
 const NOTES = [
   "Source : mouvements de solde Stripe, datés en Europe/Paris. Calculs en centimes, par devise de règlement Stripe.",
   "Net = encaissements - remboursements + ajustements - frais. Les virements bancaires ne sont pas des ventes.",
-  "Les opérations ambiguës et les frais de compte sans lien certain avec un module sont exclus. Les paiements sur place sans preuve Stripe sont exclus.",
+  "Les opérations ambiguës et les frais de compte sans lien certain avec un module sont exclus. Les paiements sur place sans preuve Stripe sont exclus des mouvements Stripe.",
 ];
 const fail = (message, status = 400) =>
   Object.assign(new Error(message), { status });

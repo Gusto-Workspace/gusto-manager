@@ -34,7 +34,9 @@ const {
   validateTakeAwayStripeEventEnvelope,
   normalizeTakeAwayDateKey,
   getBlockedTakeAwayDates,
+  deleteRestaurantOrder,
 } = require("../services/take-away.service");
+const { restaurantOrderVisibilityFilter } = require("../services/take-away-visibility.service");
 const { broadcastToRestaurant } = require("../services/sse-bus.service");
 const { processTakeAwayStripeEvent } = require("../services/take-away-stripe-events.service");
 const {
@@ -459,11 +461,7 @@ router.get(
       if (!restaurant) return;
       const query = {
         restaurant_id: restaurant._id,
-        $or: [
-          { source: "dashboard" },
-          { paymentMethod: { $ne: "online" } },
-          { paymentStatus: { $in: ["paid", "refunded"] } },
-        ],
+        ...restaurantOrderVisibilityFilter(),
       };
       if (req.query.status && req.query.status !== "all") {
         query.status = req.query.status;
@@ -501,9 +499,42 @@ router.get(
         }
       }
 
+      const requestedLimit = Number(req.query.limit ?? 100);
+      if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+        return res.status(400).json({ message: "Limite invalide" });
+      }
+      const limit = Math.min(200, requestedLimit);
+      const cursorPagination = req.query.pagination === "cursor" || req.query.cursor != null;
+      if (req.query.pagination != null && req.query.pagination !== "cursor") {
+        return res.status(400).json({ message: "Pagination invalide" });
+      }
+      if (cursorPagination) {
+        if (req.query.cursor != null) {
+          if (typeof req.query.cursor !== "string" || !/^[a-f\d]{24}$/i.test(req.query.cursor)) {
+            return res.status(400).json({ message: "Curseur invalide" });
+          }
+          query._id = { $lt: req.query.cursor };
+        }
+        // _id is unique and immutable: deleting the boundary order, inserting
+        // orders or rescheduling them cannot shift the remaining page offsets.
+        const page = await TakeAwayOrderModel.find(query)
+          .sort({ _id: -1 })
+          .limit(limit + 1);
+        const hasMore = page.length > limit;
+        const orders = page.slice(0, limit);
+        return res.status(200).json({
+          orders,
+          pagination: {
+            hasMore,
+            nextCursor: hasMore ? String(orders.at(-1)._id) : null,
+          },
+        });
+      }
+
+      // Keep the legacy response and chronological order for existing clients.
       const orders = await TakeAwayOrderModel.find(query)
-        .sort({ scheduledFor: -1, createdAt: -1 })
-        .limit(Math.min(200, Number(req.query.limit || 100)));
+        .sort({ scheduledFor: -1, createdAt: -1, _id: -1 })
+        .limit(limit);
 
       return res.status(200).json({ orders });
     } catch (error) {
@@ -542,11 +573,7 @@ router.get(
       const order = await TakeAwayOrderModel.findOne({
         _id: req.params.orderId,
         restaurant_id: restaurant._id,
-        $or: [
-          { source: "dashboard" },
-          { paymentMethod: { $ne: "online" } },
-          { paymentStatus: { $in: ["paid", "refunded"] } },
-        ],
+        ...restaurantOrderVisibilityFilter(),
       });
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
@@ -565,6 +592,10 @@ router.patch(
     try {
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
+      if (!await TakeAwayOrderModel.exists({
+        _id: req.params.orderId, restaurant_id: restaurant._id,
+        ...restaurantOrderVisibilityFilter(),
+      })) return res.status(404).json({ message: "Commande introuvable" });
       const order = await updateOrderStatus({
         restaurant,
         orderId: req.params.orderId,
@@ -584,6 +615,10 @@ router.post(
     try {
       const restaurant = await loadAuthorizedRestaurant(req, res);
       if (!restaurant) return;
+      if (!await TakeAwayOrderModel.exists({
+        _id: req.params.orderId, restaurant_id: restaurant._id,
+        ...restaurantOrderVisibilityFilter(),
+      })) return res.status(404).json({ message: "Commande introuvable" });
       const order = await rejectItems({
         restaurant,
         orderId: req.params.orderId,
@@ -593,6 +628,21 @@ router.post(
         actorId: req.user?.id || req.user?._id || req.user?.userId || "",
       });
       return res.status(200).json({ order });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
+
+router.delete(
+  "/restaurants/:restaurantId/take-away/orders/:orderId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const restaurant = await loadAuthorizedRestaurant(req, res);
+      if (!restaurant) return;
+      await deleteRestaurantOrder({ restaurant, orderId: req.params.orderId });
+      return res.status(200).json({ orderId: req.params.orderId });
     } catch (error) {
       return handleError(res, error);
     }

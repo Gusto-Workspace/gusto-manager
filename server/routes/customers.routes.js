@@ -14,6 +14,8 @@ const {
 const RestaurantModel = require("../models/restaurant.model");
 const CustomerModel = require("../models/customer.model");
 const ReservationModel = require("../models/reservation.model");
+const TakeAwayOrderModel = require("../models/take-away-order.model");
+const { isRestaurantOrderVisible } = require("../services/take-away-visibility.service");
 
 router.use(
   "/restaurants/:id/customers",
@@ -444,6 +446,18 @@ router.get(
         giftLimit,
       );
 
+      // Keep durable legacy summaries, but do not expose retained hidden orders
+      // through the customer's operational history or its embedded mini-list.
+      const summaries = customer.lastTakeAwayOrders || [];
+      if (summaries.length) {
+        const retained = await TakeAwayOrderModel.find({
+          restaurant_id: restaurantId,
+          _id: { $in: summaries.map((item) => item.orderId).filter(Boolean) },
+        }).select("_id deletedAt paymentMethod paymentStatus paidAt").lean();
+        const hiddenIds = new Set(retained.filter((order) => !isRestaurantOrderVisible(order))
+          .map((order) => String(order._id)));
+        customer.lastTakeAwayOrders = summaries.filter((item) => !hiddenIds.has(String(item.orderId)));
+      }
       const takeAway = pickTakeAwayHistoryForCustomer(
         customer,
         takeAwayPage,

@@ -26,6 +26,39 @@ import {
   isPushDisabledForModule,
   setupPushForModule,
 } from "@/_assets/utils/webpush";
+import {
+  canUsePushModule,
+  handlePushWindowMessage,
+} from "@/_assets/utils/push-window";
+import PushRestaurantGuard from "@/components/_shared/notifications/push-restaurant-guard";
+
+function PushWindowBridge() {
+  const router = useRouter();
+  const { restaurantContext } = useContext(GlobalContext);
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.serviceWorker ||
+      process.env.NODE_ENV === "development"
+    )
+      return;
+    const handler = (event) => {
+      let userId = null;
+      try {
+        userId = String(jwtDecode(localStorage.getItem("token"))?.id || "");
+      } catch {}
+      handlePushWindowMessage(event, {
+        router,
+        restaurant: restaurantContext,
+        userId,
+      });
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", handler);
+  }, [router, restaurantContext]);
+  return null;
+}
 
 function ensureAxiosApiAuthInterceptor() {
   if (typeof window === "undefined") return;
@@ -120,6 +153,7 @@ function WebAppNotificationBadgeSync() {
   useEffect(() => {
     if (typeof navigator === "undefined") return;
     if (!targetModule) return;
+    if (!canUsePushModule(targetModule)) return;
     if (restaurantContext?.dataLoading) return;
 
     const setBadge =
@@ -170,6 +204,8 @@ function WebAppPushSubscriptionSync() {
 
   useEffect(() => {
     if (!targetModule || !restaurantContext?.isAuth || !restaurantId) return;
+    if (restaurantContext.dataLoading || !canUsePushModule(targetModule))
+      return;
     if (getPushPermissionStatus() !== "granted") return;
     if (isPushDisabledForModule(restaurantId, targetModule)) return;
 
@@ -180,6 +216,7 @@ function WebAppPushSubscriptionSync() {
 
     const synchronize = () => {
       if (stopped || requestInProgress) return requestInProgress;
+      if (!canUsePushModule(targetModule)) return null;
       if (getPushPermissionStatus() !== "granted") return null;
       if (isPushDisabledForModule(restaurantId, targetModule)) return null;
 
@@ -242,7 +279,12 @@ function WebAppPushSubscriptionSync() {
         handleControllerChange,
       );
     };
-  }, [restaurantContext?.isAuth, restaurantId, targetModule]);
+  }, [
+    restaurantContext?.isAuth,
+    restaurantContext?.dataLoading,
+    restaurantId,
+    targetModule,
+  ]);
 
   return null;
 }
@@ -432,8 +474,12 @@ function App({ Component, pageProps }) {
       return "/manifest-time-clock.webmanifest";
     if (p.startsWith("/dashboard/admin")) return "/manifest-admin.webmanifest";
     // ajoute ici les autres modules...
-    return "/manifest.webmanifest";
+    return "/manifest.webmanifest?v=2";
   }, [router.pathname]);
+
+  const isManagerApp =
+    router.pathname.startsWith("/dashboard") &&
+    manifestHref === "/manifest.webmanifest?v=2";
 
   useEffect(() => {
     const scrollToTopEverywhere = () => {
@@ -506,40 +552,6 @@ function App({ Component, pageProps }) {
         });
       return;
     }
-
-    const handleServiceWorkerMessage = (event) => {
-      const message = event?.data;
-      if (message?.type !== "notification:navigate") return;
-
-      const rawTargetUrl = String(message?.targetUrl || "").trim();
-      if (!rawTargetUrl) return;
-
-      try {
-        const targetUrl = new URL(rawTargetUrl, window.location.origin);
-        if (targetUrl.origin !== window.location.origin) return;
-
-        const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
-        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-
-        if (!nextPath || currentPath === nextPath) return;
-
-        router.push(nextPath, undefined, { scroll: false });
-      } catch (error) {
-        console.warn("Invalid service worker navigation target", error);
-      }
-    };
-
-    navigator.serviceWorker.addEventListener(
-      "message",
-      handleServiceWorkerMessage,
-    );
-
-    return () => {
-      navigator.serviceWorker.removeEventListener(
-        "message",
-        handleServiceWorkerMessage,
-      );
-    };
   }, [router]);
 
   return (
@@ -548,20 +560,51 @@ function App({ Component, pageProps }) {
         {/* ✅ Android/Chrome : manifest par module */}
         <link rel="manifest" href={manifestHref} />
 
+        {isManagerApp && (
+          <>
+            <meta name="application-name" content="Gusto Manager" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta
+              name="apple-mobile-web-app-status-bar-style"
+              content="default"
+            />
+            <meta name="apple-mobile-web-app-title" content="Gusto Manager" />
+            <link
+              rel="apple-touch-icon"
+              sizes="152x152"
+              href="/icons/ios/gusto-152.png?v=2"
+            />
+            <link
+              rel="apple-touch-icon"
+              sizes="167x167"
+              href="/icons/ios/gusto-167.png?v=2"
+            />
+            <link
+              rel="apple-touch-icon"
+              sizes="180x180"
+              href="/icons/ios/gusto-180.png?v=2"
+            />
+          </>
+        )}
+
         {/* (optionnel) utile pour l'UI navigateur Android */}
         <meta name="theme-color" content="#131E36" />
       </Head>
 
       <GlobalProvider>
-        <WebAppNotificationBadgeSync />
-        <WebAppPushSubscriptionSync />
-        <AccountantDashboardAccessGuard>
-          <OwnerOnlyWebAppGuard>
-            <EmployeeDashboardAccessGuard>
-              <Component {...pageProps} />
-            </EmployeeDashboardAccessGuard>
-          </OwnerOnlyWebAppGuard>
-        </AccountantDashboardAccessGuard>
+        <PushWindowBridge />
+        <PushRestaurantGuard>
+          <AccountantDashboardAccessGuard>
+            <OwnerOnlyWebAppGuard>
+              <EmployeeDashboardAccessGuard>
+                <WebAppNotificationBadgeSync />
+                <WebAppPushSubscriptionSync />
+                <Component {...pageProps} />
+              </EmployeeDashboardAccessGuard>
+            </OwnerOnlyWebAppGuard>
+          </AccountantDashboardAccessGuard>
+        </PushRestaurantGuard>
       </GlobalProvider>
       <Analytics />
     </>

@@ -229,9 +229,11 @@ function buildPushLink({
   data,
   fallbackLink,
   notificationId = null,
+  restaurantId = null,
 }) {
   if (module === "reservations") {
     return buildPath("/dashboard/webapp/reservations", {
+      restaurantId,
       day: toDateKey(data?.reservationDate),
       reservationId: data?._id || data?.reservationId || null,
       notificationId,
@@ -240,6 +242,7 @@ function buildPushLink({
 
   if (module === "gift_cards") {
     return buildPath("/dashboard/webapp/gift-cards", {
+      restaurantId,
       purchaseId: data?._id || data?.purchaseId || null,
       notificationId,
     });
@@ -247,6 +250,7 @@ function buildPushLink({
 
   if (module === "take_away") {
     return buildPath("/dashboard/webapp/take-away", {
+      restaurantId,
       day: toDateKey(data?.scheduledFor),
       orderId: data?._id || data?.orderId || null,
       notificationId,
@@ -374,6 +378,7 @@ async function createAndBroadcastNotification({
       title: content.title,
       message: content.message,
       link: buildPushLink({
+        restaurantId: String(restaurantId),
         module,
         type,
         data,

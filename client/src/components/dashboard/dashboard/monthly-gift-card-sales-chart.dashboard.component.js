@@ -16,17 +16,41 @@ import {
 
 import { Loader2 } from "lucide-react";
 
-function SalesTooltip({ active, payload, label, currencySymbol }) {
+export function SalesTooltip({
+  active,
+  payload,
+  label,
+  currencySymbol,
+  showPaymentBreakdown,
+  onlineAvailable,
+}) {
   if (active && payload && payload.length) {
+    const point = payload[0].payload;
     return (
       <div className="rounded-xl border border-darkBlue/10 bg-white/95 px-3 py-2 shadow-md text-xs">
         <p className="mb-1 font-semibold text-darkBlue">{label}</p>
         <p className="text-darkBlue/70">
+          {showPaymentBreakdown && "Total : "}
           <span className="font-semibold text-darkBlue">
             {payload[0].value.toLocaleString("fr-FR")}
           </span>{" "}
           {currencySymbol}
         </p>
+        {showPaymentBreakdown && (
+          <>
+            <p className="mt-1 text-darkBlue/70">
+              En ligne :{" "}
+              {onlineAvailable === false
+                ? "Indisponible"
+                : `${Number(point?.onlineNet || 0).toLocaleString("fr-FR")} ${currencySymbol}`}
+            </p>
+            <p className="text-darkBlue/70">
+              Au retrait :{" "}
+              {Number(point?.onSiteOrders || 0).toLocaleString("fr-FR")}{" "}
+              {currencySymbol}
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -36,6 +60,7 @@ function SalesTooltip({ active, payload, label, currencySymbol }) {
 export default function MonthlySalesChart(props) {
   const { t } = useTranslation("index");
   const gradientId = useId().replace(/:/g, "");
+  const breakdownTooltipId = `sales-breakdown-${gradientId}`;
   const currencySymbol = new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: (props.currency || "eur").toUpperCase(),
@@ -44,10 +69,21 @@ export default function MonthlySalesChart(props) {
     .find((part) => part.type === "currency")?.value;
 
   const data = props.data || [];
+  const onlineUnavailable =
+    props.onlineAvailable === false && !props.showPaymentBreakdown;
 
   const totalAmount = Array.isArray(data)
     ? data.reduce((sum, d) => sum + (d.total || 0), 0)
     : 0;
+  const onlineAmount = data.reduce(
+    (sum, point) => sum + (point.onlineNet || 0),
+    0,
+  );
+  const onSiteAmount = data.reduce(
+    (sum, point) => sum + (point.onSiteOrders || 0),
+    0,
+  );
+  const totalBreakdown = `En ligne : ${props.onlineAvailable === false ? "Indisponible" : `${onlineAmount.toLocaleString("fr-FR")} ${currencySymbol}`} et au retrait : ${onSiteAmount.toLocaleString("fr-FR")} ${currencySymbol}`;
 
   const lastPoint =
     Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
@@ -68,9 +104,7 @@ export default function MonthlySalesChart(props) {
   const yAxisDomain = hasNegativeTotal ? ["auto", "auto"] : [0, "auto"];
   const yAxisWidth = Math.max(
     44,
-    formattedMax.length * 6.5 +
-      String(currencySymbol || "€").length * 6.5 +
-      15,
+    formattedMax.length * 6.5 + String(currencySymbol || "€").length * 6.5 + 15,
   );
 
   return (
@@ -84,7 +118,7 @@ export default function MonthlySalesChart(props) {
       "
     >
       {/* Header */}
-      <header className="relative z-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+      <header className="relative z-20 mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-base tablet:text-lg font-semibold text-darkBlue">
             {props.title}
@@ -101,12 +135,35 @@ export default function MonthlySalesChart(props) {
             <span className="text-darkBlue/70">
               Total :{" "}
               <span className="font-semibold text-darkBlue">
-                {totalAmount.toLocaleString("fr-FR")} {currencySymbol}
+                {onlineUnavailable
+                  ? "Indisponible"
+                  : `${totalAmount.toLocaleString("fr-FR")} ${currencySymbol}`}
               </span>
             </span>
+            {props.showPaymentBreakdown && !props.loading && !props.error && (
+              <span className="group/total-info ml-1 inline-flex">
+                <button
+                  type="button"
+                  aria-label="Détail du total"
+                  aria-describedby={breakdownTooltipId}
+                  className="inline-flex size-4 items-center justify-center rounded-full border border-darkBlue/30 text-[10px] font-semibold text-darkBlue/60 cursor-help focus-visible:outline focus-visible:outline-2 focus-visible:outline-darkBlue/40"
+                >
+                  i
+                </button>
+                <span
+                  id={breakdownTooltipId}
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute right-0 top-full z-20 max-w-full pt-2 group-hover/total-info:visible group-hover/total-info:pointer-events-auto group-focus-within/total-info:visible group-focus-within/total-info:pointer-events-auto"
+                >
+                  <span className="block rounded-xl border border-darkBlue/10 bg-white/95 px-3 py-2 text-xs text-darkBlue shadow-md">
+                    {totalBreakdown}
+                  </span>
+                </span>
+              </span>
+            )}
           </div>
 
-          {lastPoint && (
+          {lastPoint && !onlineUnavailable && (
             <div className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-darkBlue/10 px-3 py-1">
               <span className="text-darkBlue/60">
                 Mois en cours :{" "}
@@ -129,13 +186,14 @@ export default function MonthlySalesChart(props) {
             <Loader2 className="size-6 animate-spin" />
             <span className="text-sm italic">Chargement…</span>
           </div>
-        ) : props.error ? (
+        ) : props.error || onlineUnavailable ? (
           <div
             role="alert"
             className="flex items-center justify-center text-sm text-red"
             style={{ height }}
           >
-            {props.error}
+            {props.error ||
+              "Stripe non configuré : données en ligne indisponibles."}
           </div>
         ) : !data.length ? (
           <div
@@ -194,7 +252,13 @@ export default function MonthlySalesChart(props) {
                   width={yAxisWidth}
                 />
                 <Tooltip
-                  content={<SalesTooltip currencySymbol={currencySymbol} />}
+                  content={
+                    <SalesTooltip
+                      currencySymbol={currencySymbol}
+                      showPaymentBreakdown={props.showPaymentBreakdown}
+                      onlineAvailable={props.onlineAvailable}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"

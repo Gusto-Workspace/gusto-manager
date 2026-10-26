@@ -91,6 +91,7 @@ export default function ListTakeAwayWebapp() {
   const getCachedTakeAwayOrdersMonth =
     restaurantContext.getCachedTakeAwayOrdersMonth;
   const applyTakeAwayOrderUpdate = restaurantContext.applyTakeAwayOrderUpdate;
+  const isTakeAwayOrderDeleted = restaurantContext.isTakeAwayOrderDeleted;
   const focusedOrderId =
     typeof router.query.orderId === "string" ? router.query.orderId : "";
   const focusedNotificationId =
@@ -344,13 +345,18 @@ export default function ListTakeAwayWebapp() {
 
   useEffect(() => {
     if (!selectedOrder?._id) return;
+    if (isTakeAwayOrderDeleted?.(selectedOrder._id)) {
+      setDrawerOpen(false);
+      setSelectedOrder(null);
+      return;
+    }
     const updatedOrder = orders.find(
       (order) => String(order._id) === String(selectedOrder._id),
     );
     if (updatedOrder && updatedOrder !== selectedOrder) {
       setSelectedOrder(updatedOrder);
     }
-  }, [orders, selectedOrder]);
+  }, [isTakeAwayOrderDeleted, orders, selectedOrder]);
 
   const statusCounts = useMemo(() => {
     const counts = { all: 0 };
@@ -420,10 +426,16 @@ export default function ListTakeAwayWebapp() {
     setDrawerError("");
     try {
       const { data } = await request({
-        method: typeof status === "object" ? "post" : "patch",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/${typeof status === "object" ? "rejections" : "status"}`,
+        method: status === "delete" ? "delete" : typeof status === "object" ? "post" : "patch",
+        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}${status === "delete" ? "" : `/${typeof status === "object" ? "rejections" : "status"}`}`,
         data: typeof status === "object" ? status : { status },
       });
+      if (status === "delete") {
+        applyTakeAwayOrderUpdate?.({ ...order, deletedAt: new Date().toISOString() }, restaurantId);
+        closeDrawer();
+        setSelectedOrder(null);
+        return true;
+      }
       const updatedOrder = data?.order;
       if (!updatedOrder) throw new Error("Missing order");
       applyTakeAwayOrderUpdate?.(updatedOrder);

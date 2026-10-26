@@ -453,6 +453,16 @@ test("confirmed/preparing orders keep their status; historical lines use determi
   assert.equal(doc.remainingAmountCents, 3800);
   assert.equal(doc.refundedAmountCents, 0);
   assert.equal(doc.adjustments[0].state, "not_required");
+  const email = buildTakeAwayEmail({
+    eventType: `partial_rejection:${doc.adjustments[0].id}`,
+    order: doc,
+    restaurant,
+  });
+  assert.match(
+    email.htmlContent,
+    /montant à régler à la livraison a été ajusté/,
+  );
+  assert.doesNotMatch(email.htmlContent, /en ligne|rembours/i);
   await adjustment.recordDecision(
     refuse(null, {
       requestKey: "refusal:test-0002",
@@ -852,6 +862,12 @@ test("an in-flight partial refund is reconciled before refunding the terminal ba
   assert.equal(doc.refundedAmountCents, 5000);
 });
 test("a late payment success after unpaid expiration reopens the same refund operation", async (t) => {
+  const events = [];
+  const sse = require("../services/sse-bus.service");
+  const client = { locals: { gustoEventModules: { take_away: true } },
+    write(line) { events.push(JSON.parse(line.slice(6))); } };
+  sse._addClient(restaurant._id, client);
+  t.after(() => sse._removeClient(restaurant._id, client));
   const doc = memory(
     t,
     fixture({
@@ -871,6 +887,7 @@ test("a late payment success after unpaid expiration reopens the same refund ope
     stripeInstance: remote.stripe,
   });
   const id = doc.adjustments[0].id;
+  assert.equal(events.filter((event) => event.order).length, 0);
   const getStripe = service.getStripeForRestaurant;
   service.getStripeForRestaurant = () => remote.stripe;
   t.after(() => {
@@ -891,6 +908,18 @@ test("a late payment success after unpaid expiration reopens the same refund ope
   assert.equal(doc.adjustments[0].id, id);
   assert.equal(doc.refundedAmountCents, 5000);
   assert.equal(remote.calls(), 1);
+  assert.ok(events.some((event) => event.order?._id === doc._id));
+  await service.deleteRestaurantOrder({ restaurant, orderId: doc._id });
+  const hiddenAt = doc.deletedAt;
+  events.length = 0;
+  await service.handleTakeAwayStripeWebhookEvent({
+    restaurant,
+    event: { type: "payment_intent.succeeded", data: { object: structuredClone(remote.payment) } },
+  });
+  await adjustment.runAdjustmentLifecycle();
+  assert.deepEqual(doc.deletedAt, hiddenAt);
+  assert.equal(remote.calls(), 1);
+  assert.equal(events.filter((event) => event.order).length, 0);
 });
 test("the server lifecycle expires and retries refunds without a dashboard", async (t) => {
   const doc = memory(
@@ -1190,6 +1219,9 @@ test("termination: pending on-site rejection casts correctly and never calls Str
   );
   assert.deepEqual(doc.customerEmailEventsSent, ["rejected"]);
   assert.equal(emails.length, 1);
+  const email = buildTakeAwayEmail(emails[0]);
+  assert.match(email.htmlContent, /Votre commande a été refusée\./);
+  assert.doesNotMatch(email.htmlContent, /en ligne|rembours/i);
   assert.equal(stripeCalls, 0);
 });
 

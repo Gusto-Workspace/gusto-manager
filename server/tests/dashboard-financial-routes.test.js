@@ -25,6 +25,9 @@ require.cache[cryptoPath] = {
 };
 let stripeReads = 0;
 let movements = [];
+let onSiteOrders = [];
+let onSiteQueries = [];
+let stripeError = null;
 let searchEnabled = false;
 const searches = [];
 const stripePath = require.resolve("stripe");
@@ -36,6 +39,7 @@ require.cache[stripePath] = {
     balanceTransactions: {
       list: async () => {
         stripeReads += 1;
+        if (stripeError) throw stripeError;
         return { data: movements, has_more: false };
       },
     },
@@ -127,6 +131,14 @@ GiftOrder.find = (filter) => {
 };
 TakeAwayOrder.find = (filter) => {
   assert.ok(filter.restaurant_id);
+  if (filter.paymentMethod === "on_site") {
+    onSiteQueries.push(filter);
+    return query(
+      onSiteOrders.filter(
+        (order) => order.restaurant_id === filter.restaurant_id,
+      ),
+    );
+  }
   return query([]);
 };
 Employee.findById = () => query(null);
@@ -357,4 +369,142 @@ test("Stripe-only history is discovered with scoped metadata searches and no ful
     ),
   );
   searchEnabled = false;
+});
+
+test("monthly activity includes retained on-site orders once and leaves gift defaults and exports Stripe-only", async () => {
+  onSiteQueries = [];
+  onSiteOrders = [
+    {
+      _id: "site-a",
+      restaurant_id: restaurantId,
+      paymentMethod: "on_site",
+      paymentStatus: "not_required",
+      status: "completed",
+      createdAt: new Date(),
+      total: 50,
+      remainingAmountCents: 3000,
+      currency: "eur",
+    },
+    {
+      _id: "site-other",
+      restaurant_id: otherId,
+      paymentMethod: "on_site",
+      paymentStatus: "not_required",
+      status: "confirmed",
+      createdAt: new Date(),
+      total: 900,
+      currency: "eur",
+    },
+  ];
+  try {
+    const gift = await request({ endpoint: "monthly-sales", method: "GET" });
+    assert.equal(gift.body.monthlySales.at(-1).total, 49);
+    assert.equal(onSiteQueries.length, 0);
+    const all = await request({
+      endpoint: "monthly-sales",
+      method: "GET",
+      query: { module: "all" },
+    });
+    assert.equal(all.status, 200);
+    const point = all.body.seriesByModule.take_away[0].monthlySales.at(-1);
+    assert.equal(point.onlineNet, 19);
+    assert.equal(point.onSiteOrders, 30);
+    assert.equal(point.total, 49);
+    assert.equal(
+      all.body.seriesByModule.gift_card[0].monthlySales.at(-1).total,
+      49,
+    );
+    assert.equal(all.body.seriesByModule.take_away[0].onlineAvailable, true);
+    assert.ok(
+      all.body.notes.some((note) =>
+        note.includes("ne constitue pas un montant encaissé"),
+      ),
+    );
+    assert.equal(onSiteQueries[0].restaurant_id, restaurantId);
+    assert.equal(
+      onSiteQueries[0].createdAt.$gte.getTime(),
+      all.body.period.start * 1000,
+    );
+    assert.equal(
+      onSiteQueries[0].createdAt.$lt.getTime(),
+      all.body.period.end * 1000,
+    );
+    assert.equal(all.headers["Cache-Control"], "private, max-age=60");
+
+    const queriesBeforeExport = onSiteQueries.length;
+    const pdf = await request({
+      body: { from: "2026-10-01", to: "2026-10-26", modules: ["take_away"] },
+    });
+    assert.equal(pdf.status, 200);
+    assert.equal(pdf.body.subarray(0, 5).toString(), "%PDF-");
+    assert.equal(onSiteQueries.length, queriesBeforeExport);
+  } finally {
+    onSiteOrders = [];
+  }
+});
+
+test("on-site-only restaurants work without Stripe and explicitly mark online data unavailable", async () => {
+  const previousKey = restaurants[otherId].stripeSecretKey;
+  restaurants[otherId].stripeSecretKey = "";
+  onSiteOrders = [
+    {
+      _id: "site-only",
+      restaurant_id: otherId,
+      paymentMethod: "on_site",
+      paymentStatus: "not_required",
+      status: "confirmed",
+      createdAt: new Date(),
+      total: 25,
+      currency: "eur",
+    },
+  ];
+  try {
+    const before = stripeReads;
+    const result = await request({
+      endpoint: "monthly-sales",
+      method: "GET",
+      id: otherId,
+      user: { role: "owner", id: "owner-b" },
+      query: { module: "take_away" },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(stripeReads, before);
+    assert.equal(result.body.monthlySales.at(-1).onSiteOrders, 25);
+    assert.equal(result.body.monthlySales.at(-1).total, 25);
+    assert.equal(
+      result.body.seriesByModule.take_away[0].onlineAvailable,
+      false,
+    );
+    assert.equal(result.body.currency, "eur");
+    const all = await request({
+      endpoint: "monthly-sales",
+      method: "GET",
+      id: otherId,
+      user: { role: "owner", id: "owner-b" },
+      query: { module: "all" },
+    });
+    assert.equal(all.body.seriesByModule.gift_card[0].onlineAvailable, false);
+    assert.equal(
+      all.body.seriesByModule.take_away[0].monthlySales.at(-1).total,
+      25,
+    );
+  } finally {
+    restaurants[otherId].stripeSecretKey = previousKey;
+    onSiteOrders = [];
+  }
+});
+
+test("a configured but failing Stripe source never returns a misleading partial activity total", async () => {
+  stripeError = new Error("Fixture provider unavailable");
+  try {
+    const result = await request({
+      endpoint: "monthly-sales",
+      method: "GET",
+      query: { module: "take_away" },
+    });
+    assert.equal(result.status, 502);
+    assert.equal(result.body.seriesByModule, undefined);
+  } finally {
+    stripeError = null;
+  }
 });

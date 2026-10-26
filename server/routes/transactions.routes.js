@@ -17,8 +17,12 @@ const {
   monthlyPeriod,
   parseModules,
   readFinancialTransactions,
-  monthlySeries,
 } = require("../services/transaction-financials.service");
+const {
+  readOnSiteOrders,
+  monthlyActivitySeries,
+  ON_SITE_NOTES,
+} = require("../services/take-away-sales.service");
 const {
   renderTransactionsExport,
 } = require("../services/pdf/render-transactions-export.service");
@@ -1272,7 +1276,7 @@ router.get(
   },
 );
 
-// Common financial sources for the chart and PDF. Existing payment/refund flows
+// Stripe financial sources for the chart and PDF. Existing payment/refund flows
 // stay independent. Dashboard permission also applies to inactive-module history.
 async function loadFinancialRestaurant(id) {
   const restaurant = await RestaurantModel.findById(id)
@@ -1457,19 +1461,38 @@ router.get(
           : parseModules(req.query.module, ["gift_card"]);
       const period = monthlyPeriod();
       const restaurant = await loadFinancialRestaurant(req.params.id);
-      const { rows, notes } = await readFinancialTransactions({
-        stripe: financialStripe(restaurant),
-        restaurant,
+      const includeOnSite = modules.includes("take_away");
+      const onlineAvailable = Boolean(restaurant.stripeSecretKey);
+      const [{ rows, notes }, onSiteOrders] = await Promise.all([
+        !onlineAvailable && includeOnSite
+          ? {
+              rows: [],
+              notes: [
+                "Aucune clé Stripe configurée : données en ligne indisponibles.",
+              ],
+            }
+          : readFinancialTransactions({
+              stripe: financialStripe(restaurant),
+              restaurant,
+              period,
+              modules,
+            }),
+        includeOnSite ? readOnSiteOrders(req.params.id, period) : [],
+      ]);
+      const seriesByModule = monthlyActivitySeries(
+        rows,
+        onSiteOrders,
         period,
         modules,
-      });
-      const seriesByModule = monthlySeries(rows, period, modules);
+      );
+      for (const series of Object.values(seriesByModule).flat())
+        series.onlineAvailable = onlineAvailable;
       const selected = seriesByModule[modules[0]];
       res.set("Cache-Control", "private, max-age=60");
       return res.json({
         seriesByModule,
         period,
-        notes,
+        notes: includeOnSite ? [...notes, ...ON_SITE_NOTES] : notes,
         monthlySales: selected.length === 1 ? selected[0].monthlySales : [],
         currency: selected.length === 1 ? selected[0].currency : null,
       });

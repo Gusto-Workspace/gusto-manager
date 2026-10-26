@@ -60,6 +60,7 @@ export default function ListTakeAwayComponent() {
   const getCachedTakeAwayOrdersMonth =
     restaurantContext.getCachedTakeAwayOrdersMonth;
   const applyTakeAwayOrderUpdate = restaurantContext.applyTakeAwayOrderUpdate;
+  const isTakeAwayOrderDeleted = restaurantContext.isTakeAwayOrderDeleted;
   const selectedDayKey =
     typeof router.query.day === "string" ? router.query.day : null;
   const focusedOrderId =
@@ -194,13 +195,18 @@ export default function ListTakeAwayComponent() {
 
   useEffect(() => {
     if (!selectedOrder?._id) return;
+    if (isTakeAwayOrderDeleted?.(selectedOrder._id)) {
+      setDetailsOpen(false);
+      setSelectedOrder(null);
+      return;
+    }
     const updatedOrder = orders.find(
       (order) => String(order._id) === String(selectedOrder._id),
     );
     if (updatedOrder && updatedOrder !== selectedOrder) {
       setSelectedOrder(updatedOrder);
     }
-  }, [orders, selectedOrder]);
+  }, [isTakeAwayOrderDeleted, orders, selectedOrder]);
 
   const filteredOrders = useMemo(() => {
     const q = normalizeForMatch(searchTerm);
@@ -262,10 +268,16 @@ export default function ListTakeAwayComponent() {
     setDrawerError("");
     try {
       const { data } = await request({
-        method: typeof status === "object" ? "post" : "patch",
-        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}/${typeof status === "object" ? "rejections" : "status"}`,
+        method: status === "delete" ? "delete" : typeof status === "object" ? "post" : "patch",
+        url: `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/take-away/orders/${order._id}${status === "delete" ? "" : `/${typeof status === "object" ? "rejections" : "status"}`}`,
         data: typeof status === "object" ? status : { status },
       });
+      if (status === "delete") {
+        applyTakeAwayOrderUpdate?.({ ...order, deletedAt: new Date().toISOString() }, restaurantId);
+        closeDetails();
+        setSelectedOrder(null);
+        return true;
+      }
       applyTakeAwayOrderUpdate?.(data.order, restaurantId);
       setSelectedOrder(data.order);
       return true;

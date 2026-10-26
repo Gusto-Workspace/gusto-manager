@@ -252,14 +252,19 @@ test("dish, menu, drink and wine sources follow the same deletion rule", () => {
 });
 
 test("completed-order cleanup respects enablement and the configured delay", async (t) => {
-  const originalDeleteMany = TakeAwayOrderModel.deleteMany;
+  const originalUpdateMany = TakeAwayOrderModel.updateMany;
+  const originalFind = TakeAwayOrderModel.find;
   let receivedFilter = null;
-  TakeAwayOrderModel.deleteMany = async (filter) => {
+  TakeAwayOrderModel.find = () => ({ select: () => ({ limit: async () => [{ _id: "order-1" }] }) });
+  TakeAwayOrderModel.updateMany = async (filter, update) => {
     receivedFilter = filter;
-    return { deletedCount: 3 };
+    assert.ok(update.$set.deletedAt instanceof Date);
+    assert.equal(filter.deletedAt, null);
+    return { modifiedCount: 3 };
   };
   t.after(() => {
-    TakeAwayOrderModel.deleteMany = originalDeleteMany;
+    TakeAwayOrderModel.updateMany = originalUpdateMany;
+    TakeAwayOrderModel.find = originalFind;
   });
 
   const disabled = await cleanupCompletedTakeAwayOrders({

@@ -78,6 +78,24 @@ export function toMoney(value) {
   return `${Number(value || 0).toFixed(2)} €`;
 }
 
+export function getPaymentSummary(order) {
+  if (order.paymentMethod !== "online") {
+    return order.fulfillmentMode === "delivery" ? "À la livraison" : "Au retrait";
+  }
+  if (order.paymentStatus === "refunded") return "Remboursé";
+  if (
+    order.paymentStatus === "paid" &&
+    ["canceled", "rejected"].includes(order.status)
+  ) {
+    return order.stripeRefundStatus === "failed"
+      ? "Remboursement échoué"
+      : "Remboursement en cours";
+  }
+  if (order.refundedAmountCents > 0) return "Partiellement remboursé";
+  if (order.paymentStatus === "paid") return "Payée en ligne";
+  return "Paiement en ligne en attente";
+}
+
 export function todayKey() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(

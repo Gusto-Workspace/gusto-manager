@@ -1,8 +1,9 @@
 {
-  "title": "Transactions",
+  "title": "Liste des opérations",
+  "subtitle": "Visualisez les virements reçus et les paiements en ligne associés.",
   "select": {
     "payouts": "Détails des virements",
-    "payments": "Détails des transactions"
+    "payments": "Détails des paiements en ligne"
   },
   "payouts": {
     "information": {

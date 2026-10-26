@@ -11,6 +11,11 @@ const {
   onTakeAwayOrderStatusChanged,
 } = require("./customers.service");
 const { broadcastToRestaurant } = require("./sse-bus.service");
+const {
+  hasRestaurantOrderHistory,
+  isRestaurantOrderVisible,
+  restaurantOrderVisibilityFilter,
+} = require("./take-away-visibility.service");
 const { createAndBroadcastNotification } = require("./notifications.service");
 const { sendTakeAwayOrderEmail } = require("./take-away-mailer.service");
 const { sanitizeTakeAwaySmsSettings, orderStatusSmsEvent, addOrderStatusSmsEvent, addRefundConfirmedSmsEvent } = require("./sms/take-away-sms-settings.service");
@@ -1153,11 +1158,47 @@ function generateOrderNumber() {
   return `TA-${stamp}-${suffix}`;
 }
 
-function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
+async function broadcastOrder(restaurantId, order, type = "takeaway_order_updated") {
+  if (!isRestaurantOrderVisible(order)) return;
+  // Effects may hold a snapshot from before a concurrent logical deletion.
+  const current = await TakeAwayOrderModel.findOne({
+    _id: order._id,
+    restaurant_id: restaurantId,
+    ...restaurantOrderVisibilityFilter(),
+  });
+  if (!current) return;
   broadcastToRestaurant(String(restaurantId), {
     type,
     restaurantId: String(restaurantId),
-    order: order?.toObject ? order.toObject() : order,
+    order: current?.toObject ? current.toObject() : current,
+  });
+}
+
+async function deleteRestaurantOrder({ restaurant, orderId }) {
+  const filter = {
+    _id: orderId,
+    restaurant_id: restaurant._id,
+    ...restaurantOrderVisibilityFilter(),
+  };
+  const deleted = await TakeAwayOrderModel.findOneAndUpdate(
+    { ...filter, status: { $in: ["completed", "canceled"] } },
+    { $set: { deletedAt: new Date() } },
+    { new: true },
+  );
+  if (!deleted) {
+    const existing = await TakeAwayOrderModel.findOne({
+      _id: orderId, restaurant_id: restaurant._id,
+    });
+    if (!hasRestaurantOrderHistory(existing))
+      throw serviceError("Commande introuvable", 404);
+    if (!existing.deletedAt)
+      throw serviceError("Seules les commandes terminées ou annulées peuvent être supprimées", 409);
+  }
+  // Repeat the removal event on retries, without exposing the retained record.
+  broadcastToRestaurant(String(restaurant._id), {
+    type: "takeaway_order_deleted",
+    restaurantId: String(restaurant._id),
+    orderId: String(orderId),
   });
 }
 
@@ -1182,8 +1223,9 @@ async function cleanupCompletedTakeAwayOrders(
   }
 
   const before = new Date(now.getTime() - minutes * 60 * 1000);
-  const result = await TakeAwayOrderModel.deleteMany({
+  const filter = {
     restaurant_id: restaurant._id,
+    deletedAt: null,
     status: "completed",
     // Preserve the command outbox until its SMS jobs are durable.
     businessEvents: { $not: { $elemMatch: { smsProcessedAt: null } } },
@@ -1198,8 +1240,18 @@ async function cleanupCompletedTakeAwayOrders(
       { completedAt: { $lte: before } },
       { completedAt: null, updatedAt: { $lte: before } },
     ],
+  };
+  const candidates = await TakeAwayOrderModel.find(filter).select("_id").limit(200);
+  if (!candidates.length) return { enabled: true, deleted: 0 };
+  const orderIds = candidates.map((order) => String(order._id));
+  const result = await TakeAwayOrderModel.updateMany({
+    ...filter, _id: { $in: orderIds },
+  }, { $set: { deletedAt: now } });
+  const deleted = Number(result?.modifiedCount || 0);
+  if (deleted) broadcastToRestaurant(String(restaurant._id), {
+    type: "takeaway_orders_deleted", restaurantId: String(restaurant._id), orderIds,
   });
-  return { enabled: true, deleted: Number(result?.deletedCount || 0) };
+  return { enabled: true, deleted };
 }
 
 async function cleanupConfiguredCompletedTakeAwayOrders({
@@ -1644,6 +1696,8 @@ async function runOrderActivationEffects(
 ) {
   if (!order || !restaurant) return;
 
+  if (!hasRestaurantOrderHistory(order)) return;
+
   order = await attachCustomerToOrder(order);
 
   if (order.customer && !order.crmRecordedAt) {
@@ -1659,17 +1713,23 @@ async function runOrderActivationEffects(
     }
   }
 
-  if (order.source === "public" && !order.restaurantNotifiedAt) {
+  if (isRestaurantOrderVisible(order) && order.source === "public" && !order.restaurantNotifiedAt) {
     try {
-      await createAndBroadcastNotification({
-        restaurantId: restaurant._id,
-        module: "take_away",
-        type: "takeaway_order_created",
-        data: order.toObject ? order.toObject() : order,
-        dedupeKey: `takeaway_order:${String(order._id)}:created`,
+      const visible = await TakeAwayOrderModel.findOne({
+        _id: order._id, restaurant_id: restaurant._id,
+        ...restaurantOrderVisibilityFilter(),
       });
-      order.restaurantNotifiedAt = new Date();
-      await order.save();
+      if (visible) {
+        await createAndBroadcastNotification({
+          restaurantId: restaurant._id,
+          module: "take_away",
+          type: "takeaway_order_created",
+          data: visible.toObject ? visible.toObject() : visible,
+          dedupeKey: `takeaway_order:${String(order._id)}:created`,
+        });
+        order.restaurantNotifiedAt = new Date();
+        await order.save();
+      }
     } catch (error) {
       console.error("[take-away] notification effect failed", {
         orderId: String(order._id),
@@ -1679,7 +1739,7 @@ async function runOrderActivationEffects(
   }
 
   try {
-    broadcastOrder(restaurant._id, order, "takeaway_order_created");
+    await broadcastOrder(restaurant._id, order, "takeaway_order_created");
   } catch (error) {
     console.error("[take-away] SSE creation effect failed", {
       orderId: String(order._id),
@@ -1688,7 +1748,7 @@ async function runOrderActivationEffects(
   }
 
   await runOrderEmailEffects(order, restaurant, explicitEmailEvents);
-  if (order.activationEffectsPending && order.crmRecordedAt && (order.source !== "public" || order.restaurantNotifiedAt)) {
+  if (order.activationEffectsPending && order.crmRecordedAt && (order.deletedAt || order.source !== "public" || order.restaurantNotifiedAt)) {
     await TakeAwayOrderModel.updateOne(
       { _id: order._id, activationEffectsPending: true },
       { $set: { activationEffectsPending: false } },
@@ -2465,7 +2525,7 @@ async function runOrderStatusEffects(
     }
   }
   try {
-    broadcastOrder(restaurantId, order);
+    await broadcastOrder(restaurantId, order);
   } catch (error) {
     console.error(
       "[take-away] SSE status effect failed",
@@ -3326,6 +3386,7 @@ async function loadRestaurantForTakeAway(restaurantId) {
 }
 
 module.exports = {
+  deleteRestaurantOrder,
   ACTIVE_ORDER_STATUSES,
   TAKE_AWAY_STRIPE_EVENT_TYPES,
   STATUS_TRANSITIONS,

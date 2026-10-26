@@ -26,6 +26,7 @@ export function selectedFinancialSeries(
     currency: selected?.currency || "eur",
     data: selected?.monthlySales || [],
     currencies: series.map((item) => item.currency),
+    onlineAvailable: selected?.onlineAvailable !== false,
   };
 }
 

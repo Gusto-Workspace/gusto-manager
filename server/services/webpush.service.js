@@ -72,7 +72,13 @@ async function sendPushToModule({
   link,
   data = {},
 }) {
-  let subs = await PushSubscription.find({ restaurantId, module });
+  let subs = await PushSubscription.find({
+    module,
+    $or: [
+      { restaurantIds: restaurantId },
+      { restaurantIds: { $exists: false }, restaurantId },
+    ],
+  });
   let unauthorizedEndpoints = [];
 
   if (module === "take_away") {
@@ -86,7 +92,9 @@ async function sendPushToModule({
     );
   }
 
-  const payload = JSON.stringify({ title, message, link, module, data });
+  const target = new URL(link || "/dashboard", "https://routing.invalid");
+  target.searchParams.set("restaurantId", String(restaurantId));
+  const pushLink = `${target.pathname}${target.search}${target.hash}`;
   const notificationId = String(data?.notificationId || "").trim() || null;
 
   const attempts = await Promise.all(
@@ -94,7 +102,15 @@ async function sendPushToModule({
       try {
         await webpush.sendNotification(
           { endpoint: subscription.endpoint, keys: subscription.keys },
-          payload,
+          JSON.stringify({
+            title,
+            message,
+            link: pushLink,
+            module,
+            restaurantId: String(restaurantId),
+            userId: subscription.userId ? String(subscription.userId) : null,
+            data: { ...data, restaurantId: String(restaurantId) },
+          }),
         );
         return { sent: true, remove: false, endpoint: subscription.endpoint };
       } catch (err) {
@@ -107,13 +123,32 @@ async function sendPushToModule({
 
   const deadEndpoints = Array.from(
     new Set([
-      ...unauthorizedEndpoints,
       ...attempts
         .filter((attempt) => attempt.remove)
         .map((attempt) => attempt.endpoint),
     ]),
   );
   let removed = 0;
+
+  // An employee losing access to A must not lose authorized subscriptions to B.
+  if (unauthorizedEndpoints.length) {
+    const mongoose = require("mongoose");
+    await PushSubscription.updateMany(
+      { endpoint: { $in: unauthorizedEndpoints }, module },
+      [
+        {
+          $set: {
+            restaurantIds: {
+              $setDifference: [
+                { $ifNull: ["$restaurantIds", ["$restaurantId"]] },
+                [new mongoose.Types.ObjectId(String(restaurantId))],
+              ],
+            },
+          },
+        },
+      ],
+    );
+  }
 
   if (deadEndpoints.length) {
     try {

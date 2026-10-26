@@ -8,6 +8,14 @@ const PushSubscriptionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Missing on historical records: readers then use restaurantId. An empty
+    // array explicitly means disabled. Keep the unique endpoint index intact.
+    restaurantIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "Restaurant",
+      default: undefined,
+      index: true,
+    },
     module: {
       type: String,
       enum: ["reservations", "gift_cards", "take_away"],

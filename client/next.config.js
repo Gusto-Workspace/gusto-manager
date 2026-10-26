@@ -10,4 +10,17 @@ module.exports = withPWA({
   reactStrictMode: false,
   pageExtensions: ["api.js", "page.js"],
   i18n,
+  async headers() {
+    // Revalidate installation metadata; next-pwa also revisions public assets.
+    return [
+      "/manifest.webmanifest",
+      "/icons/android/gusto-:size.png",
+      "/icons/ios/gusto-:size.png",
+    ].map((source) => ({
+      source,
+      headers: [
+        { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+      ],
+    }));
+  },
 });

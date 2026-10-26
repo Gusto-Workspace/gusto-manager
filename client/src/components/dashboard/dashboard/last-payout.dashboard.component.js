@@ -94,7 +94,7 @@ export default function LastPayoutDashboardComponent(props) {
           <ArrowRightLeft className="size-4 text-[#e66430]" />
           <span>
             {props.showPaymentsDetails ? "Masquer" : "Afficher"} le détail des
-            virements et paiements
+            virements et paiements en ligne
           </span>
         </button>
       </div>

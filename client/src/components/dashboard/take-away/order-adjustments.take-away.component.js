@@ -7,7 +7,7 @@ const STATES = {
   uncertain: "Remboursement à vérifier",
   failed: "Remboursement échoué — reprise automatique",
   succeeded: "Remboursement confirmé",
-  not_required: "Montant dû ajusté — aucun remboursement en ligne",
+  not_required: "Montant à régler ajusté",
 };
 const lineId = (order, item, index) =>
   item.lineId || `${order._id}:line:${index}`;
@@ -114,6 +114,14 @@ export default function OrderAdjustmentsTakeAway({ order, onAction, busy }) {
       submitting.current = false;
     }
   }
+  if (
+    !editable &&
+    !review &&
+    !order.adjustments?.length &&
+    !(order.confirmationDeadlineAt && order.status === "pending")
+  )
+    return null;
+
   return (
     <section className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 p-4 text-sm text-darkBlue">
       {order.confirmationDeadlineAt && order.status === "pending" ? (
@@ -126,16 +134,8 @@ export default function OrderAdjustmentsTakeAway({ order, onAction, busy }) {
           }).format(new Date(order.confirmationDeadlineAt))}
         </p>
       ) : null}
-      <p>Total initial : {toMoney(order.total)}</p>
-      <p>
-        Montant conservé{order.paymentMethod !== "online" ? " / à régler" : ""}{" "}
-        : {toMoney(availableCents / 100)}
-      </p>
-      {order.paymentMethod === "online" ? (
-        <p>
-          Remboursé et confirmé :{" "}
-          {toMoney((order.refundedAmountCents || 0) / 100)}
-        </p>
+      {order.adjustments?.length ? (
+        <h3 className="font-semibold">Historique des ajustements</h3>
       ) : null}
       {(order.adjustments || []).map((operation) => (
         <div
@@ -148,21 +148,28 @@ export default function OrderAdjustmentsTakeAway({ order, onAction, busy }) {
               : "Refus partiel"}{" "}
             · {toMoney(operation.amountCents / 100)}
           </p>
-          <p>
+          <p className="mt-1 text-xs text-darkBlue/60">
             {new Intl.DateTimeFormat("fr-FR", {
               dateStyle: "short",
               timeStyle: "short",
               timeZone: "Europe/Paris",
             }).format(new Date(operation.createdAt))}
           </p>
-          <p>
+          <p className="mt-2 text-darkBlue/75">
             {(operation.lines || [])
               .map((line) => `${line.quantity} × ${line.name}`)
               .join(", ")}
           </p>
-          {operation.reason ? <p>Motif : {operation.reason}</p> : null}
-          <p role="status" className="mt-1 font-semibold">
-            {STATES[operation.state] || operation.state}
+          {operation.reason ? (
+            <p className="mt-1 text-darkBlue/75">Motif : {operation.reason}</p>
+          ) : null}
+          <p
+            role="status"
+            className="mt-2 rounded-lg bg-lightGrey px-3 py-2 text-xs font-medium leading-5 text-darkBlue/75"
+          >
+            {order.paymentMethod === "online"
+              ? STATES[operation.state] || operation.state
+              : "Montant à régler ajusté"}
           </p>
         </div>
       ))}
