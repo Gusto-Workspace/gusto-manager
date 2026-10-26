@@ -2,6 +2,11 @@
   "name": "gusto-manager-client",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "packageManager": "npm@11.19.1",
   "scripts": {
     "dev": "next dev -p 8002",
     "build": "next build",
