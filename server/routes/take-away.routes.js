@@ -210,6 +210,7 @@ router.post(
   "/take-away/stripe-events",
   verifyServiceSignature,
   async (req, res) => {
+    let stage = "validation";
     try {
       const restaurantId = String(req.body?.restaurantId || "").trim();
       const event = req.body?.event;
@@ -221,14 +222,23 @@ router.post(
         return res.status(200).json({ received: true, handled: false });
       }
 
+      stage = "restaurant_lookup";
       const restaurant = await loadRestaurantForTakeAway(restaurantId);
       if (!restaurant) {
         return res.status(404).json({ error: "Restaurant not found", code: "TAKE_AWAY_RESTAURANT_NOT_FOUND" });
       }
       // Existing payments still need reconciliation after a module is disabled.
+      stage = "event_processing";
       const result = await processTakeAwayStripeEvent({
         event,
         restaurant,
+      });
+      console.info("[take-away-stripe-event-processed]", {
+        eventId: event.id,
+        restaurantId,
+        orderId: event.data?.object?.metadata?.orderId || null,
+        handled: result.handled,
+        duplicate: Boolean(result.duplicate),
       });
       return res.status(200).json({ received: true, handled: result.handled });
     } catch (error) {
@@ -236,6 +246,9 @@ router.post(
         eventId: req.body?.event?.id,
         eventType: req.body?.event?.type,
         restaurantId: req.body?.restaurantId,
+        orderId: req.body?.event?.data?.object?.metadata?.orderId || null,
+        stage: ["receipt_create", "receipt_read", "receipt_claim", "stripe_refresh", "order_processing", "receipt_finish"].includes(error.takeAwayStage)
+          ? error.takeAwayStage : stage,
         status: error.status || 500,
         code: error.code || "STRIPE_PROCESSING_FAILED",
         errorType: error.name || "Error",

@@ -15,20 +15,28 @@ function verifyServiceSignature(req, res, next) {
   const secret = process.env.GUSTO_SHARED_SECRET;
   const timestampNumber = Number(timestamp);
 
+  function reject(status, code, message) {
+    if (req.path === "/take-away/stripe-events") {
+      const safeId = (value) => typeof value === "string" && /^[A-Za-z0-9_]{1,100}$/.test(value) ? value : null;
+      console.error("[take-away-service-auth-error]", {
+        eventId: safeId(req.body?.event?.id),
+        orderId: safeId(req.body?.event?.data?.object?.metadata?.orderId),
+        code,
+        status,
+      });
+    }
+    return res.status(status).json({ error: message, code });
+  }
+
   if (!secret) {
-    return res.status(500).json({
-      error: "Server misconfigured",
-      code: "SERVICE_SIGNATURE_NOT_CONFIGURED",
-    });
+    return reject(500, "SERVICE_SIGNATURE_NOT_CONFIGURED", "Server misconfigured");
   }
   if (
     !signature ||
     !Number.isFinite(timestampNumber) ||
     Math.abs(Date.now() - timestampNumber) > MAX_SIGNATURE_AGE_MS
   ) {
-    return res
-      .status(401)
-      .json({ error: "Invalid signature", code: "INVALID_SIGNATURE" });
+    return reject(401, "INVALID_SIGNATURE", "Invalid signature");
   }
 
   const expected = createServiceSignature({
@@ -43,9 +51,7 @@ function verifyServiceSignature(req, res, next) {
     expectedBuffer.length !== signatureBuffer.length ||
     !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)
   ) {
-    return res
-      .status(401)
-      .json({ error: "Invalid signature", code: "INVALID_SIGNATURE" });
+    return reject(401, "INVALID_SIGNATURE", "Invalid signature");
   }
 
   return next();

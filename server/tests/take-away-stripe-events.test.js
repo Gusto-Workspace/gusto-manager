@@ -150,7 +150,7 @@ test("backend failure releases the receipt and permits a successful retry", asyn
       return { handled: true };
     },
   });
-  await assert.rejects(process({ restaurant, event: event() }), /DB down/);
+  await assert.rejects(process({ restaurant, event: event() }), { message: "DB down", takeAwayStage: "order_processing" });
   assert.equal([...receipts.rows.values()][0].processedAt, null);
   await process({ restaurant, event: event() });
   assert.equal(calls, 2);
@@ -175,7 +175,7 @@ test("a crash after business commit does not acknowledge an unsaved receipt", as
   });
   await assert.rejects(
     process({ restaurant, event: event() }),
-    /DB unavailable/,
+    { message: "DB unavailable after business commit", takeAwayStage: "receipt_finish" },
   );
   await process({ restaurant, event: event() });
   assert.equal(confirmations, 1);

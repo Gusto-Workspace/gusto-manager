@@ -129,7 +129,7 @@ function getStripeCustomerLabel(charge) {
   ).trim();
   if (customerEmail) return customerEmail;
 
-  const customerId = String(charge?.customer || "").trim();
+  const customerId = typeof charge?.customer === "string" ? charge.customer.trim() : "";
   if (!customerId || customerId.startsWith("cus_")) return "";
 
   return customerId;
@@ -1203,7 +1203,21 @@ router.get(
         (tx) => tx.type !== "payout",
       );
 
-      const payoutTransactions = filteredTx.map((tx) => {
+      // Balance transaction sources are Charges (or Refunds containing a
+      // Charge); their PaymentIntent links them to the restaurant's order.
+      const charges = filteredTx.map((tx) =>
+        tx.source?.object === "charge" ? tx.source :
+          tx.source?.object === "refund" && tx.source.charge?.object === "charge"
+            ? tx.source.charge : null,
+      );
+      const takeAwayMaps = await buildTakeAwayPaymentMaps({
+        restaurantId: id,
+        paymentIntentIds: charges.map((charge) =>
+          getStripePaymentIntentId(charge?.payment_intent),
+        ),
+      });
+
+      const payoutTransactions = filteredTx.map((tx, index) => {
         let customerName = "Non renseigné";
 
         if (tx.source?.object === "charge") {
@@ -1215,6 +1229,16 @@ router.get(
               refundedCharge.billing_details?.name || "Non renseigné";
           }
         }
+
+        const charge = charges[index];
+        if (customerName === "Non renseigné" || !String(customerName).trim()) {
+          customerName = getStripeCustomerLabel(charge) || "Non renseigné";
+        }
+        const order = takeAwayMaps.byPaymentIntent.get(
+          getStripePaymentIntentId(charge?.payment_intent),
+        );
+        const orderName = buildFullName(order?.customerFirstName, order?.customerLastName);
+        if (orderName) customerName = orderName;
 
         return {
           id: tx.id,

@@ -26,6 +26,8 @@ require.cache[cryptoPath] = {
 let stripeReads = 0;
 let movements = [];
 let onSiteOrders = [];
+let payoutOrders = [];
+let payoutOrderQueries = [];
 let onSiteQueries = [];
 let stripeError = null;
 let searchEnabled = false;
@@ -139,6 +141,11 @@ TakeAwayOrder.find = (filter) => {
       ),
     );
   }
+  if (filter.$or) {
+    payoutOrderQueries.push(filter);
+    const ids = filter.$or.find((item) => item.stripePaymentIntentId)?.stripePaymentIntentId.$in || [];
+    return query(payoutOrders.filter((order) => order.restaurant_id === filter.restaurant_id && ids.includes(order.stripePaymentIntentId)));
+  }
   return query([]);
 };
 Employee.findById = () => query(null);
@@ -151,12 +158,13 @@ function request({
   user = { role: "owner", id: "owner-a" },
   body = { from: "2026-10-01", to: "2026-10-13", modules: ["gift_card"] },
   query: params = {},
+  path,
 } = {}) {
   return new Promise((resolve, reject) => {
     const headers = {};
     const req = {
       method,
-      url: `/owner/restaurants/${id}/payments/${endpoint}`,
+      url: path || `/owner/restaurants/${id}/payments/${endpoint}`,
       headers: user
         ? { authorization: `Bearer ${jwt.sign(user, process.env.JWT_SECRET)}` }
         : {},
@@ -187,6 +195,31 @@ function request({
     );
   });
 }
+
+test("payouts join charges and refunds to orders in one restaurant-scoped query", async () => {
+  const charge = (id, paymentIntent, name) => ({ object: "charge", id, payment_intent: paymentIntent, billing_details: { name } });
+  movements = [
+    { id: "txn1", type: "charge", amount: 3250, fee: 74, net: 3176, created: 123, source: charge("ch1", "pi_take", null) },
+    { id: "txn2", type: "refund", amount: -100, fee: 0, net: -100, created: 124, source: { object: "refund", charge: charge("ch2", { id: "pi_take" }, null) } },
+    { id: "txn3", type: "charge", amount: 100, fee: 1, net: 99, created: 125, source: charge("ch3", "pi_empty", null) },
+    { id: "txn4", type: "charge", amount: 200, fee: 2, net: 198, created: 126, source: charge("ch4", "pi_gift", "Acheteur cadeau") },
+    { id: "txn5", type: "charge", amount: 300, fee: 3, net: 297, created: 127, source: charge("ch5", "pi_other", null) },
+  ];
+  payoutOrders = [
+    { _id: "order1", restaurant_id: restaurantId, stripePaymentIntentId: "pi_take", customerFirstName: "  Jeanne ", customerLastName: "Dupont" },
+    { _id: "order2", restaurant_id: restaurantId, stripePaymentIntentId: "pi_empty" },
+    { _id: "order3", restaurant_id: otherId, stripePaymentIntentId: "pi_other", customerFirstName: "Secret" },
+  ];
+  payoutOrderQueries = [];
+  const result = await request({ method: "GET", path: `/owner/restaurants/${restaurantId}/payouts/po_test/payments` });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.payoutTransactions.map((tx) => tx.customer), ["Jeanne Dupont", "Jeanne Dupont", "Non renseigné", "Acheteur cadeau", "Non renseigné"]);
+  assert.equal(payoutOrderQueries.length, 1);
+  assert.equal(payoutOrderQueries[0].restaurant_id, restaurantId);
+  assert.deepEqual(result.body.payoutTransactions[0], { id: "txn1", type: "charge", grossAmount: "32.50", feeAmount: "0.74", netAmount: "31.76", date: 123, customer: "Jeanne Dupont" });
+  movements = [];
+  payoutOrders = [];
+});
 
 test("all financial routes require a token and isolate restaurant ownership before Stripe reads", async () => {
   for (const [endpoint, method] of [

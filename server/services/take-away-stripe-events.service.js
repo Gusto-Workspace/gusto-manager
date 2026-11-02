@@ -13,6 +13,15 @@ function retryError(code) {
   });
 }
 
+async function atStage(stage, operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error && typeof error === "object") error.takeAwayStage = stage;
+    throw error;
+  }
+}
+
 // Re-read the authoritative object rather than applying an old failure/refund
 // snapshot after a success. No write is made to Stripe here.
 async function refreshEvent(event, restaurant, stripeInstance = null) {
@@ -56,17 +65,17 @@ function createEventProcessor({
       throw Object.assign(new Error("Objet Stripe absent"), { status: 400 });
     const key = `${restaurantId}:${event.id}`;
     try {
-      await receipts.create({
+      await atStage("receipt_create", () => receipts.create({
         _id: key,
         restaurantId,
         eventId: event.id,
         eventType: event.type,
         objectId,
-      });
+      }));
     } catch (error) {
       if (error.code !== 11000) throw error;
     }
-    const existing = await receipts.findById(key);
+    const existing = await atStage("receipt_read", () => receipts.findById(key));
     if (
       !existing ||
       existing.eventType !== event.type ||
@@ -78,7 +87,7 @@ function createEventProcessor({
 
     const owner = randomUUID();
     const now = new Date();
-    const claimed = await receipts.findOneAndUpdate(
+    const claimed = await atStage("receipt_claim", () => receipts.findOneAndUpdate(
       {
         _id: key,
         processedAt: null,
@@ -92,16 +101,16 @@ function createEventProcessor({
         $inc: { attempts: 1 },
       },
       { new: true },
-    );
+    ));
     if (!claimed) throw retryError("STRIPE_EVENT_BUSY");
     try {
-      const currentEvent = await refresh(event, restaurant);
+      const currentEvent = await atStage("stripe_refresh", () => refresh(event, restaurant));
       const result = currentEvent
-        ? await handle({ restaurant, event: currentEvent })
+        ? await atStage("order_processing", () => handle({ restaurant, event: currentEvent }))
         : { handled: true };
       if (result?.handled !== true)
         throw retryError("STRIPE_EVENT_NOT_HANDLED");
-      const saved = await receipts.updateOne(
+      const saved = await atStage("receipt_finish", () => receipts.updateOne(
         { _id: key, leaseOwner: owner, processedAt: null },
         {
           $set: {
@@ -112,7 +121,7 @@ function createEventProcessor({
             lastErrorCode: "",
           },
         },
-      );
+      ));
       if (saved.modifiedCount !== 1)
         throw retryError("STRIPE_RECEIPT_NOT_SAVED");
       return { handled: true };
