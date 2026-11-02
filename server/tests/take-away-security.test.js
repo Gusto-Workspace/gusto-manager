@@ -631,7 +631,9 @@ test("payment audit: order creation, PaymentIntent reuse, browser success and re
     for (const [key, value] of Object.entries(change.$push || {}))
       current[key] = [...(current[key] || []), ...(value.$each || [value])];
   }
-  TakeAwayOrderModel.findOne = () => {
+  TakeAwayOrderModel.findOne = (filter) => {
+    if (current && filter?._id) assert.equal(String(filter._id), String(current._id));
+    if (current && filter?.restaurant_id) assert.equal(String(filter.restaurant_id), String(current.restaurant_id));
     const result = Promise.resolve(current); result.select = () => result; return result;
   };
   TakeAwayOrderModel.create = async (input) => {
@@ -647,7 +649,11 @@ test("payment audit: order creation, PaymentIntent reuse, browser success and re
     if (change.$set?.paymentStatus === "paid") paymentWrites++;
     apply(change); return current;
   };
-  TakeAwayOrderModel.updateOne = async (_filter, change) => { apply(change); return { modifiedCount: 1 }; };
+  TakeAwayOrderModel.updateOne = async (filter, change) => {
+    if (filter.customerEmailEventsSent?.$ne &&
+        current.customerEmailEventsSent.includes(filter.customerEmailEventsSent.$ne)) return { modifiedCount: 0 };
+    apply(change); return { modifiedCount: 1 };
+  };
   TakeAwayOrderModel.aggregate = async () => [];
   TakeAwaySlotLockModel.findOneAndUpdate = async (_filter, change) => ({ owner: change.$set.owner });
   TakeAwaySlotLockModel.deleteOne = async () => ({ deletedCount: 1 });
@@ -680,15 +686,99 @@ test("payment audit: order creation, PaymentIntent reuse, browser success and re
   const stripe = { paymentIntents: {
     create: async (params) => { stripeCreates++; remote = { ...params, id: "pi_flow_synthetic",
       status: "requires_payment_method", amount_received: 0, client_secret: "synthetic_only" }; return remote; },
-    retrieve: async () => remote,
+    retrieve: async (id) => { assert.equal(id, remote.id); return remote; },
   } };
   await createOrderPaymentIntent({ restaurant, order: current, stripeInstance: stripe });
   await createOrderPaymentIntent({ restaurant, order: current, stripeInstance: stripe });
   assert.equal(stripeCreates, 1); assert.equal(remote.amount, 1250);
   remote = { ...remote, status: "succeeded", amount_received: 1250 };
   await confirmOrderPayment({ restaurant, orderId: current._id, stripeInstance: stripe });
-  for (let retry = 0; retry < 2; retry++) await handleTakeAwayStripeWebhookEvent({ restaurant,
-    event: { id: "evt_flow_synthetic", type: "payment_intent.succeeded", data: { object: remote } } });
+  assert.equal(current.paymentStatus, "paid"); assert.equal(current.status, "confirmed");
+
+  // Start with an empty receipt store after browser confirmation. The site,
+  // HMAC middleware, Express route, processor, Stripe refresh and business handler
+  // run normally; only Stripe and Mongo persistence are synthetic.
+  const eventService = require("../services/take-away-stripe-events.service");
+  const originalProcessor = eventService.processTakeAwayStripeEvent;
+  const originalRestaurantFind = RestaurantModel.findById;
+  const oldHmac = process.env.GUSTO_SHARED_SECRET;
+  const oldStripe = process.env.STRIPE_API_SECRET_KEY;
+  const rows = new Map();
+  const receipts = {
+    async create(row) {
+      if (rows.has(row._id)) throw Object.assign(new Error("duplicate"), { code: 11000 });
+      rows.set(row._id, { ...row, processedAt: null, leaseUntil: null, attempts: 0 });
+    },
+    async findById(id) { return rows.get(id); },
+    async findOneAndUpdate(filter, update) {
+      const row = rows.get(filter._id);
+      if (row.processedAt || row.leaseUntil) return null;
+      Object.assign(row, update.$set); row.attempts += update.$inc.attempts; return row;
+    },
+    async updateOne(filter, update) {
+      const row = rows.get(filter._id);
+      if (row.leaseOwner !== filter.leaseOwner || row.processedAt) return { modifiedCount: 0 };
+      Object.assign(row, update.$set); return { modifiedCount: 1 };
+    },
+  };
+  eventService.processTakeAwayStripeEvent = eventService.createEventProcessor({
+    receipts,
+    refresh: (event, currentRestaurant) => eventService.refreshEvent(event, currentRestaurant, stripe),
+  });
+  RestaurantModel.findById = () => { const result = Promise.resolve(restaurant); result.populate = () => result; return result; };
+  process.env.GUSTO_SHARED_SECRET = "synthetic_hmac";
+  process.env.STRIPE_API_SECRET_KEY = "sk_test_synthetic";
+  const routerPath = require.resolve("../routes/take-away.routes");
+  delete require.cache[routerPath];
+  const express = require("express");
+  const app = express(); app.use(express.json()); app.use("/api", require(routerPath));
+  const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    RestaurantModel.findById = originalRestaurantFind;
+    eventService.processTakeAwayStripeEvent = originalProcessor;
+    delete require.cache[routerPath];
+    if (oldHmac === undefined) delete process.env.GUSTO_SHARED_SECRET; else process.env.GUSTO_SHARED_SECRET = oldHmac;
+    if (oldStripe === undefined) delete process.env.STRIPE_API_SECRET_KEY; else process.env.STRIPE_API_SECRET_KEY = oldStripe;
+  });
+  const Stripe = require("stripe");
+  const { Readable } = require("node:stream");
+  const { createTakeAwayWebhookHandler, postTakeAwayStripeEvent } = require("../../../clients/les-capuccins/client/src/_assets/server/take-away-webhook");
+  const webhookSecret = "whsec_synthetic_browser_first";
+  const stripeWebhook = new Stripe("sk_test_synthetic");
+  const env = { NEXT_PUBLIC_API_URL: `http://127.0.0.1:${server.address().port}/api`, GUSTO_SHARED_SECRET: process.env.GUSTO_SHARED_SECRET,
+    STRIPE_TAKE_AWAY_WEBHOOK_SECRET: webhookSecret, NEXT_PUBLIC_RESTAURANT_ID: restaurant._id };
+  const handler = createTakeAwayWebhookHandler({ env, postEvent: (body) => postTakeAwayStripeEvent(body, { env }) });
+  const webhookPayload = JSON.stringify({ id: "evt_flow_synthetic", type: "payment_intent.succeeded", data: { object: remote } });
+  async function sendWebhook(signatureValid = true, body = webhookPayload) {
+    const req = Readable.from([Buffer.from(body)]); req.method = "POST";
+    req.headers = { "stripe-signature": signatureValid ? stripeWebhook.webhooks.generateTestHeaderString({ payload: body, secret: webhookSecret }) : "invalid" };
+    const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    await handler(req, res); return res;
+  }
+  assert.equal(rows.size, 0);
+  assert.equal((await sendWebhook(false)).statusCode, 400);
+  assert.equal(rows.size, 0);
+  const rejectedHmac = await fetch(`${env.NEXT_PUBLIC_API_URL}/take-away/stripe-events`, {
+    method: "POST", headers: { "Content-Type": "application/json", "x-gusto-timestamp": String(Date.now()), "x-gusto-signature": "invalid" },
+    body: JSON.stringify({ restaurantId: restaurant._id, event: JSON.parse(webhookPayload) }),
+  });
+  assert.equal(rejectedHmac.status, 401);
+  assert.equal(rows.size, 0);
+  const beforeState = { paymentWrites, crmWrites, notifications: notificationCalls, emails: emailCalls.length };
+  for (let retry = 0; retry < 2; retry++) {
+    const response = await sendWebhook();
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.body, { received: true, handled: true });
+  }
+  const receipt = rows.get(`${restaurant._id}:evt_flow_synthetic`);
+  assert.equal(rows.size, 1); assert.ok(receipt.processedAt); assert.equal(receipt.handled, true); assert.equal(receipt.attempts, 1);
+  assert.deepEqual({ paymentWrites, crmWrites, notifications: notificationCalls, emails: emailCalls.length }, beforeState);
+  remote = { ...remote, amount: 1300 };
+  const mismatchedPayload = JSON.stringify({ id: "evt_mismatch_synthetic", type: "payment_intent.succeeded", data: { object: remote } });
+  assert.equal((await sendWebhook(true, mismatchedPayload)).statusCode, 500);
+  assert.equal(rows.get(`${restaurant._id}:evt_mismatch_synthetic`).processedAt, null);
+  assert.deepEqual({ paymentWrites, crmWrites, notifications: notificationCalls, emails: emailCalls.length }, beforeState);
   assert.equal(current.paymentStatus, "paid"); assert.equal(current.status, "confirmed");
   assert.equal(paymentWrites, 1); assert.equal(crmWrites, 1);
   assert.equal(notificationCalls - beforeNotifications, 1);

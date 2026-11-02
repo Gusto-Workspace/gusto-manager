@@ -17,12 +17,7 @@
 /server/utils/
 
 # next.js
-/client/.next/
-/client/.next-design-lab/
-/client/.next-design-lab-final/
-/client/.next-design-lab-directions/
-/client/.next-design-lab-homepage/
-/client/.next-motion-validation/
+/client/.next*/
 
 # Sorties locales reproductibles de diagnostic et benchmark
 /server/diagnostics/
@@ -36,5 +31,6 @@ server/public/.DS_Store
 # Design Lab: private local references, photographs, runs and agent journals
 /server/.design-lab/
 /server/design-lab/runtime/node_modules/
-/client/.next-design-lab-taste/
+/server/design-lab/harness-runtime/node_modules/
+/server/design-lab/worker/node_modules/
 
