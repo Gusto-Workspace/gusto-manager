@@ -31,6 +31,7 @@ import {
   handlePushWindowMessage,
 } from "@/_assets/utils/push-window";
 import PushRestaurantGuard from "@/components/_shared/notifications/push-restaurant-guard";
+import CallSensePanel from "@/components/_shared/callsense/callsense-panel";
 
 function PushWindowBridge() {
   const router = useRouter();
@@ -600,6 +601,7 @@ function App({ Component, pageProps }) {
               <EmployeeDashboardAccessGuard>
                 <WebAppNotificationBadgeSync />
                 <WebAppPushSubscriptionSync />
+                <CallSensePanel />
                 <Component {...pageProps} />
               </EmployeeDashboardAccessGuard>
             </OwnerOnlyWebAppGuard>

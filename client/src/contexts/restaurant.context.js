@@ -124,6 +124,8 @@ export default function RestaurantContext() {
   const router = useRouter();
 
   const [restaurantData, setRestaurantData] = useState(null);
+  const [callSenseEvents, setCallSenseEvents] = useState({});
+  const [callSenseReconnect, setCallSenseReconnect] = useState(0);
   const [reservationsList, setReservationsList] = useState([]);
   const [activePeriodLoading, setActivePeriodLoading] = useState(false);
   const [takeAwayOrdersList, setTakeAwayOrdersList] = useState([]);
@@ -1084,6 +1086,7 @@ export default function RestaurantContext() {
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = createAuthenticatedEventSource(url);
     sseRef.current = es;
+    es.onopen = () => setCallSenseReconnect((value) => value + 1);
 
     es.onmessage = (evt) => {
       try {
@@ -1112,6 +1115,19 @@ export default function RestaurantContext() {
             const id = String(n._id);
             if (prev.some((x) => String(x._id) === id)) return prev;
             return [n, ...prev].slice(0, 60);
+          });
+        }
+
+        if (payload.type === "callsense_updated" && payload.call) {
+          setCallSenseEvents((previous) => {
+            const old = previous[payload.call.id];
+            const ranks = { incoming: 0, initiated: 1, ringing: 2, answered: 3, completed: 4, missed: 4 };
+            if (old && (new Date(old.updatedAt) > new Date(payload.call.updatedAt) ||
+              (ranks[old.status] || 0) > (ranks[payload.call.status] || 0))) return previous;
+            const next = { ...previous, [payload.call.id]: payload.call };
+            const keys = Object.keys(next);
+            if (keys.length > 100) delete next[keys[0]];
+            return next;
           });
         }
 
@@ -2440,6 +2456,8 @@ export default function RestaurantContext() {
 
   return {
     restaurantData,
+    callSenseEvents,
+    callSenseReconnect,
     setRestaurantData,
     reservationsList,
     setReservationsList,

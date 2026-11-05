@@ -71,6 +71,7 @@ async function sendPushToModule({
   message,
   link,
   data = {},
+  filterSubscriptions = null,
 }) {
   let subs = await PushSubscription.find({
     module,
@@ -91,6 +92,8 @@ async function sendPushToModule({
       (subscription) => subscription.endpoint,
     );
   }
+
+  if (filterSubscriptions) subs = await filterSubscriptions(subs);
 
   const target = new URL(link || "/dashboard", "https://routing.invalid");
   target.searchParams.set("restaurantId", String(restaurantId));

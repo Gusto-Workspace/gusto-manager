@@ -74,6 +74,7 @@ export function createAuthenticatedEventSource(
   let active = true;
   const eventSource = {
     onmessage: null,
+    onopen: null,
     onerror: null,
     close() {
       active = false;
@@ -108,6 +109,8 @@ export function createAuthenticatedEventSource(
         if (!response.ok) {
           throw new Error(`SSE request failed with status ${response.status}`);
         }
+
+        eventSource.onopen?.();
 
         const { authError } = await consumeEventStream(
           response,

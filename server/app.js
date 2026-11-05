@@ -48,6 +48,7 @@ app.use(
       "http://localhost:8003", // Client site restaurant
       "http://localhost:8006", // Client module réservation
       "http://localhost:8012", // Server
+      "https://8667sm54-8002.uks1.devtunnels.ms", // Webapp iPhone - POC
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
@@ -122,6 +123,7 @@ const floorplansRoutes = require("./routes/floorplans.routes");
 const timeClockRoutes = require("./routes/time-clock.routes");
 const takeAwayRoutes = require("./routes/take-away.routes");
 const smsRemindersRoutes = require("./routes/sms-reminders.routes");
+const callSenseRoutes = require("./routes/callsense.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -144,6 +146,7 @@ app.use(apiRoutes, floorplansRoutes);
 app.use(apiRoutes, timeClockRoutes);
 app.use(apiRoutes, takeAwayRoutes);
 app.use(apiRoutes, smsRemindersRoutes);
+app.use(apiRoutes, callSenseRoutes);
 
 // HACCP
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useContext, useRef } from "react";
+import { useRouter } from "next/router";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -199,6 +200,7 @@ function useDebouncedValue(value, delay = 350) {
 }
 
 export default function ListCustomersComponent() {
+  const router = useRouter();
   const { t } = useTranslation("customers");
 
   // ✅ options restaurant (pour afficher/masquer le filtre source)
@@ -242,6 +244,14 @@ export default function ListCustomersComponent() {
 
   const [selectedCustomer, setSelectedCustomer] = useState(null); // basic customer (list)
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const id = router.query.customerId;
+    if (restaurantId && typeof id === "string" && /^[a-f\d]{24}$/i.test(id)) {
+      setSelectedCustomer({ _id: id });
+      setDrawerOpen(true);
+    }
+  }, [restaurantId, router.query.customerId]);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
