@@ -91,13 +91,14 @@ test("routage de secours seulement si Mongo est indisponible", async () => {
 test("push existant limité aux abonnés ayant accès au restaurant et aux clients", async () => {
   const real = require("../services/callsense.service");
   Call.findOneAndUpdate = () => ({ lean: async () => ({ _id: "call" }) });
-  Restaurant.findById = () => ({ select: () => ({ populate: async () => ({ _id: A, owner_id: owner,
-    options: { customers: true }, employees: [{ _id: employee, restaurantProfiles: [{ restaurant: A, options: { customers: true } }] }] }) }) });
+  Restaurant.findById = () => ({ select: async () => ({ _id: A, owner_id: owner, options: { reservations: true } }) });
   await real.notify({ _id: "call", restaurantId: A, from: "+33612345678", customerName: "Marie" });
-  assert.equal(pushes.length, 3);
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].module, "reservations");
   const candidates = [{ userId: owner }, { userId: employee }, { userId: outsider }, {}];
   const allowed = await pushes[0].filterSubscriptions(candidates);
-  assert.deepEqual(allowed.map((entry) => entry.userId), [owner, employee]);
+  assert.deepEqual(allowed.map((entry) => entry.userId), [owner]);
+  assert.equal(pushes[0].data.tag, "callsense:call");
   assert.match(pushes[0].link, /callId=call/);
 });
 
@@ -134,6 +135,10 @@ test("callbacks répétés ou désordonnés : résultat final immuable et appels
   assert.equal(real.serialize(docs.get("CAparent2")).status, "ringing");
   await real.recordCallback("action", { AccountSid: sid, DialCallStatus: "failed" }, B, "CAparent1");
   assert.equal(docs.get("CAparent1").outcome, "completed");
+  await real.recordCallback("sip", { AccountSid: sid, CallStatus: "completed" }, A, "CAparent3");
+  await real.recordCallback("action", { AccountSid: sid, DialCallStatus: "no-answer" }, A, "CAparent3");
+  await real.recordCallback("sip", { AccountSid: sid, CallStatus: "no-answer" }, A, "CAparent3");
+  assert.equal(real.serialize(docs.get("CAparent3")).status, "completed");
 });
 
 test("identification client limitée au restaurant et sans attribution ambiguë", async () => {
@@ -150,4 +155,107 @@ test("identification client limitée au restaurant et sans attribution ambiguë"
   candidates = [...candidates, { _id: "2", phoneNorm: "+33612345678" }];
   assert.deepEqual(await real.findCustomer(A, "+33612345678"), { match: "ambiguous" });
   assert.deepEqual(await real.findCustomer(B, null), { match: "unknown" });
+});
+
+test("push entrant et manqué dédupliqués et aucune alerte manquée après décrochage", async () => {
+  const real = require("../services/callsense.service");
+  const records = new Map([
+    ["a", { _id: "a", restaurantId: A, phase: 0 }],
+    ["b", { _id: "b", restaurantId: A, phase: 3, outcome: "no-answer", sipFinalStatus: "no-answer" }],
+    ["c", { _id: "c", restaurantId: A, phase: 2, outcome: "no-answer", sipFinalStatus: "no-answer" }],
+    ["d", { _id: "d", restaurantId: A, phase: 2, outcome: "no-answer", sipFinalStatus: "no-answer", sipResponseCode: "603" }],
+    ["e", { _id: "e", restaurantId: A, phase: 2, outcome: "no-answer", sipFinalStatus: "completed" }],
+  ]);
+  Call.findOneAndUpdate = (filter, update) => ({ lean: async () => {
+    const doc = records.get(filter._id);
+    if (!doc || doc.phase >= 3 || (filter.outcome?.$exists === false && doc.outcome !== undefined) ||
+      (filter.outcome === "no-answer" && doc.outcome !== "no-answer") ||
+      (filter.sipFinalStatus && doc.sipFinalStatus !== filter.sipFinalStatus) ||
+      (filter.sipResponseCode && doc.sipResponseCode === "603") ||
+      (filter.pushClaimed && doc.pushClaimed) || (filter.missedPushClaimed && doc.missedPushClaimed)) return null;
+    Object.assign(doc, update.$set);
+    return doc;
+  } });
+  const before = pushes.length;
+  await real.notify(records.get("a"));
+  await real.notify(records.get("a"));
+  await real.notify(records.get("b"), "missed");
+  await real.notify(records.get("c"), "missed");
+  await real.notify(records.get("c"), "missed");
+  await real.notify(records.get("d"), "missed");
+  await real.notify(records.get("e"), "missed");
+  const sent = pushes.slice(before);
+  assert.deepEqual(sent.map((entry) => entry.type), ["callsense_incoming", "callsense_missed"]);
+  assert.ok(sent.every((entry) => entry.module === "reservations"));
+  assert.equal(sent[1].title, "Appel manqué — Gusto CallSense");
+});
+
+test("pagination par curseur limitée au restaurant et sans doublon", async () => {
+  const router = require("../routes/callsense.routes");
+  const route = router.stack.find((layer) => layer.route?.path === "/restaurants/:restaurantId/callsense/calls");
+  const handler = route.route.stack.at(-1).handle;
+  const docs = Array.from({ length: 14 }, (_, i) => ({ _id: (i + 1).toString(16).padStart(24, "0"), restaurantId: A, callSid: `CA${i}`, createdAt: new Date(1700000000000 - i * 1000), updatedAt: new Date() }));
+  const filters = [];
+  Call.find = (filter) => {
+    filters.push(filter);
+    let count;
+    return { sort: () => ({ limit: (limit) => { count = limit; return { lean: async () => docs.filter((doc) => !filter.$or || doc.createdAt < filter.$or[0].createdAt.$lt).slice(0, count) }; } }) };
+  };
+  Config.exists = async () => true;
+  async function request(cursor) {
+    const req = { user: { role: "owner" }, authorizedRestaurant: {}, params: { restaurantId: A }, query: cursor ? { cursor } : {} };
+    const res = { json(data) { this.data = data; return this; }, sendStatus(code) { this.status = code; return this; } };
+    await handler(req, res);
+    return res.data;
+  }
+  const first = await request();
+  const second = await request(first.nextCursor);
+  assert.equal(first.calls.length, 10);
+  assert.equal(second.calls.length, 4);
+  assert.equal(new Set([...first.calls, ...second.calls].map((call) => call.id)).size, 14);
+  assert.ok(filters.every((filter) => filter.restaurantId === A));
+});
+
+test("lecture des appels manqués ou occupés isolée par restaurant", async () => {
+  const router = require("../routes/callsense.routes");
+  const get = router.stack.find((layer) => layer.route?.path === "/restaurants/:restaurantId/callsense/unread-missed-count").route.stack;
+  const post = router.stack.find((layer) => layer.route?.path === "/restaurants/:restaurantId/callsense/read-missed").route.stack;
+  const docs = [
+    { _id: "000000000000000000000001", restaurantId: A, outcome: "no-answer", phase: 2, missedReadAt: null },
+    { _id: "000000000000000000000002", restaurantId: A, outcome: "busy", phase: 2, missedReadAt: null },
+    { _id: "000000000000000000000003", restaurantId: A, outcome: "no-answer", phase: 3, missedReadAt: null },
+    { _id: "000000000000000000000004", restaurantId: A, outcome: "completed", phase: 3, missedReadAt: null },
+    { _id: "000000000000000000000005", restaurantId: A, outcome: "no-answer", phase: 2, missedReadAt: new Date() },
+    { _id: "000000000000000000000006", restaurantId: B, outcome: "busy", phase: 2, missedReadAt: null },
+    { _id: "000000000000000000000007", restaurantId: A, outcome: "busy", phase: 2, missedReadAt: null, updatedAt: new Date(Date.now() + 60000) },
+  ];
+  const matches = (doc, filter) => String(doc.restaurantId) === String(filter.restaurantId) && filter.outcome.$in.includes(doc.outcome) &&
+    !(doc.phase >= filter.phase.$not.$gte) && (!("missedReadAt" in filter) || doc.missedReadAt == null) &&
+    (!filter._id || String(doc._id) === String(filter._id)) &&
+    (!filter.$or || !doc.updatedAt || doc.updatedAt <= filter.$or[0].updatedAt.$lte);
+  Call.countDocuments = async (filter) => docs.filter((doc) => matches(doc, filter)).length;
+  Call.updateMany = async (filter, update, options) => {
+    assert.equal(options.timestamps, false);
+    const found = docs.filter((item) => matches(item, filter));
+    for (const doc of found) doc.missedReadAt = update.$set.missedReadAt;
+    return { modifiedCount: found.length };
+  };
+  const eventsA = [], eventsB = [];
+  const clientA = { locals: { gustoEventModules: { callsense: true } }, write: (data) => eventsA.push(data) };
+  const clientB = { locals: { gustoEventModules: { callsense: true } }, write: (data) => eventsB.push(data) };
+  sse._addClient(A, clientA); sse._addClient(B, clientB);
+  const response = () => ({ json(value) { this.value = value; return this; }, sendStatus(code) { this.status = code; return this; } });
+  const req = { params: { restaurantId: A }, user: { role: "owner" }, authorizedRestaurant: {} };
+  try {
+    let res = response(); await get.at(-1).handle(req, res); assert.equal(res.value.count, 3);
+    res = response(); await post.at(-1).handle(req, res); assert.equal(res.value.ok, true); assert.equal(res.value.modifiedCount, 2);
+    res = response(); await get.at(-1).handle(req, res); assert.equal(res.value.count, 1);
+    assert.equal(docs[5].missedReadAt, null);
+    assert.equal(docs[6].missedReadAt, null);
+    assert.equal(eventsA.length, 1); assert.equal(eventsB.length, 0);
+    let passed = false;
+    res = response();
+    await get.at(-2).handle({ user: { role: "employee" }, authorizedRestaurant: { options: { customers: false } } }, res, () => { passed = true; });
+    assert.equal(res.status, 403); assert.equal(passed, false);
+  } finally { sse._removeClient(A, clientA); sse._removeClient(B, clientB); }
 });

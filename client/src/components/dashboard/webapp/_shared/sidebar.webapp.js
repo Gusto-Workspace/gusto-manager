@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/router";
+import { useCallSense } from "@/components/_shared/callsense/callsense-context";
 import {
   CalendarDays,
   LayoutGrid,
@@ -10,6 +11,7 @@ import {
   CreditCard,
   List,
   ShoppingBag,
+  Phone,
 } from "lucide-react";
 
 export default function SidebarReservationsWebapp({
@@ -20,6 +22,7 @@ export default function SidebarReservationsWebapp({
   navItems,
 }) {
   const router = useRouter();
+  const callSense = useCallSense();
 
   const handleClose = () => {
     if (typeof document !== "undefined") {
@@ -61,6 +64,12 @@ export default function SidebarReservationsWebapp({
         label: "Fichier clients",
         icon: Users,
         href: "/dashboard/webapp/reservations/customers",
+      },
+      {
+        label: "Téléphone",
+        icon: Phone,
+        href: "/dashboard/webapp/reservations/phone",
+        callsense: true,
       },
       {
         label: "Paramètres",
@@ -191,7 +200,7 @@ export default function SidebarReservationsWebapp({
 
           {/* Nav */}
           <nav className="p-3 flex flex-col gap-1">
-            {items.map((it) => {
+            {items.filter((it) => !it.callsense || callSense?.enabled).map((it) => {
               const Icon = it.icon;
               const active = isActiveItem(it);
 

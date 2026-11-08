@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useContext, useRef } from "react";
+import { useRouter } from "next/router";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -192,6 +193,7 @@ export default function ListCustomersReservationsWebapp({
   sidebarModule = "reservations",
   lockSourceFilter = false,
 }) {
+  const router = useRouter();
   const { t } = useTranslation("customers");
 
   const { restaurantContext } = useContext(GlobalContext);
@@ -244,6 +246,13 @@ export default function ListCustomersReservationsWebapp({
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    const id = router.query.customerId;
+    if (restaurantId && typeof id === "string" && /^[a-f\d]{24}$/i.test(id)) {
+      setSelectedCustomer({ _id: id });
+      setDrawerOpen(true);
+    }
+  }, [restaurantId, router.query.customerId]);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);

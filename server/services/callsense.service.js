@@ -3,7 +3,6 @@ const Config = require("../models/callsense-config.model");
 const Call = require("../models/callsense-call.model");
 const Customer = require("../models/customer.model");
 const Restaurant = require("../models/restaurant.model");
-const { userCanAccessRestaurant } = require("../middleware/authorize-restaurant-access");
 const { broadcastToRestaurant } = require("./sse-bus.service");
 const { sendPushToModule } = require("./webpush.service");
 const { normalizePhone } = require("./callsense-core.service");
@@ -35,11 +34,14 @@ async function findRoute(sid, to) {
   }
 }
 function serialize(call) {
-  const status = call.outcome ? (call.outcome === "completed" ? "completed" : "missed") : ["incoming", "initiated", "ringing", "answered"][call.phase || 0];
+  const status = call.outcome ? (call.outcome === "completed" || call.phase >= 3 ? "completed" : call.outcome === "no-answer" ? "missed" : call.outcome) : ["incoming", "initiated", "ringing", "answered"][call.phase || 0];
   return { id: String(call._id), restaurantId: String(call.restaurantId), callSid: call.callSid,
     childCallSid: call.childCallSid || null, from: call.from || null, to: call.to || null,
     customerId: call.customerId ? String(call.customerId) : null, customerName: call.customerName || "",
+    customerFirstName: call.customerFirstName || "", customerLastName: call.customerLastName || "",
     match: call.match || "unknown", status, outcome: call.outcome || null, duration: call.duration ?? null,
+    read: !["missed", "busy"].includes(status) || Boolean(call.missedReadAt),
+    readAt: call.missedReadAt || null,
     answeredAt: call.answeredAt || null, createdAt: call.createdAt, updatedAt: call.updatedAt };
 }
 async function findCustomer(restaurantId, phone) {
@@ -50,33 +52,31 @@ async function findCustomer(restaurantId, phone) {
   const matches = candidates.filter((customer) => normalizePhone(customer.phoneNorm || customer.phone) === phone);
   if (matches.length !== 1) return { match: matches.length ? "ambiguous" : "unknown" };
   return { match: "recognized", customerId: matches[0]._id,
+    customerFirstName: matches[0].firstName || "", customerLastName: matches[0].lastName || "",
     customerName: [matches[0].firstName, matches[0].lastName].filter(Boolean).join(" ") };
 }
 function publish(call) {
   broadcastToRestaurant(String(call.restaurantId), { type: "callsense_updated", restaurantId: String(call.restaurantId), call: serialize(call) });
 }
-async function notify(call) {
-  const claimed = await Call.findOneAndUpdate({ _id: call._id, pushClaimed: { $ne: true } }, { $set: { pushClaimed: true } }, { new: true }).lean();
+async function notify(call, kind = "incoming") {
+  const missed = kind === "missed";
+  const claim = missed
+    ? { missedPushClaimed: { $ne: true }, outcome: "no-answer", sipFinalStatus: "no-answer", phase: { $not: { $gte: 3 } }, sipResponseCode: { $ne: "603" } }
+    : { pushClaimed: { $ne: true }, outcome: { $exists: false }, phase: { $not: { $gte: 3 } } };
+  const claimed = await Call.findOneAndUpdate({ _id: call._id, ...claim }, { $set: { [missed ? "missedPushClaimed" : "pushClaimed"]: true } }, { new: true }).lean();
   if (!claimed) return;
-  const restaurant = await Restaurant.findById(call.restaurantId).select("_id owner_id employees options.customers").populate("employees", "restaurantProfiles");
-  if (!restaurant) return;
-  const paths = { reservations: "/dashboard/webapp/reservations", gift_cards: "/dashboard/webapp/gift-cards", take_away: "/dashboard/webapp/take-away" };
-  await Promise.allSettled(Object.entries(paths).map(([module, path]) => sendPushToModule({
-    restaurantId: call.restaurantId, module, type: "callsense_incoming", title: "Appel entrant — Gusto CallSense",
-    message: [call.customerName || "Numéro inconnu", call.from].filter(Boolean).join(" — "),
-    link: `${path}?callId=${encodeURIComponent(String(call._id))}`,
-    data: { callId: String(call._id) },
+  const restaurant = await Restaurant.findById(call.restaurantId).select("_id owner_id options.reservations");
+  // The reservations webapp is owner-only in the existing client guard.
+  if (!restaurant || restaurant.options?.reservations !== true) return;
+  await sendPushToModule({
+    restaurantId: call.restaurantId, module: "reservations", type: missed ? "callsense_missed" : "callsense_incoming", title: missed ? "Appel manqué — Gusto CallSense" : "Appel entrant — Gusto CallSense",
+    message: call.customerName ? [call.customerName, call.from].filter(Boolean).join(" — ") : call.from || "Numéro inconnu",
+    link: `/dashboard/webapp/reservations/phone?callId=${encodeURIComponent(String(call._id))}`,
+    data: { callId: String(call._id), tag: `callsense:${String(call._id)}` },
     filterSubscriptions: async (subs) => {
-      const checks = await Promise.all(subs.map(async (sub) => {
-        if (!sub.userId) return false;
-        const id = String(sub.userId);
-        const owner = id === String(restaurant.owner_id);
-        if (!owner && restaurant.options?.customers !== true) return false;
-        return userCanAccessRestaurant({ role: owner ? "owner" : "employee", id }, restaurant, { requiredOption: "customers" });
-      }));
-      return subs.filter((_, index) => checks[index]);
+      return subs.filter((sub) => sub.userId && String(sub.userId) === String(restaurant.owner_id));
     },
-  })));
+  });
 }
 async function recordIncoming(config, body) {
   const from = normalizePhone(body.From);
@@ -88,21 +88,29 @@ async function recordIncoming(config, body) {
   if (!call) return;
   try {
     const customer = await findCustomer(config.restaurantId, from);
-    call = await Call.findOneAndUpdate(key, { $set: customer }, { new: true }).lean();
-  } catch (error) { console.error("[callsense] customer lookup", error.message); }
+    call = await Call.findOneAndUpdate(key, { $set: { ...customer, incomingReceived: true } }, { new: true }).lean();
+  } catch (error) {
+    console.error("[callsense] customer lookup", error.message);
+    call = await Call.findOneAndUpdate(key, { $set: { incomingReceived: true } }, { new: true }).lean();
+  }
   if (!call) return;
   publish(call);
-  await notify(call);
+  if (call.outcome === "no-answer") await notify(call, "missed");
+  else await notify(call);
 }
 async function recordCallback(kind, body, restaurantId, parentSid) {
   if (!mongoose.isValidObjectId(restaurantId) || !/^CA[a-zA-Z0-9]+$/.test(parentSid || "")) return;
   const key = { callSid: parentSid, restaurantId, accountSid: body.AccountSid };
   const update = { $set: {} };
   if (kind === "sip") {
-    const phase = { initiated: 1, ringing: 2, answered: 3, "in-progress": 3 }[body.CallStatus];
+    const phase = { initiated: 1, ringing: 2, answered: 3, "in-progress": 3, completed: 3 }[body.CallStatus];
     if (phase) update.$max = { phase };
-    if (phase === 3) update.$min = { answeredAt: new Date() };
-    if (body.CallStatus === "completed") update.$set.sipCompleted = true;
+    if (["answered", "in-progress"].includes(body.CallStatus)) update.$min = { answeredAt: new Date() };
+    if (["completed", "no-answer", "busy", "failed", "canceled"].includes(body.CallStatus)) {
+      update.$set.sipCompleted = true;
+      update.$set.sipFinalStatus = body.CallStatus;
+    }
+    if (body.SipResponseCode) update.$set.sipResponseCode = String(body.SipResponseCode);
     if (body.CallSid && body.CallSid !== parentSid) update.$set.childCallSid = body.CallSid;
   } else {
     const status = body.DialCallStatus;
@@ -110,6 +118,7 @@ async function recordCallback(kind, body, restaurantId, parentSid) {
     // First Dial result wins, atomically; a replay cannot reopen or overwrite it.
     key.outcome = { $exists: false };
     update.$set.outcome = status;
+    if (body.SipResponseCode || body.DialSipResponseCode) update.$set.sipResponseCode = String(body.SipResponseCode || body.DialSipResponseCode);
     const duration = Number(body.DialCallDuration);
     if (body.DialCallDuration !== undefined && Number.isFinite(duration) && duration >= 0) update.$set.duration = duration;
     if (body.DialCallSid) update.$set.childCallSid = body.DialCallSid;
@@ -124,6 +133,9 @@ async function recordCallback(kind, body, restaurantId, parentSid) {
     if (error.code !== 11000) throw error;
     call = await Call.findOneAndUpdate(key, { ...update, $setOnInsert: undefined }, { new: true }).lean();
   }
-  if (call) publish(call);
+  if (call) {
+    publish(call);
+    if (call.outcome === "no-answer" && call.incomingReceived) await notify(call, "missed");
+  }
 }
 module.exports = { accountToken, validConfig, findRoute, serialize, findCustomer, recordIncoming, recordCallback, notify };

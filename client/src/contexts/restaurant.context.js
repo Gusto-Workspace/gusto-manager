@@ -125,6 +125,8 @@ export default function RestaurantContext() {
 
   const [restaurantData, setRestaurantData] = useState(null);
   const [callSenseEvents, setCallSenseEvents] = useState({});
+  const [callSenseCountRevision, setCallSenseCountRevision] = useState(0);
+  const [callSenseReadEvent, setCallSenseReadEvent] = useState({});
   const [callSenseReconnect, setCallSenseReconnect] = useState(0);
   const [reservationsList, setReservationsList] = useState([]);
   const [activePeriodLoading, setActivePeriodLoading] = useState(false);
@@ -1119,12 +1121,24 @@ export default function RestaurantContext() {
         }
 
         if (payload.type === "callsense_updated" && payload.call) {
+          setCallSenseCountRevision((value) => value + 1);
           setCallSenseEvents((previous) => {
             const old = previous[payload.call.id];
-            const ranks = { incoming: 0, initiated: 1, ringing: 2, answered: 3, completed: 4, missed: 4 };
+            const ranks = { incoming: 0, initiated: 1, ringing: 2, answered: 3, completed: 4, missed: 4, failed: 4, busy: 4, canceled: 4 };
             if (old && (new Date(old.updatedAt) > new Date(payload.call.updatedAt) ||
               (ranks[old.status] || 0) > (ranks[payload.call.status] || 0))) return previous;
             const next = { ...previous, [payload.call.id]: payload.call };
+            const keys = Object.keys(next);
+            if (keys.length > 100) delete next[keys[0]];
+            return next;
+          });
+        }
+
+        if (payload.type === "callsense_missed_read") {
+          setCallSenseCountRevision((value) => value + 1);
+          setCallSenseReadEvent((previous) => {
+            const key = `${restaurantId}:${payload.callId || "all"}`;
+            const next = { ...previous, [key]: payload };
             const keys = Object.keys(next);
             if (keys.length > 100) delete next[keys[0]];
             return next;
@@ -2457,6 +2471,8 @@ export default function RestaurantContext() {
   return {
     restaurantData,
     callSenseEvents,
+    callSenseCountRevision,
+    callSenseReadEvent,
     callSenseReconnect,
     setRestaurantData,
     reservationsList,

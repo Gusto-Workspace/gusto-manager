@@ -32,6 +32,7 @@ import {
 } from "@/_assets/utils/push-window";
 import PushRestaurantGuard from "@/components/_shared/notifications/push-restaurant-guard";
 import CallSensePanel from "@/components/_shared/callsense/callsense-panel";
+import { CallSenseProvider } from "@/components/_shared/callsense/callsense-context";
 
 function PushWindowBridge() {
   const router = useRouter();
@@ -594,6 +595,7 @@ function App({ Component, pageProps }) {
       </Head>
 
       <GlobalProvider>
+        <CallSenseProvider>
         <PushWindowBridge />
         <PushRestaurantGuard>
           <AccountantDashboardAccessGuard>
@@ -607,6 +609,7 @@ function App({ Component, pageProps }) {
             </OwnerOnlyWebAppGuard>
           </AccountantDashboardAccessGuard>
         </PushRestaurantGuard>
+        </CallSenseProvider>
       </GlobalProvider>
       <Analytics />
     </>

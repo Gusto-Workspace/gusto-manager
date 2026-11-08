@@ -9,8 +9,21 @@ const Config = require("../models/callsense-config.model");
 const Call = require("../models/callsense-call.model");
 const Restaurant = require("../models/restaurant.model");
 const { validateWebhook, normalizePhone } = require("../services/callsense-core.service");
+const { broadcastToRestaurant } = require("../services/sse-bus.service");
 const service = require("../services/callsense.service");
 const router = express.Router();
+
+function unreadMissedFilter(restaurantId) {
+  return { restaurantId, outcome: { $in: ["no-answer", "busy"] }, phase: { $not: { $gte: 3 } }, missedReadAt: null };
+}
+
+async function authorizeCallSense(req, res, next) {
+  try {
+    if (req.user.role === "employee" && (req.authorizedRestaurant.options?.customers !== true ||
+      !(await userCanAccessRestaurant(req.user, req.authorizedRestaurant, { requiredOption: "customers" })))) return res.sendStatus(403);
+    return next();
+  } catch (_) { return res.sendStatus(500); }
+}
 
 function signature(req, res, next) {
   const sid = req.body?.AccountSid;
@@ -60,20 +73,54 @@ router.put("/admin/restaurants/:restaurantId/callsense", authenticateAdmin, requ
   } catch (error) { return res.status(error.code === 11000 ? 409 : 500).json({ message: "Configuration impossible" }); }
 });
 router.get("/restaurants/:restaurantId/callsense/calls", authenticateToken,
-  authorizeRestaurantAccess({ requiredOption: "customers" }), async (req, res) => {
+  authorizeRestaurantAccess({ requiredOption: "customers" }), authorizeCallSense, async (req, res) => {
     try {
-      if (req.user.role === "employee" && (req.authorizedRestaurant.options?.customers !== true ||
-        !(await userCanAccessRestaurant(req.user, req.authorizedRestaurant, { requiredOption: "customers" })))) return res.sendStatus(403);
       const filter = { restaurantId: req.params.restaurantId };
       if (req.query.callId) {
         if (!mongoose.isValidObjectId(req.query.callId)) return res.sendStatus(400);
         filter._id = req.query.callId;
       }
+      if (req.query.active === "true") {
+        filter.outcome = { $exists: false };
+        filter.createdAt = { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+      }
+      if (req.query.cursor && !req.query.callId && req.query.active !== "true") {
+        let cursor;
+        try { cursor = JSON.parse(Buffer.from(req.query.cursor, "base64url").toString("utf8")); } catch (_) { return res.sendStatus(400); }
+        const date = new Date(cursor?.date);
+        if (!mongoose.isValidObjectId(cursor?.id) || Number.isNaN(date.getTime())) return res.sendStatus(400);
+        filter.$or = [{ createdAt: { $lt: date } }, { createdAt: date, _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } }];
+      }
+      const limit = req.query.callId ? 1 : req.query.active === "true" ? 50 : 10;
       const [calls, config] = await Promise.all([
-        Call.find(filter).sort({ createdAt: -1 }).limit(100).lean(),
+        Call.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean(),
         Config.exists({ restaurantId: req.params.restaurantId, enabled: true }),
       ]);
-      return res.json({ enabled: Boolean(config), calls: calls.map(service.serialize) });
+      const items = calls.slice(0, limit);
+      const last = items[items.length - 1];
+      const nextCursor = calls.length > limit && last ? Buffer.from(JSON.stringify({ date: last.createdAt, id: String(last._id) })).toString("base64url") : null;
+      return res.json({ enabled: Boolean(config), calls: items.map(service.serialize), nextCursor });
     } catch (_) { return res.sendStatus(500); }
   });
+
+router.get("/restaurants/:restaurantId/callsense/unread-missed-count", authenticateToken,
+  authorizeRestaurantAccess({ requiredOption: "customers" }), authorizeCallSense, async (req, res) => {
+    try {
+      const count = await Call.countDocuments(unreadMissedFilter(req.params.restaurantId));
+      return res.json({ count });
+    } catch (_) { return res.sendStatus(500); }
+  });
+
+router.post("/restaurants/:restaurantId/callsense/read-missed", authenticateToken,
+  authorizeRestaurantAccess({ requiredOption: "customers" }), authorizeCallSense, async (req, res) => {
+    try {
+      const restaurantId = req.params.restaurantId;
+      const readAt = new Date();
+      const filter = { ...unreadMissedFilter(restaurantId), $or: [{ updatedAt: { $lte: readAt } }, { updatedAt: null }] };
+      const result = await Call.updateMany(filter, { $set: { missedReadAt: readAt } }, { timestamps: false });
+      broadcastToRestaurant(String(restaurantId), { type: "callsense_missed_read", restaurantId: String(restaurantId), readAt: readAt.toISOString() });
+      return res.json({ ok: true, modifiedCount: result.modifiedCount || 0, readAt });
+    } catch (_) { return res.sendStatus(500); }
+  });
+
 module.exports = router;
