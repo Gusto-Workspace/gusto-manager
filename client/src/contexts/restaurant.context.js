@@ -1134,6 +1134,10 @@ export default function RestaurantContext() {
           });
         }
 
+        if (payload.type === "callsense_status_changed") {
+          setCallSenseReconnect((value) => value + 1);
+        }
+
         if (payload.type === "callsense_missed_read") {
           setCallSenseCountRevision((value) => value + 1);
           setCallSenseReadEvent((previous) => {

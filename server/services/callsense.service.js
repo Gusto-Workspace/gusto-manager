@@ -1,11 +1,12 @@
 const mongoose = require("mongoose");
-const Config = require("../models/callsense-config.model");
-const Call = require("../models/callsense-call.model");
+const Config = require("../models/callsense/callsense-config.model");
+const Call = require("../models/callsense/callsense-call.model");
 const Customer = require("../models/customer.model");
 const Restaurant = require("../models/restaurant.model");
 const { broadcastToRestaurant } = require("./sse-bus.service");
 const { sendPushToModule } = require("./webpush.service");
 const { normalizePhone } = require("./callsense-core.service");
+const { decryptToken } = require("./callsense-secrets.service");
 
 function jsonEnv(name, fallback) {
   try { return JSON.parse(process.env[name] || JSON.stringify(fallback)); } catch (_) { return fallback; }
@@ -13,6 +14,32 @@ function jsonEnv(name, fallback) {
 function accountToken(sid) {
   const accounts = jsonEnv("CALLSENSE_ACCOUNTS", {});
   return typeof accounts[sid] === "string" ? accounts[sid] : "";
+}
+async function webhookAccountToken(sid, { restaurantId, to } = {}) {
+  if (typeof sid !== "string" || !/^AC[a-zA-Z0-9]+$/.test(sid) || sid.length > 64 || (restaurantId && !mongoose.isValidObjectId(restaurantId))) return "";
+  const filter = { accountSid: sid };
+  if (restaurantId) filter.restaurantId = restaurantId;
+  else if (to) filter.twilioNumber = to;
+  else return "";
+  let config;
+  try {
+    config = await Promise.race([
+      Config.findOne(filter).select("+encryptedAuthToken").maxTimeMS(300).lean(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("configuration timeout")), 500)),
+    ]);
+  } catch (_) {
+    // Both the legacy secret and the matching per-restaurant fallback route
+    // are required when MongoDB is unavailable.
+    const routes = jsonEnv("CALLSENSE_FALLBACK_ROUTES", []);
+    const match = Array.isArray(routes) && routes.some((route) =>
+      validConfig(route, sid, route.twilioNumber) &&
+      (restaurantId ? String(route.restaurantId) === String(restaurantId) : route.twilioNumber === to));
+    return match ? accountToken(sid) : "";
+  }
+  if (!config) return "";
+  if (!config.encryptedAuthToken) return accountToken(sid);
+  try { return decryptToken(config.encryptedAuthToken, String(config.restaurantId), sid); }
+  catch (_) { return ""; } // Never silently use a stale token after rotation.
 }
 function validConfig(config, sid, to) {
   return Boolean(to && normalizePhone(to) === to && config && config.enabled === true && config.accountSid === sid && config.twilioNumber === to &&
@@ -138,4 +165,4 @@ async function recordCallback(kind, body, restaurantId, parentSid) {
     if (call.outcome === "no-answer" && call.incomingReceived) await notify(call, "missed");
   }
 }
-module.exports = { accountToken, validConfig, findRoute, serialize, findCustomer, recordIncoming, recordCallback, notify };
+module.exports = { accountToken, webhookAccountToken, validConfig, findRoute, serialize, findCustomer, recordIncoming, recordCallback, notify, publish };

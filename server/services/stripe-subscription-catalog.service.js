@@ -3,6 +3,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 const SUBSCRIPTION_CATALOG_NAME = "restaurant_subscription";
 const MULTI_QUANTITY_ADDON_CODE = "tab_rental";
 const SMS_ADDON_CODE = "sms_reminders";
+const CALLSENSE_ADDON_CODE = "callsense";
 const offeredPriceRequests = new Map();
 
 function normalizeString(value) {
@@ -70,7 +71,26 @@ function selectionIncludesSms(selection) {
 }
 
 function catalogCodeAllowsOffered(code) {
-  return normalizeString(code) !== SMS_ADDON_CODE;
+  return ![SMS_ADDON_CODE, CALLSENSE_ADDON_CODE].includes(normalizeString(code));
+}
+
+function selectionIncludesCallSense(selection) {
+  return (selection?.addons || []).some((addon) => normalizeString(addon?.code) === CALLSENSE_ADDON_CODE);
+}
+
+function getCallSenseMeteredPriceId(selection) {
+  if (!selectionIncludesCallSense(selection)) return "";
+  const { offerIds } = require("./callsense-usage.service");
+  const priceId = offerIds().metered;
+  if (!priceId) throw Object.assign(new Error("Le tarif mesuré CallSense n'est pas configuré."), { statusCode: 409 });
+  return priceId;
+}
+
+function isCallSenseMeteredComponent(price, metadata = {}) {
+  const { offerIds } = require("./callsense-usage.service");
+  const configured = offerIds().metered;
+  return Boolean((configured && price?.id === configured) ||
+    (normalizeString(metadata?.code) === CALLSENSE_ADDON_CODE && normalizeString(price?.recurring?.usage_type) === "metered"));
 }
 
 function getSmsMeteredPriceId(selection) {
@@ -259,13 +279,14 @@ async function listSubscriptionCatalogProducts({ limit = 100 } = {}) {
       if (!["plan", "addon"].includes(metadata.kind)) continue;
 
       let commercialPrice = product?.default_price;
-      if (metadata.code === SMS_ADDON_CODE) {
+      if (metadata.code === SMS_ADDON_CODE || metadata.code === CALLSENSE_ADDON_CODE) {
         const fixedPriceId = normalizeString(
-          process.env.STRIPE_SMS_FIXED_PRICE_ID,
+          metadata.code === SMS_ADDON_CODE ? process.env.STRIPE_SMS_FIXED_PRICE_ID : require("./callsense-usage.service").offerIds().fixed,
         );
         if (!fixedPriceId) continue;
-        smsFixedPricePromise ||= stripe.prices.retrieve(fixedPriceId);
-        const fixedPrice = await smsFixedPricePromise;
+        const fixedPrice = metadata.code === SMS_ADDON_CODE
+          ? await (smsFixedPricePromise ||= stripe.prices.retrieve(fixedPriceId))
+          : await stripe.prices.retrieve(fixedPriceId);
         const fixedProductId =
           typeof fixedPrice?.product === "string"
             ? fixedPrice.product
@@ -420,6 +441,22 @@ async function resolveCatalogSelection({
     }),
   );
 
+  const callSense = addons.find((addon) => normalizeString(addon.code) === CALLSENSE_ADDON_CODE);
+  if (callSense) {
+    const { offerIds, validateOffer } = require("./callsense-usage.service");
+    const ids = offerIds();
+    if (!ids.fixed || !ids.metered || !ids.meter || callSense.priceId !== ids.fixed) {
+      throw Object.assign(new Error("L'offre CallSense configurée est incomplète ou ne correspond pas au tarif sélectionné."), { statusCode: 409 });
+    }
+    const [metered, meter] = await Promise.all([stripe.prices.retrieve(ids.metered, { expand: ["tiers"] }), stripe.billing.meters.retrieve(ids.meter)]);
+    const testMode = /^(sk|rk)_test_/.test(process.env.STRIPE_API_SECRET_KEY || "");
+    if (!validateOffer(callSense.price, metered, meter, ids) || Boolean(callSense.price.livemode) === testMode ||
+        (meter.customer_mapping?.event_payload_key || "stripe_customer_id") !== "stripe_customer_id" ||
+        (meter.value_settings?.event_payload_key || "value") !== "value") {
+      throw Object.assign(new Error("L'offre et le compteur CallSense ne correspondent pas aux conditions contractuelles."), { statusCode: 409 });
+    }
+  }
+
   addons.forEach((addon) => {
     if (addon.kind !== "addon") {
       const error = new Error(
@@ -483,6 +520,13 @@ async function resolveCatalogSelection({
   };
 }
 
+function hasExistingCallSensePair(summary) {
+  const ids = require("./callsense-usage.service").offerIds();
+  if (!ids.fixed || !ids.metered) return false;
+  return (summary?.addons || []).filter((item) => item.priceId === ids.fixed).length === 1 &&
+    (summary?.technicalItems || []).filter((item) => item.priceId === ids.metered).length === 1;
+}
+
 async function ensureExpandedSubscription(subscriptionOrId) {
   if (!subscriptionOrId) {
     const error = new Error("Abonnement Stripe introuvable.");
@@ -529,7 +573,7 @@ async function buildSubscriptionItemSummaries(subscriptionOrId) {
       const amount =
         typeof price.unit_amount === "number" ? price.unit_amount / 100 : 0;
       const recurring = price?.recurring || null;
-      const technical = isSmsMeteredComponent(price, metadata);
+      const technical = isSmsMeteredComponent(price, metadata) || isCallSenseMeteredComponent(price, metadata);
 
       return {
         index,
@@ -706,6 +750,18 @@ function buildSubscriptionItemUpdatePayload({ currentSummary, selection }) {
     });
   }
 
+  const callMeteredPriceId = require("./callsense-usage.service").offerIds().metered;
+  const callItems = [...(currentSummary?.technicalItems || []), ...(currentSummary?.items || [])]
+    .filter((item, index, items) => item.priceId === callMeteredPriceId &&
+      items.findIndex((candidate) => candidate.subscriptionItemId === item.subscriptionItemId) === index);
+  if (selectionIncludesCallSense(selection)) {
+    const [kept, ...duplicates] = callItems;
+    operations.push(kept?.subscriptionItemId ? { id: kept.subscriptionItemId, price: callMeteredPriceId } : { price: getCallSenseMeteredPriceId(selection) });
+    duplicates.forEach((item) => { if (item.subscriptionItemId) operations.push({ id: item.subscriptionItemId, deleted: true }); });
+  } else {
+    callItems.forEach((item) => { if (item.subscriptionItemId) operations.push({ id: item.subscriptionItemId, deleted: true }); });
+  }
+
   return operations;
 }
 
@@ -758,6 +814,9 @@ function buildScheduledRemovalState({ schedule, summary } = {}) {
       if (normalizeString(addon?.code) === SMS_ADDON_CODE) {
         relatedPriceIds.push(smsMeteredPriceId);
       }
+      if (normalizeString(addon?.code) === CALLSENSE_ADDON_CODE) {
+        relatedPriceIds.push(require("./callsense-usage.service").offerIds().metered);
+      }
       return relatedPriceIds.filter(Boolean).some(
         (priceId) => !futurePriceIds.has(priceId),
       );
@@ -795,6 +854,7 @@ function buildCatalogSelectionMetadata({ plan, addons = [] } = {}) {
 
 module.exports = {
   SMS_ADDON_CODE,
+  CALLSENSE_ADDON_CODE,
   SUBSCRIPTION_CATALOG_NAME,
   buildScheduledRemovalState,
   buildCatalogSelectionMetadata,
@@ -804,6 +864,9 @@ module.exports = {
   buildSubscriptionSummaryFromItems,
   catalogCodeAllowsOffered,
   getSmsMeteredPriceId,
+  getCallSenseMeteredPriceId,
+  hasExistingCallSensePair,
+  isCallSenseMeteredComponent,
   isSmsMeteredComponent,
   getOrCreateOfferedPrice,
   isRecurringMonthlyPrice,
@@ -811,4 +874,5 @@ module.exports = {
   normalizeString,
   resolveCatalogSelection,
   selectionIncludesSms,
+  selectionIncludesCallSense,
 };

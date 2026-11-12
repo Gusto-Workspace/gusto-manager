@@ -50,7 +50,8 @@ test("un restaurant neuf n’est pas éligible au self-service SMS", () => {
 });
 
 test("l’endpoint commercial est owner-only et refuse une première souscription", () => {
-  assert.match(routeSource, /req\.user\?\.role !== "owner"/);
+  assert.match(routeSource, /req\.user\?\.role === "owner"\s*&&\s*String\(restaurant\.owner_id/);
+  assert.match(routeSource, /if \(!owner \|\| !restaurant\.reservationsSettings\?\.smsReminder\?\.selfServiceEligible\)/);
   assert.match(routeSource, /selfServiceEligible/);
   assert.match(routeSource, /doit d’abord être configuré par le service client/);
 });

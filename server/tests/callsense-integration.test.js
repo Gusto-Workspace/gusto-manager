@@ -7,8 +7,8 @@ const pushes = [];
 require.cache[pushPath] = { id: pushPath, filename: pushPath, loaded: true, exports: {
   sendPushToModule: async (input) => { pushes.push(input); },
 } };
-const Call = require("../models/callsense-call.model");
-const Config = require("../models/callsense-config.model");
+const Call = require("../models/callsense/callsense-call.model");
+const Config = require("../models/callsense/callsense-config.model");
 const Restaurant = require("../models/restaurant.model");
 const Customer = require("../models/customer.model");
 const service = require("../services/callsense.service");
@@ -25,6 +25,7 @@ test("webhooks signés, TwiML et appels simultanés isolés", async () => {
   process.env.CALLSENSE_PUBLIC_ORIGIN = "https://api.example.test";
   process.env.CALLSENSE_ACCOUNTS = JSON.stringify({ [sid]: "test-secret" });
   const seen = [];
+  service.webhookAccountToken = async (account) => account === sid ? "test-secret" : "";
   service.findRoute = async (account, number) => account === sid && number === route.twilioNumber ? route : null;
   service.recordIncoming = async (config, body) => { seen.push([String(config.restaurantId), body.CallSid]); };
   service.recordCallback = async (kind, body, restaurant, parent) => { seen.push([kind, restaurant, parent, body.CallStatus || body.DialCallStatus]); };
@@ -39,7 +40,7 @@ test("webhooks signés, TwiML et appels simultanés isolés", async () => {
     const res = { status: 200, content: "", sendStatus(code) { this.status = code; return this; }, type() { return this; }, send(value) { this.content = value; return this; }, text: async function () { return this.content; } };
     // Body parsing is performed by Express before these route handlers.
     let accepted = false;
-    handlers[1](req, res, () => { accepted = true; });
+    await handlers[1](req, res, () => { accepted = true; });
     if (accepted) await handlers[2](req, res);
     return res;
   }
@@ -258,4 +259,74 @@ test("lecture des appels manqués ou occupés isolée par restaurant", async () 
     await get.at(-2).handle({ user: { role: "employee" }, authorizedRestaurant: { options: { customers: false } } }, res, () => { passed = true; });
     assert.equal(res.status, 403); assert.equal(passed, false);
   } finally { sse._removeClient(A, clientA); sse._removeClient(B, clientB); }
+});
+
+test("consommation accessible uniquement pour une configuration active du restaurant", async () => {
+  const router = require("../routes/callsense.routes");
+  const handlers = router.stack.find((layer) => layer.route?.path === "/restaurants/:restaurantId/callsense/usage").route.stack;
+  assert.equal(handlers.length, 4);
+  const usagePath = require.resolve("../services/callsense-usage.service");
+  const original = require.cache[usagePath];
+  const oldFind = Config.findOne;
+  let selected;
+  require.cache[usagePath] = { id: usagePath, filename: usagePath, loaded: true, exports: { getTelephoneStats: async () => ({ received: 1 }), getCurrentUsage: async (id) => { selected = id; return { available: false }; } } };
+  Config.findOne = (filter) => ({ select: () => ({ lean: async () => filter.restaurantId === A ? { enabled: true, twilioNumber: "+33123456789" } : null }) });
+  const res = () => ({ json(value) { this.value = value; return this; }, status(code) { this.code = code; return this; } });
+  try {
+    let response = res(); await handlers.at(-1).handle({ params: { restaurantId: A } }, response);
+    assert.equal(response.value.enabled, true); assert.equal(response.value.telephone.received, 1); assert.equal(selected, A);
+    response = res(); await handlers.at(-1).handle({ params: { restaurantId: B } }, response);
+    assert.equal(response.value.enabled, false); assert.equal(selected, A);
+    require.cache[usagePath].exports.getCurrentUsage = async () => { throw new Error("Stripe unavailable"); };
+    response = res(); await handlers.at(-1).handle({ params: { restaurantId: A } }, response);
+    assert.equal(response.value.enabled, true); assert.equal(response.value.usage.available, false);
+  } finally { Config.findOne = oldFind; if (original) require.cache[usagePath] = original; else delete require.cache[usagePath]; }
+});
+
+test("classement d'une anomalie limité au restaurant et interdit sans confirmation", async () => {
+  const router = require("../routes/callsense.routes");
+  const route = router.stack.find((layer) => layer.route?.path === "/admin/restaurants/:restaurantId/callsense/reconciliation/anomalies/:callSid/dismiss").route.stack;
+  assert.equal(route.length, 3);
+  const original = Config.updateOne; let filter;
+  Config.updateOne = async (query) => { filter = query; return { modifiedCount: 1 }; };
+  const response = () => ({ status(code) { this.code = code; return this; }, sendStatus(code) { this.code = code; return this; }, json(value) { this.value = value; return this; } });
+  const req = { params: { restaurantId: A, callSid: `CA${"a".repeat(32)}` }, body: {}, user: { id: "admin" } };
+  try {
+    let res = response(); await route.at(-1).handle(req, res); assert.equal(res.code, 400); assert.equal(filter, undefined);
+    res = response(); await route.at(-1).handle({ ...req, body: { acknowledgement: "JE CONFIRME LA VERIFICATION" } }, res);
+    assert.equal(res.value.ok, true); assert.equal(filter.restaurantId, A); assert.equal(filter["reconciliation.anomalies.callSid"], req.params.callSid);
+  } finally { Config.updateOne = original; }
+});
+
+test("confirmation d'un envoi expiré seulement après rapprochement isolant l'événement", async () => {
+  const router = require("../routes/callsense.routes");
+  const handlers = router.stack.find((layer) => layer.route?.path === "/admin/restaurants/:restaurantId/callsense/metering/:callId/confirm-reported").route.stack;
+  assert.equal(handlers.length, 3);
+  const Consumption = require("../models/callsense/callsense-consumption.model");
+  const servicePath = require.resolve("../services/callsense-metering.service");
+  const original = require.cache[servicePath];
+  const oldFind = Consumption.findOne; const oldUpdate = Consumption.updateOne;
+  const oldConfigUpdate = Config.updateOne; const oldCallUpdate = Call.updateOne;
+  const id = "cccccccccccccccccccccccc";
+  const entry = { _id: id, state: "review", lastError: "delai_idempotence_depasse", occurredAt: new Date("2026-01-01T12:00:00Z"), minutes: 3 };
+  let writes = 0;
+  let stripeMinutes = 13;
+  process.env.STRIPE_API_SECRET_KEY = "sk_test_fixture";
+  require.cache[servicePath] = { id: servicePath, filename: servicePath, loaded: true, exports: { reconcilePeriod: async () => ({ available: true, pending: 1, from: new Date("2026-01-01"), until: new Date("2026-02-01"), stripeMinutes, reportedMinutes: 10 }) } };
+  Consumption.findOne = (query) => ({ lean: async () => query.restaurantId === A && query.callId === id ? entry : null });
+  Consumption.updateOne = async () => { writes += 1; return { modifiedCount: 1 }; };
+  Config.updateOne = async () => {}; Call.updateOne = async () => {};
+  const res = () => ({ sendStatus(code) { this.code = code; return this; }, status(code) { this.code = code; return this; }, json(value) { this.value = value; return this; } });
+  const req = { params: { restaurantId: A, callId: id }, body: { acknowledgement: "JE CONFIRME EVENEMENT STRIPE" }, user: { role: "admin" } };
+  try {
+    let response = res(); await handlers.at(-1).handle(req, response);
+    assert.equal(response.value.ok, true); assert.equal(writes, 1);
+    stripeMinutes = 14; response = res(); await handlers.at(-1).handle(req, response);
+    assert.equal(response.code, 409); assert.equal(writes, 1);
+    response = res(); await handlers.at(-1).handle({ ...req, params: { restaurantId: B, callId: id } }, response);
+    assert.equal(response.code, 409); assert.equal(writes, 1);
+  } finally {
+    Consumption.findOne = oldFind; Consumption.updateOne = oldUpdate; Config.updateOne = oldConfigUpdate; Call.updateOne = oldCallUpdate;
+    if (original) require.cache[servicePath] = original; else delete require.cache[servicePath];
+  }
 });

@@ -1151,7 +1151,7 @@ test("la vue publique active masque les coordonnées privées", () => {
         phone: "0600000000",
       },
     },
-  });
+  }, new Date("2026-10-01T00:00:00.000Z"));
 
   assert.equal(result.document.party.restaurantName, "Restaurant Test");
   assert.equal(result.document.party.email, undefined);
@@ -1181,7 +1181,7 @@ test("la vue publique d'un avenant n'expose pas le diff administratif", () => {
         ],
       },
     },
-  });
+  }, new Date("2026-10-01T00:00:00.000Z"));
 
   assert.equal(result.document.amendment.baseContractNumber, "WD-C-INITIAL");
   assert.equal(result.document.amendment.changes, undefined);

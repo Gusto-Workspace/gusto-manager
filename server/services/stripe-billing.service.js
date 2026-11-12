@@ -430,16 +430,22 @@ async function findRestaurantSubscription({
   const candidates = [];
   const customerBySubscriptionId = new Map();
   for (const customerId of customerIds) {
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customerId,
-      status: "all",
-      expand: ["data.items.data.price", "data.latest_invoice"],
-      limit: 100,
-    });
-    subscriptions.data.forEach((subscription) => {
-      candidates.push(subscription);
-      customerBySubscriptionId.set(subscription.id, customerId);
-    });
+    let startingAfter;
+    do {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: customerId,
+        status: "all",
+        expand: ["data.items.data.price", "data.latest_invoice"],
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      subscriptions.data.forEach((subscription) => {
+        candidates.push(subscription);
+        customerBySubscriptionId.set(subscription.id, customerId);
+      });
+      startingAfter = subscriptions.has_more ? subscriptions.data.at(-1)?.id : undefined;
+      if (subscriptions.has_more && !startingAfter) throw new Error("Liste des abonnements Stripe incomplète.");
+    } while (startingAfter);
   }
 
   const match = selectRestaurantSubscriptionCandidate(candidates, {

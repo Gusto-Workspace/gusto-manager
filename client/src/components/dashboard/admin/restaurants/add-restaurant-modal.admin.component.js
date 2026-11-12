@@ -16,6 +16,7 @@ import FormInputComponent from "@/components/_shared/inputs/form-input.component
 import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
 import { NoVisibleSvg } from "@/components/_shared/_svgs/no-visible.svg";
 import ImportDishCardAdminComponent from "./import-dish-card.admin.component";
+import CallSenseOnboarding from "./callsense-onboarding.admin.component";
 
 // ICONS (lucide)
 import { X, Store, MapPin, Settings2, CreditCard, Users } from "lucide-react";
@@ -32,6 +33,13 @@ export default function AddRestaurantModal(props) {
   const [loading, setLoading] = useState(false);
   const [showStripeKey, setShowStripeKey] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [callSenseOpen, setCallSenseOpen] = useState(false);
+  useEffect(() => {
+    if (!callSenseOpen) return undefined;
+    const onKeyDown = (event) => { if (event.key === "Escape") { event.stopPropagation(); setCallSenseOpen(false); } };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [callSenseOpen]);
   const [cardImportLoading, setCardImportLoading] = useState(false);
 
   // ✅ animation (mobile only thanks to tablet: overrides)
@@ -574,6 +582,11 @@ export default function AddRestaurantModal(props) {
               </div>
             </div>
 
+            {initialRestaurantId && <div className="rounded-2xl bg-white/70 border border-darkBlue/10 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div><h3 className="text-sm font-semibold text-darkBlue">Gusto CallSense</h3><p className="text-xs text-darkBlue/60 mt-1">Mise en service et configuration téléphonique</p></div>
+              <button type="button" disabled={loading || cardImportLoading} onClick={() => setCallSenseOpen(true)} className="rounded-xl bg-blue px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Configurer CallSense</button>
+            </div>}
+
             {initialIsEdit ? (
               <ImportDishCardAdminComponent
                 restaurantId={initialRestaurantId}
@@ -761,6 +774,12 @@ export default function AddRestaurantModal(props) {
           </form>
         </div>
       </div>
+      {callSenseOpen && <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/40 tablet:items-center tablet:p-6" role="dialog" aria-modal="true" aria-label="Configurer CallSense">
+        <div className="flex h-[95dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl bg-lightGrey shadow-xl tablet:h-[88vh] tablet:rounded-2xl">
+          <div className="flex items-center justify-between gap-4 border-b border-darkBlue/10 bg-white px-5 py-4"><div><h2 className="text-lg font-semibold text-darkBlue">Configurer CallSense</h2><p className="text-sm text-darkBlue/60">{props.restaurant?.name}</p></div><button type="button" autoFocus onClick={() => setCallSenseOpen(false)} aria-label="Fermer CallSense" className="rounded-xl border border-darkBlue/10 p-2 hover:bg-darkBlue/5"><X className="size-5" /></button></div>
+          <div className="min-h-0 flex-1 overflow-y-auto"><CallSenseOnboarding restaurantId={initialRestaurantId} /></div>
+        </div>
+      </div>}
     </div>
   );
 }

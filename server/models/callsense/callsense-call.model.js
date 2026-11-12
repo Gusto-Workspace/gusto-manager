@@ -23,6 +23,10 @@ const schema = new mongoose.Schema({
   missedReadAt: { type: Date, default: null },
   incomingReceived: Boolean,
   sipResponseCode: String,
+  billingState: { type: String, enum: ["complete", "review"], default: null },
+  billingReviewReason: String,
+  recoveredFromTwilio: { type: Boolean, default: false },
+  billingNextCheckAt: Date,
 }, { timestamps: true, bufferCommands: false });
 schema.index({ restaurantId: 1, createdAt: -1, _id: -1 });
 schema.index({ restaurantId: 1, outcome: 1, missedReadAt: 1 });

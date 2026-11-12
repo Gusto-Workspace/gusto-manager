@@ -44,6 +44,7 @@ const PARAMETER_SECTIONS = [
     title: "Rappels SMS",
     keywords: "sms rappel notification message",
   },
+  { id: "reservation-parameters-callsense", title: "Gusto CallSense", keywords: "téléphone appel minutes consommation" },
   {
     id: "reservation-parameters-availability",
     title: "Placement automatique",
@@ -90,7 +91,7 @@ export default function ParametersSearchReservationsComponent({
       : PARAMETER_SECTIONS;
 
     return sections.filter((section) =>
-      normalizeSearchText(`${section.title} ${section.keywords}`).includes(
+      (!webapp || section.id !== "reservation-parameters-callsense") && normalizeSearchText(`${section.title} ${section.keywords}`).includes(
         query,
       ),
     );

@@ -344,7 +344,7 @@ test("les deux interfaces affichent l’état visuel et distinguent préparation
     const component = fs.readFileSync(require.resolve(`../../client/src/components/dashboard/${path}`), "utf8");
     assert.match(component, /checked=\{activation.enabled\}/);
     assert.match(component, /aria-busy=\{activation.loading\}/);
-    assert.match(component, /loading=\{activation.confirming\} preparing=\{activation.preparing\}/);
+    assert.match(component, /loading=\{activation.confirming\}\s+preparing=\{activation.preparing\}/);
     assert.match(component, /role="status"/);
   }
   const modal = fs.readFileSync(require.resolve("../../client/src/components/dashboard/_shared/sms-subscription-action-modal.component.js"), "utf8");

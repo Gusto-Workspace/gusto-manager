@@ -100,6 +100,13 @@ function fmtReservationRelativeFR(reservationDate, reservationTime) {
 
 function buildNotificationContent({ type, data }) {
   switch (type) {
+    case "callsense_quota": {
+      const threshold = Number(data?.threshold) === 100 ? 100 : 80;
+      return { title: "Consommation Gusto CallSense", message: threshold === 100
+        ? "Les 1 000 minutes incluses sont atteintes. Les appels restent disponibles."
+        : "80 % des 1 000 minutes incluses ont été consommées.",
+      link: "/dashboard/reservations/parameters#reservation-parameters-callsense" };
+    }
     case "reservation_created":
     case "reservation_waitlist_created": {
       const name = data?.customerName || "Nouvelle réservation";
