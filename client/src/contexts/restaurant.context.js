@@ -128,6 +128,7 @@ export default function RestaurantContext() {
   const [callSenseCountRevision, setCallSenseCountRevision] = useState(0);
   const [callSenseReadEvent, setCallSenseReadEvent] = useState({});
   const [callSenseReconnect, setCallSenseReconnect] = useState(0);
+  const [callSenseIdentityChange, setCallSenseIdentityChange] = useState(null);
   const [reservationsList, setReservationsList] = useState([]);
   const [activePeriodLoading, setActivePeriodLoading] = useState(false);
   const [takeAwayOrdersList, setTakeAwayOrdersList] = useState([]);
@@ -1137,6 +1138,7 @@ export default function RestaurantContext() {
         if (payload.type === "callsense_status_changed") {
           setCallSenseReconnect((value) => value + 1);
         }
+        if (payload.type === "callsense_customer_changed") setCallSenseIdentityChange({ restaurantId, phones: payload.phones || [], at: Date.now(), nonce: Math.random() });
 
         if (payload.type === "callsense_missed_read") {
           setCallSenseCountRevision((value) => value + 1);
@@ -2478,6 +2480,7 @@ export default function RestaurantContext() {
     callSenseCountRevision,
     callSenseReadEvent,
     callSenseReconnect,
+    callSenseIdentityChange,
     setRestaurantData,
     reservationsList,
     setReservationsList,

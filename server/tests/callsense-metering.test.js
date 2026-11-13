@@ -7,6 +7,14 @@ const call = { _id: "1", callSid: "CAparent", childCallSid: "CAchild", incomingR
 const config = { accountSid: "ACtest" };
 const child = { sid: "CAchild", parentCallSid: "CAparent", accountSid: "ACtest", status: "completed", duration: "61", endTime: "2026-01-01T10:02:00Z" };
 
+test("mode test : aucune lecture ni écriture Stripe même si le compteur est configuré", async () => {
+  const { processRestaurant } = require("../services/callsense-metering.service");
+  const forbidden = new Proxy({}, { get() { throw new Error("Stripe ou Twilio ne doit pas être appelé"); } });
+  for (const enabled of [false, true]) {
+    await processRestaurant({ managedByOnboarding: true, enabled, provisioningStatus: "ready_for_test", commercial: { meteringEnabled: true, meteringFrom: new Date() } }, { stripe: forbidden, twilio: forbidden });
+  }
+});
+
 test("seul l'enfant Twilio lié au parent donne une durée arrondie par conversation", () => {
   const value = observation(call, child, config);
   assert.equal(value.minutes, 2);

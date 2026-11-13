@@ -117,7 +117,7 @@ export function CallSenseHistory({ webapp = false }) {
 
 export function CallSenseHeaderButton() {
   const state = useCallSense();
-  if (!state?.enabled) return null;
+  if (!state?.available) return null;
   return <div className="relative pl-1.5"><button className="rounded-lg bg-blue bg-opacity-40 p-3" onClick={state.openHistory} aria-label={state.unreadMissedCount ? `Ouvrir les appels, ${state.unreadMissedCount} appels non lus` : "Ouvrir les appels"} title="Téléphone"><Phone size={25} color="#4583FF" /></button>{state.unreadMissedCount > 0 && <span className="absolute right-0 top-0 inline-flex translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-red px-1 py-0.5 text-xs font-bold leading-none text-white">{state.unreadMissedCount}</span>}</div>;
 }
 
@@ -193,7 +193,7 @@ function CallSenseDrawer({ open, onClose }) {
 export default function CallSensePanel() {
   const state = useCallSense();
   const router = useRouter();
-  if (!state?.enabled) return null;
+  if (!state?.available) return null;
   const webapp = router.pathname.startsWith("/dashboard/webapp/reservations");
   const otherWebapp = router.pathname.startsWith("/dashboard/webapp/") && !webapp;
   const visible = state.calls.filter((call) => state.popups[call.id] && !state.dismissed[call.id]);

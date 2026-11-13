@@ -177,9 +177,11 @@ async function upsertCustomer({
 
   if (Object.keys(patch).length) {
     await CustomerModel.updateOne({ _id: doc._id }, { $set: patch });
+    require("./sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("./callsense-core.service").normalizePhone(doc.phone || phone)].filter(Boolean) });
     return CustomerModel.findById(doc._id);
   }
 
+  require("./sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("./callsense-core.service").normalizePhone(doc.phone)].filter(Boolean) });
   return doc;
 }
 

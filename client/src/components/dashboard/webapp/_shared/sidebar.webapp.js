@@ -200,7 +200,7 @@ export default function SidebarReservationsWebapp({
 
           {/* Nav */}
           <nav className="p-3 flex flex-col gap-1">
-            {items.filter((it) => !it.callsense || callSense?.enabled).map((it) => {
+            {items.filter((it) => !it.callsense || callSense?.available).map((it) => {
               const Icon = it.icon;
               const active = isActiveItem(it);
 

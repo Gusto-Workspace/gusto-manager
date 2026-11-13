@@ -7,6 +7,12 @@ const { offerIds, validateOffer, periodFromSubscription } = require("./callsense
 
 const RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 const LEASE_MS = 2 * 60 * 1000;
+// Confirmed permanently closed by the account owner. Keep their historical
+// configurations and calls, but never reconcile against those accounts.
+const CLOSED_TWILIO_ACCOUNTS = Object.freeze([
+  "TWILIO_IDENTIFIER_REMOVED_4",
+  "TWILIO_IDENTIFIER_REMOVED_2",
+]);
 
 function observation(call, child, config) {
   if (!call.incomingReceived || !call.childCallSid || child.sid !== call.childCallSid ||
@@ -147,6 +153,7 @@ async function sendEntry(entry, stripe, now = new Date()) {
 }
 
 async function processRestaurant(config, { stripe, twilio, now = new Date() }) {
+  if (config.managedByOnboarding && config.provisioningStatus === "ready_for_test") return;
   if (!config.commercial?.meteringFrom || (process.env.CALLSENSE_METER_REPORTING_ENABLED !== "true" && !config.commercial?.meteringEnabled)) return;
   let context;
   try { context = await billingContext(config.restaurantId, stripe); }
@@ -351,7 +358,7 @@ async function recoverMissingCall(restaurantId, parentSid, { twilio, automatic =
 // inspection; failed or incomplete listings never advance the cursor.
 async function reconcileCalls(restaurantId, { twilio, now = new Date() }) {
   const leaseId = crypto.randomUUID(), leaseMs = 15 * 60 * 1000;
-  const config = await Config.findOneAndUpdate({ restaurantId, enabled: true,
+  const config = await Config.findOneAndUpdate({ restaurantId, enabled: true, accountSid: { $nin: CLOSED_TWILIO_ACCOUNTS },
     $or: [{ "reconciliation.leaseUntil": { $exists: false } }, { "reconciliation.leaseUntil": null }, { "reconciliation.leaseUntil": { $lte: new Date() } }] },
   { $set: { "reconciliation.leaseId": leaseId, "reconciliation.leaseUntil": new Date(Date.now() + leaseMs) } }, { new: true }).select("+encryptedAuthToken").lean();
   if (!config) return { locked: true };
@@ -415,7 +422,7 @@ async function reconcileCalls(restaurantId, { twilio, now = new Date() }) {
 }
 
 async function runReconciliation({ twilio = require("twilio") } = {}) {
-  const configs = await Config.find({ enabled: true }).select("restaurantId").lean();
+  const configs = await Config.find({ enabled: true, accountSid: { $nin: CLOSED_TWILIO_ACCOUNTS } }).select("restaurantId").lean();
   for (const config of configs) {
     try { await reconcileCalls(config.restaurantId, { twilio }); }
     catch (error) { console.error("[callsense-reconciliation]", String(config.restaurantId), error.message); }

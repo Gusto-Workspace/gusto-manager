@@ -87,6 +87,11 @@ test("routage de secours seulement si Mongo est indisponible", async () => {
   assert.equal(await real.findRoute("ACother", route.twilioNumber), null);
   Config.findOne = () => ({ maxTimeMS: () => ({ lean: async () => ({ ...route, enabled: false }) }) });
   assert.equal(await real.findRoute(sid, route.twilioNumber), null);
+  Config.findOne = () => ({ maxTimeMS: () => ({ lean: async () => ({ ...route, enabled: false, managedByOnboarding: true, provisioningStatus: "ready_for_test" }) }) });
+  assert.equal((await real.findRoute(sid, route.twilioNumber)).sipUri, route.sipUri);
+  assert.equal(await real.findRoute("ACother", route.twilioNumber), null);
+  Config.findOne = () => ({ maxTimeMS: () => ({ lean: async () => ({ ...route, enabled: false, managedByOnboarding: true, provisioningStatus: "suspended" }) }) });
+  assert.equal(await real.findRoute(sid, route.twilioNumber), null);
 });
 
 test("push existant limité aux abonnés ayant accès au restaurant et aux clients", async () => {
@@ -158,6 +163,67 @@ test("identification client limitée au restaurant et sans attribution ambiguë"
   assert.deepEqual(await real.findCustomer(B, null), { match: "unknown" });
 });
 
+test("identités rétroactives groupées, changement, suppression et ambiguïté isolés par restaurant", async () => {
+  const real = require("../services/callsense.service"), original = Customer.find;
+  let reads = 0, candidates = [], lastFilter;
+  Customer.find = filter => { reads++; lastFilter = filter; return { select: () => ({ lean: async () => candidates.filter(customer => customer.restaurant_id === filter.restaurant_id && filter.phoneNorm.$in.includes(customer.phoneNorm)) }) }; };
+  const phone = "+33612345678", calls = Array.from({ length: 6 }, () => phone);
+  try {
+    assert.equal((await real.resolveCustomerIdentities(A, calls))[phone].match, "unknown"); assert.equal(reads, 1);
+    assert.equal(lastFilter.restaurant_id, A); assert.ok(Array.isArray(lastFilter.phoneNorm.$in)); assert.ok(!JSON.stringify(lastFilter).includes("$regex"));
+    candidates = [{ _id: "one", restaurant_id: A, phoneNorm: "0612345678", firstName: "Léo", lastName: "Test" }, { _id: "other", restaurant_id: B, phoneNorm: phone, firstName: "Autre" }];
+    let result = await real.resolveCustomerIdentities(A, calls); assert.equal(result[phone].customerId, "one"); assert.equal(result[phone].customerName, "Léo Test"); assert.equal(reads, 2);
+    candidates[0].phoneNorm = "0611111111"; result = await real.resolveCustomerIdentities(A, calls); assert.equal(result[phone].match, "unknown");
+    candidates[0].phoneNorm = "0033612345678"; candidates.push({ _id: "two", restaurant_id: A, phoneNorm: phone, firstName: "Autre" });
+    result = await real.resolveCustomerIdentities(A, calls); assert.equal(result[phone].match, "ambiguous"); assert.equal(result[phone].customerId, null);
+    candidates = candidates.filter(customer => customer._id !== "one" && customer._id !== "two"); result = await real.resolveCustomerIdentities(A, calls); assert.equal(result[phone].match, "unknown");
+    const before = reads; assert.deepEqual(await real.resolveCustomerIdentities(A, ["", "invalid"]), {}); assert.equal(reads, before);
+  } finally { Customer.find = original; }
+});
+
+test("création de réservation : fiche créée puis six appels retrouvent le client", async () => {
+  const customers = require("../services/customers.service"), real = require("../services/callsense.service");
+  const old = { upsert: Customer.findOneAndUpdate, find: Customer.find, broadcast: sse.broadcastToRestaurant };
+  let document, event, finds = 0;
+  Customer.findOneAndUpdate = async (query, update) => { document = { _id: "new-client", ...query, ...update.$setOnInsert, phone: "0612345678", phoneNorm: "0612345678" }; return document; };
+  Customer.find = query => { finds++; return { select: () => ({ lean: async () => query.restaurant_id === A && query.phoneNorm.$in.includes(document.phoneNorm) ? [document] : [] }) }; };
+  sse.broadcastToRestaurant = (_restaurant, payload) => { event = payload; };
+  try {
+    const created = await customers.upsertCustomer({ restaurantId: A, firstName: "Leo", lastName: "Test", phone: "0612345678" });
+    assert.equal(created._id, "new-client"); assert.equal(event.type, "callsense_customer_changed");
+    const results = await real.resolveCustomerIdentities(A, Array(6).fill("+33612345678"));
+    assert.equal(results["+33612345678"].customerId, "new-client"); assert.equal(finds, 1);
+  } finally { Customer.findOneAndUpdate = old.upsert; Customer.find = old.find; sse.broadcastToRestaurant = old.broadcast; }
+});
+
+test("mode test : appel entrant, client, SSE, push et appel manqué sans facturation", async () => {
+  const real = require("../services/callsense.service");
+  const old = { update: Call.findOneAndUpdate, customer: Customer.find, restaurant: Restaurant.findById };
+  const events = [], listener = { locals: { gustoEventModules: { callsense: true } }, write: value => events.push(value) };
+  const docs = new Map(), before = pushes.length;
+  Call.findOneAndUpdate = (filter, update, options = {}) => ({ lean: async () => {
+    let doc = filter._id ? [...docs.values()].find(item => item._id === filter._id) : docs.get(filter.callSid);
+    if (!doc && options.upsert) { doc = { _id: "test-call", ...update.$setOnInsert, createdAt: new Date(), updatedAt: new Date() }; docs.set(filter.callSid, doc); }
+    if (!doc || filter.outcome?.$exists === false && doc.outcome !== undefined || filter.pushClaimed && doc.pushClaimed || filter.missedPushClaimed && doc.missedPushClaimed || filter.sipFinalStatus && filter.sipFinalStatus !== doc.sipFinalStatus || filter.outcome === "no-answer" && doc.outcome !== "no-answer") return null;
+    Object.assign(doc, update.$set || {});
+    for (const [key, value] of Object.entries(update.$max || {})) doc[key] = Math.max(doc[key] || 0, value);
+    return { ...doc };
+  } });
+  Customer.find = () => ({ select: () => ({ lean: async () => [{ _id: "client", firstName: "Marie", lastName: "Test", phoneNorm: "0612345678" }] }) });
+  Restaurant.findById = () => ({ select: async () => ({ _id: A, owner_id: owner, options: { reservations: true } }) });
+  sse._addClient(A, listener);
+  try {
+    await real.recordIncoming({ ...route, enabled: false, managedByOnboarding: true, provisioningStatus: "ready_for_test" }, { CallSid: "CAtest", From: "+33612345678" });
+    const call = docs.get("CAtest");
+    assert.equal(call.billingState, "complete"); assert.equal(call.customerName, "Marie Test"); assert.equal(call.incomingReceived, true);
+    await real.recordCallback("sip", { AccountSid: sid, CallSid: "CAchild", CallStatus: "no-answer" }, A, "CAtest");
+    await real.recordCallback("action", { AccountSid: sid, DialCallStatus: "no-answer" }, A, "CAtest");
+    assert.equal(real.serialize(call).status, "missed");
+    assert.ok(events.some(value => value.includes("callsense_updated")));
+    assert.deepEqual(pushes.slice(before).map(push => push.type), ["callsense_incoming", "callsense_missed"]);
+  } finally { sse._removeClient(A, listener); Call.findOneAndUpdate = old.update; Customer.find = old.customer; Restaurant.findById = old.restaurant; }
+});
+
 test("push entrant et manqué dédupliqués et aucune alerte manquée après décrochage", async () => {
   const real = require("../services/callsense.service");
   const records = new Map([
@@ -215,6 +281,21 @@ test("pagination par curseur limitée au restaurant et sans doublon", async () =
   assert.equal(second.calls.length, 4);
   assert.equal(new Set([...first.calls, ...second.calls].map((call) => call.id)).size, 14);
   assert.ok(filters.every((filter) => filter.restaurantId === A));
+});
+
+test("l'API expose séparément le mode test et l'activation commerciale", async () => {
+  const router = require("../routes/callsense.routes");
+  const handler = router.stack.find(layer => layer.route?.path === "/restaurants/:restaurantId/callsense/calls").route.stack.at(-1).handle;
+  const old = { find: Call.find, exists: Config.exists };
+  Call.find = () => ({ sort: () => ({ limit: () => ({ lean: async () => [] }) }) });
+  const filters = [];
+  Config.exists = async filter => { filters.push(filter); return filter.enabled === false && filter.managedByOnboarding === true && filter.provisioningStatus === "ready_for_test"; };
+  const res = { json(value) { this.value = value; return this; }, sendStatus(code) { this.code = code; return this; } };
+  try {
+    await handler({ params: { restaurantId: A }, query: {} }, res);
+    assert.equal(res.value.enabled, false); assert.equal(res.value.testMode, true);
+    assert.ok(filters.every(filter => filter.restaurantId === A));
+  } finally { Call.find = old.find; Config.exists = old.exists; }
 });
 
 test("lecture des appels manqués ou occupés isolée par restaurant", async () => {

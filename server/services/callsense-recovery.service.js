@@ -3,6 +3,7 @@ const Draft = require("../models/callsense/callsense-onboarding.model");
 const Config = require("../models/callsense/callsense-config.model");
 const onboarding = require("./callsense-onboarding.service");
 const provisioning = require("./callsense-provisioning.service");
+const { attemptedDomainName } = require("./callsense-sip-domain.service");
 
 const fields = { account: "accountOperation", number: "numberOperation", domain: "domainOperation", sip: "sipCredentialOperation", webhook: "webhookOperation", activation: "activationOperation" };
 const ACK = "JE CONFIRME LA VERIFICATION";
@@ -34,7 +35,7 @@ async function inspect(restaurantId, actorId, operation, { getMain = onboarding.
     const { client } = context;
     if (operation === "domain") {
       const domains = await client.sip.domains.list({ limit: 1001 });
-      const matches = domains.filter((domain) => domain.domainName === `gusto-${restaurantId}.sip.twilio.com`);
+      const matches = domains.filter((domain) => domain.domainName === attemptedDomainName(restaurantId, draft));
       resources = matches.map(({ sid, domainName, sipRegistration }) => ({ sid, name: domainName, sipRegistration }));
       evidence = matches.length === 1 ? "found" : matches.length > 1 ? "ambiguous" : domains.length < 1001 ? "absent" : "unknown";
     } else if (operation === "number") {

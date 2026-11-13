@@ -5,7 +5,19 @@ const Call = require("../models/callsense/callsense-call.model");
 const Consumption = require("../models/callsense/callsense-consumption.model");
 const Period = require("../models/callsense/callsense-billing-period.model");
 const { encryptToken } = require("../services/callsense-secrets.service");
-const { reconcileCalls, needsRecoveredCommercialVerification } = require("../services/callsense-metering.service");
+const { reconcileCalls, runReconciliation, needsRecoveredCommercialVerification } = require("../services/callsense-metering.service");
+
+test("la réconciliation ignore les deux comptes fermés sans altérer les installations actives", async t => {
+  const closed = ["TWILIO_IDENTIFIER_REMOVED_4", "TWILIO_IDENTIFIER_REMOVED_2"];
+  const rows = [{ restaurantId: "ancien-poc", accountSid: closed[1] }, { restaurantId: "ancien-pilote", accountSid: closed[0] }, { restaurantId: "actif", accountSid: "ACactif" }];
+  const visited = []; let remoteCalls = 0;
+  t.mock.method(Config, "find", filter => { assert.deepEqual(filter.accountSid.$nin, closed); assert.equal(filter.enabled, true); return { select: () => ({ lean: async () => rows.filter(row => !filter.accountSid.$nin.includes(row.accountSid)) }) }; });
+  t.mock.method(Config, "findOneAndUpdate", filter => { assert.deepEqual(filter.accountSid.$nin, closed); visited.push(filter.restaurantId); return { select: () => ({ lean: async () => null }) }; });
+  await runReconciliation({ twilio: () => { remoteCalls++; throw new Error("unexpected"); } });
+  assert.deepEqual(visited, ["actif"]); assert.equal(remoteCalls, 0);
+  await reconcileCalls("ancien-poc", { twilio: () => { remoteCalls++; throw new Error("unexpected"); } });
+  assert.equal(remoteCalls, 0);
+});
 
 test("un appel récupéré après activation commerciale reste à vérifier avant facturation", () => {
   const proof = { outcome: "completed", startedAt: new Date("2026-02-10"), endedAt: new Date("2026-02-10T00:01:01Z") };

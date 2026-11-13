@@ -31,6 +31,8 @@ app.set("trust proxy", 1);
 const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
 app.use("/api", smsmodeWebhookRoutes);
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
+
+// CALLSENSE - WEBHOOK
 app.use("/api", require("./routes/stripe-callsense-webhook.routes"));
 
 // JSON

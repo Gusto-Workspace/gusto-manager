@@ -7,6 +7,7 @@ const { broadcastToRestaurant } = require("./sse-bus.service");
 const { sendPushToModule } = require("./webpush.service");
 const { normalizePhone } = require("./callsense-core.service");
 const { decryptToken } = require("./callsense-secrets.service");
+const { parsePhoneNumberFromString } = require("libphonenumber-js");
 
 function jsonEnv(name, fallback) {
   try { return JSON.parse(process.env[name] || JSON.stringify(fallback)); } catch (_) { return fallback; }
@@ -42,7 +43,8 @@ async function webhookAccountToken(sid, { restaurantId, to } = {}) {
   catch (_) { return ""; } // Never silently use a stale token after rotation.
 }
 function validConfig(config, sid, to) {
-  return Boolean(to && normalizePhone(to) === to && config && config.enabled === true && config.accountSid === sid && config.twilioNumber === to &&
+  const routable = config?.enabled === true || (config?.enabled === false && config.managedByOnboarding === true && config.provisioningStatus === "ready_for_test");
+  return Boolean(to && normalizePhone(to) === to && config && routable && config.accountSid === sid && config.twilioNumber === to &&
     mongoose.isValidObjectId(config.restaurantId) && /^sip:[a-zA-Z0-9_.!~*'()%+\-]+@[a-zA-Z0-9.\-]+(?::[0-9]+)?$/.test(config.sipUri || ""));
 }
 async function findRoute(sid, to) {
@@ -82,6 +84,29 @@ async function findCustomer(restaurantId, phone) {
     customerFirstName: matches[0].firstName || "", customerLastName: matches[0].lastName || "",
     customerName: [matches[0].firstName, matches[0].lastName].filter(Boolean).join(" ") };
 }
+async function resolveCustomerIdentities(restaurantId, phones) {
+  const normalized = [...new Set(phones.map(normalizePhone).filter(Boolean))];
+  if (!normalized.length) return {};
+  const variants = new Set();
+  for (const phone of normalized) {
+    const parsed = parsePhoneNumberFromString(phone);
+    variants.add(phone); variants.add(`00${phone.slice(1)}`); variants.add(phone.slice(1));
+    if (parsed?.country === "FR") variants.add(`0${parsed.nationalNumber}`);
+  }
+  const customers = await Customer.find({ restaurant_id: restaurantId, phoneNorm: { $in: [...variants] } }).select("_id firstName lastName phoneNorm").lean();
+  const matches = new Map(normalized.map(phone => [phone, []]));
+  for (const customer of customers) {
+    const phone = normalizePhone(customer.phoneNorm);
+    if (matches.has(phone)) matches.get(phone).push(customer);
+  }
+  const identities = Object.fromEntries(normalized.map(phone => {
+    const rows = matches.get(phone);
+    if (rows.length !== 1) return [phone, { match: rows.length ? "ambiguous" : "unknown", customerId: null, customerName: "", customerFirstName: "", customerLastName: "" }];
+    const customer = rows[0], first = customer.firstName || "", last = customer.lastName || "";
+    return [phone, { match: "recognized", customerId: String(customer._id), customerName: [first, last].filter(Boolean).join(" "), customerFirstName: first, customerLastName: last }];
+  }));
+  return Object.fromEntries(phones.map(phone => [phone, identities[normalizePhone(phone)]]).filter(([, identity]) => identity));
+}
 function publish(call) {
   broadcastToRestaurant(String(call.restaurantId), { type: "callsense_updated", restaurantId: String(call.restaurantId), call: serialize(call) });
 }
@@ -110,8 +135,8 @@ async function recordIncoming(config, body) {
   const key = { callSid: body.CallSid, restaurantId: config.restaurantId, accountSid: config.accountSid };
   let call;
   try {
-    call = await Call.findOneAndUpdate(key, { $setOnInsert: key, $set: { from, to: config.twilioNumber } }, { upsert: true, new: true, setDefaultsOnInsert: false }).lean();
-  } catch (error) { if (error.code === 11000) call = await Call.findOneAndUpdate(key, { $set: { from, to: config.twilioNumber } }, { new: true }).lean(); else throw error; }
+    call = await Call.findOneAndUpdate(key, { $setOnInsert: key, $set: { from, to: config.twilioNumber, ...(config.managedByOnboarding && config.provisioningStatus === "ready_for_test" ? { billingState: "complete" } : {}) } }, { upsert: true, new: true, setDefaultsOnInsert: false }).lean();
+  } catch (error) { if (error.code === 11000) call = await Call.findOneAndUpdate(key, { $set: { from, to: config.twilioNumber, ...(config.managedByOnboarding && config.provisioningStatus === "ready_for_test" ? { billingState: "complete" } : {}) } }, { new: true }).lean(); else throw error; }
   if (!call) return;
   try {
     const customer = await findCustomer(config.restaurantId, from);
@@ -165,4 +190,4 @@ async function recordCallback(kind, body, restaurantId, parentSid) {
     if (call.outcome === "no-answer" && call.incomingReceived) await notify(call, "missed");
   }
 }
-module.exports = { accountToken, webhookAccountToken, validConfig, findRoute, serialize, findCustomer, recordIncoming, recordCallback, notify, publish };
+module.exports = { accountToken, webhookAccountToken, validConfig, findRoute, resolveCustomerIdentities, serialize, findCustomer, recordIncoming, recordCallback, notify, publish };

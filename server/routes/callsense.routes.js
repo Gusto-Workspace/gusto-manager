@@ -43,6 +43,16 @@ router.post("/callsense/voice", form, signature, async (req, res) => {
   if (!to || !/^CA[a-zA-Z0-9]+$/.test(body.CallSid || "")) return res.sendStatus(400);
   const config = await service.findRoute(body.AccountSid, to);
   if (!config) return res.sendStatus(404);
+  const drill = require("../services/callsense-fallback-drill.service");
+  const candidate = await drill.mode(config);
+  const scenario = candidate && await drill.triggered(config, candidate.scenario) && Date.now() < candidate.expiresAt ? candidate.scenario : null;
+  if (scenario === "http") return res.sendStatus(500);
+  if (scenario === "invalid") return res.type("text/xml").send("<Response><Invalid");
+  if (scenario === "timeout") {
+    const timer = setTimeout(() => { if (!res.destroyed && !res.headersSent) res.sendStatus(504); }, 16000);
+    res.once("close", () => clearTimeout(timer));
+    return;
+  }
   const base = process.env.CALLSENSE_PUBLIC_ORIGIN;
   const query = `restaurantId=${encodeURIComponent(String(config.restaurantId))}&parent=${encodeURIComponent(body.CallSid)}`;
   const response = new twilio.twiml.VoiceResponse();
@@ -252,6 +262,7 @@ router.put("/admin/restaurants/:restaurantId/callsense/metering", authenticateAd
     const config = await Config.findOne({ restaurantId }).lean();
     if (!config) return res.sendStatus(404);
     if (enabled) {
+      if (config.managedByOnboarding && config.provisioningStatus !== "active") return res.status(409).json({ message: "Activez le service après les essais avant d’activer les envois commerciaux." });
       if (config.commercial?.meteringEnabled) return res.status(409).json({ message: "Les envois sont déjà activés." });
       if (process.env.CALLSENSE_METER_REPORTING_ENABLED !== "true") return res.status(409).json({ message: "Les envois sont désactivés sur le serveur." });
       const Consumption = require("../models/callsense/callsense-consumption.model");
@@ -260,7 +271,7 @@ router.put("/admin/restaurants/:restaurantId/callsense/metering", authenticateAd
       await require("../services/callsense-metering.service").billingContext(restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
     }
     const at = new Date();
-    const updated = await Config.findOneAndUpdate({ _id: config._id, "commercial.meteringEnabled": { $ne: enabled } }, {
+    const updated = await Config.findOneAndUpdate({ _id: config._id, "commercial.meteringEnabled": { $ne: enabled }, ...(enabled && config.managedByOnboarding ? { provisioningStatus: "active", managedByOnboarding: true } : {}) }, {
       $set: { "commercial.meteringEnabled": enabled, ...(enabled && !config.commercial?.meteringFrom ? { "commercial.meteringFrom": at } : {}) },
       $push: { securityEvents: { $each: [{ action: enabled ? "metering_enabled" : "metering_disabled", actorId: String(req.user?._id || req.user?.id || ""), at }], $slice: -100 } },
     }, { new: true }).lean();
@@ -268,6 +279,16 @@ router.put("/admin/restaurants/:restaurantId/callsense/metering", authenticateAd
     return res.json({ enabled, since: updated.commercial?.meteringFrom || null });
   } catch (_) { return res.status(409).json({ message: "Vérification commerciale impossible ; aucun changement enregistré." }); }
 });
+router.post("/restaurants/:restaurantId/callsense/customer-identities", authenticateToken,
+  authorizeRestaurantAccess({ requiredOption: "customers" }), authorizeCallSense, async (req, res) => {
+    try {
+      const phones = req.body?.phones;
+      if (!Array.isArray(phones) || phones.length > 100 || phones.some(phone => typeof phone !== "string" || phone.length > 40)) return res.sendStatus(400);
+      res.set("Cache-Control", "no-store");
+      return res.json({ identities: await service.resolveCustomerIdentities(req.params.restaurantId, phones) });
+    } catch (_) { return res.sendStatus(503); }
+  });
+
 router.get("/restaurants/:restaurantId/callsense/calls", authenticateToken,
   authorizeRestaurantAccess({ requiredOption: "customers" }), authorizeCallSense, async (req, res) => {
     try {
@@ -288,14 +309,15 @@ router.get("/restaurants/:restaurantId/callsense/calls", authenticateToken,
         filter.$or = [{ createdAt: { $lt: date } }, { createdAt: date, _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } }];
       }
       const limit = req.query.callId ? 1 : req.query.active === "true" ? 50 : 10;
-      const [calls, config] = await Promise.all([
+      const [calls, config, testConfig] = await Promise.all([
         Call.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean(),
         Config.exists({ restaurantId: req.params.restaurantId, enabled: true }),
+        Config.exists({ restaurantId: req.params.restaurantId, enabled: false, managedByOnboarding: true, provisioningStatus: "ready_for_test" }),
       ]);
       const items = calls.slice(0, limit);
       const last = items[items.length - 1];
       const nextCursor = calls.length > limit && last ? Buffer.from(JSON.stringify({ date: last.createdAt, id: String(last._id) })).toString("base64url") : null;
-      return res.json({ enabled: Boolean(config), calls: items.map(service.serialize), nextCursor });
+      return res.json({ enabled: Boolean(config), testMode: Boolean(testConfig), calls: items.map(service.serialize), nextCursor });
     } catch (_) { return res.sendStatus(500); }
   });
 
