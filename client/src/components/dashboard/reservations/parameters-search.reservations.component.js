@@ -74,6 +74,7 @@ function normalizeSearchText(value) {
 
 export default function ParametersSearchReservationsComponent({
   webapp = false,
+  callSenseAvailable = false,
 }) {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -91,11 +92,11 @@ export default function ParametersSearchReservationsComponent({
       : PARAMETER_SECTIONS;
 
     return sections.filter((section) =>
-      (!webapp || section.id !== "reservation-parameters-callsense") && normalizeSearchText(`${section.title} ${section.keywords}`).includes(
+      (callSenseAvailable || section.id !== "reservation-parameters-callsense") && normalizeSearchText(`${section.title} ${section.keywords}`).includes(
         query,
       ),
     );
-  }, [search, webapp]);
+  }, [search, webapp, callSenseAvailable]);
 
   useEffect(() => {
     function handleClickOutside(event) {

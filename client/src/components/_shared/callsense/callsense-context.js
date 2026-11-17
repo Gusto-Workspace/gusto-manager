@@ -22,6 +22,7 @@ export function CallSenseProvider({ children }) {
   const [calls, setCalls] = useState({});
   const [enabled, setEnabled] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [availabilityRestaurantId, setAvailabilityRestaurantId] = useState(null);
   const [cursor, setCursor] = useState(null);
   const cursorRef = useRef(null);
   const cursorInitialized = useRef(false);
@@ -116,6 +117,7 @@ export function CallSenseProvider({ children }) {
       if (String(ridRef.current) !== String(rid)) return;
       setEnabled(Boolean(data.enabled));
       setTestMode(Boolean(data.testMode));
+      setAvailabilityRestaurantId(String(rid));
       const incoming = (data.calls || []).map(call => ({ ...call, match: "unknown", customerId: null, customerName: "", customerFirstName: "", customerLastName: "" }));
       setCalls((previous) => mergeCalls(previous, incoming, readThroughRef.current));
       resolveIdentities([...Object.values(callsRef.current), ...incoming]);
@@ -168,5 +170,5 @@ export function CallSenseProvider({ children }) {
   const requestedId = typeof router.query.callId === "string" ? router.query.callId : "";
   useEffect(() => { if (requestedId && rid && context.isAuth && inScope) load(null, { callId: requestedId }); }, [requestedId, rid, context.isAuth, inScope, load]);
   const items = Object.values(calls).filter((call) => String(call.restaurantId) === String(rid)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.id).localeCompare(String(a.id)));
-  return <CallSenseContext.Provider value={{ enabled, testMode, available: enabled || testMode, calls: items, highlightIds, highlightReadAt, popups, dismissed, dismiss: (id) => setDismissed((old) => ({ ...old, [id]: true })), unreadMissedCount, open, openHistory, closeHistory, loading, error, cursor, loadMore: () => cursor && load(cursor), reload: () => load(null, { first: true }) }}>{children}</CallSenseContext.Provider>;
+  return <CallSenseContext.Provider value={{ enabled, testMode, available: enabled || testMode, availabilityRestaurantId, calls: items, highlightIds, highlightReadAt, popups, dismissed, dismiss: (id) => setDismissed((old) => ({ ...old, [id]: true })), unreadMissedCount, open, openHistory, closeHistory, loading, error, cursor, loadMore: () => cursor && load(cursor), reload: () => load(null, { first: true }) }}>{children}</CallSenseContext.Provider>;
 }
