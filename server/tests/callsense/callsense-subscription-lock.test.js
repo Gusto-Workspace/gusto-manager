@@ -8,7 +8,18 @@ let existingSubscription = null;
 require.cache[billingPath] = { id: billingPath, filename: billingPath, loaded: true, exports: { findRestaurantSubscription: async () => ({ subscription: existingSubscription }) } };
 const Operation = require("../../models/callsense/callsense-subscription-operation.model");
 const Audit = require("../../models/callsense/callsense-billing-audit.model");
-const { guardedCallSenseMutation } = require("../../routes/admin/subscriptions.routes");
+const { guardedCallSenseMutation, assertCallSenseRemovalSafe } = require("../../routes/admin/subscriptions.routes");
+
+test("le retrait refuse un service CallSense actif même si le compteur est suspendu", async (t) => {
+  const Config = require("../../models/callsense/callsense-config.model");
+  const keys = ["STRIPE_CALLSENSE_FIXED_PRICE_ID", "STRIPE_CALLSENSE_METERED_PRICE_ID", "STRIPE_CALLSENSE_METER_ID"];
+  const original = keys.map((key) => process.env[key]);
+  t.after(() => keys.forEach((key, index) => { if (original[index] === undefined) delete process.env[key]; else process.env[key] = original[index]; }));
+  keys.forEach((key, index) => { process.env[key] = `fixture_${index}`; });
+  t.mock.method(Config, "findOne", () => ({ select: () => ({ lean: async () => ({ enabled: true, commercial: { meteringEnabled: false } }) }) }));
+  const subscription = { metadata: { restaurantId: "507f1f77bcf86cd799439011" }, items: { data: [{ price: { id: "fixture_0" } }] } };
+  await assert.rejects(assertCallSenseRemovalSafe(subscription), /Suspendez d'abord le service CallSense/);
+});
 
 test("deux créations concurrentes ne peuvent pas émettre deux requêtes Stripe", async () => {
   const originals = { create: Operation.create, deleteOne: Operation.deleteOne, updateOne: Operation.updateOne };
@@ -42,6 +53,21 @@ test("une réponse Stripe incertaine conserve le verrou pour vérification admin
     await assert.rejects(guardedCallSenseMutation({ restaurantId: "restaurant", kind: "create", mutate: async () => { throw new Error("timeout"); } }), (error) => error.statusCode === 409);
     assert.equal(state, "uncertain");
   } finally { Object.assign(Operation, originals); Audit.create = originalAudit; }
+});
+
+test("une synchronisation Mongo interrompue conserve le verrou après un seul appel Stripe", async (t) => {
+  let state; let calls = 0; let deletes = 0;
+  t.mock.method(Operation, "create", async () => {});
+  t.mock.method(Operation, "deleteOne", async () => { deletes++; });
+  t.mock.method(Operation, "updateOne", async (_filter, update) => { state = update.$set.state; });
+  t.mock.method(Audit, "create", async () => {});
+  await assert.rejects(guardedCallSenseMutation({ restaurantId: "restaurant", kind: "create",
+    mutate: async () => { calls++; return { id: "sub_test" }; },
+    synchronize: async () => { throw new Error("Mongo indisponible"); },
+  }), /incertain/);
+  assert.equal(calls, 1);
+  assert.equal(deletes, 0);
+  assert.equal(state, "uncertain");
 });
 
 test("un abonnement existant interdit toute nouvelle création Stripe", async () => {

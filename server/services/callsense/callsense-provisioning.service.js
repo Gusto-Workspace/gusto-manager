@@ -476,7 +476,18 @@ async function setStatus(restaurantId, actorId, { status, confirm, makeTwilio = 
   const operationId = crypto.randomUUID();
   const locked = await Draft.findOneAndUpdate({ restaurantId, activationOperation: { $ne: "pending" }, sipCredentialOperation: { $ne: "pending" }, webhookOperation: { $ne: "pending" }, ...(status === "active" ? { "fallbackDrill.state": { $nin: ["running", "restoring"] } } : {}), "testRouting.state": { $nin: ["pending", "active", "restoring", "uncertain"] }, updatedAt: draft.updatedAt }, { $set: { activationOperation: "pending", activationOperationId: operationId, "operationAttempts.activation": { id: operationId, startedAt: new Date() } } }, { new: true });
   if (!locked) throw failure("Configuration modifiée ou opération en cours", 409);
+  const SubscriptionOperation = require("../../models/callsense/callsense-subscription-operation.model");
+  let subscriptionLock = false;
   try {
+  if (status === "active") {
+    try {
+      await SubscriptionOperation.create({ _id: String(restaurantId), attemptId: operationId, kind: "activation", startedAt: new Date() });
+      subscriptionLock = true;
+    } catch (error) {
+      if (error.code === 11000) throw failure("Une opération d'abonnement est en cours ou incertaine", 409);
+      throw error;
+    }
+  }
   if (["ready_for_test", "active"].includes(status)) {
     if (status === "active") {
       if (draft.fallbackDrill?.state && (draft.fallbackDrill.state !== "completed" || ["http", "invalid", "timeout"].some(key => draft.fallbackDrill.results?.[key] !== true))) throw failure("Terminez les scénarios de secours et confirmez le retour normal avant activation", 409);
@@ -504,6 +515,7 @@ async function setStatus(restaurantId, actorId, { status, confirm, makeTwilio = 
   return clean(updated);
   } finally {
     await Draft.updateOne({ restaurantId, activationOperation: "pending", activationOperationId: operationId }, { $set: { activationOperation: "idle" }, $unset: { activationOperationId: 1, "operationAttempts.activation": 1 } }).catch(() => {});
+    if (subscriptionLock) await SubscriptionOperation.deleteOne({ _id: String(restaurantId), attemptId: operationId, kind: "activation" });
   }
 }
 module.exports = { configureSip, reconcileSip, revealSip, rotateSip, recoverRotation, configureWebhooks, testFallbackRouting, finalizeTechnical, queueTechnical, startTechnical, runOnboarding, cloneSharedBundle, complianceStrategy, webhookUrls, verifyPrerequisites, probePublicOrigin, setStatus, load, failure };

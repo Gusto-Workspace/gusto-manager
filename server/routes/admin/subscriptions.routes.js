@@ -129,7 +129,8 @@ async function assertCallSenseRemovalSafe(subscription) {
   const Config = require("../../models/callsense/callsense-config.model");
   const Call = require("../../models/callsense/callsense-call.model");
   const Consumption = require("../../models/callsense/callsense-consumption.model");
-  const config = await Config.findOne({ restaurantId }).select("commercial.meteringEnabled commercial.meteringFrom").lean();
+  const config = await Config.findOne({ restaurantId }).select("enabled commercial.meteringEnabled commercial.meteringFrom").lean();
+  if (config?.enabled) throw Object.assign(new Error("Suspendez d'abord le service CallSense avant de retirer son abonnement."), { statusCode: 409 });
   if (config?.commercial?.meteringEnabled) throw Object.assign(new Error("Suspendez d'abord les envois CallSense après traitement des appels en cours."), { statusCode: 409 });
   if (await Consumption.exists({ restaurantId, state: { $in: ["verified", "sending", "review"] } })) throw Object.assign(new Error("Des consommations CallSense restent à transmettre ou à vérifier."), { statusCode: 409 });
   if (await Consumption.exists({ restaurantId, state: "sent", periodEnd: { $gt: new Date() } })) throw Object.assign(new Error("Des minutes de la période courante ont été transmises. Attendez la clôture de la période avant le retrait immédiat."), { statusCode: 409 });
@@ -143,11 +144,11 @@ function subscriptionItemsFingerprint(subscription) {
   return JSON.stringify((subscription.items?.data || []).map((item) => [item.id, item.price?.id, item.quantity ?? null]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
 }
 
-async function guardedCallSenseMutation({ restaurantId, kind, expectedSubscription, actorId = "", mutate }) {
+async function guardedCallSenseMutation({ restaurantId, kind, expectedSubscription, actorId = "", mutate, synchronize, action = "" }) {
   const Operation = require("../../models/callsense/callsense-subscription-operation.model");
   const Audit = require("../../models/callsense/callsense-billing-audit.model");
   const attemptId = crypto.randomUUID();
-  try { await Operation.create({ _id: String(restaurantId), attemptId, kind, startedAt: new Date() }); }
+  try { await Operation.create({ _id: String(restaurantId), attemptId, kind, action, subscriptionId: expectedSubscription?.id || "", startedAt: new Date() }); }
   catch (error) {
     if (error.code === 11000) throw Object.assign(new Error("Une opération CallSense est en cours ou incertaine ; vérifiez son état avant de réessayer."), { statusCode: 409 });
     throw error;
@@ -165,6 +166,7 @@ async function guardedCallSenseMutation({ restaurantId, kind, expectedSubscripti
   } catch (error) { await Operation.deleteOne({ _id: String(restaurantId), attemptId }); throw error; }
   try {
     const result = await mutate(`callsense-subscription-${attemptId}`);
+    if (synchronize) await synchronize(result);
     await Audit.create({ restaurantId, action: `subscription_${kind}_completed`, actorId, attemptId, reference: result?.id || "", at: new Date() });
     await Operation.deleteOne({ _id: String(restaurantId), attemptId });
     return result;
@@ -1297,7 +1299,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       expand: ["latest_invoice.payment_intent", "items.data.price"],
     };
     const subscription = selectionIncludesCallSense(stripeSelection)
-      ? await guardedCallSenseMutation({ restaurantId, kind: "create", actorId: String(req.user?._id || req.user?.id || ""), mutate: (idempotencyKey) => stripe.subscriptions.create(createParams, { idempotencyKey }) })
+      ? await guardedCallSenseMutation({ restaurantId, kind: "create", actorId: String(req.user?._id || req.user?.id || ""), mutate: (idempotencyKey) => stripe.subscriptions.create(createParams, { idempotencyKey }), synchronize: (subscription) => require("../../services/callsense/callsense-commercial-sync.service").syncCommercialSubscription({ restaurantId, subscription }) })
       : await stripe.subscriptions.create(createParams);
 
     if (restaurantId && selectionIncludesSms(stripeSelection)) {
@@ -1574,8 +1576,13 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
     }
 
     const cancellationIds = require("../../services/callsense/callsense-usage.service").offerIds();
-    if (subscription.items?.data?.some((item) => [cancellationIds.fixed, cancellationIds.metered].includes(item.price?.id)) &&
+    const hasCallSense = subscription.items?.data?.some((item) => [cancellationIds.fixed, cancellationIds.metered].includes(item.price?.id));
+    if (hasCallSense &&
         String(req.user?.role || "").toLowerCase() !== "admin") return res.sendStatus(403);
+    const restaurantId = normalizeString(subscription.metadata?.restaurantId);
+    const guardedUpdate = (mutate, action = "") => guardedCallSenseMutation({ restaurantId, kind: "update", action, expectedSubscription: subscription,
+      actorId: String(req.user?._id || req.user?.id || ""), mutate,
+      synchronize: (updated) => require("../../services/callsense/callsense-commercial-sync.service").syncCommercialSubscription({ restaurantId, subscription: updated }) });
 
     let updatedSubscription = subscription;
 
@@ -1600,10 +1607,11 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
         });
       }
 
-      updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+      const params = {
         cancel_at_period_end: false,
         expand: ["items.data.price", "latest_invoice"],
-      });
+      };
+      updatedSubscription = hasCallSense ? await guardedUpdate((idempotencyKey) => stripe.subscriptions.update(subscription.id, params, { idempotencyKey })) : await stripe.subscriptions.update(subscription.id, params);
 
       return res.status(200).json({
         message: "L'arrêt programmé de l'abonnement a été annulé.",
@@ -1618,10 +1626,11 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
     }
 
     if (mode === "period_end") {
-      updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+      const params = {
         cancel_at_period_end: true,
         expand: ["items.data.price", "latest_invoice"],
-      });
+      };
+      updatedSubscription = hasCallSense ? await guardedUpdate((idempotencyKey) => stripe.subscriptions.update(subscription.id, params, { idempotencyKey })) : await stripe.subscriptions.update(subscription.id, params);
 
       return res.status(200).json({
         message:
@@ -1640,10 +1649,14 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
 
     await assertCallSenseRemovalSafe(subscription);
 
-    updatedSubscription = await stripe.subscriptions.cancel(subscription.id, {
+    const cancelParams = {
       invoice_now: false,
       prorate: false,
-    });
+    };
+    updatedSubscription = hasCallSense ? await guardedUpdate(async (idempotencyKey) => {
+      await assertCallSenseRemovalSafe(subscription);
+      return stripe.subscriptions.cancel(subscription.id, cancelParams, { idempotencyKey });
+    }, "cancel") : await stripe.subscriptions.cancel(subscription.id, cancelParams);
 
     return res.status(200).json({
       message: "L'abonnement a été arrêté immédiatement.",
@@ -1672,6 +1685,8 @@ router.get(
       const preview = await buildSubscriptionEditPreview({
         subscriptionId: req.params.subscriptionId,
       });
+
+      await require("../../services/callsense/callsense-commercial-sync.service").reconcileFromAdmin(String(preview.restaurant._id));
 
       res.status(200).json({ preview: serializeEditPreview(preview) });
     } catch (error) {
@@ -1908,7 +1923,11 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
       };
     const updatedSubscription = hasCallSense
       ? await guardedCallSenseMutation({ restaurantId: subscriptionRestaurantId, kind: "update", expectedSubscription: subscription, actorId: String(req.user?._id || req.user?.id || ""),
-        mutate: (idempotencyKey) => stripe.subscriptions.update(subscription.id, updateParams, { idempotencyKey }) })
+        mutate: async (idempotencyKey) => {
+          if (!selectionIncludesCallSense(stripeSelection)) await assertCallSenseRemovalSafe(subscription);
+          return stripe.subscriptions.update(subscription.id, updateParams, { idempotencyKey });
+        },
+        synchronize: (updated) => require("../../services/callsense/callsense-commercial-sync.service").syncCommercialSubscription({ restaurantId: subscriptionRestaurantId, subscription: updated }) })
       : await stripe.subscriptions.update(subscription.id, updateParams);
 
     if (subscriptionRestaurantId && selectionIncludesSms(stripeSelection)) {

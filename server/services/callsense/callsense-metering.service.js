@@ -303,7 +303,7 @@ function validateRecovery(parent, children, config) {
 
 function needsRecoveredCommercialVerification(config, proof) {
   const commercial = config.commercial;
-  return Boolean(proof.outcome === "completed" && commercial?.meteringEnabled && commercial?.subscribed && commercial.meteringFrom &&
+  return Boolean(proof.outcome === "completed" && commercial?.meteringEnabled && commercial.meteringFrom &&
     proof.startedAt >= new Date(commercial.meteringFrom));
 }
 
