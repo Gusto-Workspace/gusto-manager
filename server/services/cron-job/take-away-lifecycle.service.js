@@ -2,6 +2,7 @@ const cron = require("node-cron");
 
 const {
   expirePendingTakeAwayOrders,
+  finishOverdueTakeAwayOrders,
   replayPendingTakeAwayEffects,
   cleanupConfiguredCompletedTakeAwayOrders,
 } = require("../take-away/take-away.service");
@@ -14,10 +15,11 @@ async function runTakeAwayLifecycleCron() {
   runInProgress = true;
   try {
     const expiration = await expirePendingTakeAwayOrders();
+    const finished = await finishOverdueTakeAwayOrders();
     const adjustments = await runAdjustmentLifecycle();
     const effects = await replayPendingTakeAwayEffects();
     const cleanup = await cleanupConfiguredCompletedTakeAwayOrders();
-    return { expiration, adjustments, effects, cleanup };
+    return { expiration, finished, adjustments, effects, cleanup };
   } finally {
     runInProgress = false;
   }

@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 import useCallReservationPrefill from "@/components/_shared/callsense/use-call-reservation-prefill";
+import CustomerSuggestions from "./customer-suggestions.reservations.component";
 
 // DATE
 import { format } from "date-fns";
@@ -810,6 +811,7 @@ export default function AddReservationComponent(props) {
     : [];
 
   const isEditing = !!props.reservation;
+  const editedCustomerFields = useRef(new Set());
 
   const manageDisponibilities =
     props.restaurantData?.reservationsSettings?.manage_disponibilities;
@@ -1299,6 +1301,7 @@ export default function AddReservationComponent(props) {
 
   function handleInputChange(e) {
     const { name, value, type, checked } = e.target;
+    if (["customerFirstName", "customerLastName", "customerEmail", "customerPhone"].includes(name)) editedCustomerFields.current.add(name);
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
 
@@ -1320,6 +1323,19 @@ export default function AddReservationComponent(props) {
           }
         : {}),
     }));
+  }
+
+  function selectCustomer(customer) {
+    setReservationData((previous) => {
+      const next = { ...previous };
+      for (const [field, value] of Object.entries({
+        customerFirstName: customer.firstName, customerLastName: customer.lastName,
+        customerEmail: customer.email, customerPhone: customer.phone,
+      })) {
+        if (!editedCustomerFields.current.has(field) && !previous[field] && value) next[field] = value;
+      }
+      return next;
+    });
   }
 
   function handleStructuredTableChange(e) {
@@ -1923,6 +1939,7 @@ export default function AddReservationComponent(props) {
                   Informations client
                 </label>
                 <div className="flex gap-2">
+                  <CustomerSuggestions restaurantId={props.restaurantData?._id} query={reservationData.customerFirstName} field="firstName" disabled={isEditing} onSelect={selectCustomer}>
                   <input
                     type="text"
                     name="customerFirstName"
@@ -1931,6 +1948,8 @@ export default function AddReservationComponent(props) {
                     onChange={handleInputChange}
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   />
+                  </CustomerSuggestions>
+                  <CustomerSuggestions restaurantId={props.restaurantData?._id} query={reservationData.customerLastName} field="lastName" disabled={isEditing} onSelect={selectCustomer}>
                   <input
                     type="text"
                     name="customerLastName"
@@ -1939,6 +1958,7 @@ export default function AddReservationComponent(props) {
                     onChange={handleInputChange}
                     className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                   />
+                  </CustomerSuggestions>
                 </div>
               </div>
 
@@ -1950,6 +1970,7 @@ export default function AddReservationComponent(props) {
                   <EmailSvg width={20} height={20} className="opacity-50" />
                   {t("labels.add.email")}
                 </label>
+                <CustomerSuggestions restaurantId={props.restaurantData?._id} query={reservationData.customerEmail} field="email" disabled={isEditing} onSelect={selectCustomer}>
                 <input
                   type="email"
                   id="customerEmail"
@@ -1959,6 +1980,7 @@ export default function AddReservationComponent(props) {
                   required={shouldRequestBankHold}
                   className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                 />
+                </CustomerSuggestions>
                 <p className="text-[11px] ml-2 pt-1 text-darkBlue/55 absolute bottom-0 translate-y-full">
                   *Requis pour les rappels de réservation et les empreintes
                   bancaires
@@ -1973,6 +1995,7 @@ export default function AddReservationComponent(props) {
                   <PhoneSvg width={20} height={20} className="opacity-50" />
                   {t("labels.add.phone")}
                 </label>
+                <CustomerSuggestions restaurantId={props.restaurantData?._id} query={reservationData.customerPhone} field="phone" disabled={isEditing} onSelect={selectCustomer}>
                 <input
                   type="tel"
                   id="customerPhone"
@@ -1981,6 +2004,7 @@ export default function AddReservationComponent(props) {
                   onChange={handleInputChange}
                   className="h-11 w-full rounded-2xl border border-darkBlue/10 bg-white/80 px-4 text-base outline-none transition placeholder:text-darkBlue/40 focus:border-blue/60 focus:ring-2 focus:ring-blue/20"
                 />
+                </CustomerSuggestions>
               </div>
 
               <div className="flex flex-col gap-3">

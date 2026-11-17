@@ -3234,6 +3234,31 @@ async function handleTakeAwayStripeWebhookEvent({ event, restaurant }) {
   }
 }
 
+async function finishOverdueTakeAwayOrders({ now = new Date() } = {}) {
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const due = {
+    status: { $in: ["pending", "confirmed", "preparing", "ready", "out_for_delivery"] },
+    // Unpaid online checkouts belong to the payment expiration workflow.
+    $and: [
+      { $or: [{ paymentMethod: { $ne: "online" } }, { paymentStatus: { $in: ["paid", "refunded"] } }] },
+      { $or: [{ scheduledFor: { $ne: null, $lte: cutoff } }, { scheduledFor: null, createdAt: { $lte: cutoff } }] },
+    ],
+  };
+  const candidates = await TakeAwayOrderModel.find(due).limit(200);
+  let finished = 0;
+  for (const order of candidates) {
+    const updated = await TakeAwayOrderModel.findOneAndUpdate(
+      { ...due, _id: order._id, status: order.status },
+      { $set: { status: "completed", completedAt: now, ...(order.customer ? { pendingCrmPrevStatus: order.status, pendingCrmNextStatus: "completed" } : {}) } },
+      { new: true },
+    );
+    if (!updated) continue;
+    finished += 1;
+    await runOrderStatusEffects(updated, updated.restaurant_id);
+  }
+  return { finished };
+}
+
 async function expirePendingTakeAwayOrders({ now = new Date() } = {}) {
   const dueOrders = await TakeAwayOrderModel.find({
     source: "public",
@@ -3410,6 +3435,7 @@ module.exports = {
   validateTakeAwayStripeEventEnvelope,
   handleTakeAwayStripeWebhookEvent,
   expirePendingTakeAwayOrders,
+  finishOverdueTakeAwayOrders,
   replayPendingTakeAwayEffects,
   validatePublicAccessToken,
   hashPublicAccessToken,
