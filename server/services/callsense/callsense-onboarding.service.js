@@ -34,6 +34,7 @@ function cleanBase(draft) {
 function clean(draft) {
   const result = cleanBase(draft);
   if (!result) return null;
+  if (draft?.regulatoryCorrection?.state) result.regulatoryCorrection = { state: draft.regulatoryCorrection.state, kind: draft.regulatoryCorrection.kind, phase: draft.regulatoryCorrection.phase, objectSid: draft.regulatoryCorrection.objectSid, attributeKeys: draft.regulatoryCorrection.attributeKeys || [] };
   const address = draft?.regulatoryAddress;
   const association = draft?.bundleAssociation;
   const approval = draft?.regulatoryApproval;
@@ -304,12 +305,185 @@ async function rejectedBundleDetails(restaurantId, { makeTwilio = twilio, getDra
   if (assignments.length >= 101 || assignments.some(row => row.bundleSid !== bundle.sid || row.accountSid !== draft.accountSid)) throw error("Affectations indisponibles ou incomplètes", 503);
   const ids = new Set(assignments.map(item => item.objectSid));
   if (!ids.has(saved.endUserSid) || (saved.documentSids || []).some(sid => !ids.has(sid))) throw error("Dossier modifié : vérification nécessaire", 409);
+  const endUser = await api.endUsers(saved.endUserSid).fetch();
+  if (endUser.sid !== saved.endUserSid || endUser.accountSid !== draft.accountSid || !["business", "individual"].includes(endUser.type)) throw error("Utilisateur final non vérifié", 409);
   const documents = await Promise.all((saved.documentSids || []).map(async sid => {
     const item = await api.supportingDocuments(sid).fetch();
     if (item.sid !== sid || item.accountSid !== draft.accountSid) throw error("Justificatif non vérifié", 409);
-    return { sid, type: item.type, status: item.status, failureReason: typeof item.failureReason === "string" ? item.failureReason : "", errors: Array.isArray(item.errors) ? item.errors : [] };
+    return { sid, type: item.type, status: item.status, attributes: item.attributes || {}, failureReason: typeof item.failureReason === "string" ? item.failureReason : "", errors: Array.isArray(item.errors) ? item.errors : [] };
   }));
-  return { status: bundle.status, documents };
+  return { status: bundle.status, endUser: { sid: endUser.sid, type: endUser.type, attributes: endUser.attributes || {}, errors: Array.isArray(endUser.errors) ? endUser.errors : [] }, documents };
+}
+
+// Correct one already assigned resource at a time. No personal data is stored in
+// the operation record; an uncertain response is resolved by reading Twilio.
+async function correctRejectedResource(restaurantId, actorId, { confirm, kind, sid, values, verify = false, makeTwilio = twilio, getDraftClient = draftClient } = {}) {
+  if (confirm !== true || !["end-user", "address", "document"].includes(kind) || !values || typeof values !== "object" || Array.isArray(values) || !Object.keys(values).length) throw error("Correction réglementaire invalide", 400);
+  if (await Config.exists({ restaurantId })) throw error("Installation existante protégée", 409);
+  requireKey(restaurantId);
+  const { draft, client } = await getDraftClient(restaurantId, makeTwilio);
+  const saved = draft.regulatorySubmission;
+  if (draft.bundleCloneOperation === "completed" || !saved?.bundleSid || saved.bundleSid !== draft.regulatoryBundleSid) throw error("Dossier individuel requis", 409);
+  const api = client.numbers.v2.regulatoryCompliance;
+  const bundle = await api.bundles(saved.bundleSid).fetch();
+  if (bundle.sid !== saved.bundleSid || bundle.accountSid !== draft.accountSid || bundle.regulationSid !== saved.regulationSid || bundle.status !== "twilio-rejected") throw error("Dossier refusé non vérifié", 409);
+  const assignments = await api.bundles(bundle.sid).itemAssignments.list({ limit: 101 });
+  if (assignments.length >= 101 || assignments.some(row => row.accountSid !== draft.accountSid || row.bundleSid !== bundle.sid)) throw error("Affectations indisponibles ou incomplètes", 409);
+  const assigned = new Set(assignments.map(row => row.objectSid));
+  if (!assigned.has(saved.endUserSid) || (saved.documentSids || []).some(id => !assigned.has(id))) throw error("Dossier modifié : vérification nécessaire", 409);
+  let resource, fields, existing;
+  if (kind === "end-user") {
+    if (sid !== saved.endUserSid) throw error("Utilisateur final non associé", 400);
+    resource = api.endUsers(sid); existing = await resource.fetch();
+    const requirements = await regulatoryRequirements(restaurantId, { endUserType: existing.type, makeTwilio, getDraftClient });
+    if (requirements.regulationSid !== bundle.regulationSid) throw error("Exigences du dossier modifiées : vérification nécessaire", 409);
+    fields = requirements.requirements?.end_user?.find(item => item.type === existing.type)?.fields;
+  } else if (kind === "document") {
+    if (!(saved.documentSids || []).includes(sid)) throw error("Justificatif non associé", 400);
+    resource = api.supportingDocuments(sid); existing = await resource.fetch();
+    if (["approved", "provisionally-approved"].includes(existing.status)) throw error("Un justificatif approuvé ne doit pas être modifié", 409);
+    const requirements = await regulatoryRequirements(restaurantId, { endUserType: "business", makeTwilio, getDraftClient });
+    if (requirements.regulationSid !== bundle.regulationSid) throw error("Exigences du dossier modifiées : vérification nécessaire", 409);
+    fields = (requirements.requirements?.supporting_document || []).flat(2).flatMap(item => item?.accepted_documents || []).filter(item => item.type === existing.type).flatMap(item => item.fields || []);
+  } else {
+    if (!/^AD[0-9a-f]{32}$/i.test(sid || "")) throw error("Adresse invalide", 400);
+    const documents = await Promise.all((saved.documentSids || []).map(id => api.supportingDocuments(id).fetch()));
+    if (documents.some(doc => doc.accountSid !== draft.accountSid) || !documents.some(doc => Array.isArray(doc.attributes?.address_sids) && doc.attributes.address_sids.includes(sid))) throw error("Adresse non associée au dossier", 409);
+    resource = client.addresses(sid); existing = await resource.fetch();
+    fields = ["customerName", "street", "city", "postalCode", "region"];
+  }
+  if (existing.sid !== sid || existing.accountSid !== draft.accountSid || !Array.isArray(fields)) throw error("Ressource réglementaire non vérifiée", 409);
+  if (Object.keys(values).some(key => !fields.includes(key)) || Object.entries(values).some(([key, value]) => key === "address_sids" ? !Array.isArray(value) || !value.length || value.some(id => !/^AD[0-9a-f]{32}$/i.test(id || "")) : !(typeof value === "string" && value.trim() && value.length <= 500))) throw error("Champs réglementaires invalides", 400);
+  if (values.address_sids) for (const addressSid of values.address_sids) {
+    const address = await client.addresses(addressSid).fetch();
+    if (address.sid !== addressSid || address.accountSid !== draft.accountSid || address.validated !== true || address.isoCountry !== "FR") throw error("Adresse réglementaire non validée ou incompatible", 400);
+  }
+  const fingerprint = crypto.createHmac("sha256", Buffer.from(process.env.CALLSENSE_ENCRYPTION_KEY, "hex")).update(JSON.stringify({ kind, sid, values })).digest("hex");
+  const previous = draft.regulatoryCorrection;
+  const current = kind === "address" ? existing : existing.attributes || {};
+  const matches = () => Object.entries(values).every(([key, value]) => JSON.stringify(current[key]) === JSON.stringify(value));
+  if (verify === true) {
+    if (previous?.state !== "uncertain" || previous.fingerprint !== fingerprint || previous.objectSid !== sid || previous.kind !== kind || previous.bundleSid !== bundle.sid) throw error("Correction à vérifier non concordante", 409);
+    if (!matches()) throw error("Correction non confirmée par Twilio : vérification nécessaire avant reprise", 409);
+    const reconciled = await Draft.findOneAndUpdate({ _id: draft._id, "regulatoryCorrection.state": "uncertain", "regulatoryCorrection.attemptId": previous.attemptId }, { $set: { "regulatoryCorrection.state": "completed" }, $push: { audit: { action: "regulatory_correction_reconciled", actorId, at: new Date() } } }, { new: true });
+    if (!reconciled) throw error("Correction modifiée : vérifiez à nouveau", 409);
+    return { status: "completed", kind, sid, validated: kind === "address" ? existing.validated === true : undefined };
+  }
+  const attemptId = crypto.randomUUID();
+  const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: bundle.sid, "regulatoryCorrection.state": { $nin: ["pending", "uncertain"] }, "regulatoryAddress.state": { $nin: ["pending", "uncertain"] }, "regulatoryResubmission.state": { $nin: ["pending", "uncertain"] }, "regulatorySubmission.state": { $ne: "running" } }, { $set: { "regulatoryCorrection.state": "pending", "regulatoryCorrection.attemptId": attemptId, "regulatoryCorrection.bundleSid": bundle.sid, "regulatoryCorrection.kind": kind, "regulatoryCorrection.objectSid": sid, "regulatoryCorrection.fingerprint": fingerprint, "regulatoryCorrection.attributeKeys": Object.keys(values), "regulatoryApproval.status": "twilio-rejected", "regulatoryApproval.compatible": false }, $push: { audit: { action: "regulatory_correction_started", actorId, at: new Date() } } }, { new: true });
+  if (!locked) throw error("Correction en cours ou incertaine : vérification nécessaire", 409);
+  const filter = { _id: draft._id, accountSid: draft.accountSid, "regulatoryCorrection.state": "pending", "regulatoryCorrection.attemptId": attemptId };
+  try {
+    if (!await Draft.exists(filter) || await Config.exists({ restaurantId })) throw new Error("Operation replaced");
+    if (!matches()) await resource.update(kind === "address" ? values : { attributes: { ...current, ...values } });
+    const checked = await resource.fetch();
+    const checkedValues = kind === "address" ? checked : checked.attributes || {};
+    if (checked.sid !== sid || checked.accountSid !== draft.accountSid || Object.entries(values).some(([key, value]) => JSON.stringify(checkedValues[key]) !== JSON.stringify(value))) throw new Error("Correction not verified");
+    const updated = await Draft.findOneAndUpdate(filter, { $set: { "regulatoryCorrection.state": "completed" }, $push: { audit: { action: "regulatory_correction_completed", actorId, at: new Date() } } }, { new: true });
+    if (!updated) throw new Error("Operation replaced");
+    return { status: "completed", kind, sid, validated: kind === "address" ? checked.validated === true : undefined };
+  } catch (_) {
+    await Draft.updateOne(filter, { $set: { "regulatoryCorrection.state": "uncertain" } }).catch(() => {});
+    throw error("Correction incertaine : vérifiez son résultat avant toute reprise", 409);
+  }
+}
+
+async function replaceRejectedDocument(restaurantId, actorId, { confirm, sid, attributes, buffer, mimeType, verify = false, makeTwilio = twilio, getDraftClient = draftClient, request = fetch } = {}) {
+  if (confirm !== true || !/^RD[0-9a-f]{32}$/i.test(sid || "")) throw error("Justificatif invalide", 400);
+  if (await Config.exists({ restaurantId })) throw error("Installation existante protégée", 409);
+  requireKey(restaurantId);
+  const { draft, client } = await getDraftClient(restaurantId, makeTwilio);
+  const saved = draft.regulatorySubmission;
+  if (draft.bundleCloneOperation === "completed" || !saved?.bundleSid || saved.bundleSid !== draft.regulatoryBundleSid || !(saved.documentSids || []).includes(sid)) throw error("Justificatif individuel non associé", 409);
+  const api = client.numbers.v2.regulatoryCompliance;
+  const bundleApi = api.bundles(saved.bundleSid);
+  const bundle = await bundleApi.fetch();
+  if (bundle.sid !== saved.bundleSid || bundle.accountSid !== draft.accountSid || bundle.regulationSid !== saved.regulationSid || bundle.status !== "twilio-rejected") throw error("Dossier refusé non vérifié", 409);
+  const original = await api.supportingDocuments(sid).fetch();
+  if (original.sid !== sid || original.accountSid !== draft.accountSid || !["rejected", "expired"].includes(original.status)) throw error("Seul un justificatif refusé ou expiré peut être remplacé", 409);
+  const originalAssignments = await bundleApi.itemAssignments.list({ limit: 101 });
+  if (originalAssignments.length >= 101 || originalAssignments.some(row => row.accountSid !== draft.accountSid || row.bundleSid !== bundle.sid) ||
+      !originalAssignments.some(row => row.objectSid === saved.endUserSid) || (saved.documentSids || []).filter(id => id !== sid).some(id => !originalAssignments.some(row => row.objectSid === id)) ||
+      (!verify && originalAssignments.filter(row => row.objectSid === sid).length !== 1)) throw error("Affectations du dossier non vérifiées", 409);
+  const previous = draft.regulatoryCorrection;
+  let attemptId, replacementSid, fingerprint, attributeKeys;
+  if (verify) {
+    if (previous?.state !== "uncertain" || previous.kind !== "replace-document" || previous.objectSid !== sid || previous.bundleSid !== bundle.sid) throw error("Remplacement à vérifier non concordant", 409);
+    if (!previous.replacementSid) throw error("Téléversement incertain sans identifiant : vérification des justificatifs nécessaire avant reprise", 409);
+    attemptId = previous.attemptId; replacementSid = previous.replacementSid; fingerprint = previous.fingerprint; attributeKeys = previous.attributeKeys;
+    if (!fingerprint || !Array.isArray(attributeKeys)) throw error("Preuve du justificatif indisponible : vérification nécessaire", 409);
+    const resumed = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, "regulatoryCorrection.state": "uncertain", "regulatoryCorrection.attemptId": attemptId, "regulatoryCorrection.replacementSid": replacementSid }, { $set: { "regulatoryCorrection.state": "pending" } }, { new: true });
+    if (!resumed) throw error("Remplacement modifié : vérifiez à nouveau", 409);
+  } else {
+    validateRegulatoryFile(buffer, mimeType);
+    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) throw error("Champs du justificatif invalides", 400);
+    const requirements = await regulatoryRequirements(restaurantId, { endUserType: "business", makeTwilio, getDraftClient });
+    if (requirements.regulationSid !== bundle.regulationSid) throw error("Exigences du dossier modifiées : vérification nécessaire", 409);
+    const choices = (requirements.requirements?.supporting_document || []).flat(2).flatMap(item => item?.accepted_documents || []).filter(item => item.type === original.type);
+    const allowed = new Set(choices.flatMap(item => item.fields || []));
+    if (!choices.length || !requirements.supportingDocumentTypes.some(item => item.machineName === original.type) || Object.keys(attributes).some(key => !allowed.has(key))) throw error("Type ou champs du justificatif non conformes aux exigences Twilio", 400);
+    const present = value => typeof value === "string" ? Boolean(value.trim()) && value.length <= 500 : Array.isArray(value) && value.length > 0 && value.every(item => typeof item === "string" && item.length <= 500);
+    if (Object.values(attributes).some(value => !present(value)) || !choices.some(choice => (choice.fields || []).every(name => {
+      const detail = (choice.detailed_fields || []).find(item => (item.machine_name || item.machineName) === name);
+      const optional = /\boptional\b|\bfacultatif\b/i.test(`${detail?.friendly_name || ""} ${detail?.description || ""}`) && !/!=\s*null/.test(detail?.constraint || "");
+      return optional || present(attributes[name]);
+    }))) throw error("Champs obligatoires du justificatif incomplets", 400);
+    if (attributes.address_sids !== undefined) {
+      if (!Array.isArray(attributes.address_sids) || !attributes.address_sids.length) throw error("Adresse réglementaire invalide", 400);
+      for (const id of attributes.address_sids) {
+        if (!/^AD[0-9a-f]{32}$/i.test(id || "")) throw error("Adresse réglementaire invalide", 400);
+        const address = await client.addresses(id).fetch();
+        if (address.sid !== id || address.accountSid !== draft.accountSid || address.validated !== true || address.isoCountry !== "FR") throw error("Adresse réglementaire non validée", 400);
+      }
+    }
+    attributeKeys = Object.keys(attributes).sort();
+    fingerprint = crypto.createHmac("sha256", Buffer.from(process.env.CALLSENSE_ENCRYPTION_KEY, "hex")).update(JSON.stringify(Object.fromEntries(attributeKeys.map(key => [key, attributes[key]])))).digest("hex");
+    attemptId = crypto.randomUUID();
+    const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: bundle.sid, "regulatoryCorrection.state": { $nin: ["pending", "uncertain"] }, "regulatoryAddress.state": { $nin: ["pending", "uncertain"] }, "regulatoryResubmission.state": { $nin: ["pending", "uncertain"] }, "regulatorySubmission.state": { $ne: "running" } }, { $set: { "regulatoryCorrection.state": "pending", "regulatoryCorrection.attemptId": attemptId, "regulatoryCorrection.kind": "replace-document", "regulatoryCorrection.bundleSid": bundle.sid, "regulatoryCorrection.objectSid": sid, "regulatoryCorrection.phase": "upload", "regulatoryCorrection.fingerprint": fingerprint, "regulatoryCorrection.attributeKeys": attributeKeys, "regulatoryApproval.status": "twilio-rejected", "regulatoryApproval.compatible": false }, $unset: { "regulatoryCorrection.replacementSid": 1 }, $push: { audit: { action: "regulatory_document_replacement_started", actorId, at: new Date() } } }, { new: true });
+    if (!locked) throw error("Correction en cours ou incertaine : vérification nécessaire", 409);
+  }
+  const filter = { _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: bundle.sid, "regulatoryCorrection.state": "pending", "regulatoryCorrection.attemptId": attemptId };
+  try {
+    if (!await Draft.exists(filter) || await Config.exists({ restaurantId })) throw new Error("Operation replaced");
+    if (!replacementSid) {
+      const authToken = decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid);
+      replacementSid = await uploadRegulatoryDocument({ accountSid: draft.accountSid, authToken, type: original.type, attributes, buffer, mimeType }, { request });
+      const checkpoint = await Draft.updateOne(filter, { $set: { "regulatoryCorrection.replacementSid": replacementSid, "regulatoryCorrection.phase": "assignments" } });
+      if (checkpoint.matchedCount !== 1) throw new Error("Operation replaced");
+    }
+    const replacement = await api.supportingDocuments(replacementSid).fetch();
+    if (replacement.sid !== replacementSid || replacement.accountSid !== draft.accountSid || replacement.type !== original.type) throw new Error("Replacement not verified");
+    const actualFingerprint = crypto.createHmac("sha256", Buffer.from(process.env.CALLSENSE_ENCRYPTION_KEY, "hex")).update(JSON.stringify(Object.fromEntries(attributeKeys.map(key => [key, replacement.attributes?.[key]])))).digest("hex");
+    if (actualFingerprint !== fingerprint) throw new Error("Replacement attributes not verified");
+    const list = async () => {
+      const rows = await bundleApi.itemAssignments.list({ limit: 101 });
+      if (rows.length >= 101 || rows.some(row => row.accountSid !== draft.accountSid || row.bundleSid !== bundle.sid)) throw new Error("Assignments unavailable");
+      return rows;
+    };
+    let rows = await list();
+    const oldAssignments = rows.filter(row => row.objectSid === sid);
+    if (oldAssignments.length > 1 || rows.filter(row => row.objectSid === replacementSid).length > 1) throw new Error("Ambiguous assignments");
+    if (oldAssignments.length) {
+      if (!/^BV[0-9a-f]{32}$/i.test(oldAssignments[0].sid || "")) throw new Error("Assignment not verified");
+      await bundleApi.itemAssignments(oldAssignments[0].sid).remove();
+    }
+    rows = await list();
+    if (rows.some(row => row.objectSid === sid)) throw new Error("Old assignment remains");
+    if (!rows.some(row => row.objectSid === replacementSid)) {
+      const assignment = await bundleApi.itemAssignments.create({ objectSid: replacementSid });
+      if (assignment.accountSid !== draft.accountSid || assignment.bundleSid !== bundle.sid || assignment.objectSid !== replacementSid || !/^BV[0-9a-f]{32}$/i.test(assignment.sid || "")) throw new Error("Assignment not verified");
+    }
+    rows = await list();
+    if (rows.filter(row => row.objectSid === replacementSid).length !== 1 || rows.some(row => row.objectSid === sid)) throw new Error("Replacement not assigned");
+    const documentSids = saved.documentSids.map(id => id === sid ? replacementSid : id);
+    const assignedSids = (saved.assignedSids || []).map(id => id === sid ? replacementSid : id);
+    const updated = await Draft.findOneAndUpdate({ ...filter, "regulatorySubmission.documentSids": sid }, { $set: { "regulatoryCorrection.state": "completed", "regulatoryCorrection.phase": "completed", "regulatorySubmission.documentSids": documentSids, "regulatorySubmission.assignedSids": assignedSids }, $push: { audit: { action: "regulatory_document_replacement_completed", actorId, at: new Date() } } }, { new: true });
+    if (!updated) throw new Error("Operation replaced");
+    return { status: "completed", sid: replacementSid };
+  } catch (_) {
+    await Draft.updateOne(filter, { $set: { "regulatoryCorrection.state": "uncertain" } }).catch(() => {});
+    throw error("Remplacement incertain : vérifiez les affectations avant toute reprise", 409);
+  }
 }
 // Re-evaluate an existing rejected bundle after its information has been corrected.
 // Never create replacement items or repeat an uncertain submission automatically.
@@ -320,13 +494,13 @@ async function resubmitRejectedBundle(restaurantId, actorId, { confirm, makeTwil
   if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw error("Dossier individuel requis", 409);
   const compliance = await bundleCompliance(client, draft.regulatoryBundleSid, draft.accountSid);
   if (draft.regulatoryResubmission?.state === "uncertain" && draft.regulatoryResubmission.bundleSid === draft.regulatoryBundleSid && compliance?.compatible && ["pending-review", "in-review", "twilio-approved"].includes(compliance.status)) {
-    const reconciled = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": "uncertain", "regulatoryResubmission.attemptId": draft.regulatoryResubmission.attemptId, "regulatoryResubmission.bundleSid": draft.regulatoryBundleSid }, { $set: { "regulatoryResubmission.state": "completed", "regulatorySubmission.state": "submitted", "regulatorySubmission.phase": "submitted" }, $push: { audit: { action: "regulatory_resubmission_reconciled", actorId, at: new Date() } } }, { new: true });
+    const reconciled = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": "uncertain", "regulatoryResubmission.attemptId": draft.regulatoryResubmission.attemptId, "regulatoryResubmission.bundleSid": draft.regulatoryBundleSid }, { $set: { "regulatoryResubmission.state": "completed", "regulatorySubmission.state": "submitted", "regulatorySubmission.phase": "submitted", "regulatoryApproval.bundleSid": draft.regulatoryBundleSid, "regulatoryApproval.accountSid": draft.accountSid, "regulatoryApproval.status": compliance.status, "regulatoryApproval.compatible": compliance.compatible }, $push: { audit: { action: "regulatory_resubmission_reconciled", actorId, at: new Date() } } }, { new: true });
     if (!reconciled) throw error("Dossier modifié : vérifiez à nouveau", 409);
     return { status: compliance.status, bundleSid: draft.regulatoryBundleSid };
   }
   if (!compliance?.compatible || compliance.status !== "twilio-rejected") throw error("Dossier individuel refusé requis", 409);
   const attempt = crypto.randomUUID();
-  const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": { $nin: ["pending", "uncertain"] }, "regulatorySubmission.state": { $ne: "running" } }, { $set: { "regulatoryResubmission.state": "pending", "regulatoryResubmission.attemptId": attempt, "regulatoryResubmission.bundleSid": draft.regulatoryBundleSid }, $push: { audit: { action: "regulatory_resubmission_requested", actorId, at: new Date() } } }, { new: true });
+  const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": { $nin: ["pending", "uncertain"] }, "regulatoryCorrection.state": { $nin: ["pending", "uncertain"] }, "regulatoryAddress.state": { $nin: ["pending", "uncertain"] }, "regulatorySubmission.state": { $ne: "running" } }, { $set: { "regulatoryResubmission.state": "pending", "regulatoryResubmission.attemptId": attempt, "regulatoryResubmission.bundleSid": draft.regulatoryBundleSid }, $push: { audit: { action: "regulatory_resubmission_requested", actorId, at: new Date() } } }, { new: true });
   if (!locked) throw error("Resoumission en cours ou incertaine : vérification requise", 409);
   const filter = { _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": "pending", "regulatoryResubmission.attemptId": attempt };
   try {
@@ -339,7 +513,7 @@ async function resubmitRejectedBundle(restaurantId, actorId, { confirm, makeTwil
     if (!await Draft.exists(filter)) throw new Error("Operation replaced");
     const submitted = await client.numbers.v2.regulatoryCompliance.bundles(draft.regulatoryBundleSid).update({ status: "pending-review" });
     if (submitted.sid !== draft.regulatoryBundleSid || submitted.accountSid !== draft.accountSid || submitted.status !== "pending-review") throw new Error("Unverified submission");
-    const saved = await Draft.findOneAndUpdate(filter, { $set: { "regulatoryResubmission.state": "completed", "regulatorySubmission.state": "submitted", "regulatorySubmission.phase": "submitted" }, $push: { audit: { action: "regulatory_resubmitted", actorId, at: new Date() } } }, { new: true });
+    const saved = await Draft.findOneAndUpdate(filter, { $set: { "regulatoryResubmission.state": "completed", "regulatorySubmission.state": "submitted", "regulatorySubmission.phase": "submitted", "regulatoryApproval.bundleSid": draft.regulatoryBundleSid, "regulatoryApproval.accountSid": draft.accountSid, "regulatoryApproval.status": "pending-review", "regulatoryApproval.compatible": true }, $push: { audit: { action: "regulatory_resubmitted", actorId, at: new Date() } } }, { new: true });
     if (!saved) throw new Error("Operation replaced");
     return { status: "pending-review", bundleSid: draft.regulatoryBundleSid };
   } catch (_) {
@@ -355,6 +529,16 @@ async function createRegulatoryAddress(restaurantId, actorId, { confirm, reconci
   requireKey(restaurantId);
   const values = { customerName: customerName.trim(), street: street.trim(), city: city.trim(), postalCode: postalCode.trim(), region: region.trim(), isoCountry };
   const fingerprint = crypto.createHmac("sha256", Buffer.from(process.env.CALLSENSE_ENCRYPTION_KEY, "hex")).update(JSON.stringify(values)).digest("hex");
+  const replacing = draft.regulatoryAddress?.state === "completed" && draft.regulatoryAddress.fingerprint !== fingerprint;
+  if (draft.regulatoryAddress?.state === "completed" && !replacing) {
+    const existing = await client.addresses(draft.regulatoryAddress.sid).fetch();
+    if (existing.sid !== draft.regulatoryAddress.sid || existing.accountSid !== draft.accountSid || typeof existing.validated !== "boolean") throw error("Adresse existante non vérifiée", 409);
+    return { sid: existing.sid, validated: existing.validated };
+  }
+  if (replacing) {
+    const bundle = await client.numbers.v2.regulatoryCompliance.bundles(draft.regulatoryBundleSid).fetch();
+    if (bundle.sid !== draft.regulatoryBundleSid || bundle.accountSid !== draft.accountSid || bundle.status !== "twilio-rejected" || bundle.sid !== draft.regulatorySubmission?.bundleSid) throw error("Une adresse supplémentaire exige un dossier individuel refusé", 409);
+  }
   if (reconcile === true) {
     if (draft.regulatoryAddress?.state !== "uncertain" || draft.regulatoryAddress.fingerprint !== fingerprint) throw error("Les données ne correspondent pas à l’adresse à vérifier", 409);
     const rows = await client.addresses.list({ limit: 101 });
@@ -366,12 +550,20 @@ async function createRegulatoryAddress(restaurantId, actorId, { confirm, reconci
     return { sid: matches[0].sid, validated: matches[0].validated };
   }
   const attempt = crypto.randomUUID();
-  const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, "regulatoryAddress.state": { $nin: ["pending", "uncertain", "completed"] } }, { $set: { "regulatoryAddress.state": "pending", "regulatoryAddress.attemptId": attempt, "regulatoryAddress.fingerprint": fingerprint }, $push: { audit: { action: "regulatory_address_requested", actorId, at: new Date() } } }, { new: true });
+  const locked = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, "regulatoryCorrection.state": { $nin: ["pending", "uncertain"] }, "regulatoryResubmission.state": { $nin: ["pending", "uncertain"] }, ...(replacing ? { "regulatoryAddress.state": "completed", "regulatoryAddress.fingerprint": draft.regulatoryAddress.fingerprint, "regulatoryAddress.sid": draft.regulatoryAddress.sid } : { "regulatoryAddress.state": { $nin: ["pending", "uncertain", "completed"] } }) }, { $set: { "regulatoryAddress.state": "pending", "regulatoryAddress.attemptId": attempt, "regulatoryAddress.fingerprint": fingerprint }, $push: { audit: { action: "regulatory_address_requested", actorId, at: new Date() } } }, { new: true });
   if (!locked) throw error("Création d’adresse en cours ou incertaine", 409);
   const filter = { _id: draft._id, accountSid: draft.accountSid, "regulatoryAddress.state": "pending", "regulatoryAddress.attemptId": attempt };
   try {
     if (!await Draft.exists(filter) || await Config.exists({ restaurantId })) throw new Error("Operation replaced");
-    const address = await client.addresses.create(values);
+    let address;
+    if (replacing) {
+      const rows = await client.addresses.list({ limit: 101 });
+      if (rows.length >= 101) throw new Error("Address list incomplete");
+      const matches = rows.filter(row => row.accountSid === draft.accountSid && Object.entries(values).every(([key, value]) => String(row[key] || "").trim() === value));
+      if (matches.length > 1) throw new Error("Ambiguous address");
+      address = matches[0];
+    }
+    if (!address) address = await client.addresses.create(values);
     if (!/^AD[0-9a-f]{32}$/i.test(address.sid || "") || address.accountSid !== draft.accountSid) throw new Error("Unverified address");
     const checked = await client.addresses(address.sid).fetch();
     if (checked.sid !== address.sid || checked.accountSid !== draft.accountSid || checked.isoCountry !== isoCountry || typeof checked.validated !== "boolean") throw new Error("Unverified address");
@@ -701,4 +893,4 @@ async function associateAccount(restaurantId, actorId, { sid, confirm, makeClien
   if (!draft) throw error("Un compte est déjà associé", 409);
   return clean(draft);
 }
-module.exports = { clean, draftClient, createAccount, associateAccount, listNumbers, quoteNumbers, associateNumber, buyNumber, inspectResources, inspectCompliance, evaluateIndividualBundle, regulatoryRequirements, validateRegulatoryFile, uploadRegulatoryDocument, submitIndividualBundle, rejectedBundleDetails, resubmitRejectedBundle, listAddresses, createRegulatoryAddress, associateApprovedBundle, createDomain, associateDomain, mainClient };
+module.exports = { clean, draftClient, createAccount, associateAccount, listNumbers, quoteNumbers, associateNumber, buyNumber, inspectResources, inspectCompliance, evaluateIndividualBundle, regulatoryRequirements, validateRegulatoryFile, uploadRegulatoryDocument, submitIndividualBundle, rejectedBundleDetails, correctRejectedResource, replaceRejectedDocument, resubmitRejectedBundle, listAddresses, createRegulatoryAddress, associateApprovedBundle, createDomain, associateDomain, mainClient };
