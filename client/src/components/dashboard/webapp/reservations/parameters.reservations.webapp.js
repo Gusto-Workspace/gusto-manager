@@ -9,6 +9,8 @@ import {
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+import { useCallSense } from "@/components/_shared/callsense/callsense-context";
+import { isCallSenseAvailableForRestaurant } from "@/components/_shared/callsense/callsense-availability";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -35,6 +37,7 @@ import PushNotificationsSettingsWebapp from "../_shared/push-notifications-setti
 import BankHoldParametersComponent from "../../reservations/parameters/bank-hold.parameters.component";
 import WaitlistParametersComponent from "../../reservations/parameters/waitlist.parameters.component";
 import SmsRemindersReservationsComponent from "../../_shared/reservations/sms-reminders.reservations.component";
+import CallSenseUsageReservationsComponent from "../../_shared/reservations/callsense-usage.reservations.component";
 import {
   getSmartAvailabilitySetupState,
   SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
@@ -173,6 +176,9 @@ function buildSlotCoverLimitsSnapshot(value = []) {
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
+  const callSense = useCallSense();
+  const parameterRestaurantId = props.restaurantData?._id || restaurantContext.restaurantData?._id;
+  const callSenseAvailable = isCallSenseAvailableForRestaurant(callSense, parameterRestaurantId);
 
   const {
     register,
@@ -1152,7 +1158,7 @@ export default function ParametersReservationComponent(props) {
           </div>
         </div>
 
-        <ParametersSearchReservationsComponent webapp />
+        <ParametersSearchReservationsComponent webapp callSenseAvailable={callSenseAvailable} />
       </div>
 
       <form className="flex flex-col gap-4">
@@ -1265,6 +1271,10 @@ export default function ParametersReservationComponent(props) {
             savePresentation="icon"
           />
         </div>
+
+        {callSenseAvailable && <div id="reservation-parameters-callsense" tabIndex={-1}>
+          <CallSenseUsageReservationsComponent restaurantData={props.restaurantData || restaurantContext.restaurantData} revision={restaurantContext.callSenseCountRevision} reconnect={restaurantContext.callSenseReconnect} />
+        </div>}
 
         {/* --- Bloc: Gestion intelligente + tables --- */}
         <div id="reservation-parameters-availability" tabIndex={-1}>

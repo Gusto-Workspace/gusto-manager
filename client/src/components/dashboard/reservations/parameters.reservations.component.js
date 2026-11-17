@@ -3,6 +3,8 @@ import { useRouter } from "next/router";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+import { useCallSense } from "@/components/_shared/callsense/callsense-context";
+import { isCallSenseAvailableForRestaurant } from "@/components/_shared/callsense/callsense-availability";
 
 // I18N
 import { useTranslation } from "next-i18next";
@@ -168,6 +170,9 @@ function buildSlotCoverLimitsSnapshot(value = []) {
 export default function ParametersReservationComponent(props) {
   const { t } = useTranslation(["reservations", "restaurant"]);
   const { restaurantContext } = useContext(GlobalContext);
+  const callSense = useCallSense();
+  const parameterRestaurantId = props.restaurantData?._id || restaurantContext.restaurantData?._id;
+  const callSenseAvailable = isCallSenseAvailableForRestaurant(callSense, parameterRestaurantId);
   const router = useRouter();
 
   const {
@@ -1138,7 +1143,7 @@ export default function ParametersReservationComponent(props) {
         onBack={handleBack}
         backLabel={t("reservations:buttons.back", "Retour")}
         subtitle={subtitle}
-        actions={<ParametersSearchReservationsComponent />}
+        actions={<ParametersSearchReservationsComponent callSenseAvailable={callSenseAvailable} />}
         actionsClassName="w-full midTablet:w-auto"
       />
 
@@ -1241,9 +1246,9 @@ export default function ParametersReservationComponent(props) {
             restaurantData={props.restaurantData}
           />
         </div>
-        <div id="reservation-parameters-callsense" tabIndex={-1}>
+        {callSenseAvailable && <div id="reservation-parameters-callsense" tabIndex={-1}>
           <CallSenseUsageReservationsComponent restaurantData={props.restaurantData || restaurantContext.restaurantData} revision={restaurantContext.callSenseCountRevision} reconnect={restaurantContext.callSenseReconnect} />
-        </div>
+        </div>}
         {/* --- Bloc: Gestion intelligente + tables --- */}
         <div id="reservation-parameters-availability" tabIndex={-1}>
           <SmartParametersComponent
