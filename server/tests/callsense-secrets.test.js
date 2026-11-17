@@ -75,6 +75,29 @@ test("résolution du secret par restaurant ou numéro et secours uniquement appr
   } finally { Config.findOne = original; }
 });
 
+test("installation chiffrée sans variables historiques et panne MongoDB en échec fermé", async () => {
+  const previousAccounts = process.env.CALLSENSE_ACCOUNTS;
+  const previousRoutes = process.env.CALLSENSE_FALLBACK_ROUTES;
+  const original = Config.findOne;
+  delete process.env.CALLSENSE_ACCOUNTS;
+  delete process.env.CALLSENSE_FALLBACK_ROUTES;
+  let offline = false;
+  const stored = { restaurantId: A, accountSid: SID, encryptedAuthToken: encryptToken("token-fictif", A, SID) };
+  Config.findOne = () => ({ select: () => ({ maxTimeMS: () => ({ lean: async () => {
+    if (offline) throw new Error("Mongo indisponible");
+    return stored;
+  } }) }) });
+  try {
+    assert.equal(await service.webhookAccountToken(SID, { restaurantId: A }), "token-fictif");
+    offline = true;
+    assert.equal(await service.webhookAccountToken(SID, { restaurantId: A }), "");
+  } finally {
+    Config.findOne = original;
+    if (previousAccounts === undefined) delete process.env.CALLSENSE_ACCOUNTS; else process.env.CALLSENSE_ACCOUNTS = previousAccounts;
+    if (previousRoutes === undefined) delete process.env.CALLSENSE_FALLBACK_ROUTES; else process.env.CALLSENSE_FALLBACK_ROUTES = previousRoutes;
+  }
+});
+
 test("configuration administrateur ne renvoie jamais le jeton fourni", async () => {
   const Restaurant = require("../models/restaurant.model");
   const router = require("../routes/callsense.routes");

@@ -345,7 +345,7 @@ function complianceStrategy() {
 async function cloneSharedBundle(restaurantId, actorId, { onboarding = require("./callsense-onboarding.service"), makeTwilio = twilio } = {}) {
   throw failure("Le clonage du dossier réglementaire Gusto est désactivé : un dossier propre au restaurant est requis", 409);
 }
-async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, currency, sharedCloneConsent = false, functionConsent = false, resume = false, onboarding = require("./callsense-onboarding.service"), finalize = finalizeTechnical, cloneBundle = cloneSharedBundle } = {}) {
+async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, currency, sharedCloneConsent = false, functionConsent = false, resume = false, onboarding = require("./callsense-onboarding.service"), finalize = finalizeTechnical } = {}) {
   if (confirm !== true || !/^(?:0|[1-9]\d{0,4})(?:\.\d{1,2})?$/.test(maxAmount || "") || !/^[A-Z]{3}$/.test(currency || "")) throw failure("Confirmation et plafond mensuel avec devise requis", 400);
   const saved = await Draft.findOne({ restaurantId }).lean();
   if (resume && (!saved?.automation?.actorId || !saved.automation.maxAmount || saved.automation.currency !== currency || Number(saved.automation.maxAmount) !== Number(maxAmount) || String(saved.automation.actorId) !== String(actorId))) throw failure("Autorisation d'achat enregistrée introuvable ou modifiée", 409);
@@ -354,8 +354,6 @@ async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, curren
   if (!restaurant?.name?.trim()) throw failure("Nom du restaurant requis", 400);
   const existing = await Config.findOne({ restaurantId }).lean();
   if (existing && !existing.managedByOnboarding) throw failure("Installation historique protégée", 409);
-  const strategy = complianceStrategy();
-  if (!["shared_clone", "individual"].includes(strategy)) throw failure("Stratégie réglementaire non reconnue", 503);
   const snapshot = saved ? { _id: saved._id, ...(saved.accountSid ? { accountSid: saved.accountSid } : { accountSid: { $exists: false } }), ...(saved.regulatoryBundleSid ? { regulatoryBundleSid: saved.regulatoryBundleSid } : { regulatoryBundleSid: { $exists: false } }), ...(saved.regulatoryAddress?.sid ? { "regulatoryAddress.sid": saved.regulatoryAddress.sid } : {}), ...(resume ? { "automation.actorId": saved.automation.actorId, "automation.maxAmount": saved.automation.maxAmount, "automation.currency": saved.automation.currency } : {}) } : {};
   let draft;
   try { draft = await Draft.findOneAndUpdate({ restaurantId, ...snapshot, $or: [{ "automation.runLeaseUntil": { $exists: false } }, { "automation.runLeaseUntil": null }, { "automation.runLeaseUntil": { $lte: new Date() } }] }, { $setOnInsert: { restaurantId }, $set: { "automation.status": "running", "automation.phase": "informations", "automation.message": "Vérification des prérequis", "automation.maxAmount": maxAmount, "automation.currency": currency, "automation.resumeMode": "onboarding", "automation.actorId": actorId, "automation.nextAttemptAt": new Date(Date.now() + 10 * 60 * 1000), "automation.runLeaseId": lease, "automation.runLeaseUntil": new Date(Date.now() + 10 * 60 * 1000), ...(sharedCloneConsent === true ? { "automation.sharedCloneAccepted": true } : {}), ...(functionConsent === true ? { "automation.functionAccepted": true } : {}) } }, { upsert: !saved && !existing, new: true, setDefaultsOnInsert: true }); }
@@ -376,13 +374,6 @@ async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, curren
       const matches = await main.client.api.accounts.list({ friendlyName, limit: 101 });
       if (matches.length >= 101 || matches.some(a => a.friendlyName === friendlyName && a.status !== "closed")) return await state("waiting", "account", "Un sous-compte similaire existe : vérifiez et associez-le avant de reprendre.");
       await onboarding.createAccount(restaurantId, actorId, { confirm: true });
-      await reload();
-    }
-    if (!draft.regulatoryBundleSid && strategy === "shared_clone") {
-      if (!draft.automation?.sharedCloneAccepted) return await state("waiting", "compliance", "Confirmez la stratégie de clonage avant de continuer.");
-      if (["pending", "uncertain"].includes(draft.bundleCloneOperation)) return await state("waiting", "compliance", "Clonage incertain : vérifiez les dossiers du sous-compte avant toute reprise.");
-      await state("running", "compliance", "Clonage du dossier réglementaire partagé");
-      await cloneBundle(restaurantId, actorId, { onboarding });
       await reload();
     }
     if (!draft.regulatoryBundleSid) return await state("waiting", "compliance", "Renseignez un dossier de conformité approuvé pour l’utilisateur final.");
