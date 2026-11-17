@@ -25,7 +25,7 @@ const base = "/admin/restaurants/:restaurantId/callsense-onboarding";
 // mutations must belong to the current stage, regardless of the browser UI.
 const mutationStages = {
   "/account": [1], "/associate-account": [1],
-  "/regulatory-submission": [2], "/regulatory-resubmission": [2], "/addresses": [2],
+  "/regulatory-submission": [2], "/regulatory-resubmission": [2], "/regulatory-correction": [2], "/regulatory-document-replacement": [2], "/addresses": [2],
   "/number-associate": [3], "/number-purchase": [3],
   "/domain": [4], "/domain-associate": [4], "/sip-credentials": [4], "/technical-finalize": [4], "/webhooks": [4],
   "/forwarding-scenario": [5, 6], "/checklist": [5, 6], "/sip-secret": [4, 5, 6],
@@ -360,7 +360,24 @@ router.get(`${base}/regulatory-rejection`, async (req, res) => {
   try { res.set("Cache-Control", "no-store"); res.json(await service.rejectedBundleDetails(req.params.restaurantId)); }
   catch (err) { failure(res, err); }
 });
+router.post(`${base}/regulatory-correction`, async (req, res) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    const { confirm, kind, sid, values, verify } = req.body || {};
+    res.json(await service.correctRejectedResource(req.params.restaurantId, String(req.user.id), { confirm, kind, sid, values, verify }));
+  } catch (err) { failure(res, err); }
+});
 const regulatoryUpload = multer({ storage: multer.memoryStorage(), limits: { files: 10, fileSize: 5 * 1024 * 1024, fields: 1, fieldSize: 65536, parts: 11 } }).array("documents", 10);
+router.post(`${base}/regulatory-document-replacement`, (req, res, next) => regulatoryUpload(req, res, err => err ? res.status(400).json({ message: "Envoi réglementaire invalide ou trop volumineux" }) : next()), async (req, res) => {
+  try {
+    let payload;
+    try { payload = JSON.parse(req.body.payload); } catch (_) { return res.status(400).json({ message: "Données réglementaires invalides" }); }
+    if (!payload || req.files.length !== (payload.verify === true ? 0 : 1)) return res.status(400).json({ message: "Fichier justificatif invalide" });
+    const file = req.files[0];
+    res.set("Cache-Control", "no-store");
+    return res.json(await service.replaceRejectedDocument(req.params.restaurantId, String(req.user.id), { confirm: payload.confirm, sid: payload.sid, attributes: payload.attributes, verify: payload.verify, ...(file ? { buffer: file.buffer, mimeType: file.mimetype } : {}) }));
+  } catch (err) { return failure(res, err); }
+});
 router.post(`${base}/regulatory-submission`, (req, res, next) => regulatoryUpload(req, res, err => err ? res.status(400).json({ message: "Envoi réglementaire invalide ou trop volumineux" }) : next()), async (req, res) => {
   try {
     let payload;

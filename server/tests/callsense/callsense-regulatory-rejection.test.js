@@ -8,7 +8,7 @@ function fixture(t) {
   const draft = { accountSid: ac, regulatoryBundleSid: bu, regulatorySubmission: { bundleSid: bu, regulationSid: rn, endUserSid: user, documentSids: [doc] } };
   const rows = [{ accountSid: ac, bundleSid: bu, objectSid: user }, { accountSid: ac, bundleSid: bu, objectSid: doc }];
   const item = { sid: doc, accountSid: ac, type: "proof", status: "rejected", failureReason: "Document illisible", errors: [{ message: "Renouveler le justificatif" }] };
-  const api = { bundles: () => ({ fetch: async () => ({ sid: bu, accountSid: ac, regulationSid: rn, status: "twilio-rejected" }), itemAssignments: { list: async () => rows } }), supportingDocuments: () => ({ fetch: async () => item }) };
+  const api = { bundles: () => ({ fetch: async () => ({ sid: bu, accountSid: ac, regulationSid: rn, status: "twilio-rejected" }), itemAssignments: { list: async () => rows } }), endUsers: () => ({ fetch: async () => ({ sid: user, accountSid: ac, type: "business", attributes: { business_name: "Fictif" } }) }), supportingDocuments: () => ({ fetch: async () => item }) };
   return { rows, item, draft, getDraftClient: async () => ({ draft, client: { numbers: { v2: { regulatoryCompliance: api } } } }) };
 }
 test("motif retourné uniquement pour un justificatif du dossier refusé", async t => {

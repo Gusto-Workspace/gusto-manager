@@ -31,7 +31,7 @@ test("formulaire dynamique, multipart, validation, erreur et état soumis", asyn
   React.useRef = initial => { const i = index++; return refs[i] ||= { current: initial }; };
   let effect; React.useCallback = fn => fn; React.useEffect = fn => { index++; effect = fn; };
   const api = {
-    get: async (url, config) => { if (url.endsWith("/regulatory-rejection")) return { data: { documents: [{ sid: "RDfictif", type: "certificate", status: "rejected", failureReason: "Document illisible", errors: [] }] } }; assert.match(url, /regulatory-requirements$/); assert.equal(config.params.endUserType, "business"); return { data: requirements }; },
+    get: async (url, config) => { if (url.endsWith("/regulatory-rejection")) return { data: { endUser: { sid: "ITfictif", type: "business", attributes: { business_name: "Restaurant fictif" } }, documents: [{ sid: "RDfictif", type: "certificate", status: "rejected", attributes: { registration: "123" }, failureReason: "Document illisible", errors: [{ field: "registration", message: "Numéro invalide" }] }] } }; assert.match(url, /regulatory-requirements$/); assert.equal(config.params.endUserType, "business"); return { data: requirements }; },
     post: async (url, form, config) => { posts++; posted = form; assert.match(url, /regulatory-submission$/); assert.equal(config.headers.Authorization, "Bearer fictif"); if (fail) throw { response: { data: { message: "Résultat réglementaire incertain" } } }; return { data: noncompliant ? { status: "noncompliant", results: [{ valid: false, error_code: "MANQUANT" }] } : { status: "pending-review", bundleSid: "BU-fictif" } }; },
   };
   Module._load = function(request, parent, isMain) { if (request === "axios") return api; if (request.endsWith("admin-auth.utils")) return { getAdminAuthConfig: config => ({ ...config, headers: { Authorization: "Bearer fictif" } }) }; return old.load.call(this, request, parent, isMain); };
@@ -66,7 +66,7 @@ test("formulaire dynamique, multipart, validation, erreur et état soumis", asyn
   props.draft = { regulatoryBundleSid: "BU-fictif", regulatorySubmission: { state: "submitted", phase: "submitted", bundleSid: "BU-fictif" } }; tree = render();
   assert.match(label(tree), /Votre dossier a été transmis à Twilio\. Il est en cours de vérification\. Vous n'avez aucune action à effectuer pour le moment\./); assert.equal(walk(tree).some(node => node.type === "form"), false);
   props.complianceStatus = "twilio-rejected"; tree = render(); assert.match(label(tree), /Dossier refusé/); assert.doesNotMatch(label(tree), /pending-review/);
-  findButton(tree, "Consulter les motifs").props.onClick(); await flush(); tree = render(); assert.match(label(tree), /Document illisible/); assert.ok(findButton(tree, "Évaluer et resoumettre"));
+  findButton(tree, "Consulter les motifs").props.onClick(); await flush(); tree = render(); assert.match(label(tree), /Document illisible/); assert.match(label(tree), /registration : Numéro invalide/); assert.ok(findButton(tree, "Évaluer et resoumettre"));
   props.complianceStatus = "twilio-approved"; tree = render(); assert.match(label(tree), /Dossier approuvé/);
 });
 

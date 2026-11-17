@@ -34,6 +34,7 @@ const schema = new mongoose.Schema({
   },
   regulatoryAddress: { state: { type: String, enum: ["pending", "uncertain", "completed"] }, attemptId: String, sid: String, fingerprint: String },
   regulatoryResubmission: { state: { type: String, enum: ["pending", "uncertain", "completed"] }, attemptId: String, bundleSid: String },
+  regulatoryCorrection: { state: { type: String, enum: ["pending", "uncertain", "completed"] }, attemptId: String, bundleSid: String, kind: String, objectSid: String, fingerprint: String, attributeKeys: [String], phase: String, replacementSid: String },
   bundleAssociation: { state: { type: String, enum: ["pending", "uncertain", "completed"] }, attemptId: String, bundleSid: String, numberSid: String },
   encryptedAuthToken: { type: String, select: false },
   accountOperation: { type: String, enum: ["not_started", "pending", "uncertain", "completed"], default: "not_started" },
