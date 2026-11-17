@@ -32,7 +32,7 @@ export default function DayHeaderReservationsWebapp(props) {
   return (
     <div className="flex flex-col gap-3 midTablet:gap-6">
       <div className="bg-lightGrey">
-        <div className="flex items-center justify-between gap-2">
+        <div className="h-[50px] flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
               onClick={() => {
