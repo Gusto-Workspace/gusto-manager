@@ -18,10 +18,10 @@ const {
   commercialSnapshotToDocumentFields,
   compareCommercialSnapshots,
   loadRestaurantCommercialSnapshot,
-} = require("../../services/contract-commercial.service");
+} = require("../../services/contracts/contract-commercial.service");
 const {
   catalogCodeAllowsOffered,
-} = require("../../services/stripe-subscription-catalog.service");
+} = require("../../services/billing/stripe-subscription-catalog.service");
 const {
   buildContractContentSnapshot,
   buildSignatureProofSnapshot,
@@ -34,12 +34,12 @@ const {
   hashSignatureToken,
   serializePublicContract,
   signatureRequestExpiresAt,
-} = require("../../services/contract-signature.service");
+} = require("../../services/contracts/contract-signature.service");
 const {
   MAX_CONTRACT_TERM_MONTHS,
   earlyTerminationFromContractState,
   validateEarlyTermination,
-} = require("../../services/contract-terms.service");
+} = require("../../services/contracts/contract-terms.service");
 // PDF RENDERERS
 const {
   renderInvoiceLikePdf,

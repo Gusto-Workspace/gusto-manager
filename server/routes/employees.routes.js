@@ -6,7 +6,7 @@ const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const streamifier = require("streamifier");
 const axios = require("axios");
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
@@ -17,7 +17,7 @@ const {
   signAccountToken,
   stripJwtMetadata,
   validatePasswordChangeInput,
-} = require("../services/account-session.service");
+} = require("../services/shared/account-session.service");
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
@@ -28,10 +28,10 @@ const TrainingSession = require("../models/logs/training-session.model");
 // SERVICE NOTIFS
 const {
   createAndBroadcastNotification,
-} = require("../services/notifications.service");
+} = require("../services/shared/notifications.service");
 const {
   refreshGiftCardLifecycle,
-} = require("../services/gift-card-lifecycle.service");
+} = require("../services/gift-cards/gift-card-lifecycle.service");
 const {
   buildPlanningExportPdf,
 } = require("../services/pdf/render-planning-export.service");
@@ -41,11 +41,11 @@ const {
 const {
   decorateEmployeeForRestaurant,
   decorateRestaurantEmployees,
-} = require("../services/employee-serialization.service");
+} = require("../services/employees/employee-serialization.service");
 const {
   diffMinutes,
   toLocalDateKey,
-} = require("../services/time-clock.service");
+} = require("../services/employees/time-clock.service");
 const {
   EMPLOYEE_DOCUMENT_MAX_FILES,
   EMPLOYEE_DOCUMENT_MAX_FILE_SIZE,
@@ -59,7 +59,7 @@ const {
   serializeEmployeeDocuments,
   setPrivateDocumentResponseHeaders,
   validateEmployeeDocumentUpload,
-} = require("../services/employee-documents.service");
+} = require("../services/employees/employee-documents.service");
 
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 

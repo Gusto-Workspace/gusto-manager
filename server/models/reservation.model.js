@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { normalizeNamePart } = require("../services/name-normalization.service");
+const { normalizeNamePart } = require("../services/shared/name-normalization.service");
 
 const TableSchema = new mongoose.Schema(
   {

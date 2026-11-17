@@ -4,8 +4,8 @@ const {
   expirePendingTakeAwayOrders,
   replayPendingTakeAwayEffects,
   cleanupConfiguredCompletedTakeAwayOrders,
-} = require("../take-away.service");
-const { runAdjustmentLifecycle } = require("../take-away-adjustments.service");
+} = require("../take-away/take-away.service");
+const { runAdjustmentLifecycle } = require("../take-away/take-away-adjustments.service");
 
 let runInProgress = false;
 

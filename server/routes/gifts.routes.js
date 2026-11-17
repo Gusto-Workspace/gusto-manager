@@ -12,10 +12,10 @@ const {
   getGiftCardAutoHiddenYearForVisibility,
   sanitizeGiftCardSettingsInput,
   sanitizeGiftCardValidityInput,
-} = require("../services/gift-card-lifecycle.service");
+} = require("../services/gift-cards/gift-card-lifecycle.service");
 const {
   getGiftCardVisualById,
-} = require("../services/gift-card-snapshot.service");
+} = require("../services/gift-cards/gift-card-snapshot.service");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

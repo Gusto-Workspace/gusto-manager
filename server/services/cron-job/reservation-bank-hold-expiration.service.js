@@ -4,9 +4,9 @@ const Stripe = require("stripe");
 
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
-const { broadcastToRestaurant } = require("../sse-bus.service");
-const { sendReservationEmail } = require("../reservations-mailer.service");
-const { decryptApiKey } = require("../encryption.service");
+const { broadcastToRestaurant } = require("../shared/sse-bus.service");
+const { sendReservationEmail } = require("../reservations/reservations-mailer.service");
+const { decryptApiKey } = require("../shared/encryption.service");
 const {
   triggerWaitlistAutoPromotionForReservationSlot,
 } = require("../../routes/reservations.routes");

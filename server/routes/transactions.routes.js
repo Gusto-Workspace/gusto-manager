@@ -17,24 +17,24 @@ const {
   monthlyPeriod,
   parseModules,
   readFinancialTransactions,
-} = require("../services/transaction-financials.service");
+} = require("../services/billing/transaction-financials.service");
 const {
   readOnSiteOrders,
   monthlyActivitySeries,
   ON_SITE_NOTES,
-} = require("../services/take-away-sales.service");
+} = require("../services/take-away/take-away-sales.service");
 const {
   renderTransactionsExport,
 } = require("../services/pdf/render-transactions-export.service");
 
 // CRYPTO
-const { decryptApiKey } = require("../services/encryption.service");
+const { decryptApiKey } = require("../services/shared/encryption.service");
 const {
   extractReservationSnapshotFromStripeMetadata,
-} = require("../services/reservation-bank-hold-metadata.service");
+} = require("../services/reservations/reservation-bank-hold-metadata.service");
 
 // SSE
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
 function buildFullName(firstName, lastName) {
   return `${String(firstName || "").trim()} ${String(lastName || "").trim()}`.trim();

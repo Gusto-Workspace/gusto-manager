@@ -3,10 +3,10 @@ const Stripe = require("stripe");
 
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
-const { decryptApiKey } = require("../encryption.service");
+const { decryptApiKey } = require("../shared/encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
-} = require("../reservation-bank-hold-metadata.service");
+} = require("../reservations/reservation-bank-hold-metadata.service");
 
 const BATCH_SIZE = 50;
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;

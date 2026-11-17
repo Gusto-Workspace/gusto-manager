@@ -6,7 +6,7 @@ const {
   buildContractDurationCopy,
   formatMonthsWithNumber,
   hasWebsiteOwnershipTerms,
-} = require("../contract-terms.service");
+} = require("../contracts/contract-terms.service");
 
 function fmtDate(d) {
   if (!d) return "-";

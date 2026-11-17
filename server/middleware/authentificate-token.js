@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const {
   isAccountSessionValid,
-} = require("../services/account-session.service");
+} = require("../services/shared/account-session.service");
 const JWT_SECRET = process.env.JWT_SECRET;
 
 async function authenticateToken(req, res, next) {

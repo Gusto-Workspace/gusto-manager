@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const {
   DEFAULT_EARLY_TERMINATION,
   MAX_CONTRACT_TERM_MONTHS,
-} = require("../services/contract-terms.service");
+} = require("../services/contracts/contract-terms.service");
 
 const LineSchema = new mongoose.Schema(
   {

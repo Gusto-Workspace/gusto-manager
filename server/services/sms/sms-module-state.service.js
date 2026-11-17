@@ -1,5 +1,5 @@
 const SmsJobModel = require("../../models/sms-job.model");
-const { SMS_ADDON_CODE } = require("../stripe-subscription-catalog.service");
+const { SMS_ADDON_CODE } = require("../billing/stripe-subscription-catalog.service");
 
 function smsModuleStates(restaurant) {
   return {

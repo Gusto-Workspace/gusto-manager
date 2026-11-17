@@ -332,7 +332,7 @@ Corrigées par résolutions compatibles : qs 6.13.0 → 6.16.1 (Express/body-par
 
 ## Compatibilité Sharp et code métier
 
-L’unique usage applicatif trouvé est sharp(Buffer).png().toBuffer() dans services/gift-card-mailer.service.js. Il est conservé tel quel. Les ruptures documentées incluent Node >=20.9, les binaires optionnels @img, la compilation explicite, la limite de cinq canaux et le retrait d’options dépréciées ; aucune des options retirées n’est employée ici. Tests avec PNG, JPEG, WebP et SVG et génération de PDF sans fallback : réussis. Le runtime local charge Sharp 0.35.5 avec libvips 8.18.7, libwebp 1.6.0, libheif 1.23.5 et librsvg 2.63.2. Le changement de limite de canaux pourrait refuser des images spécialisées à plus de cinq canaux ; ce type de visuel n’a pas été testé.
+L’unique usage applicatif trouvé est sharp(Buffer).png().toBuffer() dans services/gift-cards/gift-card-mailer.service.js. Il est conservé tel quel. Les ruptures documentées incluent Node >=20.9, les binaires optionnels @img, la compilation explicite, la limite de cinq canaux et le retrait d’options dépréciées ; aucune des options retirées n’est employée ici. Tests avec PNG, JPEG, WebP et SVG et génération de PDF sans fallback : réussis. Le runtime local charge Sharp 0.35.5 avec libvips 8.18.7, libwebp 1.6.0, libheif 1.23.5 et librsvg 2.63.2. Le changement de limite de canaux pourrait refuser des images spécialisées à plus de cinq canaux ; ce type de visuel n’a pas été testé.
 
 Sources : [ruptures Sharp 0.35.0](https://github.com/lovell/sharp/releases/tag/v0.35.0), [Sharp 0.35.5](https://github.com/lovell/sharp/releases/tag/v0.35.5). Aucun changement des routes, modèles, contrats API ou traitements métier.
 
@@ -352,10 +352,10 @@ Les tests ont été lancés avec un environnement nettoyé, des clés fictives, 
 
 ### Quatre échecs préexistants
 
-1. tests/contract-signature.test.js:1137 : fixture de lien « actif » expirant le 15 octobre 2026 ; la date du jour est le 26 octobre 2026, donc document public nul.
-2. tests/contract-signature.test.js:1161 : même expiration fixe pour l’avenant.
-3. tests/sms-subscription-self-service.test.js:52 : assertion textuelle attend req.user?.role !== "owner", absente de la source existante.
-4. tests/sms-toggle-reactivity.test.js:342 : assertion textuelle attend deux props sur la même ligne dans une interface existante.
+1. tests/contracts/contract-signature.test.js:1137 : fixture de lien « actif » expirant le 15 octobre 2026 ; la date du jour est le 26 octobre 2026, donc document public nul.
+2. tests/contracts/contract-signature.test.js:1161 : même expiration fixe pour l’avenant.
+3. tests/sms/sms-subscription-self-service.test.js:52 : assertion textuelle attend req.user?.role !== "owner", absente de la source existante.
+4. tests/sms/sms-toggle-reactivity.test.js:342 : assertion textuelle attend deux props sur la même ligne dans une interface existante.
 
 Ces assertions concernent des sources/fixtures inchangées par la mission ; les échecs sont déjà visibles dans le premier passage après mise à jour et ne dépendent pas du comportement des packages corrigés. Ils ne sont ni masqués ni corrigés hors périmètre. La suite n’est donc pas entièrement verte.
 
@@ -363,7 +363,7 @@ Ces assertions concernent des sources/fixtures inchangées par la mission ; les 
 
 - package.json : neuf dépendances de production ciblées ; script local existant préservé.
 - package-lock.json : verrouillage npm reproductible et résolutions transitives ciblées.
-- tests/dependency-security.test.js : nouvelles vérifications de compatibilité et sécurité.
+- tests/shared/dependency-security.test.js : nouvelles vérifications de compatibilité et sécurité.
 - docs/npm-security-audit-2026-10-26.md : présent rapport.
 
 ## Limites et recommandations avant déploiement

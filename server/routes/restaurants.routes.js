@@ -9,27 +9,27 @@ const authenticateToken = require("../middleware/authentificate-token");
 const RestaurantModel = require("../models/restaurant.model");
 const {
   sanitizePublicRestaurantData,
-} = require("../services/public-restaurant-serialization.service");
+} = require("../services/shared/public-restaurant-serialization.service");
 const VisitCounterModel = require("../models/visit-counter.model");
 const EmployeeModel = require("../models/employee.model");
 const {
   signAccountToken,
   stripJwtMetadata,
-} = require("../services/account-session.service");
+} = require("../services/shared/account-session.service");
 const {
   findRestaurantSubscription,
   listSubscriptionInvoicesHistory,
-} = require("../services/stripe-billing.service");
+} = require("../services/billing/stripe-billing.service");
 const {
   buildSubscriptionSummary,
-} = require("../services/stripe-subscription-catalog.service");
+} = require("../services/billing/stripe-subscription-catalog.service");
 const {
   decorateRestaurantEmployees,
   sanitizeEmployeeForRestaurants,
-} = require("../services/employee-serialization.service");
+} = require("../services/employees/employee-serialization.service");
 const {
   buildPublicReservationServiceBlockedRange,
-} = require("../services/reservation-service-closure.service");
+} = require("../services/reservations/reservation-service-closure.service");
 
 // Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
 function ensureEmployeeRestaurantLink(employee, restaurantId) {

@@ -5,7 +5,7 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 const {
   sanitizeExceptionalClosures,
-} = require("../services/restaurant-exceptional-closures.service");
+} = require("../services/reservations/restaurant-exceptional-closures.service");
 
 // UPDATE RESTAURANT HOURS OPENING
 router.put("/restaurants/:id/opening_hours", async (req, res) => {

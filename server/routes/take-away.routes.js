@@ -35,15 +35,15 @@ const {
   normalizeTakeAwayDateKey,
   getBlockedTakeAwayDates,
   deleteRestaurantOrder,
-} = require("../services/take-away.service");
-const { restaurantOrderVisibilityFilter } = require("../services/take-away-visibility.service");
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
-const { processTakeAwayStripeEvent } = require("../services/take-away-stripe-events.service");
+} = require("../services/take-away/take-away.service");
+const { restaurantOrderVisibilityFilter } = require("../services/take-away/take-away-visibility.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
+const { processTakeAwayStripeEvent } = require("../services/take-away/take-away-stripe-events.service");
 const {
   rejectItems,
   lineId,
   remainingQuantity,
-} = require("../services/take-away-adjustments.service");
+} = require("../services/take-away/take-away-adjustments.service");
 
 async function loadAuthorizedRestaurant(req, res) {
   const restaurant = await loadRestaurantForTakeAway(req.params.restaurantId);

@@ -38,9 +38,9 @@ Le nettoyage automatique des commandes terminées devient également logique, av
 Backend :
 
 - `server/models/take-away-order.model.js`
-- `server/services/take-away-visibility.service.js` (nouveau)
-- `server/services/take-away.service.js`
-- `server/services/take-away-sales.service.js` (uniquement la note explicative de conservation ; fichier déjà présent localement)
+- `server/services/take-away/take-away-visibility.service.js` (nouveau)
+- `server/services/take-away/take-away.service.js`
+- `server/services/take-away/take-away-sales.service.js` (uniquement la note explicative de conservation ; fichier déjà présent localement)
 - `server/routes/take-away.routes.js`
 - `server/routes/customers.routes.js`
 - `server/package.json` (ajout du test de visibilité à la commande existante)
@@ -57,10 +57,10 @@ Dashboard :
 
 Tests et documentation :
 
-- `server/tests/take-away-visibility.test.js` (nouveau)
-- `server/tests/take-away-adjustments.test.js` (complément du scénario tardif existant)
-- `server/tests/take-away-reliability.test.js` (nettoyage logique)
-- `client/tests/take-away-visibility.test.js` (nouveau)
+- `server/tests/take-away/take-away-visibility.test.js` (nouveau)
+- `server/tests/take-away/take-away-adjustments.test.js` (complément du scénario tardif existant)
+- `server/tests/take-away/take-away-reliability.test.js` (nettoyage logique)
+- `client/tests/take-away/take-away-visibility.test.js` (nouveau)
 - `server/docs/take-away-order-visibility.md` (ce compte rendu)
 
 ## Vérification
@@ -69,7 +69,7 @@ Avec Node 24.22.1 :
 
 - `npm run test:take-away` dans `server` : **210 tests réussis**. Inclut la route HTTP webhook, les permissions et l'isolation des restaurants, les impayés, les paiements confirmés, l'expiration, la confirmation tardive, les doublons et la conservation après suppression.
 - Tests financiers complémentaires `take-away-sales`, `take-away-sales-ui`, `dashboard-financial-routes` : **23 tests réussis**.
-- `node --test tests/take-away-visibility.test.js tests/take-away-order-details.test.js` dans `client` : **20 tests réussis**. Rendu des deux drawers et de la modale, confirmation, appel DELETE depuis les deux listes, échec API, cache réel du contexte et réponse HTTP concurrente.
+- `node --test tests/take-away/take-away-visibility.test.js tests/take-away-order-details.test.js` dans `client` : **20 tests réussis**. Rendu des deux drawers et de la modale, confirmation, appel DELETE depuis les deux listes, échec API, cache réel du contexte et réponse HTTP concurrente.
 - Build Next.js : réussi, 159 pages générées. Avertissements existants du projet et téléchargement de certaines polices Google indisponible dans l'environnement de vérification.
 - ESLint ciblé : aucune erreur ; trois avertissements préexistants dans le contexte général.
 - `git diff --check` : réussi.

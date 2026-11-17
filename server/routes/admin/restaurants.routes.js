@@ -14,7 +14,7 @@ const {
   ensureRestaurantStripeCustomer,
   findRestaurantSubscription,
   isStripeCustomerDedicatedToRestaurant,
-} = require("../../services/stripe-billing.service");
+} = require("../../services/billing/stripe-billing.service");
 const {
   DishCardImportError,
   parseDishCardWorkbook,
@@ -24,7 +24,7 @@ const {
 const {
   encryptApiKey,
   decryptApiKey,
-} = require("../../services/encryption.service");
+} = require("../../services/shared/encryption.service");
 
 router.use("/admin", authenticateAdmin);
 

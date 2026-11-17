@@ -24,7 +24,7 @@ const {
   normalizeSignaturePayload,
   syncSessionTotals,
   toLocalDateKey,
-} = require("../services/time-clock.service");
+} = require("../services/employees/time-clock.service");
 
 function employeeWorksInRestaurant(employee, restaurantId) {
   const target = String(restaurantId);

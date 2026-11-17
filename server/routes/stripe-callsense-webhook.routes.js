@@ -1,7 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const Config = require("../models/callsense/callsense-config.model");
-const { offerIds, periodFromSubscription } = require("../services/callsense-usage.service");
+const { offerIds, periodFromSubscription } = require("../services/callsense/callsense-usage.service");
 const router = express.Router();
 
 function subscriptionIdForEvent(event) {
@@ -31,13 +31,13 @@ async function syncEvent(event, stripe) {
     return;
   }
   if (!ids.fixed || !ids.metered || !ids.meter) throw new Error("Offre CallSense non configurée");
-  const billing = require("../services/stripe-billing.service");
+  const billing = require("../services/billing/stripe-billing.service");
   const selected = await billing.findRestaurantSubscription({ restaurantId });
   // A late cancellation of an old subscription must not replace a newer one.
   if (selected.subscription && selected.subscription.id !== subscriptionId) return;
   if (!selected.subscription && config.commercial?.stripeSubscriptionId !== subscriptionId) return;
   if (selected.subscription?.id === subscriptionId) {
-    await require("../services/callsense-subscription-recovery.service").reconcileCreation({ restaurantId, subscription, event });
+    await require("../services/callsense/callsense-subscription-recovery.service").reconcileCreation({ restaurantId, subscription, event });
   }
   const period = periodFromSubscription(subscription, ids);
   const subscribed = Boolean(period && ["active", "trialing", "past_due"].includes(subscription.status));
@@ -47,7 +47,7 @@ async function syncEvent(event, stripe) {
       "commercial.stripeStatus": subscription.status || "", "commercial.stripePriceId": period ? ids.fixed : "",
       "commercial.includedMinutes": period ? 1000 : 0, "commercial.periodStart": period?.start || null,
       "commercial.periodEnd": period?.end || null, "commercial.stripeEventCreated": created } });
-  if (period) await require("../services/callsense-metering.service").saveBillingPeriod(restaurantId, subscriptionId, period,
+  if (period) await require("../services/callsense/callsense-metering.service").saveBillingPeriod(restaurantId, subscriptionId, period,
     typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id);
 }
 

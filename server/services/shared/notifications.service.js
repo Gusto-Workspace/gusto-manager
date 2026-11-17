@@ -1,0 +1,413 @@
+const NotificationModel = require("../../models/notification.model");
+const { broadcastToRestaurant } = require("./sse-bus.service");
+const { sendPushToModule } = require("./webpush.service");
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function startOfDayTs(dt) {
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+}
+
+function sameDay(a, b) {
+  return startOfDayTs(new Date(a)) === startOfDayTs(new Date(b));
+}
+
+function formatDateFR(d) {
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR");
+}
+
+function toDateKey(dateInput) {
+  if (!dateInput) return "";
+  const date = new Date(dateInput);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate(),
+  )}`;
+}
+
+function buildPath(basePath, query = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === null || value === undefined) return;
+    const normalized = String(value).trim();
+    if (!normalized) return;
+    params.set(key, normalized);
+  });
+
+  const qs = params.toString();
+  return qs ? `${basePath}?${qs}` : basePath;
+}
+
+/* ========================= RÉSERVATIONS ========================= */
+
+function buildLocalDateTime(reservationDate, reservationTime) {
+  if (!reservationDate) return null;
+
+  const base = new Date(reservationDate);
+  if (Number.isNaN(base.getTime())) return null;
+
+  let hh = 0;
+  let mm = 0;
+
+  if (typeof reservationTime === "string" && reservationTime.includes(":")) {
+    const [hStr, mStr] = reservationTime.split(":");
+    hh = Number(hStr);
+    mm = Number(mStr);
+    if (Number.isNaN(hh)) hh = 0;
+    if (Number.isNaN(mm)) mm = 0;
+  }
+
+  return new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    hh,
+    mm,
+    0,
+    0,
+  );
+}
+
+function fmtReservationRelativeFR(reservationDate, reservationTime) {
+  const dt = buildLocalDateTime(reservationDate, reservationTime);
+  if (!dt) return "";
+
+  const now = new Date();
+  const diffDays = Math.round(
+    (startOfDayTs(dt) - startOfDayTs(now)) / (24 * 60 * 60 * 1000),
+  );
+
+  const hh = pad2(dt.getHours());
+  const mm = pad2(dt.getMinutes());
+
+  if (diffDays === 0) return `aujourd’hui à ${hh}:${mm}`;
+  if (diffDays === 1) return `demain à ${hh}:${mm}`;
+  if (diffDays === 2) return `après-demain à ${hh}:${mm}`;
+
+  const dd = pad2(dt.getDate());
+  const mo = pad2(dt.getMonth() + 1);
+  const yyyy = dt.getFullYear();
+  return `${dd}/${mo}/${yyyy} à ${hh}:${mm}`;
+}
+
+/* ========================= NOTIFICATIONS ========================= */
+
+function buildNotificationContent({ type, data }) {
+  switch (type) {
+    case "callsense_quota": {
+      const threshold = Number(data?.threshold) === 100 ? 100 : 80;
+      return { title: "Consommation Gusto CallSense", message: threshold === 100
+        ? "Les 1 000 minutes incluses sont atteintes. Les appels restent disponibles."
+        : "80 % des 1 000 minutes incluses ont été consommées.",
+      link: "/dashboard/reservations/parameters#reservation-parameters-callsense" };
+    }
+    case "reservation_created":
+    case "reservation_waitlist_created": {
+      const name = data?.customerName || "Nouvelle réservation";
+      const guests = data?.numberOfGuests
+        ? `• ${data.numberOfGuests} pers.`
+        : "";
+
+      const when = fmtReservationRelativeFR(
+        data?.reservationDate,
+        data?.reservationTime,
+      );
+
+      const status = String(data?.status || "").toLowerCase();
+      const isWaitlistCreated = type === "reservation_waitlist_created";
+      const isPending = status === "pending";
+      const isConfirmed = status === "confirmed";
+
+      const title = isWaitlistCreated
+        ? "⏳ Nouvelle demande en liste d’attente"
+        : isPending
+          ? "⏳ Nouvelle table en attente"
+          : isConfirmed
+            ? "🍽️ Nouvelle table confirmée"
+            : "🍽️ Nouvelle table";
+
+      return {
+        title,
+        message: `${name} ${guests} ${when}`.replace(/\s+/g, " ").trim(),
+        link: buildPath("/dashboard/reservations", {
+          day: toDateKey(data?.reservationDate),
+          reservationId: data?._id || data?.reservationId || null,
+        }),
+      };
+    }
+
+    case "reservation_customer_canceled": {
+      const name = data?.customerName || "Un client";
+      const guests = data?.numberOfGuests ? `${data.numberOfGuests} pers.` : "";
+      const when = fmtReservationRelativeFR(
+        data?.reservationDate,
+        data?.reservationTime,
+      );
+
+      return {
+        title: "Réservation annulée par le client",
+        message: [name, guests, when].filter(Boolean).join(" • "),
+        link: buildPath("/dashboard/reservations", {
+          day: toDateKey(data?.reservationDate),
+          reservationId: data?._id || data?.reservationId || null,
+        }),
+      };
+    }
+
+    case "giftcard_purchased": {
+      const euros =
+        typeof data?.amount === "number"
+          ? `${(data.amount / 100).toFixed(2)}€`
+          : "";
+      return {
+        title: "Carte cadeau vendue",
+        message: `${euros ? `Montant ${euros}` : "Nouvel achat"}`.trim(),
+        link: buildPath("/dashboard/gift-cards", {
+          purchaseId: data?._id || data?.purchaseId || null,
+        }),
+      };
+    }
+
+    case "leave_request_created": {
+      const emp = data?.employeeName || "Un employé";
+      const startRaw = data?.start;
+      const endRaw = data?.end;
+      const typeRaw = (data?.type || "").toLowerCase();
+
+      const start = formatDateFR(startRaw);
+      const end = formatDateFR(endRaw);
+
+      let periodText = "";
+
+      if (startRaw && endRaw && !sameDay(startRaw, endRaw)) {
+        // 🔹 Plusieurs jours
+        periodText = `du ${start} au ${end}`;
+      } else if (startRaw) {
+        // 🔹 Un seul jour
+        if (typeRaw === "full") periodText = `${start} journée entière`;
+        else if (typeRaw === "morning") periodText = `${start} matin`;
+        else if (typeRaw === "afternoon") periodText = `${start} après-midi`;
+        else periodText = start;
+      }
+
+      return {
+        title: "Demande de congés",
+        message: `${emp} • ${periodText}`.replace(/\s+/g, " ").trim(),
+        link: buildPath("/dashboard/employees/planning/days-off", {
+          employeeId: data?.employeeId || null,
+        }),
+      };
+    }
+
+    case "takeaway_order_created": {
+      const name = [data?.customerFirstName, data?.customerLastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      const mode =
+        data?.fulfillmentMode === "delivery" ? "Livraison" : "Retrait";
+      const total =
+        typeof data?.total === "number" ? `${data.total.toFixed(2)}€` : "";
+
+      return {
+        title: "Nouvelle commande à emporter",
+        message: `${name || "Client"} • ${mode}${total ? ` • ${total}` : ""}`,
+        link: buildPath("/dashboard/webapp/take-away", {
+          day: toDateKey(data?.scheduledFor),
+          orderId: data?._id || data?.orderId || null,
+        }),
+      };
+    }
+
+    default:
+      return { title: "Notification", message: "Nouvel événement", link: "" };
+  }
+}
+
+function buildPushLink({
+  module,
+  type,
+  data,
+  fallbackLink,
+  notificationId = null,
+  restaurantId = null,
+}) {
+  if (module === "reservations") {
+    return buildPath("/dashboard/webapp/reservations", {
+      restaurantId,
+      day: toDateKey(data?.reservationDate),
+      reservationId: data?._id || data?.reservationId || null,
+      notificationId,
+    });
+  }
+
+  if (module === "gift_cards") {
+    return buildPath("/dashboard/webapp/gift-cards", {
+      restaurantId,
+      purchaseId: data?._id || data?.purchaseId || null,
+      notificationId,
+    });
+  }
+
+  if (module === "take_away") {
+    return buildPath("/dashboard/webapp/take-away", {
+      restaurantId,
+      day: toDateKey(data?.scheduledFor),
+      orderId: data?._id || data?.orderId || null,
+      notificationId,
+    });
+  }
+
+  if (module === "employees" && type === "leave_request_created") {
+    return buildPath("/dashboard/employees/planning/days-off", {
+      employeeId: data?.employeeId || null,
+    });
+  }
+
+  return fallbackLink || "/dashboard";
+}
+
+function buildNotificationMeta({ type, data }) {
+  switch (type) {
+    case "reservation_created":
+    case "reservation_waitlist_created":
+    case "reservation_customer_canceled":
+      return {
+        reservationId: data?._id || data?.reservationId || null,
+        reservationStatus: data?.status || null,
+        reservationDate: data?.reservationDate || null,
+        reservationTime: data?.reservationTime || null,
+        numberOfGuests: data?.numberOfGuests || null,
+        customerName: data?.customerName || null,
+        cancellationOrigin: data?.cancellationOrigin || null,
+      };
+
+    case "giftcard_purchased":
+      return {
+        purchaseId: data?._id || data?.purchaseId || null,
+        amount: data?.amount ?? null,
+        beneficiaryFirstName: data?.beneficiaryFirstName || null,
+        beneficiaryLastName: data?.beneficiaryLastName || null,
+      };
+
+    case "leave_request_created":
+      return {
+        employeeId: data?.employeeId || null,
+        employeeName: data?.employeeName || null,
+        start: data?.start || null,
+        end: data?.end || null,
+        leaveType: data?.type || null,
+      };
+
+    case "takeaway_order_created":
+      return {
+        orderId: data?._id || data?.orderId || null,
+        orderNumber: data?.orderNumber || null,
+        fulfillmentMode: data?.fulfillmentMode || null,
+        status: data?.status || null,
+        paymentStatus: data?.paymentStatus || null,
+        scheduledFor: data?.scheduledFor || null,
+        total: data?.total ?? null,
+      };
+
+    default:
+      return {};
+  }
+}
+
+async function createAndBroadcastNotification({
+  restaurantId,
+  module,
+  type,
+  data = {},
+  dedupeKey = null,
+}) {
+  const content = buildNotificationContent({ type, data });
+  const meta = buildNotificationMeta({ type, data });
+
+  let notif;
+  try {
+    notif = await NotificationModel.create({
+      restaurantId,
+      module,
+      type,
+      title: content.title,
+      message: content.message,
+      link: content.link,
+      data,
+      meta,
+      dedupeKey: dedupeKey || null,
+      read: false,
+      readAt: null,
+    });
+  } catch (error) {
+    if (dedupeKey && error?.code === 11000) {
+      return NotificationModel.findOne({ dedupeKey });
+    }
+    throw error;
+  }
+
+  const unreadBadgeCount = await NotificationModel.countDocuments({
+    restaurantId,
+    module,
+    read: false,
+  });
+
+  broadcastToRestaurant(String(restaurantId), {
+    type: "notification_created",
+    notification: {
+      _id: String(notif._id),
+      restaurantId: String(restaurantId),
+      module: notif.module,
+      type: notif.type,
+      title: notif.title,
+      message: notif.message,
+      link: notif.link,
+      data: notif.data,
+      meta: notif.meta,
+      read: notif.read,
+      createdAt: notif.createdAt,
+    },
+  });
+
+  // 🔔 Envoi push OS (web push)
+  try {
+    await sendPushToModule({
+      restaurantId,
+      module,
+      type,
+      title: content.title,
+      message: content.message,
+      link: buildPushLink({
+        restaurantId: String(restaurantId),
+        module,
+        type,
+        data,
+        fallbackLink: notif.link || "/dashboard",
+        notificationId: String(notif._id),
+      }),
+      data: {
+        ...meta,
+        notificationId: String(notif._id),
+        badgeCount: unreadBadgeCount,
+      },
+    });
+  } catch (err) {
+    console.error("WebPush error:", err?.message || err);
+  }
+
+  return notif;
+}
+
+module.exports = {
+  createAndBroadcastNotification,
+  buildNotificationContent,
+  buildPushLink,
+  buildNotificationMeta,
+};

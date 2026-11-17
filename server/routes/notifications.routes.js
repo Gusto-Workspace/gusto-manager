@@ -8,7 +8,7 @@ const {
 } = require("../middleware/authorize-restaurant-access");
 const NotificationModel = require("../models/notification.model");
 
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
 async function canAccessTakeAwayNotifications(req) {
   const restaurant = req.authorizedRestaurant;

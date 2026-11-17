@@ -4,7 +4,7 @@ const path = require("path");
 const {
   formatMonthsWithNumber,
   normalizeEarlyTermination,
-} = require("../contract-terms.service");
+} = require("../contracts/contract-terms.service");
 
 function text(value) {
   return value == null ? "" : String(value).trim();

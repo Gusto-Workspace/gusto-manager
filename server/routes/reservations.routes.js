@@ -20,43 +20,43 @@ const {
   buildReservationDateRange,
   enrichReservationWithCustomerSummary,
   getRestaurantReservationsList,
-} = require("../services/restaurant-reservations.service");
+} = require("../services/reservations/restaurant-reservations.service");
 
 // SSE BUS
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
 // SERVICE NOTIFS
 const {
   createAndBroadcastNotification,
-} = require("../services/notifications.service");
+} = require("../services/shared/notifications.service");
 
 // SERVICE MAILS RESERVATIONS
 const {
   sendReservationEmail,
   sendRestaurantNewPublicReservationEmail,
   sanitizeReservationEmailTemplatesInput,
-} = require("../services/reservations-mailer.service");
+} = require("../services/reservations/reservations-mailer.service");
 const {
   verifyReservationManageToken,
-} = require("../services/reservation-manage-token.service");
+} = require("../services/reservations/reservation-manage-token.service");
 
 // SERVICE CUSTOMERS
 const {
   upsertCustomer,
   onReservationCreated,
   onReservationStatusChanged,
-} = require("../services/customers.service");
-const { normalizeNamePart } = require("../services/name-normalization.service");
+} = require("../services/customers/customers.service");
+const { normalizeNamePart } = require("../services/shared/name-normalization.service");
 
 // ENCRYPTION
-const { decryptApiKey } = require("../services/encryption.service");
+const { decryptApiKey } = require("../services/shared/encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
-} = require("../services/reservation-bank-hold-metadata.service");
+} = require("../services/reservations/reservation-bank-hold-metadata.service");
 const {
   getCurrentReservationService,
   isPublicReservationBlockedByCurrentService,
-} = require("../services/reservation-service-closure.service");
+} = require("../services/reservations/reservation-service-closure.service");
 const {
   buildReservationDateTime,
   capPendingReservationDeadline,
@@ -65,19 +65,19 @@ const {
   isTimeWithinServiceRange,
   minutesFromHHmm,
   minutesFromServiceTime,
-} = require("../services/reservation-service-time.service");
+} = require("../services/reservations/reservation-service-time.service");
 const {
   decorateRestaurantEmployees,
-} = require("../services/employee-serialization.service");
+} = require("../services/employees/employee-serialization.service");
 const {
   QUICK_SLOT_CLOSURE_SOURCE,
   QuickSlotClosureError,
   buildQuickSlotClosureRanges,
   isDepartureCoveredByRange,
-} = require("../services/reservation-quick-slot-closure.service");
+} = require("../services/reservations/reservation-quick-slot-closure.service");
 const {
   isRestaurantExceptionallyClosed,
-} = require("../services/restaurant-exceptional-closures.service");
+} = require("../services/reservations/restaurant-exceptional-closures.service");
 
 const BANK_HOLD_IMMEDIATE_WINDOW_HOURS = 168; // 7 jours
 

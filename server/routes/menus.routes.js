@@ -6,7 +6,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const MenuModel = require("../models/menu.model");
 const {
   markCatalogSourcesDeleted,
-} = require("../services/take-away.service");
+} = require("../services/take-away/take-away.service");
 
 function buildCustomGroupRelations(group, dishesLength) {
   const totalRelations = Math.max((dishesLength || 0) - 1, 0);

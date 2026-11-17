@@ -10,7 +10,7 @@ const {
   finalizeGiftCardOrder,
   markGiftCardPaymentState,
   serializeGiftCardOrder,
-} = require("../services/gift-card-order.service");
+} = require("../services/gift-cards/gift-card-order.service");
 
 const router = express.Router();
 

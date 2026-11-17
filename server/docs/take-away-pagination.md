@@ -73,7 +73,7 @@ npm run test:take-away
 Depuis `client` :
 
 ```sh
-TZ=Europe/Paris node --test tests/take-away-pagination.test.js tests/take-away-visibility.test.js tests/take-away-order-details.test.js
+TZ=Europe/Paris node --test tests/take-away/take-away-pagination.test.js tests/take-away/take-away-visibility.test.js tests/take-away-order-details.test.js
 npm run build
 ```
 
@@ -99,9 +99,9 @@ HTTP local temporaire pour ses tests Express.
 - `server/routes/take-away.routes.js` : contrat de pagination compatible.
 - `server/models/take-away-order.model.js` : index additionnel.
 - `client/src/contexts/restaurant.context.js` : toutes les pages et réconciliation SSE.
-- `server/tests/take-away-pagination.test.js` : nouveaux tests de route.
-- `client/tests/take-away-pagination.test.js` : nouveaux tests du contexte et des deux interfaces.
-- `client/tests/take-away-visibility.test.js` : métadonnées ajoutées à la réponse simulée existante.
+- `server/tests/take-away/take-away-pagination.test.js` : nouveaux tests de route.
+- `client/tests/take-away/take-away-pagination.test.js` : nouveaux tests du contexte et des deux interfaces.
+- `client/tests/take-away/take-away-visibility.test.js` : métadonnées ajoutées à la réponse simulée existante.
 - `server/package.json` : ajout du test à la suite Take-away.
 - `server/docs/take-away-pagination.md` : ce contrat et compte rendu.
 

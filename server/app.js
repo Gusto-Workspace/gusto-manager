@@ -3,8 +3,8 @@ require("./services/cron-job/backup.service");
 require("./services/cron-job/customer-tags.service");
 require("./services/cron-job/reservation-reminders.service");
 require("./services/cron-job/sms-reminders.service");
-require("./services/cron-job/callsense-metering.service");
-require("./services/cron-job/callsense-onboarding.service");
+require("./services/callsense/cron/callsense-metering.service");
+require("./services/callsense/cron/callsense-onboarding.service");
 require("./services/cron-job/reservation-bank-hold-authorization.service");
 require("./services/cron-job/reservation-bank-hold-expiration.service");
 require("./services/cron-job/reservation-lifecycle.service");
@@ -15,7 +15,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const { mountSseRoute } = require("./services/sse-bus.service");
+const { mountSseRoute } = require("./services/shared/sse-bus.service");
 
 // APP
 const app = express();

@@ -1,0 +1,426 @@
+// services/customers.service.js
+const CustomerModel = require("../../models/customer.model");
+const { recomputeCustomerTagsForId } = require("./customer-tags.service");
+const {
+  cleanNamePart,
+  normalizeNamePart,
+} = require("../shared/name-normalization.service");
+
+function normEmail(v) {
+  const s = String(v || "")
+    .trim()
+    .toLowerCase();
+  return s || null;
+}
+
+function normPhone(v) {
+  const s = String(v || "").trim();
+  if (!s) return null;
+  const out = s.replace(/[^\d+]/g, "");
+  return out || null;
+}
+
+function normalizeReservationHistoryTime(value) {
+  return String(value || "")
+    .trim()
+    .replace(/h/i, ":");
+}
+
+function getReservationHistorySortValue(item) {
+  const dateValue = item?.reservationDate;
+  const timeValue = normalizeReservationHistoryTime(item?.reservationTime);
+  const datePart =
+    dateValue instanceof Date
+      ? dateValue.toISOString().slice(0, 10)
+      : String(dateValue || "").slice(0, 10);
+
+  if (!datePart) return 0;
+
+  const timestamp = new Date(
+    `${datePart}T${timeValue || "00:00"}:00`,
+  ).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function buildReservationHistoryItem(reservation, statusOverride = null) {
+  return {
+    reservationId: reservation._id,
+    reservationDate: reservation.reservationDate,
+    reservationTime: reservation.reservationTime,
+    numberOfGuests: reservation.numberOfGuests,
+    status: statusOverride || reservation.status,
+  };
+}
+
+async function upsertCustomerReservationHistory(
+  customerId,
+  reservation,
+  statusOverride = null,
+) {
+  if (!customerId || !reservation?._id) return;
+
+  const customer = await CustomerModel.findById(customerId)
+    .select("lastReservations")
+    .lean();
+
+  if (!customer) return;
+
+  const nextItem = buildReservationHistoryItem(reservation, statusOverride);
+  const nextReservationId = String(nextItem.reservationId || "");
+  const currentItems = Array.isArray(customer.lastReservations)
+    ? customer.lastReservations
+    : [];
+
+  const lastReservations = currentItems
+    .filter(
+      (item) =>
+        String(item?.reservationId || item?._id || "") !== nextReservationId,
+    )
+    .concat(nextItem)
+    .sort(
+      (a, b) =>
+        getReservationHistorySortValue(b) - getReservationHistorySortValue(a),
+    )
+    .slice(0, 5);
+
+  await CustomerModel.updateOne(
+    { _id: customerId },
+    { $set: { lastReservations } },
+  );
+}
+
+// ✅ Upsert “identité” + complète first/last si vides (sans écraser)
+async function upsertCustomer({
+  restaurantId,
+  firstName,
+  lastName,
+  email,
+  phone,
+}) {
+  const emailNorm = normEmail(email);
+  const phoneNorm = normPhone(phone);
+
+  const fn = normalizeNamePart(firstName);
+  const ln = normalizeNamePart(lastName);
+
+  // ⚠️ sans email ni tel => pas d'upsert (évite doublons)
+  if (!emailNorm && !phoneNorm) return null;
+
+  const now = new Date();
+
+  const update = {
+    $setOnInsert: {
+      restaurant_id: restaurantId,
+      createdAt: now,
+      // ✅ On initialise l'identité uniquement à la création de la fiche
+      ...(fn ? { firstName: fn } : {}),
+      ...(ln ? { lastName: ln } : {}),
+    },
+    $set: {
+      lastActivityAt: now,
+    },
+  };
+
+  // ✅ email: on peut le mettre à jour (et il reste unique)
+  if (emailNorm) {
+    const rawEmail = String(email || "").trim();
+    update.$set.email = rawEmail;
+    update.$set.emailNorm = emailNorm;
+  }
+
+  // ✅ téléphone: on ne l’écrase PAS si déjà présent
+  // -> on l'initialise seulement à la création
+  if (phoneNorm) {
+    const rawPhone = String(phone || "").trim();
+    update.$setOnInsert.phone = rawPhone;
+    update.$setOnInsert.phoneNorm = phoneNorm;
+  }
+
+  // ✅ Règle: 1 client = 1 email
+  const query = { restaurant_id: restaurantId };
+  if (emailNorm) query.emailNorm = emailNorm;
+  else query.phoneNorm = phoneNorm;
+
+  // 1) upsert standard
+  const doc = await CustomerModel.findOneAndUpdate(query, update, {
+    new: true,
+    upsert: true,
+  });
+
+  // 2) ✅ Compléter uniquement si vide (sans écraser)
+  const patch = {};
+
+  // prénom/nom: compléter si vide, sinon normaliser la valeur déjà stockée
+  const currentFirstName = cleanNamePart(doc.firstName);
+  const currentLastName = cleanNamePart(doc.lastName);
+  const normalizedCurrentFirstName = normalizeNamePart(currentFirstName);
+  const normalizedCurrentLastName = normalizeNamePart(currentLastName);
+
+  if (!currentFirstName && fn) patch.firstName = fn;
+  else if (
+    currentFirstName &&
+    normalizedCurrentFirstName !== currentFirstName
+  ) {
+    patch.firstName = normalizedCurrentFirstName;
+  }
+
+  if (!currentLastName && ln) patch.lastName = ln;
+  else if (currentLastName && normalizedCurrentLastName !== currentLastName) {
+    patch.lastName = normalizedCurrentLastName;
+  }
+
+  // téléphone (compléter si vide uniquement)
+  if (!normPhone(doc.phone) && phoneNorm) {
+    patch.phone = String(phone || "").trim();
+    patch.phoneNorm = phoneNorm;
+  }
+
+  if (Object.keys(patch).length) {
+    await CustomerModel.updateOne({ _id: doc._id }, { $set: patch });
+    require("../shared/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("../callsense/callsense-core.service").normalizePhone(doc.phone || phone)].filter(Boolean) });
+    return CustomerModel.findById(doc._id);
+  }
+
+  require("../shared/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("../callsense/callsense-core.service").normalizePhone(doc.phone)].filter(Boolean) });
+  return doc;
+}
+
+// ✅ Stats + mini-historique (réservation)
+async function onReservationCreated(customerId, reservation) {
+  if (!customerId) return;
+
+  const now = new Date();
+  await CustomerModel.updateOne(
+    { _id: customerId },
+    {
+      $inc: { "stats.reservationsTotal": 1 },
+      $set: {
+        lastReservationAt: reservation.reservationDate,
+        lastActivityAt: now,
+      },
+    },
+  );
+
+  await upsertCustomerReservationHistory(customerId, reservation);
+  await recomputeCustomerTagsForId(customerId, now);
+}
+
+// ✅ Quand le statut change (statistiques + historique)
+async function onReservationStatusChanged(
+  customerId,
+  reservation,
+  prevStatus,
+  nextStatus,
+) {
+  if (!customerId) return;
+
+  const inc = {};
+  if (prevStatus !== "Canceled" && nextStatus === "Canceled") {
+    inc["stats.reservationsCanceled"] = 1;
+  }
+  if (prevStatus === "Canceled" && nextStatus !== "Canceled") {
+    inc["stats.reservationsCanceled"] = -1;
+  }
+  if (prevStatus !== "NoShow" && nextStatus === "NoShow") {
+    inc["stats.reservationsNoShow"] = 1;
+  }
+  if (prevStatus === "NoShow" && nextStatus !== "NoShow") {
+    inc["stats.reservationsNoShow"] = -1;
+  }
+
+  const now = new Date();
+
+  const update = {
+    $set: { lastActivityAt: now },
+  };
+
+  if (Object.keys(inc).length) update.$inc = inc;
+
+  await CustomerModel.updateOne({ _id: customerId }, update);
+  await upsertCustomerReservationHistory(customerId, reservation, nextStatus);
+
+  // sécurité: jamais négatif
+  await CustomerModel.updateOne(
+    { _id: customerId, "stats.reservationsCanceled": { $lt: 0 } },
+    { $set: { "stats.reservationsCanceled": 0 } },
+  );
+  await CustomerModel.updateOne(
+    { _id: customerId, "stats.reservationsNoShow": { $lt: 0 } },
+    { $set: { "stats.reservationsNoShow": 0 } },
+  );
+
+  await recomputeCustomerTagsForId(customerId, now);
+}
+
+// ✅ Stats + mini-historique (gift purchase)
+async function onGiftPurchased(customerId, purchaseSubdoc) {
+  if (!customerId || !purchaseSubdoc?._id) return false;
+
+  const now = new Date();
+
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedGiftPurchaseIds: { $ne: purchaseSubdoc._id },
+    },
+    {
+      $inc: { "stats.giftCardsBought": 1 },
+      $set: {
+        lastGiftCardAt: purchaseSubdoc.created_at,
+        lastActivityAt: now,
+      },
+      $push: {
+        lastGiftPurchases: {
+          $each: [
+            {
+              purchaseId: purchaseSubdoc._id,
+              created_at: purchaseSubdoc.created_at,
+              amount: purchaseSubdoc.amount, // centimes (comme ton modèle gift purchase)
+              value: purchaseSubdoc.value, // euros si tu le stockes aussi
+              purchaseCode: purchaseSubdoc.purchaseCode || "",
+            },
+          ],
+          $slice: -30,
+        },
+      },
+      $addToSet: { processedGiftPurchaseIds: purchaseSubdoc._id },
+    },
+  );
+
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
+}
+
+async function onTakeAwayOrderCreated(customerId, order) {
+  if (!customerId || !order?._id) return false;
+
+  const now = new Date();
+
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedTakeAwayOrderIds: { $ne: order._id },
+    },
+    {
+      $inc: { "stats.takeAwayOrdersTotal": 1 },
+      $set: {
+        lastTakeAwayOrderAt: order.createdAt || now,
+        lastActivityAt: now,
+      },
+      $push: {
+        lastTakeAwayOrders: {
+          $each: [
+            {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              fulfillmentMode: order.fulfillmentMode,
+              scheduledFor: order.scheduledFor,
+              status: order.status,
+              paymentStatus: order.paymentStatus,
+              total:
+                order.remainingAmountCents == null
+                  ? order.total
+                  : order.remainingAmountCents / 100,
+              itemCount: (order.items || []).reduce(
+                (sum, item) =>
+                  sum +
+                  Math.max(
+                    0,
+                    Number(item?.quantity || 0) -
+                      Number(item?.refusedQuantity || 0),
+                  ),
+                0,
+              ),
+            },
+          ],
+          $slice: -30,
+        },
+      },
+      $addToSet: { processedTakeAwayOrderIds: order._id },
+    },
+  );
+
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
+}
+
+async function onTakeAwayOrderStatusChanged(
+  customerId,
+  order,
+  prevStatus,
+  nextStatus,
+  adjustmentId = "",
+) {
+  if (!customerId || !order?._id) return false;
+
+  const inc = {};
+  if (
+    prevStatus !== "canceled" &&
+    prevStatus !== "rejected" &&
+    (nextStatus === "canceled" || nextStatus === "rejected")
+  ) {
+    inc["stats.takeAwayOrdersCanceled"] = 1;
+  }
+
+  const now = new Date();
+  const eventKey = adjustmentId
+    ? `${String(order._id)}:adjustment:${adjustmentId}`
+    : `${String(order._id)}:${prevStatus}:${nextStatus}`;
+  const update = {
+    $set: { lastActivityAt: now },
+    $push: {
+      lastTakeAwayOrders: {
+        $each: [
+          {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            fulfillmentMode: order.fulfillmentMode,
+            scheduledFor: order.scheduledFor,
+            status: nextStatus,
+            paymentStatus: order.paymentStatus,
+            total:
+              order.remainingAmountCents == null
+                ? order.total
+                : order.remainingAmountCents / 100,
+            itemCount: (order.items || []).reduce(
+              (sum, item) =>
+                sum +
+                Math.max(
+                  0,
+                  Number(item?.quantity || 0) -
+                    Number(item?.refusedQuantity || 0),
+                ),
+              0,
+            ),
+          },
+        ],
+        $slice: -30,
+      },
+    },
+  };
+
+  if (Object.keys(inc).length) update.$inc = inc;
+  update.$addToSet = { processedTakeAwayStatusEvents: eventKey };
+
+  const result = await CustomerModel.updateOne(
+    {
+      _id: customerId,
+      processedTakeAwayStatusEvents: { $ne: eventKey },
+    },
+    update,
+  );
+  const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+  if (modified) await recomputeCustomerTagsForId(customerId, now);
+  return modified === 1;
+}
+
+module.exports = {
+  upsertCustomer,
+  onReservationCreated,
+  onReservationStatusChanged,
+  onGiftPurchased,
+  onTakeAwayOrderCreated,
+  onTakeAwayOrderStatusChanged,
+};
