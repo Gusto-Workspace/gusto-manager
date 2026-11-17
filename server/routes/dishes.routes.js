@@ -5,7 +5,7 @@ const router = express.Router();
 const RestaurantModel = require("../models/restaurant.model");
 const {
   markCatalogSourcesDeleted,
-} = require("../services/take-away.service");
+} = require("../services/take-away/take-away.service");
 
 // ADD A CATEGORY
 router.post(

@@ -6,7 +6,7 @@ const RestaurantModel = require("../../models/restaurant.model");
 const SmsJobModel = require("../../models/sms-job.model");
 const SmsUsagePeriodModel = require("../../models/sms-usage-period.model");
 const SmsDestinationPolicyModel = require("../../models/sms-destination-policy.model");
-const { findRestaurantSubscription } = require("../stripe-billing.service");
+const { findRestaurantSubscription } = require("../billing/stripe-billing.service");
 const {
   analyzeSingleSms,
   normalizeToGsm7,

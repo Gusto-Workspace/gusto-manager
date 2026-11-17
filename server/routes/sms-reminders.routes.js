@@ -21,19 +21,19 @@ const {
   smsDestinationPolicyIsUsable,
   syncAllFutureSmsJobs,
 } = require("../services/sms/sms-reminder.service");
-const { findRestaurantSubscription } = require("../services/stripe-billing.service");
+const { findRestaurantSubscription } = require("../services/billing/stripe-billing.service");
 const {
   SMS_ADDON_CODE,
   buildCatalogSelectionMetadata,
   buildSubscriptionItemUpdatePayload,
   buildSubscriptionSummary,
-} = require("../services/stripe-subscription-catalog.service");
+} = require("../services/billing/stripe-subscription-catalog.service");
 const {
   buildStripeCommercialSnapshot,
-} = require("../services/contract-commercial.service");
+} = require("../services/contracts/contract-commercial.service");
 const {
   finalizeSelfServiceAmendment,
-} = require("../services/contract-self-service.service");
+} = require("../services/contracts/contract-self-service.service");
 const {
   releaseGustoSmsDeactivationSchedule,
   scheduleSmsDeactivation,

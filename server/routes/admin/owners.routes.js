@@ -9,10 +9,10 @@ const OwnerModel = require("../../models/owner.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const {
   stripeCustomerUsedByAnyRestaurant,
-} = require("../../services/stripe-billing.service");
+} = require("../../services/billing/stripe-billing.service");
 const {
   revokeAllAccountSessions,
-} = require("../../services/account-session.service");
+} = require("../../services/shared/account-session.service");
 
 router.use("/admin", authenticateAdmin);
 

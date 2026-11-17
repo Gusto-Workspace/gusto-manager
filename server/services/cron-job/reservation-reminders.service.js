@@ -1,10 +1,10 @@
 const cron = require("node-cron");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
-const { sendReservationEmail } = require("../reservations-mailer.service");
+const { sendReservationEmail } = require("../reservations/reservations-mailer.service");
 const {
   createReservationManageToken,
-} = require("../reservation-manage-token.service");
+} = require("../reservations/reservation-manage-token.service");
 
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
 const BATCH_SIZE = 50;

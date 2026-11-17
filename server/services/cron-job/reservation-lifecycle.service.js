@@ -3,18 +3,18 @@ const Stripe = require("stripe");
 
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
-const { broadcastToRestaurant } = require("../sse-bus.service");
-const { onReservationStatusChanged } = require("../customers.service");
-const { decryptApiKey } = require("../encryption.service");
+const { broadcastToRestaurant } = require("../shared/sse-bus.service");
+const { onReservationStatusChanged } = require("../customers/customers.service");
+const { decryptApiKey } = require("../shared/encryption.service");
 const {
   buildReservationBankHoldStripeMetadata,
-} = require("../reservation-bank-hold-metadata.service");
+} = require("../reservations/reservation-bank-hold-metadata.service");
 const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
 const {
   buildReservationDateTime,
   getServiceBucketFromTime,
   isPendingReservationExpired,
-} = require("../reservation-service-time.service");
+} = require("../reservations/reservation-service-time.service");
 
 const DEFAULT_RESERVATION_DELETION_MINUTES = 6 * 30 * 24 * 60;
 const TERMINAL_STATUS_DATE_FIELDS = {

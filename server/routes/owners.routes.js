@@ -13,10 +13,10 @@ const OwnerModel = require("../models/owner.model");
 const RestaurantModel = require("../models/restaurant.model");
 const {
   stripeCustomerUsedByAnyRestaurant,
-} = require("../services/stripe-billing.service");
+} = require("../services/billing/stripe-billing.service");
 const {
   decorateRestaurantEmployees,
-} = require("../services/employee-serialization.service");
+} = require("../services/employees/employee-serialization.service");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
@@ -31,7 +31,7 @@ const {
   signAccountToken,
   stripJwtMetadata,
   validatePasswordChangeInput,
-} = require("../services/account-session.service");
+} = require("../services/shared/account-session.service");
 
 // ---------- CLOUDINARY / MULTER (pour owners) ----------
 cloudinary.config({

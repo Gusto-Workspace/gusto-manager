@@ -19,7 +19,7 @@ const {
   normalizeSessionVersion,
   signAccountToken,
   stripJwtMetadata,
-} = require("../services/account-session.service");
+} = require("../services/shared/account-session.service");
 
 // JWT
 const JWT_SECRET = process.env.JWT_SECRET;

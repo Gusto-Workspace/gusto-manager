@@ -95,5 +95,5 @@ source attribuable ne sont pas inclus dans ce rapport de ventes par module.
 Vérifications ciblées (depuis `server`, sans accès Stripe ou MongoDB réels) :
 
 ```sh
-TZ=Europe/Paris node --test tests/take-away-sales.test.js tests/take-away-sales-ui.test.js tests/dashboard-financials.test.js tests/dashboard-financial-routes.test.js tests/take-away-adjustments.test.js
+TZ=Europe/Paris node --test tests/take-away/take-away-sales.test.js tests/take-away/take-away-sales-ui.test.js tests/billing/dashboard-financials.test.js tests/billing/dashboard-financial-routes.test.js tests/take-away/take-away-adjustments.test.js
 ```

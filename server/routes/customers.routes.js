@@ -15,7 +15,7 @@ const RestaurantModel = require("../models/restaurant.model");
 const CustomerModel = require("../models/customer.model");
 const ReservationModel = require("../models/reservation.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
-const { isRestaurantOrderVisible } = require("../services/take-away-visibility.service");
+const { isRestaurantOrderVisible } = require("../services/take-away/take-away-visibility.service");
 
 router.use(
   "/restaurants/:id/customers",
@@ -538,7 +538,7 @@ router.put(
         return res.status(404).json({ message: "Customer not found" });
       }
 
-      const previousPhone = require("../services/callsense-core.service").normalizePhone(customer.phone);
+      const previousPhone = require("../services/callsense/callsense-core.service").normalizePhone(customer.phone);
       // update champs (sans forcer)
       if (typeof firstName === "string") customer.firstName = firstName;
       if (typeof lastName === "string") customer.lastName = lastName;
@@ -556,7 +556,7 @@ router.put(
 
       // pre-save recalc emailNorm/phoneNorm + index unique
       await customer.save();
-      require("../services/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [...new Set([previousPhone, require("../services/callsense-core.service").normalizePhone(customer.phone)].filter(Boolean))] });
+      require("../services/shared/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [...new Set([previousPhone, require("../services/callsense/callsense-core.service").normalizePhone(customer.phone)].filter(Boolean))] });
 
       return res.status(200).json({ customer: customer.toObject() });
     } catch (error) {
@@ -622,7 +622,7 @@ router.delete(
 
       // 3) supprimer la fiche
       await CustomerModel.deleteOne({ _id: customerId });
-      require("../services/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("../services/callsense-core.service").normalizePhone(customer.phone)].filter(Boolean) });
+      require("../services/shared/sse-bus.service").broadcastToRestaurant(String(restaurantId), { type: "callsense_customer_changed", restaurantId: String(restaurantId), phones: [require("../services/callsense/callsense-core.service").normalizePhone(customer.phone)].filter(Boolean) });
 
       return res.status(200).json({ ok: true });
     } catch (error) {

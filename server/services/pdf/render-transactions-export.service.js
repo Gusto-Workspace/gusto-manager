@@ -4,7 +4,7 @@ const {
   ZONE,
   MODULE_LABELS,
   summarize,
-} = require("../transaction-financials.service");
+} = require("../billing/transaction-financials.service");
 
 const C = {
   blue: "#131E36",

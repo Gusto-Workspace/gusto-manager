@@ -9,7 +9,7 @@ const RestaurantModel = require("../../models/restaurant.model");
 const DocumentModel = require("../../models/document.model");
 const {
   listAllStripeSubscriptions,
-} = require("../../services/stripe-admin.service");
+} = require("../../services/billing/stripe-admin.service");
 const {
   clearStaleMigratedFromSubscriptionId,
   ensureRestaurantStripeCustomer,
@@ -22,7 +22,7 @@ const {
   retrieveStripeCustomer,
   retrieveStripeSubscription,
   retrieveStripeSubscriptionOrNull,
-} = require("../../services/stripe-billing.service");
+} = require("../../services/billing/stripe-billing.service");
 const {
   SMS_ADDON_CODE,
   buildCatalogSelectionMetadata,
@@ -37,13 +37,13 @@ const {
   resolveCatalogSelection,
   selectionIncludesSms,
   selectionIncludesCallSense,
-} = require("../../services/stripe-subscription-catalog.service");
+} = require("../../services/billing/stripe-subscription-catalog.service");
 const {
   buildStripeCommercialSnapshot,
-} = require("../../services/contract-commercial.service");
+} = require("../../services/contracts/contract-commercial.service");
 const {
   prepareSubscriptionAmendment,
-} = require("../../services/contract-amendment.service");
+} = require("../../services/contracts/contract-amendment.service");
 
 router.use("/admin", authenticateAdmin);
 
@@ -104,7 +104,7 @@ async function assertCallSenseCustomer({ customerId, restaurantId, subscriptionI
   if (!customerIsDedicatedToRestaurant(customer, restaurantId) || await RestaurantModel.exists({ stripeCustomerId: customerId, _id: { $ne: restaurantId } })) {
     throw Object.assign(new Error("CallSense exige un client Stripe dédié à ce restaurant."), { statusCode: 409 });
   }
-  const offer = require("../../services/callsense-usage.service").offerIds();
+  const offer = require("../../services/callsense/callsense-usage.service").offerIds();
   let startingAfter;
   do {
     const page = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100, expand: ["data.items.data.price"], ...(startingAfter ? { starting_after: startingAfter } : {}) });
@@ -119,7 +119,10 @@ async function assertCallSenseCustomer({ customerId, restaurantId, subscriptionI
 }
 
 async function assertCallSenseRemovalSafe(subscription) {
-  const ids = require("../../services/callsense-usage.service").offerIds();
+  const ids = require("../../services/callsense/callsense-usage.service").offerIds();
+  // Without the configured prices the existing CallSense lines cannot be
+  // identified reliably, so a destructive change must not bypass its guards.
+  if (!ids.fixed || !ids.metered || !ids.meter) throw Object.assign(new Error("L'offre CallSense n'est pas configurée : modification d'abonnement bloquée."), { statusCode: 409 });
   if (!subscription.items?.data?.some((item) => [ids.fixed, ids.metered].includes(item.price?.id))) return;
   const restaurantId = normalizeString(subscription.metadata?.restaurantId);
   if (!restaurantId) throw Object.assign(new Error("Restaurant CallSense introuvable pour contrôler la consommation."), { statusCode: 409 });
@@ -1213,7 +1216,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
 
     if (existingSubscription) {
       if (restaurantId) {
-        await require("../../services/callsense-subscription-recovery.service").reconcileExistingCreation({ restaurantId, subscription: existingSubscription, stripe });
+        await require("../../services/callsense/callsense-subscription-recovery.service").reconcileExistingCreation({ restaurantId, subscription: existingSubscription, stripe });
       }
       return res.status(400).json({
         message: "subscriptions.add.errors.alreadyCreated",
@@ -1570,7 +1573,7 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
       });
     }
 
-    const cancellationIds = require("../../services/callsense-usage.service").offerIds();
+    const cancellationIds = require("../../services/callsense/callsense-usage.service").offerIds();
     if (subscription.items?.data?.some((item) => [cancellationIds.fixed, cancellationIds.metered].includes(item.price?.id)) &&
         String(req.user?.role || "").toLowerCase() !== "admin") return res.sendStatus(403);
 
@@ -2046,3 +2049,4 @@ module.exports.releaseGustoSmsDeactivationSchedule =
   releaseGustoSmsDeactivationSchedule;
 module.exports.scheduleSmsDeactivation = scheduleSmsDeactivation;
 module.exports.guardedCallSenseMutation = guardedCallSenseMutation;
+module.exports.assertCallSenseRemovalSafe = assertCallSenseRemovalSafe;

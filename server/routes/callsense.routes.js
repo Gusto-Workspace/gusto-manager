@@ -8,10 +8,10 @@ const { authorizeRestaurantAccess, userCanAccessRestaurant } = require("../middl
 const Config = require("../models/callsense/callsense-config.model");
 const Call = require("../models/callsense/callsense-call.model");
 const Restaurant = require("../models/restaurant.model");
-const { validateWebhook, normalizePhone } = require("../services/callsense-core.service");
-const { broadcastToRestaurant } = require("../services/sse-bus.service");
-const service = require("../services/callsense.service");
-const { encryptToken } = require("../services/callsense-secrets.service");
+const { validateWebhook, normalizePhone } = require("../services/callsense/callsense-core.service");
+const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
+const service = require("../services/callsense/callsense.service");
+const { encryptToken } = require("../services/callsense/callsense-secrets.service");
 const router = express.Router();
 router.use(require("./callsense-onboarding.routes"));
 
@@ -43,7 +43,7 @@ router.post("/callsense/voice", form, signature, async (req, res) => {
   if (!to || !/^CA[a-zA-Z0-9]+$/.test(body.CallSid || "")) return res.sendStatus(400);
   const config = await service.findRoute(body.AccountSid, to);
   if (!config) return res.sendStatus(404);
-  const drill = require("../services/callsense-fallback-drill.service");
+  const drill = require("../services/callsense/callsense-fallback-drill.service");
   const candidate = await drill.mode(config);
   const scenario = candidate && await drill.triggered(config, candidate.scenario) && Date.now() < candidate.expiresAt ? candidate.scenario : null;
   if (scenario === "http") return res.sendStatus(500);
@@ -106,7 +106,7 @@ router.put("/admin/restaurants/:restaurantId/callsense", authenticateAdmin, requ
     const hasStoredToken = current?.accountSid === input.accountSid && Boolean(current.encryptedAuthToken);
     if (req.body.authToken !== undefined && (typeof req.body.authToken !== "string" || !req.body.authToken.trim() || req.body.authToken.length > 256)) return res.status(400).json({ message: "Secret invalide" });
     const suppliedToken = typeof req.body.authToken === "string" && req.body.authToken.trim() ? req.body.authToken : "";
-    if (!hasStoredToken && !suppliedToken && !service.accountToken(input.accountSid)) return res.status(400).json({ message: "Compte Twilio non configuré" });
+    if (!hasStoredToken && !suppliedToken) return res.status(400).json({ message: "Compte Twilio non configuré" });
     const update = { $set: input, $push: { securityEvents: { $each: [{ action: "configuration_updated", actorId: String(req.user?._id || req.user?.id || ""), at: new Date() }], $slice: -100 } } };
     if (suppliedToken) update.$set.encryptedAuthToken = encryptToken(suppliedToken, restaurantId, input.accountSid);
     else if (current?.accountSid !== input.accountSid) update.$unset = { encryptedAuthToken: 1 };
@@ -121,7 +121,7 @@ router.get("/admin/restaurants/:restaurantId/callsense/usage", authenticateAdmin
   try {
     if (!mongoose.isValidObjectId(req.params.restaurantId)) return res.sendStatus(400);
     if (!(await Config.exists({ restaurantId: req.params.restaurantId }))) return res.sendStatus(404);
-    return res.json({ usage: await require("../services/callsense-usage.service").getCurrentUsage(req.params.restaurantId) });
+    return res.json({ usage: await require("../services/callsense/callsense-usage.service").getCurrentUsage(req.params.restaurantId) });
   } catch (_) { return res.status(503).json({ message: "Consommation indisponible, réessayez plus tard." }); }
 });
 router.get("/admin/restaurants/:restaurantId/callsense/subscription-recovery", authenticateAdmin, requireAdminRole, async (req, res) => {
@@ -130,7 +130,7 @@ router.get("/admin/restaurants/:restaurantId/callsense/subscription-recovery", a
     if (!mongoose.isValidObjectId(restaurantId)) return res.sendStatus(400);
     const operation = await require("../models/callsense/callsense-subscription-operation.model").findById(restaurantId).lean();
     if (!operation) return res.json({ pending: false });
-    const { subscription } = await require("../services/stripe-billing.service").findRestaurantSubscription({ restaurantId });
+    const { subscription } = await require("../services/billing/stripe-billing.service").findRestaurantSubscription({ restaurantId });
     return res.json({ pending: true, state: operation.state, kind: operation.kind, startedAt: operation.startedAt,
       subscription: subscription ? { id: subscription.id, status: subscription.status } : null });
   } catch (_) { return res.status(503).json({ message: "Vérification Stripe indisponible." }); }
@@ -142,7 +142,7 @@ router.post("/admin/restaurants/:restaurantId/callsense/subscription-recovery", 
     const Operation = require("../models/callsense/callsense-subscription-operation.model");
     const operation = await Operation.findById(restaurantId).lean();
     if (!operation || Date.now() - new Date(operation.startedAt).getTime() < 120000) return res.status(409).json({ message: "Aucune opération ancienne à débloquer." });
-    const { subscription } = await require("../services/stripe-billing.service").findRestaurantSubscription({ restaurantId });
+    const { subscription } = await require("../services/billing/stripe-billing.service").findRestaurantSubscription({ restaurantId });
     const phrase = subscription ? "JE CONFIRME LA VERIFICATION STRIPE" : "JE CONFIRME ABSENCE STRIPE";
     if (req.body.acknowledgement !== phrase) return res.status(400).json({ message: "Confirmation adaptée au résultat Stripe requise." });
     await require("../models/callsense/callsense-billing-audit.model").create({ restaurantId, action: "subscription_recovery_unlocked",
@@ -213,7 +213,7 @@ router.post("/admin/restaurants/:restaurantId/callsense/metering/:callId/confirm
       return res.json({ ok: true });
     }
     if (!entry || entry.state !== "review" || entry.lastError !== "delai_idempotence_depasse") return res.status(409).json({ message: "Aucun envoi expiré correspondant à confirmer." });
-    const comparison = await require("../services/callsense-metering.service").reconcilePeriod(restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
+    const comparison = await require("../services/callsense/callsense-metering.service").reconcilePeriod(restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
     if (!comparison.available || comparison.pending !== 1 || new Date(entry.occurredAt) < new Date(comparison.from) ||
         new Date(entry.occurredAt) >= new Date(comparison.until) || comparison.stripeMinutes !== comparison.reportedMinutes + entry.minutes) {
       return res.status(409).json({ message: "Le rapprochement ne permet pas d'isoler cet événement ; vérifiez la facture et Stripe manuellement." });
@@ -229,14 +229,14 @@ router.post("/admin/restaurants/:restaurantId/callsense/metering/:callId/confirm
 router.get("/admin/restaurants/:restaurantId/callsense/metering/reconciliation", authenticateAdmin, requireAdminRole, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.restaurantId)) return res.sendStatus(400);
-    const result = await require("../services/callsense-metering.service").reconcilePeriod(req.params.restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
+    const result = await require("../services/callsense/callsense-metering.service").reconcilePeriod(req.params.restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
     return res.json(result);
   } catch (_) { return res.status(503).json({ message: "Rapprochement Stripe indisponible." }); }
 });
 router.get("/admin/restaurants/:restaurantId/callsense/metering/twilio-reconciliation", authenticateAdmin, requireAdminRole, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.restaurantId)) return res.sendStatus(400);
-    const result = await require("../services/callsense-metering.service").inspectTwilioPeriod(req.params.restaurantId,
+    const result = await require("../services/callsense/callsense-metering.service").inspectTwilioPeriod(req.params.restaurantId,
       { twilio, start: req.query.start, end: req.query.end });
     return res.json(result);
   } catch (_) { return res.status(503).json({ message: "Comparaison Twilio indisponible." }); }
@@ -247,7 +247,7 @@ router.post("/admin/restaurants/:restaurantId/callsense/metering/recover-twilio-
     const parentSid = req.body?.callSid;
     if (!mongoose.isValidObjectId(restaurantId) || !/^CA[0-9a-fA-F]{32}$/.test(parentSid || "")) return res.sendStatus(400);
     if (req.body.acknowledgement !== "JE CONFIRME RECUPERATION APPEL") return res.status(400).json({ message: "Confirmation explicite requise." });
-    const result = await require("../services/callsense-metering.service").recoverMissingCall(restaurantId, parentSid,
+    const result = await require("../services/callsense/callsense-metering.service").recoverMissingCall(restaurantId, parentSid,
       { twilio });
     await Config.updateOne({ restaurantId }, { $push: { securityEvents: { $each: [{ action: "twilio_call_recovered", actorId: String(req.user?._id || req.user?.id || ""), at: new Date() }], $slice: -100 } } });
     return res.json(result);
@@ -268,7 +268,7 @@ router.put("/admin/restaurants/:restaurantId/callsense/metering", authenticateAd
       const Consumption = require("../models/callsense/callsense-consumption.model");
       const indexes = await Consumption.collection.indexes();
       if (!["callId", "identifier"].every((key) => indexes.some((index) => index.unique && index.key[key] === 1 && Object.keys(index.key).length === 1))) return res.status(409).json({ message: "Index uniques du registre absents." });
-      await require("../services/callsense-metering.service").billingContext(restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
+      await require("../services/callsense/callsense-metering.service").billingContext(restaurantId, require("stripe")(process.env.STRIPE_API_SECRET_KEY));
     }
     const at = new Date();
     const updated = await Config.findOneAndUpdate({ _id: config._id, "commercial.meteringEnabled": { $ne: enabled }, ...(enabled && config.managedByOnboarding ? { provisioningStatus: "active", managedByOnboarding: true } : {}) }, {
@@ -327,10 +327,10 @@ router.get("/restaurants/:restaurantId/callsense/usage", authenticateToken,
       const config = await Config.findOne({ restaurantId: req.params.restaurantId }).select("twilioNumber enabled").lean();
       if (!config) return res.json({ configured: false, enabled: false });
       if (req.query?.month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month)) return res.status(400).json({ message: "Période invalide." });
-      const telephone = await require("../services/callsense-usage.service").getTelephoneStats(req.params.restaurantId, req.query?.month);
+      const telephone = await require("../services/callsense/callsense-usage.service").getTelephoneStats(req.params.restaurantId, req.query?.month);
       if (req.query?.telephoneOnly === "1") return res.json({ configured: true, enabled: config.enabled === true, twilioNumber: config.twilioNumber || null, telephone });
       // Keep the technical status visible if Stripe is temporarily unavailable.
-      const usage = await require("../services/callsense-usage.service").getCurrentUsage(req.params.restaurantId)
+      const usage = await require("../services/callsense/callsense-usage.service").getCurrentUsage(req.params.restaurantId)
         .catch(() => ({ available: false, reason: "consommation_indisponible" }));
       return res.json({ configured: true, enabled: config.enabled === true, twilioNumber: config.twilioNumber || null, telephone, usage });
     } catch (_) { return res.status(503).json({ message: "Consommation indisponible, réessayez plus tard." }); }

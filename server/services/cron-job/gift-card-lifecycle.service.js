@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 
 const RestaurantModel = require("../../models/restaurant.model");
-const { applyGiftCardLifecycle } = require("../gift-card-lifecycle.service");
+const { applyGiftCardLifecycle } = require("../gift-cards/gift-card-lifecycle.service");
 
 async function runGiftCardLifecycleCron() {
   const restaurants = await RestaurantModel.find({

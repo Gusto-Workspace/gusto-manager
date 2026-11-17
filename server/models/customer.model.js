@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { normalizeNamePart } = require("../services/name-normalization.service");
+const { normalizeNamePart } = require("../services/shared/name-normalization.service");
 
 function normEmail(v) {
   const s = String(v || "")

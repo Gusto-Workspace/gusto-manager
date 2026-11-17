@@ -6,11 +6,11 @@ const { requireAdminRole } = require("../middleware/authenticate-admin");
 const Restaurant = require("../models/restaurant.model");
 const Config = require("../models/callsense/callsense-config.model");
 const Draft = require("../models/callsense/callsense-onboarding.model");
-const service = require("../services/callsense-onboarding.service");
-const provisioning = require("../services/callsense-provisioning.service");
-const fallback = require("../services/callsense-fallback.service");
-const recovery = require("../services/callsense-recovery.service");
-const { currentStep } = require("../services/callsense-onboarding-progress.service");
+const service = require("../services/callsense/callsense-onboarding.service");
+const provisioning = require("../services/callsense/callsense-provisioning.service");
+const fallback = require("../services/callsense/callsense-fallback.service");
+const recovery = require("../services/callsense/callsense-recovery.service");
+const { currentStep } = require("../services/callsense/callsense-onboarding-progress.service");
 const router = express.Router();
 
 router.use("/admin/restaurants/:restaurantId/callsense-onboarding", authenticateAdmin, requireAdminRole, async (req, res, next) => {
@@ -72,8 +72,8 @@ router.get(`${base}/live-compliance`, async (req, res) => {
     const config = await Config.findOne({ restaurantId: req.params.restaurantId }).select("+encryptedAuthToken").lean();
     if (!config?.accountSid || !config.twilioNumber) return res.sendStatus(404);
     const token = config.encryptedAuthToken
-      ? require("../services/callsense-secrets.service").decryptToken(config.encryptedAuthToken, String(config.restaurantId), config.accountSid)
-      : require("../services/callsense.service").accountToken(config.accountSid);
+      ? require("../services/callsense/callsense-secrets.service").decryptToken(config.encryptedAuthToken, String(config.restaurantId), config.accountSid)
+      : "";
     if (!token) throw new Error("missing credentials");
     const client = require("twilio")(config.accountSid, token);
     const numbers = await client.incomingPhoneNumbers.list({ phoneNumber: config.twilioNumber, limit: 2 });
@@ -180,7 +180,7 @@ router.post(`${base}/technical-finalize`, async (req, res) => {
   catch (err) { failure(res, err); }
 });
 router.post(`${base}/automation`, async (req, res) => {
-  try { res.json(await provisioning.runOnboarding(req.params.restaurantId, String(req.user.id), { confirm: req.body.confirm, maxAmount: req.body.maxAmount, currency: req.body.currency, sharedCloneConsent: req.body.sharedCloneConsent, functionConsent: req.body.functionConsent, pilotPurchaseConfirmed: req.body.confirm === true })); }
+  try { res.json(await provisioning.runOnboarding(req.params.restaurantId, String(req.user.id), { confirm: req.body.confirm, maxAmount: req.body.maxAmount, currency: req.body.currency, sharedCloneConsent: req.body.sharedCloneConsent, functionConsent: req.body.functionConsent })); }
   catch (err) { failure(res, err); }
 });
 router.get(`${base}/addresses`, async (req, res) => {
@@ -208,7 +208,7 @@ router.put(`${base}/checklist`, async (req, res) => {
     if (req.body.checklist.fallbackHttpFailures && !progressDraft?.checklist?.fallbackHttpFailures && ["http", "invalid", "timeout"].some(key => progressDraft?.fallbackDrill?.results?.[key] !== true)) return res.status(409).json({ message: "Confirmez les trois scénarios de secours et le retour à la normale avant cette validation." });
     if (config?.provisioningStatus === "active") {
       const current = await Draft.findOne({ restaurantId }).select("forwardingScenario terminalType").lean();
-      if (require("../services/callsense-checklist.service").requiredChecklistFields(current).some(name => !req.body.checklist[name])) return res.status(409).json({ message: "Suspendez le service ou repassez en test avant de retirer une validation" });
+      if (require("../services/callsense/callsense-checklist.service").requiredChecklistFields(current).some(name => !req.body.checklist[name])) return res.status(409).json({ message: "Suspendez le service ou repassez en test avant de retirer une validation" });
     }
     const filter = { restaurantId, activationOperation: { $ne: "pending" }, webhookOperation: { $ne: "pending" } };
     if (req.body.checklist.fallbackTest) {
@@ -241,7 +241,7 @@ router.post(`${base}/fallback-probe`, async (req, res) => {
     let authToken;
     if (draft.fallbackFunction?.url === req.body.fallbackUrl) {
       const context = await service.draftClient(restaurantId);
-      authToken = require("../services/callsense-secrets.service").decryptToken(context.draft.encryptedAuthToken, String(restaurantId), draft.accountSid);
+      authToken = require("../services/callsense/callsense-secrets.service").decryptToken(context.draft.encryptedAuthToken, String(restaurantId), draft.accountSid);
     }
     const result = await fallback.probe(draft, req.body.fallbackUrl, { authToken });
     if (config?.enabled && draft.voiceFallbackUrl && draft.voiceFallbackUrl !== result.url) return res.status(409).json({ message: "Suspendez le service avant de changer le secours" });
@@ -276,15 +276,15 @@ router.post(`${base}/fallback-verification`, async (req, res) => {
   } catch (err) { failure(res, err); }
 });
 router.post(`${base}/fallback-drill/start`, async (req, res) => {
-  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense-fallback-drill.service").start(req.params.restaurantId, String(req.user.id), { scenario: req.body.scenario, confirm: req.body.confirm })); }
+  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense/callsense-fallback-drill.service").start(req.params.restaurantId, String(req.user.id), { scenario: req.body.scenario, confirm: req.body.confirm })); }
   catch (err) { failure(res, err); }
 });
 router.post(`${base}/fallback-drill/stop`, async (req, res) => {
-  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense-fallback-drill.service").stop(req.params.restaurantId, String(req.user.id), { confirm: req.body.confirm })); }
+  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense/callsense-fallback-drill.service").stop(req.params.restaurantId, String(req.user.id), { confirm: req.body.confirm })); }
   catch (err) { failure(res, err); }
 });
 router.post(`${base}/fallback-drill/confirm`, async (req, res) => {
-  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense-fallback-drill.service").confirm(req.params.restaurantId, String(req.user.id), { fallbackWorked: req.body.fallbackWorked, normalCallWorked: req.body.normalCallWorked })); }
+  try { res.set("Cache-Control", "no-store"); res.json(await require("../services/callsense/callsense-fallback-drill.service").confirm(req.params.restaurantId, String(req.user.id), { fallbackWorked: req.body.fallbackWorked, normalCallWorked: req.body.normalCallWorked })); }
   catch (err) { failure(res, err); }
 });
 router.post(`${base}/fallback-test-routing`, async (req, res) => {

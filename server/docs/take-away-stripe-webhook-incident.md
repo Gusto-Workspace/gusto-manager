@@ -101,13 +101,13 @@ Une erreur de base, de relecture Stripe ou de traitement ne donne jamais 2xx.
 Backend `gusto-manager/server/` :
 
 - `models/take-away-stripe-event.model.js` (nouveau journal).
-- `services/take-away-stripe-events.service.js` (réception idempotente et relecture).
+- `services/take-away/take-away-stripe-events.service.js` (réception idempotente et relecture).
 - `routes/take-away.routes.js` (raccordement et diagnostics).
-- `models/take-away-order.model.js`, `services/take-away.service.js`
+- `models/take-away-order.model.js`, `services/take-away/take-away.service.js`
   (protection des états et reprise des effets).
-- `services/take-away-mailer.service.js` (envois incertains).
-- `tests/take-away-stripe-events.test.js`, `tests/take-away-security.test.js`,
-  `tests/take-away-reliability.test.js`, `package.json` (tests et commande de test).
+- `services/take-away/take-away-mailer.service.js` (envois incertains).
+- `tests/take-away/take-away-stripe-events.test.js`, `tests/take-away/take-away-security.test.js`,
+  `tests/take-away/take-away-reliability.test.js`, `package.json` (tests et commande de test).
 
 Site `clients/les-capuccins/client/` :
 
@@ -325,8 +325,8 @@ ciblées au parcours de paiement et un nouveau build.
 Commandes exécutées dans `server/` :
 
 ```sh
-TZ=Europe/Paris node --test --test-name-pattern='preflight:|signed success event|failed and canceled|late failures|canceling a paid order' tests/take-away-security.test.js
-TZ=Europe/Paris node --test --test-name-pattern='repeated/out-of-order|automatic acceptance still|email failures do not undo' tests/take-away-adjustments.test.js
+TZ=Europe/Paris node --test --test-name-pattern='preflight:|signed success event|failed and canceled|late failures|canceling a paid order' tests/take-away/take-away-security.test.js
+TZ=Europe/Paris node --test --test-name-pattern='repeated/out-of-order|automatic acceptance still|email failures do not undo' tests/take-away/take-away-adjustments.test.js
 ```
 
 Fichiers supplémentaires de ce prévol : modèle et service Take-away, tests de
@@ -343,11 +343,11 @@ documents existants. Le journal ne stocke ni payload Stripe ni secret.
    Le résultat doit conserver les réglages actuels de `main` :
    - `server/app.js` : connexion `CONNECTION_STRING`, pas `CONNECTION_STRING_TEST` ;
    - `server/app.js` : origines CORS de production de tous les restaurants ;
-   - `server/services/sse-bus.service.js` : origine `APP_URL`, pas `localhost:8002`.
+   - `server/services/shared/sse-bus.service.js` : origine `APP_URL`, pas `localhost:8002`.
    Ce ne sont pas des modifications du correctif. Une copie globale des fichiers
    de développement ferait courir un risque réel aux autres restaurants.
    Pour examiner la différence sans changer de branche :
-   `git diff main -- server/app.js server/services/sse-bus.service.js`.
+   `git diff main -- server/app.js server/services/shared/sse-bus.service.js`.
    Vérifier les SHA réellement déployés et les déclencheurs automatiques Render/
    Vercel avant de publier les commits, pour maîtriser l'ordre de livraison.
 2. **Confirmer les cibles et l'environnement en privé.** Render : branche `main`,
@@ -576,8 +576,8 @@ prévol et ses non-régressions sont détaillés dans la section précédente.
 
 ```sh
 # Dans gusto-manager/server : services et route réelle, dépendances simulées
-TZ=Europe/Paris node --test --test-name-pattern='payment audit:' tests/take-away-security.test.js tests/take-away-adjustments.test.js tests/take-away-stripe-events.test.js
-TZ=Europe/Paris node --test --test-name-pattern='événement initial|crash avant job|remboursement confirmé séparé|mutation de statut' tests/take-away-sms.test.js
+TZ=Europe/Paris node --test --test-name-pattern='payment audit:' tests/take-away/take-away-security.test.js tests/take-away/take-away-adjustments.test.js tests/take-away/take-away-stripe-events.test.js
+TZ=Europe/Paris node --test --test-name-pattern='événement initial|crash avant job|remboursement confirmé séparé|mutation de statut' tests/take-away/take-away-sms.test.js
 # Dans clients/les-capuccins/client : états affichés et compilation Next
 npm run test:take-away-payment
 npm run build

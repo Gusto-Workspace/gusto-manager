@@ -4,7 +4,7 @@ const router = express.Router();
 const authenticateAdmin = require("../../middleware/authenticate-admin");
 const OwnerModel = require("../../models/owner.model");
 const RestaurantModel = require("../../models/restaurant.model");
-const { listAllStripeInvoices } = require("../../services/stripe-admin.service");
+const { listAllStripeInvoices } = require("../../services/billing/stripe-admin.service");
 
 router.use("/admin", authenticateAdmin);
 

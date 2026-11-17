@@ -1,6 +1,6 @@
 const cron = require("node-cron");
 
-const { recomputeCustomerTags } = require("../customer-tags.service");
+const { recomputeCustomerTags } = require("../customers/customer-tags.service");
 
 async function runCustomerTagsRefresh() {
   const result = await recomputeCustomerTags();
