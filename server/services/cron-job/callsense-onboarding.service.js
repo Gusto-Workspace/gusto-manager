@@ -13,7 +13,7 @@ async function run({ now = () => new Date(), runOnboarding = provisioning.runOnb
     const { actorId, resumeMode, maxAmount, currency } = claimed.automation;
     try {
       if (resumeMode === "technical") await startTechnical(String(claimed.restaurantId), actorId, { confirm: true });
-      else await runOnboarding(String(claimed.restaurantId), actorId, { confirm: true, maxAmount, currency });
+      else await runOnboarding(String(claimed.restaurantId), actorId, { confirm: true, maxAmount, currency, resume: true });
     } catch (_) {
       await Draft.updateOne({ _id: claimed._id, "automation.status": "running" }, { $set: { "automation.status": "error", "automation.message": "Reprise interrompue : vérifiez le dossier avant de continuer." } });
     }

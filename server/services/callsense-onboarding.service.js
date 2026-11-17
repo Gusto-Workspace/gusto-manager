@@ -42,7 +42,10 @@ function clean(draft) {
 async function draftClient(restaurantId, makeTwilio = twilio) {
   const draft = await Draft.findOne({ restaurantId }).select("+encryptedAuthToken").lean();
   if (!draft?.accountSid || !draft.encryptedAuthToken) throw error("Sous-compte non configuré", 409);
-  return { draft, client: makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid)) };
+  const client = makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid));
+  try { await require("./callsense-account-status.service").requireActiveAccount(client, draft.accountSid); }
+  catch (_) { throw error("Statut du sous-compte impossible à confirmer : vérification nécessaire", 409); }
+  return { draft, client };
 }
 async function bundleCompliance(client, sid, accountSid) {
   if (!sid) return null;
@@ -64,7 +67,7 @@ async function inspectCompliance(restaurantId, { makeTwilio = twilio } = {}) {
 async function evaluateIndividualBundle(restaurantId, { confirm, makeTwilio = twilio, getDraftClient = draftClient } = {}) {
   if (confirm !== true) throw error("Confirmation de l’évaluation requise", 400);
   const { draft, client } = await getDraftClient(restaurantId, makeTwilio);
-  if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw error("Dossier partagé interdit : un dossier individuel est requis", 409);
+  if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw error("Dossier partagé interdit : un dossier individuel est requis", 409);
   if (!/^BU[0-9a-f]{32}$/i.test(draft.regulatoryBundleSid || "")) throw error("Dossier réglementaire individuel requis", 409);
   const api = client.numbers.v2.regulatoryCompliance;
   const bundle = await api.bundles(draft.regulatoryBundleSid).fetch();
@@ -293,7 +296,7 @@ async function rejectedBundleDetails(restaurantId, { makeTwilio = twilio, getDra
   if (await Config.exists({ restaurantId })) throw error("Installation existante protégée", 409);
   const { draft, client } = await getDraftClient(restaurantId, makeTwilio);
   const saved = draft.regulatorySubmission;
-  if (draft.bundleCloneOperation === "completed" || !saved?.bundleSid || saved.bundleSid !== draft.regulatoryBundleSid || saved.bundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw error("Dossier individuel créé par cet assistant requis", 409);
+  if (draft.bundleCloneOperation === "completed" || !saved?.bundleSid || saved.bundleSid !== draft.regulatoryBundleSid) throw error("Dossier individuel créé par cet assistant requis", 409);
   const api = client.numbers.v2.regulatoryCompliance;
   const bundle = await api.bundles(saved.bundleSid).fetch();
   if (bundle.sid !== saved.bundleSid || bundle.accountSid !== draft.accountSid || bundle.status !== "twilio-rejected" || bundle.regulationSid !== saved.regulationSid) throw error("Dossier refusé non vérifié", 409);
@@ -314,7 +317,7 @@ async function resubmitRejectedBundle(restaurantId, actorId, { confirm, makeTwil
   if (confirm !== true) throw error("Confirmation explicite requise", 400);
   if (await Config.exists({ restaurantId })) throw error("Installation existante protégée", 409);
   const { draft, client } = await getDraftClient(restaurantId, makeTwilio);
-  if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw error("Dossier individuel requis", 409);
+  if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw error("Dossier individuel requis", 409);
   const compliance = await bundleCompliance(client, draft.regulatoryBundleSid, draft.accountSid);
   if (draft.regulatoryResubmission?.state === "uncertain" && draft.regulatoryResubmission.bundleSid === draft.regulatoryBundleSid && compliance?.compatible && ["pending-review", "in-review", "twilio-approved"].includes(compliance.status)) {
     const reconciled = await Draft.findOneAndUpdate({ _id: draft._id, accountSid: draft.accountSid, regulatoryBundleSid: draft.regulatoryBundleSid, "regulatoryResubmission.state": "uncertain", "regulatoryResubmission.attemptId": draft.regulatoryResubmission.attemptId, "regulatoryResubmission.bundleSid": draft.regulatoryBundleSid }, { $set: { "regulatoryResubmission.state": "completed", "regulatorySubmission.state": "submitted", "regulatorySubmission.phase": "submitted" }, $push: { audit: { action: "regulatory_resubmission_reconciled", actorId, at: new Date() } } }, { new: true });
@@ -390,7 +393,7 @@ async function associateApprovedBundle(restaurantId, actorId, { confirm, migrate
     const restaurant = await Restaurant.findById(restaurantId).select("name").lean();
     if (!restaurant?.name || restaurant.name.trim().toLowerCase().replace(/’/g, "'") === "l'atelier des saveurs") throw error("Installation historique protégée", 409);
   }
-  if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw error("Dossier individuel requis", 409);
+  if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw error("Dossier individuel requis", 409);
   if (!/^PN[0-9a-f]{32}$/i.test(draft.phoneNumberSid || "") || frenchNumberType(draft.twilioNumber) !== "local") throw error("Numéro local associé requis", 409);
   const bundle = await bundleCompliance(client, draft.regulatoryBundleSid, draft.accountSid);
   if (!bundle || bundle.status !== "twilio-approved" || !bundle.compatible || bundle.numberType !== frenchNumberType(draft.twilioNumber)) throw error("Dossier individuel compatible et approuvé requis", 409);
@@ -492,7 +495,7 @@ async function buyNumber(restaurantId, actorId, { phoneNumber, numberType, amoun
   if (frenchNumberType(phoneNumber) !== "local" || numberType !== "local") throw error("Seuls les numéros locaux français 01 à 05 sont compatibles avec ce parcours", 409);
   if (await Config.exists({ restaurantId })) throw error("Installation existante protégée", 409);
   const { draft, client } = await draftClient(restaurantId, makeTwilio);
-  if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw error("Dossier réglementaire partagé : un dossier propre au restaurant est requis avant l’achat", 409);
+  if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw error("Dossier réglementaire partagé : un dossier propre au restaurant est requis avant l’achat", 409);
   const quote = await quoteNumbers(restaurantId, { makeTwilio, phoneNumber });
   if (!draft.regulatoryBundleSid || quote.bundle?.sid !== draft.regulatoryBundleSid || quote.bundle?.status !== "twilio-approved" || quote.bundle?.compatible !== true || quote.bundle?.numberType !== frenchNumberType(phoneNumber)) throw error("Dossier réglementaire approuvé et compatible requis avant achat", 409);
   const selected = quote.numbers.find((item) => item.phoneNumber === phoneNumber && item.capabilities?.voice === true);
@@ -635,6 +638,7 @@ async function createDomain(restaurantId, actorId, { confirm, makeTwilio = twili
   let phase = "verrou";
   try {
     const client = makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid));
+    await require("./callsense-account-status.service").requireActiveAccount(client, draft.accountSid);
     const domainName = sipDomain.newDomainName(restaurantId, draft.accountSid);
     await requireAttempt(draft._id, "domain", attempt);
     const checkpoint = await Draft.updateOne({ _id: draft._id, domainOperation: "pending", "operationAttempts.domain.id": attempt }, { $set: { "operationAttempts.domain.domainName": domainName } });

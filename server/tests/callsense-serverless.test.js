@@ -26,7 +26,7 @@ function fixture(t) {
   environments.create = async () => { calls.push("environment"); return { ...info, sid: sid("ZE") }; };
   const services = () => ({ functions: { create: async () => { calls.push("function"); return { ...info, sid: sid("ZH") }; } }, builds, environments });
   services.list = async opts => { assert.deepEqual(opts, { limit: 101, pageSize: 50 }); return []; }; services.create = async () => { calls.push("service"); return { accountSid: account, sid: sid("ZS") }; };
-  const options = { confirm: true, makeTwilio: () => ({ accountSid: account, serverless: { v1: { services } } }), upload: async ({ source }) => { calls.push("version"); assert.match(source, /sip:gusto@example\.sip\.twilio\.com/); assert.doesNotMatch(source, /fetch\(|mongodb|render\.com/i); return sid("ZN"); }, probe: async (draft, url) => { assert.equal(fallback.allowedUrl(draft, url), true); }, wait: async () => {} };
+  const options = { confirm: true, makeTwilio: () => ({ accountSid: account, api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, serverless: { v1: { services } } }), upload: async ({ source }) => { calls.push("version"); assert.match(source, /sip:gusto@example\.sip\.twilio\.com/); assert.doesNotMatch(source, /fetch\(|mongodb|render\.com/i); return sid("ZN"); }, probe: async (draft, url) => { assert.equal(fallback.allowedUrl(draft, url), true); }, wait: async () => {} };
   return { state, calls, options, setBuildStatus: value => { buildStatus = value; } };
 }
 test("publication simulée persistée et reprise sans doublon ni validation téléphonique", async t => {

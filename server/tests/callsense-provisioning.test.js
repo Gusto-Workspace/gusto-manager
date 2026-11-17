@@ -64,7 +64,7 @@ function harness(restaurantId = A) {
 
 test("le dossier partagé du pilote ne permet ni mise en test ni activation", async () => {
   const { state, restore } = harness();
-  state.regulatoryBundleSid = "TWILIO_IDENTIFIER_REMOVED_8";
+  state.regulatoryBundleSid = `BU${"f".repeat(32)}`;
   let twilioCalls = 0;
   try {
     for (const status of ["ready_for_test", "active"]) await assert.rejects(service.setStatus(A, "admin", { status, confirm: true, makeTwilio: () => { twilioCalls++; } }), /Régularisation réglementaire/);
@@ -81,7 +81,7 @@ test("création SIP, association à la registration et rotation sans fuite", asy
   lists.create = async () => ({ sid: cl });
   const mappings = { create: async ({ credentialListSid }) => { mapping = credentialListSid; }, list: async () => [{ sid: mapping }] };
   const domains = () => ({ auth: { registrations: { credentialListMappings: mappings } }, fetch: async () => ({ domainName: state.sipDomain, sipRegistration: true }) });
-  const makeTwilio = () => ({ sip: { credentialLists: lists, domains } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: lists, domains } });
   try {
     const result = await service.configureSip(A, "admin", { confirm: true, makeTwilio });
     assert.equal(result.sipCredentialOperation, "completed"); assert.equal(mapping, cl);
@@ -101,7 +101,7 @@ test("webhook et secours sont configurés et relus sur le bon numéro", async ()
   state.sipCredentialOperation = "completed";
   state.checklist = { fallbackTest: true };
   let updated = {};
-  const makeTwilio = () => ({ incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, ...updated }), update: async (value) => { updated = value; } }) });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, ...updated }), update: async (value) => { updated = value; } }) });
   const fallbackUrl = `https://handler.twilio.com/twiml/EH${"a".repeat(32)}`;
   state.verifiedFallbackUrl = fallbackUrl;
   Object.assign(state, { sipUsername: `g${A}`, fallbackProbeUrl: fallbackUrl, fallbackProbeSipUri: `sip:g${A}@${state.sipDomain}`, fallbackProbeAt: new Date() });
@@ -152,7 +152,7 @@ test("un tunnel inaccessible bloque la modification des webhooks", async () => {
   const fallbackUrl = `https://handler.twilio.com/twiml/EH${"a".repeat(32)}`;
   Object.assign(state, { sipCredentialOperation: "completed", sipUsername: `g${A}`, checklist: { fallbackTest: true }, verifiedFallbackUrl: fallbackUrl, fallbackProbeUrl: fallbackUrl, fallbackProbeSipUri: `sip:g${A}@${state.sipDomain}`, fallbackProbeAt: new Date() });
   let writes = 0;
-  const makeTwilio = () => ({ incomingPhoneNumbers: () => ({ update: async () => { writes++; } }) });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: () => ({ update: async () => { writes++; } }) });
   try {
     await assert.rejects(service.configureWebhooks(A, "admin", { confirm: true, fallbackUrl, makeTwilio, probeOrigin: async () => { throw new Error("Tunnel inaccessible"); } }), /Tunnel inaccessible/);
     assert.equal(writes, 0); assert.equal(state.webhookOperation, "not_started");
@@ -167,9 +167,9 @@ test("routage principal et secours prêts pour les essais sans validation télé
   const bu = `BU${"f".repeat(32)}`, rn = `RN${"1".repeat(32)}`;
   const url = "https://gusto-test.twil.io/callsense-fallback";
   const uri = `sip:g${A}@${state.sipDomain}`;
-  Object.assign(state, { sipCredentialOperation: "completed", sipUsername: `g${A}`, numberOperation: "completed", regulatoryBundleSid: bu, audit: [{ action: "number_purchased" }], fallbackFunction: { operation: "completed", url, sipUri: uri }, fallbackProbeUrl: url, fallbackProbeSipUri: uri, fallbackProbeAt: new Date(), checklist: { fallbackTest: false } });
+  Object.assign(state, { sipCredentialOperation: "completed", sipUsername: `g${A}`, numberOperation: "completed", regulatoryBundleSid: bu, regulatorySubmission: { bundleSid: bu }, audit: [{ action: "number_purchased" }], fallbackFunction: { operation: "completed", url, sipUri: uri }, fallbackProbeUrl: url, fallbackProbeSipUri: uri, fallbackProbeAt: new Date(), checklist: { fallbackTest: false } });
   let updated = {};
-  const makeTwilio = () => ({ incomingPhoneNumbers: sid => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, bundleSid: bu, ...updated }), update: async value => { updated = value; } }), numbers: { v2: { regulatoryCompliance: { bundles: sid => ({ fetch: async () => ({ sid, accountSid: ac, regulationSid: rn, status: "twilio-approved" }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: sid => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, bundleSid: bu, ...updated }), update: async value => { updated = value; } }), numbers: { v2: { regulatoryCompliance: { bundles: sid => ({ fetch: async () => ({ sid, accountSid: ac, regulationSid: rn, status: "twilio-approved" }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } });
   try {
     const result = await service.configureWebhooks(A, "admin", { confirm: true, prepareTest: true, fallbackUrl: url, makeTwilio, probeFallback: async () => ({}) });
     assert.equal(result.webhookOperation, "completed"); assert.equal(updated.voiceFallbackUrl, url);
@@ -183,7 +183,7 @@ test("simulation intégrée : finalisation réelle puis mode test et activation 
   const bu = `BU${"f".repeat(32)}`, rn = `RN${"1".repeat(32)}`;
   const url = "https://gusto-test.twil.io/callsense-fallback", username = `g${A}`;
   const uri = `sip:${username}@${state.sipDomain}`;
-  Object.assign(state, { numberOperation: "completed", sipCredentialOperation: "completed", sipCredentialListSid: cl, sipCredentialSid: cr, sipUsername: username, regulatoryBundleSid: bu, audit: [{ action: "number_purchased" }], checklist: {}, forwardingScenario: "direct", terminalType: "softphone", serviceStatus: "preparing" });
+  Object.assign(state, { numberOperation: "completed", sipCredentialOperation: "completed", sipCredentialListSid: cl, sipCredentialSid: cr, sipUsername: username, regulatoryBundleSid: bu, regulatorySubmission: { bundleSid: bu }, audit: [{ action: "number_purchased" }], checklist: {}, forwardingScenario: "direct", terminalType: "softphone", serviceStatus: "preparing" });
   let live = null, number = { sid: pn, accountSid: ac, phoneNumber: state.twilioNumber, bundleSid: bu }, updates = 0, deployments = 0;
   Config.findOne = () => ({ lean: async () => live && structuredClone(live) });
   Config.findOneAndUpdate = async (_filter, update) => { live = { _id: "live", ...live, ...update.$set }; return structuredClone(live); };
@@ -191,7 +191,7 @@ test("simulation intégrée : finalisation réelle puis mode test et activation 
   incomingPhoneNumbers.list = async () => [{ ...number }];
   const domains = sid => ({ fetch: async () => ({ sid, accountSid: ac, domainName: state.sipDomain, sipRegistration: true }), auth: { registrations: { credentialListMappings: { list: async () => [{ sid: cl }] } } } });
   domains.list = async () => [{ sid: sd, domainName: state.sipDomain, sipRegistration: true }];
-  const client = { incomingPhoneNumbers, sip: { domains, credentialLists: () => ({ credentials: sid => ({ fetch: async () => ({ sid, accountSid: ac, username }) }) }) }, numbers: { v2: { regulatoryCompliance: { bundles: sid => ({ fetch: async () => ({ sid, accountSid: ac, regulationSid: rn, status: "twilio-approved" }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } };
+  const client = { api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers, sip: { domains, credentialLists: () => ({ credentials: sid => ({ fetch: async () => ({ sid, accountSid: ac, username }) }) }) }, numbers: { v2: { regulatoryCompliance: { bundles: sid => ({ fetch: async () => ({ sid, accountSid: ac, regulationSid: rn, status: "twilio-approved" }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } };
   const makeTwilio = () => client;
   const options = { confirm: true, deployFunction: true, makeTwilio, probeOrigin: async () => {}, probeFallback: async () => ({}), deployFallback: async () => { deployments++; Object.assign(state, { fallbackFunction: { operation: "completed", url, sipUri: uri }, fallbackProbeUrl: url, fallbackProbeSipUri: uri, fallbackProbeAt: new Date() }); return { status: "ready" }; } };
   try {
@@ -235,10 +235,10 @@ test("activation bloquée avant recette, route de test vérifiée et installatio
   const originalConfigUpdate = Config.findOneAndUpdate;
   const bu = `BU${"f".repeat(32)}`;
   const fallback = `https://handler.twilio.com/twiml/EH${"a".repeat(32)}`;
-  Object.assign(state, { sipCredentialOperation: "completed", webhookOperation: "completed", sipCredentialListSid: cl, sipCredentialSid: cr, sipUsername: `g${A}`, regulatoryBundleSid: bu, voiceFallbackUrl: fallback, verifiedFallbackUrl: fallback, fallbackProbeUrl: fallback, fallbackProbeSipUri: `sip:g${A}@${state.sipDomain}`, fallbackProbeAt: new Date(), serviceStatus: "preparing", terminalType: "softphone", checklist: { fallbackTest: true } });
+  Object.assign(state, { sipCredentialOperation: "completed", webhookOperation: "completed", sipCredentialListSid: cl, sipCredentialSid: cr, sipUsername: `g${A}`, regulatoryBundleSid: bu, regulatorySubmission: { bundleSid: bu }, voiceFallbackUrl: fallback, verifiedFallbackUrl: fallback, fallbackProbeUrl: fallback, fallbackProbeSipUri: `sip:g${A}@${state.sipDomain}`, fallbackProbeAt: new Date(), serviceStatus: "preparing", terminalType: "softphone", checklist: { fallbackTest: true } });
   let saved;
   Config.findOneAndUpdate = async (_filter, update) => { saved = update.$set; return saved; };
-  const makeTwilio = () => ({
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) },
     incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, bundleSid: bu, voiceUrl: "https://api.gusto.example/api/callsense/voice", voiceMethod: "POST", voiceFallbackUrl: fallback, voiceFallbackMethod: "POST" }) }),
     sip: { domains: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, domainName: state.sipDomain, sipRegistration: true }), auth: { registrations: { credentialListMappings: { list: async () => [{ sid: cl }] } } } }), credentialLists: () => ({ credentials: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, username: state.sipUsername }) }) }) },
     numbers: { v2: { regulatoryCompliance: { bundles: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, status: "twilio-approved" }) }) } } },
@@ -269,7 +269,7 @@ test("rotation incertaine reprend le même secret sans le divulguer", async () =
   const { state, restore } = harness();
   Object.assign(state, { sipCredentialOperation: "completed", sipCredentialListSid: cl, sipCredentialSid: cr });
   const attempted = [];
-  const makeTwilio = () => ({ sip: { credentialLists: () => ({ credentials: () => ({ update: async ({ password }) => { attempted.push(password); if (attempted.length === 1) throw new Error("timeout"); } }) }) } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: () => ({ credentials: () => ({ update: async ({ password }) => { attempted.push(password); if (attempted.length === 1) throw new Error("timeout"); } }) }) } });
   try {
     await assert.rejects(service.rotateSip(A, "admin", { confirm: true, makeTwilio }), /incertaine/);
     assert.equal(state.sipCredentialOperation, "uncertain");
@@ -287,7 +287,7 @@ test("reprise d'une création SIP incertaine ne recrée aucune ressource", async
   credentials.list = async () => [{ sid: cr, username: state.sipUsername }];
   const lists = () => ({ credentials, fetch: async () => ({ sid: cl, accountSid: ac }) });
   const domains = () => ({ fetch: async () => ({ domainName: state.sipDomain, sipRegistration: true }), auth: { registrations: { credentialListMappings: { list: async () => [{ sid: cl }] } } } });
-  const makeTwilio = () => ({ sip: { credentialLists: lists, domains } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: lists, domains } });
   try {
     const result = await service.reconcileSip(A, "admin", { confirm: true, makeTwilio });
     assert.equal(result.sipCredentialOperation, "completed"); assert.equal(result.sipCredentialSid, cr);
@@ -300,7 +300,7 @@ test("webhook incertain relu et repris sur le même numéro", async () => {
   state.sipCredentialOperation = "completed";
   state.checklist = { fallbackTest: true };
   let saved = {}, attempt = 0;
-  const makeTwilio = () => ({ incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, ...saved }), update: async (value) => { saved = value; if (++attempt === 1) throw new Error("timeout"); } }) });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: ac, phoneNumber: state.twilioNumber, ...saved }), update: async (value) => { saved = value; if (++attempt === 1) throw new Error("timeout"); } }) });
   const fallbackUrl = `https://handler.twilio.com/twiml/EH${"a".repeat(32)}`;
   state.verifiedFallbackUrl = fallbackUrl;
   Object.assign(state, { sipUsername: `g${A}`, fallbackProbeUrl: fallbackUrl, fallbackProbeSipUri: `sip:g${A}@${state.sipDomain}`, fallbackProbeAt: new Date() });
@@ -320,7 +320,7 @@ test("réutilisation d'une liste SIP déjà associée sans recréation", async (
   const lists = () => ({ fetch: async () => ({ sid: cl, accountSid: ac }), credentials });
   lists.create = async () => { newLists++; return { sid: cl }; };
   const mappings = { list: async () => [{ sid: cl }], create: async () => { newMappings++; } };
-  const makeTwilio = () => ({ sip: { credentialLists: lists, domains: () => ({ auth: { registrations: { credentialListMappings: mappings } }, fetch: async () => ({ domainName: state.sipDomain, sipRegistration: true }) }) } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: lists, domains: () => ({ auth: { registrations: { credentialListMappings: mappings } }, fetch: async () => ({ domainName: state.sipDomain, sipRegistration: true }) }) } });
   try {
     const result = await service.configureSip(A, "admin", { confirm: true, credentialListSid: cl, makeTwilio });
     assert.equal(result.sipCredentialListSid, cl); assert.equal(newLists, 0); assert.equal(newMappings, 0);
@@ -335,7 +335,7 @@ test("une ancienne opération SIP ne poursuit pas après remplacement de son ide
   const waiting = new Promise((resolve) => { release = resolve; });
   const lists = () => ({ credentials: { create: async () => { credentialsCreated++; return { sid: cr }; } } });
   lists.create = async () => { notifyStarted(); await waiting; return { sid: cl }; };
-  const makeTwilio = () => ({ sip: { credentialLists: lists } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: lists } });
   try {
     const operation = service.configureSip(A, "admin", { confirm: true, makeTwilio });
     await started;
@@ -358,7 +358,7 @@ test("une ressource SIP manquante ne se recrée qu'après autorisation de repris
   const lists = () => ({ fetch: async () => ({ sid: cl, accountSid: ac }), credentials });
   const mappings = { list: async () => mapped ? [{ sid: cl }] : [], create: async () => { mapped = true; } };
   const domains = () => ({ fetch: async () => ({ domainName: state.sipDomain, sipRegistration: true }), auth: { registrations: { credentialListMappings: mappings } } });
-  const makeTwilio = () => ({ sip: { credentialLists: lists, domains } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { credentialLists: lists, domains } });
   try {
     await assert.rejects(service.reconcileSip(A, "admin", { confirm: true, makeTwilio }), /incertaine/);
     assert.equal(creates, 0); assert.equal(state.sipCredentialOperation, "uncertain");

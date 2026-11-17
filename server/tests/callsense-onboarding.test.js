@@ -185,7 +185,7 @@ test("création SIP confirmée et vérifiée, sans répétition", async () => {
   Draft.updateOne = async (_filter, update) => { Object.assign(record, update.$set); return { matchedCount: 1 }; };
   const domains = (sid) => ({ fetch: async () => ({ sid, accountSid: accountA, domainName: newDomainName(A, accountA), sipRegistration: true }) });
   domains.create = async ({ domainName, sipRegistration }) => { creates++; assert.equal(domainName, newDomainName(A, accountA)); assert.equal(sipRegistration, true); return { sid: domainSid }; };
-  const makeTwilio = () => ({ sip: { domains } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { domains } });
   try {
     await assert.rejects(service.createDomain(A, "admin", { makeTwilio }), /Confirmation/);
     const result = await service.createDomain(A, "admin", { confirm: true, makeTwilio });
@@ -206,9 +206,9 @@ test("refus SIP 21232 explicite : reprise possible sans état incertain", async 
   const domains = sid => ({ fetch: async () => ({ sid, accountSid: accountA, domainName: newDomainName(A, accountA), sipRegistration: true }) });
   domains.create = async () => { if (++attempts === 1) throw Object.assign(new Error("données confidentielles"), { status: 400, code: 21232 }); return { sid: domainSid }; };
   try {
-    await assert.rejects(service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ sip: { domains } }) }), /Twilio a refusé/);
+    await assert.rejects(service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { domains } }) }), /Twilio a refusé/);
     assert.equal(record.domainOperation, "not_started"); assert.equal(record.domainFailure.phase, "creation"); assert.equal(record.domainFailure.status, 400); assert.equal(record.domainFailure.code, "21232"); assert.doesNotMatch(JSON.stringify(record.domainFailure), /confidentielles/);
-    const resumed = await service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ sip: { domains } }) });
+    const resumed = await service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { domains } }) });
     assert.equal(resumed.domainOperation, "completed"); assert.equal(resumed.sipDomainSid, domainSid); assert.equal(attempts, 2);
   } finally { Draft.findOneAndUpdate = originals.find; Draft.updateOne = originals.update; Config.exists = originals.exists; }
 });
@@ -233,7 +233,7 @@ test("échec réseau SIP : conserver le verrou incertain et le nom tenté", asyn
   Draft.updateOne = async (_filter, update) => { if (update.$set["operationAttempts.domain.domainName"]) attemptedName = update.$set["operationAttempts.domain.domainName"]; Object.assign(record, update.$set); return { matchedCount: 1 }; };
   const domains = () => ({}); domains.create = async () => { throw Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }); };
   try {
-    await assert.rejects(service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ sip: { domains } }) }), /incertain/);
+    await assert.rejects(service.createDomain(A, "admin", { confirm: true, makeTwilio: () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { domains } }) }), /incertain/);
     assert.equal(record.domainOperation, "uncertain");
     assert.equal(attemptedName, newDomainName(A, accountA));
     assert.equal(record.domainFailure.code, "ETIMEDOUT");
@@ -247,7 +247,7 @@ test("association d'un numéro du sous-compte et refus d'un numéro étranger", 
   Draft.findOne = () => ({ select: () => ({ lean: async () => ({ accountSid: accountA, encryptedAuthToken: encryptToken("secret", A, accountA) }) }) });
   Draft.findOneAndUpdate = async (_filter, update) => ({ restaurantId: A, ...update.$set });
   Config.exists = async () => false;
-  const makeTwilio = () => ({ incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: account, phoneNumber: "+33123456789", capabilities: { voice: true } }) }) });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: (sid) => ({ fetch: async () => ({ sid, accountSid: account, phoneNumber: "+33123456789", capabilities: { voice: true } }) }) });
   try {
     const result = await service.associateNumber(A, "admin", { sid: pn, confirm: true, makeTwilio });
     assert.equal(result.twilioNumber, "+33123456789");
@@ -260,7 +260,7 @@ test("association d'un numéro du sous-compte et refus d'un numéro étranger", 
 test("achat exige confirmation, prix cohérent et Bundle approuvé ; sans doublon", async () => {
   const originalFind = Draft.findOne, originalUpdate = Draft.findOneAndUpdate, originalExists = Config.exists, originalWrite = Draft.updateOne;
   const pn = `PN${"c".repeat(32)}`, bundleSid = `BU${"e".repeat(32)}`;
-  const state = { _id: A, restaurantId: A, accountSid: accountA, encryptedAuthToken: encryptToken("secret", A, accountA), regulatoryBundleSid: bundleSid, numberOperation: "not_started" };
+  const state = { _id: A, restaurantId: A, accountSid: accountA, encryptedAuthToken: encryptToken("secret", A, accountA), regulatoryBundleSid: bundleSid, regulatorySubmission: { bundleSid }, numberOperation: "not_started" };
   let purchases = 0, bundleStatus = "twilio-approved", regulationCountry = "FR", available = true, locality = "Paris", candidateNumber = "+33123456789", failPurchase = false, requirement = "none", rejectAddress = false, rejectionCode = 21631, existingNumbers = [];
   const addressSid = `AD${"f".repeat(32)}`;
   const searches = [];
@@ -279,7 +279,7 @@ test("achat exige confirmation, prix cohérent et Bundle approuvé ; sans doublo
   let addressRows = [{ sid: addressSid, accountSid: accountA, validated: true, isoCountry: "FR", city: "Paris" }];
   const addresses = (sid) => ({ fetch: async () => addressRows.find(row => row.sid === sid) });
   addresses.list = async () => addressRows;
-  const makeTwilio = () => ({ incomingPhoneNumbers, addresses,
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers, addresses,
     availablePhoneNumbers: () => ({ local: { list: async (options) => { searches.push(options); return available && (!options.contains || candidateNumber.includes(options.contains)) ? [{ phoneNumber: candidateNumber, locality, capabilities: { voice: true }, addressRequirements: requirement, beta: false }, { phoneNumber: "+33912345678", locality: "France", capabilities: { voice: true }, addressRequirements: "local", beta: false }, { phoneNumber: "+33111111111", locality: "Paris", capabilities: { voice: true }, addressRequirements: "local", beta: true }] : [{ phoneNumber: "+33123450000", locality: "Paris", capabilities: { voice: true }, addressRequirements: requirement, beta: false }]; } } }),
     pricing: { v1: { phoneNumbers: { countries: () => ({ fetch: async () => ({ priceUnit: "EUR", phoneNumberPrices: [{ number_type: "local", current_price: "1.00" }, { number_type: "national", current_price: "1.00" }] }) }) } } },
     numbers: { v2: { regulatoryCompliance: { bundles: () => ({ fetch: async () => ({ sid: bundleSid, accountSid: accountA, status: bundleStatus, regulationSid: "RNtest" }), itemAssignments: { list: async () => [{ objectSid: `RD${"a".repeat(32)}`, accountSid: accountA, bundleSid }] } }), supportingDocuments: sid => ({ fetch: async () => ({ sid, accountSid: accountA, status: "approved", attributes: { address_sids: [addressSid] } }) }), regulations: () => ({ fetch: async () => ({ isoCountry: regulationCountry, numberType: "local", endUserType: "business" }) }) } } } });
@@ -384,7 +384,7 @@ test("réconciliation d'un domaine existant après résultat incertain", async (
   Draft.findOneAndUpdate = async (_filter, update) => ({ restaurantId: A, ...update.$set });
   Config.exists = async () => false;
   let name = `gusto-${A}.sip.twilio.com`;
-  const makeTwilio = () => ({ sip: { domains: (sid) => ({ fetch: async () => ({ sid, accountSid: accountA, domainName: name, sipRegistration: true }) }) } });
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, sip: { domains: (sid) => ({ fetch: async () => ({ sid, accountSid: accountA, domainName: name, sipRegistration: true }) }) } });
   try {
     assert.equal((await service.associateDomain(A, "admin", { sid: sd, confirm: true, makeTwilio })).domainOperation, "completed");
     name = `gusto-${B}.sip.twilio.com`;

@@ -5,7 +5,7 @@ const Config = require("../models/callsense/callsense-config.model");
 const { resubmitRejectedBundle } = require("../services/callsense-onboarding.service");
 const ac = `AC${"a".repeat(32)}`, bu = `BU${"b".repeat(32)}`, rn = `RN${"c".repeat(32)}`;
 function fixture(t, compliant, loseResponse = false) {
-  const draft = { _id: "draft", accountSid: ac, regulatoryBundleSid: bu, regulatorySubmission: { state: "submitted" } }; let status = "twilio-rejected", writes = 0;
+  const draft = { _id: "draft", accountSid: ac, regulatoryBundleSid: bu, regulatorySubmission: { state: "submitted", bundleSid: bu } }; let status = "twilio-rejected", writes = 0;
   t.mock.method(Config, "exists", async () => null);
   t.mock.method(Draft, "exists", async () => true);
   t.mock.method(Draft, "findOneAndUpdate", async (filter, update) => { if (filter["regulatoryResubmission.state"]?.$nin?.includes(draft.regulatoryResubmission?.state)) return null; for (const [key, value] of Object.entries(update.$set)) { const parts = key.split("."); if (parts.length === 2) { draft[parts[0]] ||= {}; draft[parts[0]][parts[1]] = value; } } return draft; });

@@ -7,16 +7,19 @@ const Period = require("../models/callsense/callsense-billing-period.model");
 const { encryptToken } = require("../services/callsense-secrets.service");
 const { reconcileCalls, runReconciliation, needsRecoveredCommercialVerification } = require("../services/callsense-metering.service");
 
-test("la réconciliation ignore les deux comptes fermés sans altérer les installations actives", async t => {
-  const closed = ["TWILIO_IDENTIFIER_REMOVED_4", "TWILIO_IDENTIFIER_REMOVED_2"];
-  const rows = [{ restaurantId: "ancien-poc", accountSid: closed[1] }, { restaurantId: "ancien-pilote", accountSid: closed[0] }, { restaurantId: "actif", accountSid: "ACactif" }];
-  const visited = []; let remoteCalls = 0;
-  t.mock.method(Config, "find", filter => { assert.deepEqual(filter.accountSid.$nin, closed); assert.equal(filter.enabled, true); return { select: () => ({ lean: async () => rows.filter(row => !filter.accountSid.$nin.includes(row.accountSid)) }) }; });
-  t.mock.method(Config, "findOneAndUpdate", filter => { assert.deepEqual(filter.accountSid.$nin, closed); visited.push(filter.restaurantId); return { select: () => ({ lean: async () => null }) }; });
-  await runReconciliation({ twilio: () => { remoteCalls++; throw new Error("unexpected"); } });
-  assert.deepEqual(visited, ["actif"]); assert.equal(remoteCalls, 0);
-  await reconcileCalls("ancien-poc", { twilio: () => { remoteCalls++; throw new Error("unexpected"); } });
-  assert.equal(remoteCalls, 0);
+test("la réconciliation refuse les comptes fermés ou au statut incertain", async t => {
+  const previous = process.env.CALLSENSE_ENCRYPTION_KEY;
+  process.env.CALLSENSE_ENCRYPTION_KEY = "ab".repeat(32);
+  t.after(() => { if (previous === undefined) delete process.env.CALLSENSE_ENCRYPTION_KEY; else process.env.CALLSENSE_ENCRYPTION_KEY = previous; });
+  const accountSid = `AC${"1".repeat(32)}`, restaurantId = "507f1f77bcf86cd799439011";
+  const config = { _id: "config", restaurantId, enabled: true, accountSid, twilioNumber: "+33300000000", createdAt: new Date(Date.now() - 3600000), encryptedAuthToken: encryptToken("fake", restaurantId, accountSid), reconciliation: {} };
+  t.mock.method(Config, "findOneAndUpdate", () => ({ select: () => ({ lean: async () => config }) }));
+  t.mock.method(Config, "updateOne", async () => ({ matchedCount: 1 }));
+  let calls = 0;
+  const twilio = status => () => ({ api: { accounts: sid => ({ fetch: async () => { if (status === "unknown") throw Error("network"); return { sid, status }; } }) }, calls: { list: async () => { calls++; return []; } } });
+  await assert.rejects(reconcileCalls(restaurantId, { twilio: twilio("closed") }), /inactif/);
+  await assert.rejects(reconcileCalls(restaurantId, { twilio: twilio("unknown") }), /indisponible/);
+  assert.equal(calls, 0);
 });
 
 test("un appel récupéré après activation commerciale reste à vérifier avant facturation", () => {
@@ -58,7 +61,7 @@ test("rattrapage, reprise après erreur, doublons et appel ambigu restent isolé
   Period.find = () => ({ limit: () => ({ lean: async () => [] }) });
   const calls = (sid) => ({ fetch: async () => sid === parent.sid ? parent : ambiguous });
   calls.list = async (query) => { if (query.parentCallSid) return query.parentCallSid === parent.sid ? [child] : []; if (failList) throw new Error("network"); return truncated ? Array(1001).fill(parent) : [parent, ambiguous]; };
-  const twilio = () => ({ calls });
+  const twilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, calls });
   try {
     await assert.rejects(reconcileCalls(restaurantId, { twilio, now }), /network/);
     assert.equal(config.reconciliation.cursor, undefined);

@@ -42,6 +42,17 @@ test("mise en service persistée : attente de conformité puis reprise sans doub
     assert.equal(f.calls.filter(x => x === "account").length, 1); assert.equal(f.calls.filter(x => x.startsWith("number:")).length, 1);
   } finally { f.restore(); }
 });
+
+test("une reprise sans autorisation persistée ne peut pas acheter", async () => {
+  const f = fixture();
+  try {
+    await assert.rejects(runOnboarding(id, "admin", { ...f.options, resume: true }), /Autorisation/);
+    assert.equal(f.calls.length, 0);
+    Object.assign(f.draft.automation, { actorId: "admin", currency: "USD", maxAmount: "1.50" });
+    await assert.rejects(runOnboarding(id, "admin", { ...f.options, resume: true, maxAmount: "2.00" }), /Autorisation/);
+    assert.equal(f.calls.length, 0);
+  } finally { f.restore(); }
+});
 test("plafond et opération incertaine arrêtent tout achat", async () => {
   const f = fixture();
   try {
@@ -128,25 +139,24 @@ test("un numéro local 03 reste éligible avec un justificatif parisien", async 
   } finally { f.restore(); }
 });
 test("pilote : sélection +333 unique, plafond et identité inchangés", async () => {
-  const f = fixture(), pilot = "69c69539571da19061ac7fda", accountSid = "TWILIO_IDENTIFIER_REMOVED_1", bundleSid = "TWILIO_IDENTIFIER_REMOVED_6", addressSid = "TWILIO_IDENTIFIER_REMOVED_5";
+  const f = fixture(), pilot = "69c69539571da19061ac7fda", accountSid = `AC${"1".repeat(32)}`, bundleSid = `BU${"1".repeat(32)}`, addressSid = `AD${"1".repeat(32)}`;
   try {
     Object.assign(f.draft, { accountSid, accountOperation: "completed", regulatoryBundleSid: bundleSid, regulatoryAddress: { sid: addressSid }, automation: { maxAmount: "1.5", currency: "USD", functionAccepted: true } });
     let buys = 0, prefix;
     f.options.onboarding.quoteNumbers = async (_id, options) => { prefix = options.numberPrefix; return { currency: "USD", regulatoryAddress: { sid: addressSid }, prices: [{ type: "local", amount: "1.35" }, { type: "national", amount: "1.35" }], numbers: [{ phoneNumber: "+33111111111", numberType: "local", beta: false, capabilities: { voice: true }, addressRequirements: "local" }, { phoneNumber: "+33311111111", numberType: "local", beta: true, capabilities: { voice: true }, addressRequirements: "local" }, { phoneNumber: "+33322222222", numberType: "local", beta: false, capabilities: { voice: true }, addressRequirements: "local" }] }; };
     f.options.onboarding.buyNumber = async (_id, _actor, options) => { buys++; assert.equal(options.phoneNumber, "+33322222222"); assert.equal(options.addressSid, addressSid); assert.equal(options.amount, "1.35"); f.draft.phoneNumberSid = "PNtest"; };
     const automaticResume = await runOnboarding(pilot, "admin", { ...f.options, maxAmount: "1.50" });
-    assert.equal(automaticResume.status, "waiting"); assert.equal(automaticResume.phase, "number"); assert.equal(buys, 0);
-    assert.equal((await runOnboarding(pilot, "admin", { ...f.options, maxAmount: "1.50", pilotPurchaseConfirmed: true })).phase, "technical");
+    assert.equal(automaticResume.status, "waiting"); assert.equal(automaticResume.phase, "technical");
     assert.equal(prefix, "+333"); assert.equal(buys, 1);
     await runOnboarding(pilot, "admin", { ...f.options, maxAmount: "1.50" }); assert.equal(buys, 1);
-    await assert.rejects(runOnboarding(pilot, "admin", { ...f.options, maxAmount: "2.00" }), /plafond autorisé/); assert.equal(buys, 1);
+    await assert.rejects(runOnboarding(pilot, "admin", { ...f.options, maxAmount: "2.00", resume: true }), /Autorisation/); assert.equal(buys, 1);
   } finally { f.restore(); }
 });
 test("pilote : deux lancements simultanés ne relancent pas l’achat refusé", async () => {
-  const f = fixture(), pilot = "69c69539571da19061ac7fda", addressSid = "TWILIO_IDENTIFIER_REMOVED_5";
+  const f = fixture(), pilot = "69c69539571da19061ac7fda", addressSid = `AD${"1".repeat(32)}`;
   const originalLock = Draft.findOneAndUpdate, originalUpdate = Draft.updateOne;
   try {
-    Object.assign(f.draft, { accountSid: "TWILIO_IDENTIFIER_REMOVED_1", accountOperation: "completed", regulatoryBundleSid: "TWILIO_IDENTIFIER_REMOVED_6", regulatoryAddress: { sid: addressSid }, automation: { maxAmount: "1.5", currency: "USD", functionAccepted: true } });
+    Object.assign(f.draft, { accountSid: `AC${"1".repeat(32)}`, accountOperation: "completed", regulatoryBundleSid: `BU${"1".repeat(32)}`, regulatoryAddress: { sid: addressSid }, automation: { maxAmount: "1.5", currency: "USD", functionAccepted: true } });
     let occupied = false, releaseQuote, buys = 0; const blocked = new Promise(resolve => { releaseQuote = resolve; });
     Draft.findOneAndUpdate = async (filter, update, options) => { if (filter.$or) { if (occupied) return null; occupied = true; } return originalLock(filter, update, options); };
     Draft.updateOne = async (filter, update) => { if (update.$unset?.["automation.runLeaseId"]) occupied = false; return originalUpdate(filter, update); };
@@ -159,7 +169,7 @@ test("pilote : deux lancements simultanés ne relancent pas l’achat refusé", 
   } finally { f.restore(); }
 });
 test("pilote : achat +333 puis reprise SIP, secours et routage avant les essais", async () => {
-  const f = fixture(), pilot = "69c69539571da19061ac7fda", accountSid = "TWILIO_IDENTIFIER_REMOVED_1", bundleSid = "TWILIO_IDENTIFIER_REMOVED_6", addressSid = "TWILIO_IDENTIFIER_REMOVED_5", domains = [], originalOrigin = process.env.CALLSENSE_PUBLIC_ORIGIN;
+  const f = fixture(), pilot = "69c69539571da19061ac7fda", accountSid = `AC${"1".repeat(32)}`, bundleSid = `BU${"1".repeat(32)}`, addressSid = `AD${"1".repeat(32)}`, domains = [], originalOrigin = process.env.CALLSENSE_PUBLIC_ORIGIN;
   process.env.CALLSENSE_PUBLIC_ORIGIN = "https://api.example.test";
   try {
     Object.assign(f.draft, { accountSid, accountOperation: "completed", regulatoryBundleSid: bundleSid, regulatoryAddress: { sid: addressSid }, numberOperation: "not_started", domainOperation: "not_started", sipCredentialOperation: "not_started", webhookOperation: "not_started", checklist: {}, automation: { maxAmount: "1.5", currency: "USD", functionAccepted: true } });

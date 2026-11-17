@@ -4,7 +4,7 @@ const { evaluateIndividualBundle } = require("../services/callsense-onboarding.s
 const accountSid = `AC${"a".repeat(32)}`, bundleSid = `BU${"b".repeat(32)}`, regulationSid = `RN${"c".repeat(32)}`;
 function fixture() {
   let calls = 0;
-  const draft = { accountSid, regulatoryBundleSid: bundleSid };
+  const draft = { accountSid, regulatoryBundleSid: bundleSid, regulatorySubmission: { bundleSid } };
   const api = { bundles: sid => ({ fetch: async () => ({ sid, accountSid, regulationSid }), evaluations: { create: async () => { calls++; return { accountSid, bundleSid, regulationSid, status: "noncompliant", results: [{ valid: false, error_code: "missing" }] }; } } }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) };
   return { draft, count: () => calls, getDraftClient: async () => ({ draft, client: { numbers: { v2: { regulatoryCompliance: api } } } }) };
 }

@@ -37,6 +37,8 @@ async function deploy(restaurantId, actorId, { confirm, makeTwilio = twilio, upl
   if (existing && existing.accountSid !== draft.accountSid) throw fail("Sous-compte de l'installation existante différent");
   const uri = fallback.sipUri(draft), token = decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid);
   const client = makeTwilio(draft.accountSid, token, { autoRetry: false });
+  try { await require("./callsense-account-status.service").requireActiveAccount(client, draft.accountSid); }
+  catch (_) { throw fail("Statut du sous-compte impossible à confirmer : vérification nécessaire"); }
   const reload = async () => { draft = await Draft.findOne({ restaurantId }).select("+encryptedAuthToken").lean(); if (!draft || draft.accountSid !== client.accountSid || fallback.sipUri(draft) !== uri) throw fail("Configuration modifiée : vérification nécessaire"); };
   const current = () => draft.fallbackFunction || {};
   if (current().sipUri && current().sipUri !== uri) throw fail("Destination SIP modifiée : vérification du secours nécessaire");

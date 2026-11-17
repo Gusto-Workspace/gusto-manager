@@ -20,7 +20,10 @@ async function load(restaurantId, makeTwilio = twilio) {
   if (!draft?.accountSid || !draft.encryptedAuthToken) throw failure("Sous-compte non configuré", 409);
   const existing = await Config.findOne({ restaurantId }).lean();
   if (existing && (!existing.managedByOnboarding || existing.accountSid !== draft.accountSid)) throw failure("Installation existante protégée", 409);
-  return { draft, existing, client: makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid)) };
+  const client = makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid));
+  try { await require("./callsense-account-status.service").requireActiveAccount(client, draft.accountSid); }
+  catch (_) { throw failure("Statut du sous-compte impossible à confirmer : vérification nécessaire", 409); }
+  return { draft, existing, client };
 }
 async function updateLocked(id, expected, changes) {
   const updated = await Draft.findOneAndUpdate({ _id: id, ...expected }, changes, { new: true });
@@ -189,7 +192,7 @@ function webhookUrls(fallbackUrl, draft) {
 async function configureWebhooks(restaurantId, actorId, { confirm, fallbackUrl, prepareTest = false, makeTwilio = twilio, probeFallback = fallback.probe, probeOrigin = probePublicOrigin } = {}) {
   if (confirm !== true) throw failure("Confirmation explicite requise");
   const { draft, client, existing } = await load(restaurantId, makeTwilio);
-  if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw failure("Régularisation réglementaire requise avant configuration des webhooks", 409);
+  if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw failure("Régularisation réglementaire requise avant configuration des webhooks", 409);
   const urls = webhookUrls(fallbackUrl, draft);
   const probeTime = new Date(draft.fallbackProbeAt || 0).getTime();
   if (prepareTest && (existing || draft.numberOperation !== "completed" || !(draft.audit || []).some(item => item.action === "number_purchased") || draft.fallbackFunction?.operation !== "completed" || draft.fallbackFunction.url !== urls.voiceFallbackUrl)) throw failure("Préparation réservée au nouveau numéro acheté pour ce dossier", 409);
@@ -342,22 +345,21 @@ function complianceStrategy() {
 async function cloneSharedBundle(restaurantId, actorId, { onboarding = require("./callsense-onboarding.service"), makeTwilio = twilio } = {}) {
   throw failure("Le clonage du dossier réglementaire Gusto est désactivé : un dossier propre au restaurant est requis", 409);
 }
-async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, currency, sharedCloneConsent = false, functionConsent = false, pilotPurchaseConfirmed = false, onboarding = require("./callsense-onboarding.service"), finalize = finalizeTechnical, cloneBundle = cloneSharedBundle } = {}) {
+async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, currency, sharedCloneConsent = false, functionConsent = false, resume = false, onboarding = require("./callsense-onboarding.service"), finalize = finalizeTechnical, cloneBundle = cloneSharedBundle } = {}) {
   if (confirm !== true || !/^(?:0|[1-9]\d{0,4})(?:\.\d{1,2})?$/.test(maxAmount || "") || !/^[A-Z]{3}$/.test(currency || "")) throw failure("Confirmation et plafond mensuel avec devise requis", 400);
-  // Temporary restriction for the explicitly designated CallSense pilot only.
-  const pilot = String(restaurantId) === "69c69539571da19061ac7fda";
-  const pilotLease = pilot ? crypto.randomUUID() : null;
-  if (pilot) {
-    const saved = await Draft.findOne({ restaurantId }).lean();
-    if (saved?.accountSid !== "TWILIO_IDENTIFIER_REMOVED_1" || saved?.regulatoryBundleSid !== "TWILIO_IDENTIFIER_REMOVED_6" || saved?.regulatoryAddress?.sid !== "TWILIO_IDENTIFIER_REMOVED_5" || saved?.automation?.currency !== "USD" || Number(saved?.automation?.maxAmount) !== 1.5 || currency !== "USD" || Number(maxAmount) !== 1.5) throw failure("Dossier pilote ou plafond autorisé modifié : vérification nécessaire avant reprise.", 409);
-  }
+  const saved = await Draft.findOne({ restaurantId }).lean();
+  if (resume && (!saved?.automation?.actorId || !saved.automation.maxAmount || saved.automation.currency !== currency || Number(saved.automation.maxAmount) !== Number(maxAmount) || String(saved.automation.actorId) !== String(actorId))) throw failure("Autorisation d'achat enregistrée introuvable ou modifiée", 409);
+  const lease = crypto.randomUUID();
   const restaurant = await Restaurant.findById(restaurantId).select("name address phone email").lean();
   if (!restaurant?.name?.trim()) throw failure("Nom du restaurant requis", 400);
   const existing = await Config.findOne({ restaurantId }).lean();
   if (existing && !existing.managedByOnboarding) throw failure("Installation historique protégée", 409);
   const strategy = complianceStrategy();
   if (!["shared_clone", "individual"].includes(strategy)) throw failure("Stratégie réglementaire non reconnue", 503);
-  let draft = await Draft.findOneAndUpdate({ restaurantId, ...(pilot ? { accountSid: "TWILIO_IDENTIFIER_REMOVED_1", regulatoryBundleSid: "TWILIO_IDENTIFIER_REMOVED_6", "regulatoryAddress.sid": "TWILIO_IDENTIFIER_REMOVED_5", "automation.currency": "USD", "automation.maxAmount": { $in: ["1.5", "1.50"] }, $or: [{ "automation.runLeaseUntil": { $exists: false } }, { "automation.runLeaseUntil": null }, { "automation.runLeaseUntil": { $lte: new Date() } }] } : {}) }, { $setOnInsert: { restaurantId }, $set: { "automation.status": "running", "automation.phase": "informations", "automation.message": "Vérification des prérequis", "automation.maxAmount": maxAmount, "automation.currency": currency, "automation.resumeMode": "onboarding", "automation.actorId": actorId, "automation.nextAttemptAt": new Date(Date.now() + 10 * 60 * 1000), ...(pilot ? { "automation.runLeaseId": pilotLease, "automation.runLeaseUntil": new Date(Date.now() + 10 * 60 * 1000) } : {}), ...(sharedCloneConsent === true ? { "automation.sharedCloneAccepted": true } : {}), ...(functionConsent === true ? { "automation.functionAccepted": true } : {}) } }, { upsert: !existing && !pilot, new: true, setDefaultsOnInsert: true });
+  const snapshot = saved ? { _id: saved._id, ...(saved.accountSid ? { accountSid: saved.accountSid } : { accountSid: { $exists: false } }), ...(saved.regulatoryBundleSid ? { regulatoryBundleSid: saved.regulatoryBundleSid } : { regulatoryBundleSid: { $exists: false } }), ...(saved.regulatoryAddress?.sid ? { "regulatoryAddress.sid": saved.regulatoryAddress.sid } : {}), ...(resume ? { "automation.actorId": saved.automation.actorId, "automation.maxAmount": saved.automation.maxAmount, "automation.currency": saved.automation.currency } : {}) } : {};
+  let draft;
+  try { draft = await Draft.findOneAndUpdate({ restaurantId, ...snapshot, $or: [{ "automation.runLeaseUntil": { $exists: false } }, { "automation.runLeaseUntil": null }, { "automation.runLeaseUntil": { $lte: new Date() } }] }, { $setOnInsert: { restaurantId }, $set: { "automation.status": "running", "automation.phase": "informations", "automation.message": "Vérification des prérequis", "automation.maxAmount": maxAmount, "automation.currency": currency, "automation.resumeMode": "onboarding", "automation.actorId": actorId, "automation.nextAttemptAt": new Date(Date.now() + 10 * 60 * 1000), "automation.runLeaseId": lease, "automation.runLeaseUntil": new Date(Date.now() + 10 * 60 * 1000), ...(sharedCloneConsent === true ? { "automation.sharedCloneAccepted": true } : {}), ...(functionConsent === true ? { "automation.functionAccepted": true } : {}) } }, { upsert: !saved && !existing, new: true, setDefaultsOnInsert: true }); }
+  catch (err) { if (err.code === 11000) throw failure("Dossier de préparation indisponible", 409); throw err; }
   if (!draft) throw failure("Dossier de préparation indisponible", 409);
   async function state(status, phase, message, expected = {}) {
     await Draft.updateOne({ restaurantId, ...expected }, { $set: { "automation.status": status, "automation.phase": phase, "automation.message": message, ...(status === "running" && phase !== "technical" ? { "automation.nextAttemptAt": new Date(Date.now() + 10 * 60 * 1000) } : {}) } });
@@ -396,15 +398,20 @@ async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, curren
     if (compliance.bundle?.status !== "twilio-approved" || !compliance.bundle?.compatible) return await state("waiting", "compliance", "Dossier réglementaire non approuvé ou incompatible : vérifiez le dossier.");
     if (!draft.phoneNumberSid) {
       if (["pending", "uncertain"].includes(draft.numberOperation)) return await state("waiting", "number", "Achat incertain : rapprochez l’opération avant de reprendre.");
-      if (pilot && pilotPurchaseConfirmed !== true) return await state("waiting", "number", "Reprise manuelle requise dans Gusto avant de lancer l’achat du numéro pilote.");
+      await reload();
+      if (draft.automation?.runLeaseId !== lease || !(new Date(draft.automation?.runLeaseUntil).getTime() > Date.now()) || !draft.automation?.actorId || String(draft.automation.actorId) !== String(actorId) || draft.automation.currency !== currency || Number(draft.automation.maxAmount) !== Number(maxAmount)) return await state("waiting", "number", "Autorisation d'achat ou verrou indisponible : vérification nécessaire.");
+      if (draft.phoneNumberSid || ["pending", "uncertain"].includes(draft.numberOperation)) return await state("waiting", "number", "L'achat a changé : vérification nécessaire avant reprise.");
+      const purchaseAccountSid = draft.accountSid, purchaseBundleSid = draft.regulatoryBundleSid;
       await state("running", "number", "Recherche d’un numéro compatible avec le plafond");
       const quote = await onboarding.quoteNumbers(restaurantId, { numberPrefix: "+333" });
       const local = quote.prices.find(p => p.type === "local")?.amount;
       const national = quote.prices.find(p => p.type === "national")?.amount;
       if (quote.currency !== currency || local == null || national == null || String(local) !== String(national) || !/^\d+(?:\.\d{1,2})?$/.test(String(local)) || Math.round(Number(local) * 100) > Math.round(Number(maxAmount) * 100)) return await state("waiting", "number", "Tarif indisponible, ambigu ou supérieur au plafond : décision nécessaire.");
-      if (pilot && quote.regulatoryAddress?.sid !== "TWILIO_IDENTIFIER_REMOVED_5") return await state("waiting", "number", "L’adresse du dossier pilote a changé : vérification nécessaire avant achat.");
+      if (draft.regulatoryAddress?.sid && quote.regulatoryAddress?.sid !== draft.regulatoryAddress.sid) return await state("waiting", "number", "L’adresse réglementaire a changé : vérification nécessaire avant achat.");
       const candidates = quote.numbers.filter(n => n.numberType === "local" && /^\+333\d{8}$/.test(n.phoneNumber || "") && n.beta === false && n.capabilities?.voice === true && ["none", "any", "local"].includes(n.addressRequirements) && quote.regulatoryAddress?.sid).sort((a, b) => a.phoneNumber.localeCompare(b.phoneNumber));
       if (!candidates.length) return await state("waiting", "number", "Aucun numéro +333 compatible n’est disponible : réessayez plus tard, aucun achat n’a été lancé.");
+      await reload();
+      if (draft.automation?.runLeaseId !== lease || !(new Date(draft.automation?.runLeaseUntil).getTime() > Date.now()) || draft.automation?.actorId !== String(actorId) || draft.automation?.currency !== currency || Number(draft.automation?.maxAmount) !== Number(maxAmount) || draft.accountSid !== purchaseAccountSid || draft.regulatoryBundleSid !== purchaseBundleSid || (draft.regulatoryAddress?.sid && draft.regulatoryAddress.sid !== quote.regulatoryAddress.sid) || draft.phoneNumberSid || ["pending", "uncertain"].includes(draft.numberOperation)) return await state("waiting", "number", "Dossier ou autorisation modifié : vérification nécessaire avant achat.");
       await onboarding.buyNumber(restaurantId, actorId, { phoneNumber: candidates[0].phoneNumber, numberType: "local", amount: String(local), currency, addressSid: quote.regulatoryAddress.sid, confirm: true });
       await reload();
     }
@@ -418,7 +425,7 @@ async function runOnboarding(restaurantId, actorId, { confirm, maxAmount, curren
   } catch (err) {
     return await state("error", "recovery", err.expose ? err.message : "Configuration interrompue : vérifiez les opérations avant de reprendre.");
   } finally {
-    if (pilot) await Draft.updateOne({ restaurantId, "automation.runLeaseId": pilotLease }, { $unset: { "automation.runLeaseId": 1, "automation.runLeaseUntil": 1 } }).catch(() => {});
+    await Draft.updateOne({ restaurantId, "automation.runLeaseId": lease }, { $unset: { "automation.runLeaseId": 1, "automation.runLeaseUntil": 1 } }).catch(() => {});
   }
 }
 async function queueTechnical(restaurantId, actorId, { confirm, functionConfirm } = {}) {
@@ -469,9 +476,11 @@ async function setStatus(restaurantId, actorId, { status, confirm, makeTwilio = 
   if (status === "ready_for_test" && (existing?.commercial?.meteringEnabled || existing?.commercial?.meteringFrom)) throw failure("Une période commerciale existe déjà : essais à vérifier sans modifier cette installation", 409);
   let client;
   if (["ready_for_test", "active"].includes(status)) {
-    if (draft.bundleCloneOperation === "completed" || draft.regulatoryBundleSid === "TWILIO_IDENTIFIER_REMOVED_8") throw failure("Régularisation réglementaire requise : le dossier partagé ne peut pas être utilisé pour ce restaurant", 409);
+    if (require("./callsense-individual-bundle.service").requiresIndividualBundle(draft)) throw failure("Régularisation réglementaire requise : le dossier partagé ne peut pas être utilisé pour ce restaurant", 409);
     if (!draft.accountSid || !draft.encryptedAuthToken) throw failure("Sous-compte non configuré", 409);
     client = makeTwilio(draft.accountSid, decryptToken(draft.encryptedAuthToken, String(restaurantId), draft.accountSid));
+    try { await require("./callsense-account-status.service").requireActiveAccount(client, draft.accountSid); }
+    catch (_) { throw failure("Statut du sous-compte impossible à confirmer : vérification nécessaire", 409); }
   }
   const operationId = crypto.randomUUID();
   const locked = await Draft.findOneAndUpdate({ restaurantId, activationOperation: { $ne: "pending" }, sipCredentialOperation: { $ne: "pending" }, webhookOperation: { $ne: "pending" }, ...(status === "active" ? { "fallbackDrill.state": { $nin: ["running", "restoring"] } } : {}), "testRouting.state": { $nin: ["pending", "active", "restoring", "uncertain"] }, updatedAt: draft.updatedAt }, { $set: { activationOperation: "pending", activationOperationId: operationId, "operationAttempts.activation": { id: operationId, startedAt: new Date() } } }, { new: true });

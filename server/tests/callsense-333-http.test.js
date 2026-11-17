@@ -13,8 +13,8 @@ test("achat +333 : formulaire HTTP Twilio réel intercepté sans réseau", async
   const originalKey = process.env.CALLSENSE_ENCRYPTION_KEY;
   process.env.CALLSENSE_ENCRYPTION_KEY = "a1".repeat(32);
   t.after(() => { if (originalKey === undefined) delete process.env.CALLSENSE_ENCRYPTION_KEY; else process.env.CALLSENSE_ENCRYPTION_KEY = originalKey; });
-  const restaurantId = "69c69539571da19061ac7fda", accountSid = "TWILIO_IDENTIFIER_REMOVED_1", bundleSid = "TWILIO_IDENTIFIER_REMOVED_6", addressSid = "TWILIO_IDENTIFIER_REMOVED_5", number = "+33339109448", documentSid = `RD${"1".repeat(32)}`;
-  const state = { _id: "draft", restaurantId, accountSid, regulatoryBundleSid: bundleSid, numberOperation: "not_started", automation: { maxAmount: "1.50", currency: "USD" }, encryptedAuthToken: encryptToken("faux-jeton", restaurantId, accountSid) };
+  const restaurantId = "69c69539571da19061ac7fda", accountSid = `AC${"1".repeat(32)}`, bundleSid = `BU${"1".repeat(32)}`, addressSid = `AD${"1".repeat(32)}`, number = "+33339109448", documentSid = `RD${"1".repeat(32)}`;
+  const state = { _id: "draft", restaurantId, accountSid, regulatoryBundleSid: bundleSid, regulatorySubmission: { bundleSid }, numberOperation: "not_started", automation: { maxAmount: "1.50", currency: "USD" }, encryptedAuthToken: encryptToken("faux-jeton", restaurantId, accountSid) };
   let intercepted, writes = 0;
   const http = new RequestClient();
   http.axios = async request => { if (intercepted) throw new Error("unexpected second HTTP request"); intercepted = request; return { status: 400, data: { code: 21649, message: "fake refusal" }, headers: {} }; };
@@ -24,7 +24,7 @@ test("achat +333 : formulaire HTTP Twilio réel intercepté sans réseau", async
   incoming.list = async () => [];
   const address = { sid: addressSid, accountSid, validated: true, isoCountry: "FR", city: "Paris" };
   const addresses = () => ({ fetch: async () => address }); addresses.list = async () => [address];
-  const fakeClient = { incomingPhoneNumbers: incoming, addresses,
+  const fakeClient = { api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: incoming, addresses,
     availablePhoneNumbers: country => { assert.equal(country, "FR"); return { local: { list: async options => { assert.equal(options.voiceEnabled, true); assert.equal(options.contains, number); return [{ phoneNumber: number, beta: false, capabilities: { voice: true }, addressRequirements: "local" }]; } } }; },
     pricing: { v1: { phoneNumbers: { countries: () => ({ fetch: async () => ({ priceUnit: "USD", phoneNumberPrices: [{ number_type: "local", current_price: "1.35" }, { number_type: "national", current_price: "1.35" }] }) }) } } },
     numbers: { v2: { regulatoryCompliance: { bundles: () => ({ fetch: async () => ({ sid: bundleSid, accountSid, status: "twilio-approved", regulationSid: "RN-fictif" }), itemAssignments: { list: async () => [{ objectSid: documentSid, accountSid, bundleSid }] } }), supportingDocuments: sid => ({ fetch: async () => ({ sid, accountSid, status: "approved", attributes: { address_sids: [addressSid] } }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } };
@@ -47,18 +47,18 @@ test("les routes manuelle et automatique envoient le même formulaire Twilio", a
   process.env.CALLSENSE_ENCRYPTION_KEY = "a1".repeat(32);
   t.after(() => { if (previousKey === undefined) delete process.env.CALLSENSE_ENCRYPTION_KEY; else process.env.CALLSENSE_ENCRYPTION_KEY = previousKey; });
   const provisioning = require("../services/callsense-provisioning.service"), Restaurant = require("../models/restaurant.model"), router = require("../routes/callsense-onboarding.routes");
-  const restaurantId = "69c69539571da19061ac7fda", accountSid = "TWILIO_IDENTIFIER_REMOVED_1", bundleSid = "TWILIO_IDENTIFIER_REMOVED_6", addressSid = "TWILIO_IDENTIFIER_REMOVED_5", number = "+33339109448", documentSid = `RD${"1".repeat(32)}`;
+  const restaurantId = "69c69539571da19061ac7fda", accountSid = `AC${"1".repeat(32)}`, bundleSid = `BU${"1".repeat(32)}`, addressSid = `AD${"1".repeat(32)}`, number = "+33339109448", documentSid = `RD${"1".repeat(32)}`;
   const requests = [], http = new RequestClient();
   http.axios = async request => { requests.push({ method: request.method, url: request.url, type: request.headers["Content-Type"], body: request.data }); return { status: 400, data: { code: 21649, message: "refus simulé" }, headers: {} }; };
   const sdk = twilio(accountSid, "faux-jeton", { httpClient: http });
   const incoming = () => ({ fetch: async () => { throw new Error("unexpected fetch"); } }); incoming.create = params => sdk.incomingPhoneNumbers.create(params); incoming.list = async () => [];
   const address = { sid: addressSid, accountSid, validated: true, isoCountry: "FR", city: "Paris" }, addresses = () => ({ fetch: async () => address }); addresses.list = async () => [address];
-  const client = { incomingPhoneNumbers: incoming, addresses,
+  const client = { api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) }, incomingPhoneNumbers: incoming, addresses,
     availablePhoneNumbers: () => ({ local: { list: async () => [{ phoneNumber: number, beta: false, capabilities: { voice: true }, addressRequirements: "local" }] } }),
     pricing: { v1: { phoneNumbers: { countries: () => ({ fetch: async () => ({ priceUnit: "USD", phoneNumberPrices: [{ number_type: "local", current_price: "1.35" }, { number_type: "national", current_price: "1.35" }] }) }) } } },
     numbers: { v2: { regulatoryCompliance: { bundles: () => ({ fetch: async () => ({ sid: bundleSid, accountSid, status: "twilio-approved", regulationSid: "RN-fictif" }), itemAssignments: { list: async () => [{ objectSid: documentSid, accountSid, bundleSid }] } }), supportingDocuments: sid => ({ fetch: async () => ({ sid, accountSid, status: "approved", attributes: { address_sids: [addressSid] } }) }), regulations: () => ({ fetch: async () => ({ isoCountry: "FR", numberType: "local", endUserType: "business" }) }) } } } };
   const makeTwilio = sid => { assert.equal(sid, accountSid); return client; };
-  const fresh = () => ({ _id: "draft", restaurantId, accountSid, regulatoryBundleSid: bundleSid, regulatoryAddress: { sid: addressSid }, numberOperation: "not_started", accountOperation: "completed", automation: { maxAmount: "1.50", currency: "USD", functionAccepted: true }, encryptedAuthToken: encryptToken("faux-jeton", restaurantId, accountSid) });
+  const fresh = () => ({ _id: "draft", restaurantId, accountSid, regulatoryBundleSid: bundleSid, regulatorySubmission: { bundleSid }, regulatoryAddress: { sid: addressSid }, numberOperation: "not_started", accountOperation: "completed", automation: { maxAmount: "1.50", currency: "USD", functionAccepted: true }, encryptedAuthToken: encryptToken("faux-jeton", restaurantId, accountSid) });
   let state = fresh(), purchaseCalls = 0;
   const apply = update => { for (const [key, value] of Object.entries(update.$set || {})) { const parts = key.split("."); if (parts.length === 2) { state[parts[0]] ||= {}; state[parts[0]][parts[1]] = value; } else state[key] = value; } for (const key of Object.keys(update.$unset || {})) delete state[key]; };
   t.mock.method(Draft, "findOne", () => ({ lean: async () => ({ ...state }), select: () => ({ lean: async () => ({ ...state }) }) }));

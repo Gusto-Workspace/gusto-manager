@@ -10,7 +10,7 @@ const id = "a".repeat(24), ac = `AC${"a".repeat(32)}`, pn = `PN${"b".repeat(32)}
 function fixture(t) {
   const oldKey = process.env.CALLSENSE_ENCRYPTION_KEY; process.env.CALLSENSE_ENCRYPTION_KEY = "11".repeat(32);
   t.after(() => { if (oldKey === undefined) delete process.env.CALLSENSE_ENCRYPTION_KEY; else process.env.CALLSENSE_ENCRYPTION_KEY = oldKey; });
-  const draft = { _id: "draft", accountSid: ac, phoneNumberSid: pn, twilioNumber: "+33123456789", regulatoryBundleSid: bu };
+  const draft = { _id: "draft", accountSid: ac, phoneNumberSid: pn, twilioNumber: "+33123456789", regulatoryBundleSid: bu, regulatorySubmission: { bundleSid: bu } };
   let config = null, writes = 0, addressCalls = 0, failAfterWrite = false, failAddress = false, addressRows = [];
   const number = { sid: pn, accountSid: ac, phoneNumber: draft.twilioNumber, bundleSid: "" };
   const set = fields => { for (const [path, value] of Object.entries(fields || {})) { const parts = path.split("."); let node = draft; for (const key of parts.slice(0, -1)) node = node[key] ||= {}; node[parts.at(-1)] = value; } };
