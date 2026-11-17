@@ -16,7 +16,6 @@ const schema = new mongoose.Schema({
     meteringFrom: Date,
     stripeSubscriptionId: { type: String, default: "" },
     stripeStatus: { type: String, default: "" },
-    stripeEventCreated: { type: Number, default: 0 },
     periodStart: Date,
     periodEnd: Date,
   },

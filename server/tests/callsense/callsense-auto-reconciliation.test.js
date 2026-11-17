@@ -26,6 +26,8 @@ test("un appel récupéré après activation commerciale reste à vérifier avan
   const proof = { outcome: "completed", startedAt: new Date("2026-02-10"), endedAt: new Date("2026-02-10T00:01:01Z") };
   const config = { commercial: { meteringEnabled: true, subscribed: true, meteringFrom: new Date("2026-02-01"), stripeSubscriptionId: "sub_one" } };
   assert.equal(needsRecoveredCommercialVerification(config, proof), true);
+  assert.equal(needsRecoveredCommercialVerification({ commercial: { ...config.commercial, subscribed: false } }, proof), true);
+  assert.equal(needsRecoveredCommercialVerification({ commercial: { ...config.commercial, subscribed: undefined } }, proof), true);
   assert.equal(needsRecoveredCommercialVerification({ commercial: { ...config.commercial, meteringFrom: new Date("2026-02-11") } }, proof), false);
   assert.equal(needsRecoveredCommercialVerification(config, { ...proof, outcome: "busy" }), false);
   assert.equal(needsRecoveredCommercialVerification({ commercial: { ...config.commercial, meteringEnabled: false } }, proof), false);

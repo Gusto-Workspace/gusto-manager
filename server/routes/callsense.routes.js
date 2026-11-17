@@ -130,6 +130,10 @@ router.get("/admin/restaurants/:restaurantId/callsense/subscription-recovery", a
     if (!mongoose.isValidObjectId(restaurantId)) return res.sendStatus(400);
     const operation = await require("../models/callsense/callsense-subscription-operation.model").findById(restaurantId).lean();
     if (!operation) return res.json({ pending: false });
+    if (operation.kind === "update" && operation.action === "cancel" && operation.state === "uncertain") {
+      const result = await require("../services/callsense/callsense-commercial-sync.service").reconcileFromAdmin(restaurantId);
+      if (result.recovered) return res.json({ pending: false, reconciled: true });
+    }
     const { subscription } = await require("../services/billing/stripe-billing.service").findRestaurantSubscription({ restaurantId });
     return res.json({ pending: true, state: operation.state, kind: operation.kind, startedAt: operation.startedAt,
       subscription: subscription ? { id: subscription.id, status: subscription.status } : null });
@@ -141,7 +145,7 @@ router.post("/admin/restaurants/:restaurantId/callsense/subscription-recovery", 
     if (!mongoose.isValidObjectId(restaurantId)) return res.sendStatus(400);
     const Operation = require("../models/callsense/callsense-subscription-operation.model");
     const operation = await Operation.findById(restaurantId).lean();
-    if (!operation || Date.now() - new Date(operation.startedAt).getTime() < 120000) return res.status(409).json({ message: "Aucune opération ancienne à débloquer." });
+    if (!operation || !["create", "update"].includes(operation.kind) || Date.now() - new Date(operation.startedAt).getTime() < 120000) return res.status(409).json({ message: "Aucune opération d'abonnement ancienne à débloquer." });
     const { subscription } = await require("../services/billing/stripe-billing.service").findRestaurantSubscription({ restaurantId });
     const phrase = subscription ? "JE CONFIRME LA VERIFICATION STRIPE" : "JE CONFIRME ABSENCE STRIPE";
     if (req.body.acknowledgement !== phrase) return res.status(400).json({ message: "Confirmation adaptée au résultat Stripe requise." });

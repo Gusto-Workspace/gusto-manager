@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Draft = require("../../models/callsense/callsense-onboarding.model");
 const Config = require("../../models/callsense/callsense-config.model");
+const SubscriptionOperation = require("../../models/callsense/callsense-subscription-operation.model");
 const { encryptToken } = require("../../services/callsense/callsense-secrets.service");
 const service = require("../../services/callsense/callsense-provisioning.service");
 const { requiredChecklistFields } = require("../../services/callsense/callsense-checklist.service");
@@ -23,7 +24,9 @@ test("applicabilité : Linphone direct, HT813 et scénarios inconnus conservent 
 
 function harness(restaurantId = A) {
   const state = { _id: restaurantId, restaurantId, accountSid: ac, encryptedAuthToken: encryptToken("private", restaurantId, ac), sipDomainSid: sd, sipDomain: `gusto-${restaurantId}.sip.twilio.com`, sipCredentialOperation: "not_started", webhookOperation: "not_started", phoneNumberSid: pn, twilioNumber: "+33123456789" };
-  const originals = { find: Draft.findOne, findUpdate: Draft.findOneAndUpdate, update: Draft.updateOne, exists: Draft.exists, config: Config.findOne };
+  const originals = { find: Draft.findOne, findUpdate: Draft.findOneAndUpdate, update: Draft.updateOne, exists: Draft.exists, config: Config.findOne, operationCreate: SubscriptionOperation.create, operationDelete: SubscriptionOperation.deleteOne };
+  SubscriptionOperation.create = async () => ({});
+  SubscriptionOperation.deleteOne = async () => ({ deletedCount: 1 });
   Draft.findOne = () => ({ select: () => ({ lean: async () => ({ ...state }) }) });
   Config.findOne = () => ({ lean: async () => null });
   const match = (filter) => {
@@ -58,7 +61,7 @@ function harness(restaurantId = A) {
   };
   Draft.updateOne = async (filter, update) => mutate(filter, update);
   Draft.exists = async (filter) => match(filter);
-  const restore = () => { Draft.findOne = originals.find; Draft.findOneAndUpdate = originals.findUpdate; Draft.updateOne = originals.update; Draft.exists = originals.exists; Config.findOne = originals.config; };
+  const restore = () => { Draft.findOne = originals.find; Draft.findOneAndUpdate = originals.findUpdate; Draft.updateOne = originals.update; Draft.exists = originals.exists; Config.findOne = originals.config; SubscriptionOperation.create = originals.operationCreate; SubscriptionOperation.deleteOne = originals.operationDelete; };
   return { state, restore };
 }
 
@@ -69,6 +72,18 @@ test("le dossier partagé du pilote ne permet ni mise en test ni activation", as
   try {
     for (const status of ["ready_for_test", "active"]) await assert.rejects(service.setStatus(A, "admin", { status, confirm: true, makeTwilio: () => { twilioCalls++; } }), /Régularisation réglementaire/);
     assert.equal(twilioCalls, 0);
+  } finally { restore(); }
+});
+
+test("une mutation d'abonnement concurrente interdit l'activation technique", async () => {
+  const { state, restore } = harness();
+  const bundle = `BU${"f".repeat(32)}`;
+  Object.assign(state, { regulatoryBundleSid: bundle, regulatorySubmission: { bundleSid: bundle }, serviceStatus: "ready_for_test" });
+  SubscriptionOperation.create = async () => { throw Object.assign(new Error("locked"), { code: 11000 }); };
+  const makeTwilio = () => ({ api: { accounts: sid => ({ fetch: async () => ({ sid, status: "active" }) }) } });
+  try {
+    await assert.rejects(service.setStatus(A, "admin", { status: "active", confirm: true, makeTwilio }), /opération d'abonnement/);
+    assert.equal(state.serviceStatus, "ready_for_test");
   } finally { restore(); }
 });
 
