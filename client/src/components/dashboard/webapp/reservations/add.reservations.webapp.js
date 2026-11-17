@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
+import useCallReservationPrefill from "@/components/_shared/callsense/use-call-reservation-prefill";
 
 // DATE
 import { format } from "date-fns";
@@ -832,6 +833,7 @@ export default function AddReservationComponent(props) {
       props.restaurantData?.reservationsSettings?.bank_hold?.enabled,
     ),
   });
+  useCallReservationPrefill(props.restaurantData?._id, isEditing, setReservationData);
 
   const [availableTimes, setAvailableTimes] = useState([]);
   const [availableTables, setAvailableTables] = useState([]);

@@ -82,6 +82,7 @@ self.installGustoPushWorker = function ({
           body: payload.message || "",
           icon,
           badge,
+          ...(payload.data?.tag && String(payload.data.tag).startsWith("callsense:") ? { tag: payload.data.tag } : {}),
           data: {
             ...payload,
             module,

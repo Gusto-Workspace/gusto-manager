@@ -30,6 +30,7 @@ import FloorPlanParametersComponent from "./parameters/floor-plan.parameters.com
 import BankHoldParametersComponent from "./parameters/bank-hold.parameters.component";
 import WaitlistParametersComponent from "./parameters/waitlist.parameters.component";
 import SmsRemindersReservationsComponent from "../_shared/reservations/sms-reminders.reservations.component";
+import CallSenseUsageReservationsComponent from "../_shared/reservations/callsense-usage.reservations.component";
 import {
   getSmartAvailabilitySetupState,
   SMART_AVAILABILITY_SETUP_ERROR_MESSAGE,
@@ -1239,6 +1240,9 @@ export default function ParametersReservationComponent(props) {
           <SmsRemindersReservationsComponent
             restaurantData={props.restaurantData}
           />
+        </div>
+        <div id="reservation-parameters-callsense" tabIndex={-1}>
+          <CallSenseUsageReservationsComponent restaurantData={props.restaurantData || restaurantContext.restaurantData} revision={restaurantContext.callSenseCountRevision} reconnect={restaurantContext.callSenseReconnect} />
         </div>
         {/* --- Bloc: Gestion intelligente + tables --- */}
         <div id="reservation-parameters-availability" tabIndex={-1}>

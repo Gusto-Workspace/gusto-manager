@@ -33,6 +33,7 @@ function broadcastToRestaurant(restaurantId, payload) {
     ) {
       continue;
     }
+    if (String(payload?.type || "").startsWith("callsense_") && res.locals?.gustoEventModules?.callsense !== true) continue;
     try {
       res.write(line);
     } catch (_error) {
@@ -58,6 +59,15 @@ async function canAccessTakeAwayEvents(user, restaurantId) {
   return userCanAccessRestaurant(user, restaurant, {
     requiredOption: "take_away",
   });
+}
+
+async function canAccessCallSenseEvents(user, restaurantId) {
+  const restaurant = await RestaurantModel.findById(restaurantId)
+    .select("_id owner_id employees options.customers")
+    .populate("employees", "restaurantProfiles");
+  if (!restaurant) return false;
+  if (user.role === "employee" && restaurant.options?.customers !== true) return false;
+  return userCanAccessRestaurant(user, restaurant, { requiredOption: "customers" });
 }
 
 async function canAccessRestaurantEvents(user, restaurantId) {
@@ -115,6 +125,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
       res.locals.gustoEventModules = {
         ...(res.locals.gustoEventModules || {}),
         take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
+        callsense: await canAccessCallSenseEvents(req.user, restaurantId),
       };
     } catch {
       return res.status(500).json({ message: "Server error" });
@@ -161,6 +172,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
         res.locals.gustoEventModules = {
           ...(res.locals.gustoEventModules || {}),
           take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
+          callsense: await canAccessCallSenseEvents(req.user, restaurantId),
         };
 
         res.write(":\n\n");
@@ -200,6 +212,7 @@ module.exports = {
   _clientsPerRestaurant: clientsPerRestaurant,
   _canAccessRestaurantEvents: canAccessRestaurantEvents,
   _canAccessTakeAwayEvents: canAccessTakeAwayEvents,
+  _canAccessCallSenseEvents: canAccessCallSenseEvents,
   _isTakeAwayPayload: isTakeAwayPayload,
   _isEventSessionAuthorized: isEventSessionAuthorized,
 };

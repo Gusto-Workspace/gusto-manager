@@ -154,6 +154,20 @@ function worker(file, pages = [], openResult = null) {
   };
 }
 
+test("CallSense reservations push uses one stable tag and preserves the call link", async () => {
+  const sw = worker("sw-reservations.js");
+  const payload = { module: "reservations", restaurantId: "A", title: "Appel entrant — Gusto CallSense",
+    link: "/dashboard/webapp/reservations/phone?callId=abc", data: { callId: "abc", tag: "callsense:abc" } };
+  await sw.dispatch("push", payload);
+  assert.equal(sw.shown[0].tag, "callsense:abc");
+  const target = new URL(sw.shown[0].data.link);
+  assert.equal(target.pathname, "/dashboard/webapp/reservations/phone");
+  assert.equal(target.searchParams.get("callId"), "abc");
+  assert.equal(target.searchParams.get("restaurantId"), "A");
+  await sw.dispatch("push", { ...payload, title: "Appel manqué — Gusto CallSense" });
+  assert.equal(sw.shown[1].tag, sw.shown[0].tag);
+});
+
 for (const [module, slug, file, entityKey] of configs) {
   const payload = {
     module,

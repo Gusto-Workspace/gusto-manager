@@ -20,6 +20,7 @@ import { GlobalContext } from "@/contexts/global.context";
 // COMPONENTS
 import SimpleSkeletonComponent from "../skeleton/simple-skeleton.component";
 import NotificationsDrawerComponent from "../notifications/notifications-drawer.component";
+import { CallSenseHeaderButton } from "../callsense/callsense-panel";
 
 export default function SettingsComponent() {
   const { t } = useTranslation("");
@@ -169,7 +170,7 @@ export default function SettingsComponent() {
 
           {/* ✅ NOTIFS : owner only  --> pour employee aussi, ["owner", "employee"] */}
           {["owner"].includes(restaurantContext?.userConnected?.role) && (
-            <div className="relative pl-3">
+            <div className="relative pl-1.5">
               <div className="relative">
                 <button
                   className="bg-blue p-3 rounded-lg bg-opacity-40"
@@ -204,6 +205,8 @@ export default function SettingsComponent() {
               />
             </div>
           )}
+
+          <CallSenseHeaderButton />
 
           {/* USER MENU */}
           <div

@@ -124,6 +124,11 @@ export default function RestaurantContext() {
   const router = useRouter();
 
   const [restaurantData, setRestaurantData] = useState(null);
+  const [callSenseEvents, setCallSenseEvents] = useState({});
+  const [callSenseCountRevision, setCallSenseCountRevision] = useState(0);
+  const [callSenseReadEvent, setCallSenseReadEvent] = useState({});
+  const [callSenseReconnect, setCallSenseReconnect] = useState(0);
+  const [callSenseIdentityChange, setCallSenseIdentityChange] = useState(null);
   const [reservationsList, setReservationsList] = useState([]);
   const [activePeriodLoading, setActivePeriodLoading] = useState(false);
   const [takeAwayOrdersList, setTakeAwayOrdersList] = useState([]);
@@ -1084,6 +1089,7 @@ export default function RestaurantContext() {
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = createAuthenticatedEventSource(url);
     sseRef.current = es;
+    es.onopen = () => setCallSenseReconnect((value) => value + 1);
 
     es.onmessage = (evt) => {
       try {
@@ -1112,6 +1118,36 @@ export default function RestaurantContext() {
             const id = String(n._id);
             if (prev.some((x) => String(x._id) === id)) return prev;
             return [n, ...prev].slice(0, 60);
+          });
+        }
+
+        if (payload.type === "callsense_updated" && payload.call) {
+          setCallSenseCountRevision((value) => value + 1);
+          setCallSenseEvents((previous) => {
+            const old = previous[payload.call.id];
+            const ranks = { incoming: 0, initiated: 1, ringing: 2, answered: 3, completed: 4, missed: 4, failed: 4, busy: 4, canceled: 4 };
+            if (old && (new Date(old.updatedAt) > new Date(payload.call.updatedAt) ||
+              (ranks[old.status] || 0) > (ranks[payload.call.status] || 0))) return previous;
+            const next = { ...previous, [payload.call.id]: payload.call };
+            const keys = Object.keys(next);
+            if (keys.length > 100) delete next[keys[0]];
+            return next;
+          });
+        }
+
+        if (payload.type === "callsense_status_changed") {
+          setCallSenseReconnect((value) => value + 1);
+        }
+        if (payload.type === "callsense_customer_changed") setCallSenseIdentityChange({ restaurantId, phones: payload.phones || [], at: Date.now(), nonce: Math.random() });
+
+        if (payload.type === "callsense_missed_read") {
+          setCallSenseCountRevision((value) => value + 1);
+          setCallSenseReadEvent((previous) => {
+            const key = `${restaurantId}:${payload.callId || "all"}`;
+            const next = { ...previous, [key]: payload };
+            const keys = Object.keys(next);
+            if (keys.length > 100) delete next[keys[0]];
+            return next;
           });
         }
 
@@ -2440,6 +2476,11 @@ export default function RestaurantContext() {
 
   return {
     restaurantData,
+    callSenseEvents,
+    callSenseCountRevision,
+    callSenseReadEvent,
+    callSenseReconnect,
+    callSenseIdentityChange,
     setRestaurantData,
     reservationsList,
     setReservationsList,

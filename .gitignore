@@ -19,6 +19,10 @@
 # next.js
 /client/.next*/
 
+# Service worker et runtime Workbox générés par next-pwa
+/client/public/sw.js
+/client/public/workbox-*.js
+
 # Sorties locales reproductibles de diagnostic et benchmark
 /server/diagnostics/
 

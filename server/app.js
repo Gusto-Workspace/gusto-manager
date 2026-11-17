@@ -3,6 +3,8 @@ require("./services/cron-job/backup.service");
 require("./services/cron-job/customer-tags.service");
 require("./services/cron-job/reservation-reminders.service");
 require("./services/cron-job/sms-reminders.service");
+require("./services/cron-job/callsense-metering.service");
+require("./services/cron-job/callsense-onboarding.service");
 require("./services/cron-job/reservation-bank-hold-authorization.service");
 require("./services/cron-job/reservation-bank-hold-expiration.service");
 require("./services/cron-job/reservation-lifecycle.service");
@@ -29,6 +31,9 @@ app.set("trust proxy", 1);
 const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
 app.use("/api", smsmodeWebhookRoutes);
 app.use("/api/stripe/wh", express.raw({ type: "application/json" }));
+
+// CALLSENSE - WEBHOOK
+app.use("/api", require("./routes/stripe-callsense-webhook.routes"));
 
 // JSON
 app.use(express.json());
@@ -133,6 +138,7 @@ const floorplansRoutes = require("./routes/floorplans.routes");
 const timeClockRoutes = require("./routes/time-clock.routes");
 const takeAwayRoutes = require("./routes/take-away.routes");
 const smsRemindersRoutes = require("./routes/sms-reminders.routes");
+const callSenseRoutes = require("./routes/callsense.routes");
 
 app.use(apiRoutes, restaurantsRoutes);
 app.use(apiRoutes, hoursRoutes);
@@ -155,6 +161,7 @@ app.use(apiRoutes, floorplansRoutes);
 app.use(apiRoutes, timeClockRoutes);
 app.use(apiRoutes, takeAwayRoutes);
 app.use(apiRoutes, smsRemindersRoutes);
+app.use(apiRoutes, callSenseRoutes);
 
 // HACCP
 const fridge_temperature = require("./routes/health-control-plan/fridge-temperature.routes");

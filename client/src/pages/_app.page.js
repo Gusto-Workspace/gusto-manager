@@ -31,6 +31,8 @@ import {
   handlePushWindowMessage,
 } from "@/_assets/utils/push-window";
 import PushRestaurantGuard from "@/components/_shared/notifications/push-restaurant-guard";
+import CallSensePanel from "@/components/_shared/callsense/callsense-panel";
+import { CallSenseProvider } from "@/components/_shared/callsense/callsense-context";
 
 function PushWindowBridge() {
   const router = useRouter();
@@ -519,12 +521,14 @@ function App({ Component, pageProps }) {
       navigator.serviceWorker
         .getRegistrations()
         .then((registrations) => {
-          const hadServiceWorker =
-            registrations.length > 0 ||
-            Boolean(navigator.serviceWorker.controller);
+          const rootWorkers = registrations.filter((registration) => {
+            const worker = registration.active || registration.waiting || registration.installing;
+            return worker && new URL(worker.scriptURL).pathname === "/sw.js";
+          });
+          const hadServiceWorker = rootWorkers.length > 0;
 
           return Promise.all(
-            registrations.map((registration) => registration.unregister()),
+            rootWorkers.map((registration) => registration.unregister()),
           ).then(() => hadServiceWorker);
         })
         .then((hadServiceWorker) => {
@@ -593,6 +597,7 @@ function App({ Component, pageProps }) {
       </Head>
 
       <GlobalProvider>
+        <CallSenseProvider>
         <PushWindowBridge />
         <PushRestaurantGuard>
           <AccountantDashboardAccessGuard>
@@ -600,11 +605,13 @@ function App({ Component, pageProps }) {
               <EmployeeDashboardAccessGuard>
                 <WebAppNotificationBadgeSync />
                 <WebAppPushSubscriptionSync />
+                <CallSensePanel />
                 <Component {...pageProps} />
               </EmployeeDashboardAccessGuard>
             </OwnerOnlyWebAppGuard>
           </AccountantDashboardAccessGuard>
         </PushRestaurantGuard>
+        </CallSenseProvider>
       </GlobalProvider>
       <Analytics />
     </>

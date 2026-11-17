@@ -81,6 +81,7 @@ export default function PushRestaurantGuard({ children }) {
         "reservationId",
         "purchaseId",
         "orderId",
+        "callId",
       ])
         next.searchParams.delete(name);
       router

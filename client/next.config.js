@@ -4,6 +4,14 @@ const withPWA = require("next-pwa")({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
+  runtimeCaching: [
+    {
+      urlPattern: ({ url }) => /^\/api\/restaurants\/[^/]+\/callsense(?:\/|$)/.test(url.pathname),
+      method: "GET",
+      handler: "NetworkOnly",
+    },
+    ...require("next-pwa/cache"),
+  ],
 });
 
 module.exports = withPWA({
