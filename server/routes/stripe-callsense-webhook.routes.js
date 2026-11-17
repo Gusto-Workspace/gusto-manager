@@ -19,15 +19,26 @@ async function syncEvent(event, stripe) {
   if (!subscriptionId) return;
   const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
   const restaurantId = subscription.metadata?.restaurantId;
-  if (!mongoose.isValidObjectId(restaurantId) || subscription.items?.has_more) return;
+  if (!mongoose.isValidObjectId(restaurantId)) return;
+  if (subscription.items?.has_more) throw new Error("Lignes Stripe incomplètes");
+  const ids = offerIds();
   const config = await Config.findOne({ restaurantId }).select("commercial.stripeSubscriptionId commercial.stripeEventCreated").lean();
-  if (!config) return;
+  if (!config) {
+    // Only subscription events are retried here: failing invoice.created can
+    // delay invoice finalisation for unrelated billing operations.
+    const hasCallSense = subscription.items?.data?.some((item) => [ids.fixed, ids.metered].filter(Boolean).includes(item.price?.id));
+    if (hasCallSense && event.type?.startsWith("customer.subscription.")) throw new Error("Configuration CallSense non disponible");
+    return;
+  }
+  if (!ids.fixed || !ids.metered || !ids.meter) throw new Error("Offre CallSense non configurée");
   const billing = require("../services/stripe-billing.service");
   const selected = await billing.findRestaurantSubscription({ restaurantId });
   // A late cancellation of an old subscription must not replace a newer one.
   if (selected.subscription && selected.subscription.id !== subscriptionId) return;
   if (!selected.subscription && config.commercial?.stripeSubscriptionId !== subscriptionId) return;
-  const ids = offerIds();
+  if (selected.subscription?.id === subscriptionId) {
+    await require("../services/callsense-subscription-recovery.service").reconcileCreation({ restaurantId, subscription, event });
+  }
   const period = periodFromSubscription(subscription, ids);
   const subscribed = Boolean(period && ["active", "trialing", "past_due"].includes(subscription.status));
   const created = Number(event.created) || 0;

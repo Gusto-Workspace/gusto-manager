@@ -1212,6 +1212,9 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
     }
 
     if (existingSubscription) {
+      if (restaurantId) {
+        await require("../../services/callsense-subscription-recovery.service").reconcileExistingCreation({ restaurantId, subscription: existingSubscription, stripe });
+      }
       return res.status(400).json({
         message: "subscriptions.add.errors.alreadyCreated",
       });
