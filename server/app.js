@@ -37,14 +37,14 @@ app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 // MONGOOSE
 mongoose
   .connect(process.env.CONNECTION_STRING, { connectTimeoutMS: 5000 })
- .then(() => {
+  .then(() => {
     console.log("Connected to MongoDB BDD");
     try {
       require("./services/callsense/cron/callsense-metering.service");
     } catch (error) {
       console.error("[callsense-initialization]", error);
     }
-  })
+  });
 
 // CORS
 app.use(
