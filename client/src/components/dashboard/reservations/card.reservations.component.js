@@ -11,6 +11,7 @@ import {
   getReservationStatusClassName,
   getReservationStatusLabel,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import ReservationArrivalIndicator from "@/components/_shared/reservations/reservation-arrival-indicator.component";
 import {
   CustomerTagPill,
   getPrimaryCustomerTag,
@@ -63,6 +64,14 @@ export default function CardReservationComponent(props) {
 
   const badgeClass = getReservationStatusClassName(status);
   const badgeLabel = getReservationStatusLabel(status);
+  const statusBadge = (
+    <>
+      <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none ${badgeClass}`}>
+        {badgeLabel}
+      </span>
+      <ReservationArrivalIndicator reservation={r} t={props.t} />
+    </>
+  );
 
   const timeLabel = formatTime(r.reservationTime);
   const hasCommentary = Boolean((r.commentary || "").trim());
@@ -98,12 +107,11 @@ export default function CardReservationComponent(props) {
 
             <span
               className={[
-                "ml-auto inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none",
-                badgeClass,
+                "ml-auto inline-flex shrink-0 items-center gap-1",
                 responsiveInlineLayout ? "min-[1024px]:hidden" : "",
               ].join(" ")}
             >
-              {badgeLabel}
+              {statusBadge}
             </span>
           </div>
 
@@ -152,10 +160,8 @@ export default function CardReservationComponent(props) {
           </div>
 
           {responsiveInlineLayout ? (
-            <span
-              className={`hidden shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none min-[1024px]:inline-flex ${badgeClass}`}
-            >
-              {badgeLabel}
+            <span className="hidden shrink-0 items-center gap-1 min-[1024px]:inline-flex">
+              {statusBadge}
             </span>
           ) : null}
 

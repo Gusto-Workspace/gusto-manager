@@ -7,6 +7,7 @@ import axios from "axios";
 // JWT
 import { jwtDecode } from "jwt-decode";
 import { createAuthenticatedEventSource } from "@/_assets/utils/authenticated-events";
+import { mergeReservationArrival } from "@/_assets/utils/reservation-arrival";
 import { isTakeAwayOrderVisible } from "@/_assets/utils/take-away-visibility";
 
 const EMPTY_UNREAD_BY_MODULE = {
@@ -37,13 +38,25 @@ function mergeRealtimeReservation(prevReservation, nextReservation) {
   if (!prevReservation) return nextReservation;
   if (!nextReservation) return prevReservation;
 
-  return {
-    ...prevReservation,
-    ...nextReservation,
-    customerName: nextReservation.customerName || prevReservation.customerName,
-    customerSummary:
-      nextReservation.customerSummary || prevReservation.customerSummary,
-  };
+  return mergeReservationArrival(
+    {
+      ...prevReservation,
+      ...nextReservation,
+      customerName: nextReservation.customerName || prevReservation.customerName,
+      customerSummary:
+        nextReservation.customerSummary || prevReservation.customerSummary,
+    },
+    prevReservation,
+  );
+}
+
+function rememberReservationArrival(updates, reservationId, arrival) {
+  if (!arrival?.arrivalRevision) return false;
+  const previous = updates.get(reservationId) || {};
+  const latest = mergeReservationArrival(previous, arrival);
+  if (latest === previous) return false;
+  updates.set(reservationId, latest);
+  return true;
 }
 
 function padReservationDatePart(value) {
@@ -172,6 +185,7 @@ export default function RestaurantContext() {
   const reservationPeriodsCacheRef = useRef(new Map());
   const reservationPeriodRequestsRef = useRef(new Map());
   const reservationMutationOverridesRef = useRef(new Map());
+  const reservationArrivalUpdatesRef = useRef(new Map());
   const activeReservationPeriodRef = useRef(null);
   const takeAwayPeriodsCacheRef = useRef(new Map());
   const takeAwayPeriodRequestsRef = useRef(new Map());
@@ -618,6 +632,9 @@ export default function RestaurantContext() {
 
           reservationMutationOverridesRef.current.forEach(
             (override, reservationId) => {
+              const loaded = reservations.find(
+                (item) => String(item?._id) === reservationId,
+              );
               reservations = reservations.filter(
                 (item) => String(item?._id) !== reservationId,
               );
@@ -625,9 +642,15 @@ export default function RestaurantContext() {
                 override &&
                 isReservationInRange(override, period.from, period.to)
               ) {
-                reservations.unshift(override);
+                reservations.unshift(mergeReservationArrival(override, loaded));
               }
             },
+          );
+          reservations = reservations.map((reservation) =>
+            mergeReservationArrival(
+              reservation,
+              reservationArrivalUpdatesRef.current.get(String(reservation._id)),
+            ),
           );
 
           reservationPeriodsCacheRef.current.set(cacheKey, {
@@ -738,6 +761,12 @@ export default function RestaurantContext() {
   const applyReservationUpdate = useCallback((reservation) => {
     if (!reservation?._id) return;
     const reservationId = String(reservation._id);
+    const arrivalUpdates = reservationArrivalUpdatesRef.current;
+    rememberReservationArrival(arrivalUpdates, reservationId, reservation);
+    reservation = mergeReservationArrival(
+      reservation,
+      arrivalUpdates.get(reservationId),
+    );
     reservationMutationOverridesRef.current.set(reservationId, reservation);
     if (reservationMutationOverridesRef.current.size > 500) {
       const oldestKey = reservationMutationOverridesRef.current
@@ -747,6 +776,9 @@ export default function RestaurantContext() {
     }
 
     reservationPeriodsCacheRef.current.forEach((entry, key) => {
+      const previous = (entry.reservations || []).find(
+        (item) => String(item?._id) === reservationId,
+      );
       const withoutReservation = (entry.reservations || []).filter(
         (item) => String(item?._id) !== reservationId,
       );
@@ -755,7 +787,7 @@ export default function RestaurantContext() {
         entry.from,
         entry.to,
       )
-        ? [reservation, ...withoutReservation]
+        ? [mergeRealtimeReservation(previous, reservation), ...withoutReservation]
         : withoutReservation;
 
       reservationPeriodsCacheRef.current.set(key, {
@@ -784,9 +816,32 @@ export default function RestaurantContext() {
     });
   }, []);
 
+  const applyReservationArrival = useCallback((arrival, restaurantId) => {
+    if (String(currentRestaurantIdRef.current) !== String(restaurantId)) return;
+    const reservationId = String(arrival?.reservationId || "");
+    if (!reservationId) return;
+    const updates = reservationArrivalUpdatesRef.current;
+    if (!rememberReservationArrival(updates, reservationId, arrival)) return;
+
+    const applyToList = (reservations) =>
+      reservations.map((reservation) =>
+        String(reservation?._id) === reservationId
+          ? mergeReservationArrival(reservation, arrival)
+          : reservation,
+      );
+    reservationPeriodsCacheRef.current.forEach((entry, key) => {
+      reservationPeriodsCacheRef.current.set(key, {
+        ...entry,
+        reservations: applyToList(entry.reservations),
+      });
+    });
+    setReservationsList((current) => applyToList(current || []));
+  }, []);
+
   const removeReservationFromCache = useCallback((reservationId) => {
     const id = String(reservationId || "");
     if (!id) return;
+    reservationArrivalUpdatesRef.current.delete(id);
     reservationMutationOverridesRef.current.set(id, null);
 
     reservationPeriodsCacheRef.current.forEach((entry, key) => {
@@ -1089,7 +1144,16 @@ export default function RestaurantContext() {
     const url = `${process.env.NEXT_PUBLIC_API_URL}/events/${restaurantId}`;
     const es = createAuthenticatedEventSource(url);
     sseRef.current = es;
-    es.onopen = () => setCallSenseReconnect((value) => value + 1);
+    let connected = false;
+    es.onopen = () => {
+      setCallSenseReconnect((value) => value + 1);
+      const period = activeReservationPeriodRef.current;
+      if (connected && period?.restaurantId === String(restaurantId)) {
+        reservationMutationOverridesRef.current.clear();
+        void loadReservationPeriod({ ...period, force: true, activate: true });
+      }
+      connected = true;
+    };
 
     es.onmessage = (evt) => {
       try {
@@ -1318,6 +1382,10 @@ export default function RestaurantContext() {
           applyReservationUpdate(r);
         }
 
+        if (payload.type === "reservation_arrival_updated") {
+          applyReservationArrival(payload, restaurantId);
+        }
+
         if (payload.type === "reservation_deleted" && payload.reservationId) {
           const deletedId = String(payload.reservationId);
 
@@ -1459,7 +1527,9 @@ export default function RestaurantContext() {
     };
   }, [
     applyTakeAwayOrderUpdate,
+    applyReservationArrival,
     applyReservationUpdate,
+    loadReservationPeriod,
     removeReservationFromCache,
     restaurantData?._id,
     userConnected?.role,
@@ -1701,6 +1771,7 @@ export default function RestaurantContext() {
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
+    reservationArrivalUpdatesRef.current.clear();
     activeReservationPeriodRef.current = null;
     takeAwayPeriodsCacheRef.current.clear();
     takeAwayPeriodRequestsRef.current.clear();
@@ -2047,6 +2118,7 @@ export default function RestaurantContext() {
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
+    reservationArrivalUpdatesRef.current.clear();
     activeReservationPeriodRef.current = null;
     takeAwayPeriodsCacheRef.current.clear();
     takeAwayPeriodRequestsRef.current.clear();
@@ -2398,6 +2470,7 @@ export default function RestaurantContext() {
     reservationPeriodsCacheRef.current.clear();
     reservationPeriodRequestsRef.current.clear();
     reservationMutationOverridesRef.current.clear();
+    reservationArrivalUpdatesRef.current.clear();
     activeReservationPeriodRef.current = null;
     takeAwayPeriodsCacheRef.current.clear();
     takeAwayPeriodRequestsRef.current.clear();
@@ -2502,6 +2575,7 @@ export default function RestaurantContext() {
     getCachedReservationsMonth,
     loadReservationPeriod,
     applyReservationUpdate,
+    applyReservationArrival,
     removeReservationFromCache,
     ensureTakeAwayOrdersMonth,
     getCachedTakeAwayOrdersMonth,

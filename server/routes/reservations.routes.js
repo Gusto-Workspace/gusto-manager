@@ -9,6 +9,13 @@ const { format } = require("date-fns");
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const {
+  authorizeRestaurantAccess,
+} = require("../middleware/authorize-restaurant-access");
+const authorizeReservationAccess = authorizeRestaurantAccess({
+  paramName: "id",
+  requiredOption: "reservations",
+});
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
@@ -24,6 +31,12 @@ const {
 
 // SSE BUS
 const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
+const {
+  ARRIVAL_HISTORY_STATUSES,
+  canAccessReservationArrivals,
+  omitReservationArrival,
+  updateReservationArrival,
+} = require("../services/reservations/reservation-arrival.service");
 
 // SERVICE NOTIFS
 const {
@@ -2021,7 +2034,7 @@ function buildPublicIdempotentReservationResponse(
   return {
     status: 200,
     body: {
-      reservation: existingReservation,
+      reservation: omitReservationArrival(existingReservation),
     },
   };
 }
@@ -2470,7 +2483,17 @@ async function updateReservationDetailsInternal({
   };
 
   const parameters = restaurantLean?.reservationsSettings || {};
-  const nextUpdateData = { ...(updateData || {}) };
+  const nextUpdateData = Object.fromEntries(
+    Object.entries(updateData || {}).filter(([field]) => {
+      const root = field.split(".")[0];
+      return (
+        !field.startsWith("$") &&
+        root !== "restaurant_id" &&
+        root !== "arrivedAt" &&
+        root !== "arrivalRevision"
+      );
+    }),
+  );
 
   const existingDate = normalizeReservationDayToUTC(existing.reservationDate);
   if (!existingDate) {
@@ -2899,13 +2922,36 @@ async function updateReservationDetailsInternal({
       );
     }
 
-    const updatedReservation = await ReservationModel.findByIdAndUpdate(
-      reservationId,
-      nextUpdateData,
+    const movedToAnotherDay = candidateDate.getTime() !== existingDate.getTime();
+    const invalidatesArrival =
+      movedToAnotherDay ||
+      (statusExplicit && !ARRIVAL_HISTORY_STATUSES.includes(candidateStatus));
+    const update = invalidatesArrival
+      ? {
+          $set: { ...nextUpdateData, arrivedAt: null },
+          $inc: { arrivalRevision: 1 },
+        }
+      : { $set: nextUpdateData };
+    const query = ReservationModel.findOneAndUpdate(
+      {
+        _id: reservationId,
+        restaurant_id: restaurantId,
+        ...(hasReservationDate ? { reservationDate: existing.reservationDate } : {}),
+      },
+      update,
       { new: true, runValidators: true },
     );
+    if (invalidatesArrival) query.select("+arrivedAt +arrivalRevision");
+    const updatedReservation = await query;
 
     if (!updatedReservation) {
+      if (hasReservationDate && await ReservationModel.exists({ _id: reservationId, restaurant_id: restaurantId })) {
+        throw createReservationRouteError(
+          409,
+          "La date de la réservation a changé. Réessayez avec le créneau actuel.",
+          "RESERVATION_CHANGED",
+        );
+      }
       throw createReservationRouteError(404, "Reservation not found");
     }
 
@@ -2976,7 +3022,7 @@ async function updateReservationStatusInternal({
     );
   }
 
-  const reservation = await ReservationModel.findById(reservationId);
+  let reservation = await ReservationModel.findById(reservationId);
   if (!reservation) {
     throw createReservationRouteError(404, "Reservation not found");
   }
@@ -3248,7 +3294,28 @@ async function updateReservationStatusInternal({
     reservation.reminder24hSentAt = reminderFields.reminder24hSentAt;
     reservation.reminder24hLockedAt = reminderFields.reminder24hLockedAt;
 
-    await reservation.save();
+    if (ARRIVAL_HISTORY_STATUSES.includes(nextStatus)) {
+      await reservation.save();
+    } else {
+      await reservation.validate();
+      const changes = reservation.getChanges();
+      reservation = await ReservationModel.findOneAndUpdate(
+        { _id: reservationId, restaurant_id: restaurantId, status: prevStatus },
+        {
+          ...changes,
+          $set: { ...changes.$set, arrivedAt: null },
+          $inc: { ...changes.$inc, arrivalRevision: 1 },
+        },
+        { new: true },
+      ).select("+arrivedAt +arrivalRevision");
+      if (!reservation) {
+        throw createReservationRouteError(
+          409,
+          "La réservation a changé. Réessayez avec son statut actuel.",
+          "RESERVATION_CHANGED",
+        );
+      }
+    }
 
     let customerId = reservation.customer || null;
 
@@ -4363,7 +4430,7 @@ async function finalizePublicBankHoldReservation({
   );
 
   return {
-    reservation: finalizedReservation,
+    reservation: omitReservationArrival(finalizedReservation),
     restaurant: updatedRestaurant,
   };
 }
@@ -5450,7 +5517,7 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
         if (existing) {
           return res.status(200).json({
             message: "Votre demande est déjà inscrite en liste d’attente.",
-            reservation: existing,
+            reservation: omitReservationArrival(existing),
           });
         }
       }
@@ -5511,7 +5578,7 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
       if (duplicate) {
         return res.status(200).json({
           message: "Votre demande est déjà inscrite en liste d’attente.",
-          reservation: duplicate,
+          reservation: omitReservationArrival(duplicate),
         });
       }
 
@@ -5563,7 +5630,7 @@ router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
       return res.status(201).json({
         message:
           "Votre demande a été ajoutée à la liste d’attente. Vous recevrez un email si une place se libère.",
-        reservation: waitlistReservation,
+        reservation: omitReservationArrival(waitlistReservation),
       });
     } finally {
       await releaseReservationDayLock(dayLock);
@@ -5803,7 +5870,7 @@ router.post("/reservations/waitlist-offers/:token/accept", async (req, res) => {
           return res.status(500).json({
             message:
               "La place est acceptée, mais le lien de validation carte est indisponible. Contactez le restaurant.",
-            reservation: acceptedReservation,
+            reservation: omitReservationArrival(acceptedReservation),
           });
         }
 
@@ -5813,13 +5880,13 @@ router.post("/reservations/waitlist-offers/:token/accept", async (req, res) => {
           requiresAction: true,
           reservationId: acceptedReservation._id,
           redirectUrl: `${origin}/reservations/${acceptedReservation._id}/bank-hold`,
-          reservation: acceptedReservation,
+          reservation: omitReservationArrival(acceptedReservation),
         });
       }
 
       return res.status(200).json({
         message: "Votre réservation est confirmée.",
-        reservation: acceptedReservation,
+        reservation: omitReservationArrival(acceptedReservation),
       });
     } finally {
       await releaseReservationDayLock(dayLock);
@@ -5896,7 +5963,7 @@ router.post(
 
       return res.status(200).json({
         message: "Votre refus a bien été pris en compte.",
-        reservation: declinedReservation,
+        reservation: omitReservationArrival(declinedReservation),
       });
     } catch (error) {
       console.error("Error declining waitlist offer:", error);
@@ -6795,11 +6862,62 @@ router.post(
 );
 
 /* ---------------------------------------------------------
+   UPDATE RESERVATION ARRIVAL
+--------------------------------------------------------- */
+router.put(
+  "/restaurants/:id/reservations/:reservationId/arrival",
+  authenticateToken,
+  async (req, res) => {
+    const { id: restaurantId, reservationId } = req.params;
+    const { arrived } = req.body || {};
+    if (
+      typeof arrived !== "boolean" ||
+      !mongoose.isObjectIdOrHexString(restaurantId) ||
+      !mongoose.isObjectIdOrHexString(reservationId)
+    ) {
+      return res.status(400).json({ message: "Demande d’arrivée invalide." });
+    }
+
+    try {
+      if (!(await canAccessReservationArrivals(req.user, restaurantId))) {
+        return res.status(403).json({ message: "Accès aux réservations refusé." });
+      }
+
+      const result = await updateReservationArrival({
+        restaurantId,
+        reservationId,
+        arrived,
+      });
+      if (result.errorStatus === 404) {
+        return res.status(404).json({ message: "Réservation introuvable." });
+      }
+      if (result.errorStatus === 409) {
+        return res.status(409).json({
+          message: "Cette réservation n’est plus éligible au signalement d’arrivée.",
+        });
+      }
+      if (result.changed) {
+        broadcastToRestaurant(restaurantId, {
+          type: "reservation_arrival_updated",
+          restaurantId,
+          ...result.arrival,
+        });
+      }
+      return res.status(200).json({ arrival: result.arrival });
+    } catch (error) {
+      console.error("Error updating reservation arrival:", error);
+      return res.status(500).json({ message: "Impossible d’enregistrer l’arrivée." });
+    }
+  },
+);
+
+/* ---------------------------------------------------------
    UPDATE RESERVATION STATUS 
 --------------------------------------------------------- */
 router.put(
   "/restaurants/:id/reservations/:reservationId/status",
   authenticateToken,
+  authorizeReservationAccess,
   async (req, res) => {
     const { id: restaurantId, reservationId } = req.params;
     const { status } = req.body;
@@ -7004,6 +7122,7 @@ router.post("/reservations/:reservationId/cancel", async (req, res) => {
 router.put(
   "/restaurants/:id/reservations/:reservationId",
   authenticateToken,
+  authorizeReservationAccess,
   async (req, res) => {
     const { id: restaurantId, reservationId } = req.params;
     const updateData = req.body || {};
@@ -7224,8 +7343,11 @@ router.get(
         return res.status(404).json({ message: "Restaurant not found" });
       }
 
+      const canReadArrival = await canAccessReservationArrivals(req.user, restaurantId);
       const reservations = await getRestaurantReservationsList(restaurantId, {
-        select: MANAGER_RESERVATION_LIST_SELECT,
+        select: canReadArrival
+          ? `${MANAGER_RESERVATION_LIST_SELECT} arrivedAt arrivalRevision`
+          : MANAGER_RESERVATION_LIST_SELECT,
         lean: true,
         dateRange,
         customerSummaryMode: "list",

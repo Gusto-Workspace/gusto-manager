@@ -113,6 +113,7 @@ test("the actual restaurant context filters SSE and HTTP, deduplicates successes
     "next/router": { useRouter: () => ({ pathname: "/dashboard/take-away", query: {} }) },
     axios: { get: async () => { if (release) await new Promise((resolve) => { release.resolve = resolve; }); return { data: { orders: response, pagination: { hasMore: false, nextCursor: null } } }; } },
     "@/_assets/utils/authenticated-events": { createAuthenticatedEventSource: () => ({}) },
+    "@/_assets/utils/reservation-arrival": load("_assets/utils/reservation-arrival.js"),
     "@/_assets/utils/take-away-visibility": visibility,
   }).default;
   const oldWindow = global.window;

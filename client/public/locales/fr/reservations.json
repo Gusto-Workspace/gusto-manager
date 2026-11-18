@@ -1,4 +1,17 @@
 {
+  "arrival": {
+    "unmarked": "Arrivée non signalée",
+    "marked": "Arrivée à {{time}}",
+    "history": "Arrivée signalée à {{time}}",
+    "indicator": "Client arrivé à {{time}}",
+    "mark": "Signaler l’arrivée",
+    "clear": "Effacer l’arrivée",
+    "saving": "Enregistrement…",
+    "error": "Impossible de mettre à jour l’arrivée. Réessayez.",
+    "ineligible": "Cette réservation n’est plus éligible au signalement d’arrivée.",
+    "session": "Session expirée ou accès refusé.",
+    "clearOnStatus": "Le signalement d’arrivée sera effacé."
+  },
   "titles": {
     "main": "Réservations"
   },

@@ -144,6 +144,8 @@ const ReservationSchema = new mongoose.Schema(
     reminder24hLockedAt: { type: Date, default: null, index: true },
 
     activatedAt: { type: Date, default: null },
+    arrivedAt: { type: Date, default: null, select: false },
+    arrivalRevision: { type: Number, default: 0, select: false },
     finishedAt: { type: Date, default: null },
     expiredAt: { type: Date, default: null },
     expirationEmailQueuedAt: { type: Date, default: null },

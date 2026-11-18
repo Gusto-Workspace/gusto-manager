@@ -6,6 +6,10 @@ const {
   userCanAccessRestaurant,
 } = require("../../middleware/authorize-restaurant-access");
 const { isAccountSessionValid } = require("./account-session.service");
+const {
+  canAccessReservationArrivals,
+  omitReservationArrival,
+} = require("../reservations/reservation-arrival.service");
 
 function addClient(restaurantId, res) {
   const key = String(restaurantId);
@@ -26,6 +30,15 @@ function broadcastToRestaurant(restaurantId, payload) {
   const set = clientsPerRestaurant.get(key);
   if (!set || set.size === 0) return;
   const line = `data: ${JSON.stringify(payload)}\n\n`;
+  const hasArrivalFields =
+    payload.reservation?.arrivalRevision !== undefined ||
+    payload.reservation?.arrivedAt !== undefined;
+  const lineWithoutArrival = hasArrivalFields
+    ? `data: ${JSON.stringify({
+        ...payload,
+        reservation: omitReservationArrival(payload.reservation),
+      })}\n\n`
+    : line;
   for (const res of set) {
     if (
       isTakeAwayPayload(payload) &&
@@ -34,8 +47,10 @@ function broadcastToRestaurant(restaurantId, payload) {
       continue;
     }
     if (String(payload?.type || "").startsWith("callsense_") && res.locals?.gustoEventModules?.callsense !== true) continue;
+    const canReadArrival = res.locals?.gustoEventModules?.reservations === true;
+    if (payload.type === "reservation_arrival_updated" && !canReadArrival) continue;
     try {
-      res.write(line);
+      res.write(canReadArrival ? line : lineWithoutArrival);
     } catch (_error) {
       // Ignore broken SSE connections; cleanup happens on close events.
     }
@@ -126,6 +141,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
         ...(res.locals.gustoEventModules || {}),
         take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
         callsense: await canAccessCallSenseEvents(req.user, restaurantId),
+        reservations: await canAccessReservationArrivals(req.user, restaurantId),
       };
     } catch {
       return res.status(500).json({ message: "Server error" });
@@ -173,6 +189,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
           ...(res.locals.gustoEventModules || {}),
           take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
           callsense: await canAccessCallSenseEvents(req.user, restaurantId),
+          reservations: await canAccessReservationArrivals(req.user, restaurantId),
         };
 
         res.write(":\n\n");

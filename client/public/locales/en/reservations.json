@@ -1,4 +1,17 @@
 {
+  "arrival": {
+    "unmarked": "Arrival not recorded",
+    "marked": "Arrived at {{time}}",
+    "history": "Arrival recorded at {{time}}",
+    "indicator": "Guest arrived at {{time}}",
+    "mark": "Record arrival",
+    "clear": "Clear arrival",
+    "saving": "Saving…",
+    "error": "Unable to update the arrival. Try again.",
+    "ineligible": "Arrival can no longer be updated for this reservation.",
+    "session": "Session expired or access denied.",
+    "clearOnStatus": "The recorded arrival will be cleared."
+  },
   "titles": {
     "main": "Reservations"
   },

@@ -80,6 +80,10 @@ export default function ConfirmModalReservationsWebapp(props) {
     confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
   }
 
+  if ((isCancel || isNoShow) && props.reservation?.arrivedAt) {
+    content += ` ${props.t("arrival.clearOnStatus")}`;
+  }
+
   const Icon = isDelete
     ? Trash2
     : isConfirm || isActive || isFinish || isCaptureBankHold

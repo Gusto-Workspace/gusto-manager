@@ -80,6 +80,7 @@ function setup(t, get) {
     "jwt-decode": { jwtDecode: () => ({ role: "owner", id: "owner" }) },
     axios: { get },
     "@/_assets/utils/authenticated-events": { createAuthenticatedEventSource: () => events },
+    "@/_assets/utils/reservation-arrival": load("_assets/utils/reservation-arrival.js"),
     "@/_assets/utils/take-away-visibility": visibility,
   }).default;
   const render = () => { h.reset(); const context = Context(); h.identityEffects(); return context; };

@@ -133,18 +133,29 @@ async function transitionReservationStatus({ reservation, nextStatus }) {
   reservation.reminder24hSentAt = null;
   reservation.reminder24hLockedAt = null;
 
-  await reservation.save();
+  await reservation.validate();
+  const updatedReservation = await ReservationModel.findOneAndUpdate(
+    {
+      _id: reservation._id,
+      status: prevStatus,
+      reservationDate: reservation.reservationDate,
+      reservationTime: reservation.reservationTime,
+    },
+    reservation.getChanges(),
+    { new: true },
+  );
+  if (!updatedReservation) return false;
 
-  if (reservation.customer) {
+  if (updatedReservation.customer) {
     await onReservationStatusChanged(
-      reservation.customer,
-      reservation,
+      updatedReservation.customer,
+      updatedReservation,
       prevStatus,
       nextStatus,
     );
   }
 
-  await broadcastReservationUpdated(reservation);
+  await broadcastReservationUpdated(updatedReservation);
 
   return true;
 }
