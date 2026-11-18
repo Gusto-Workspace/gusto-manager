@@ -475,7 +475,8 @@ export default function ListReservationsWebapp(props) {
    * Navigation / actions
    * =======================================================*/
   function handleAddClick() {
-    router.push(`/dashboard/webapp/reservations/add`);
+    const date = selectedDay && [selectedDay.getFullYear(), String(selectedDay.getMonth() + 1).padStart(2, "0"), String(selectedDay.getDate()).padStart(2, "0")].join("-");
+    router.push({ pathname: "/dashboard/webapp/reservations/add", query: date ? { date } : {} });
   }
   function handleParametersClick() {
     router.push(`/dashboard/webapp/reservations/parameters`);

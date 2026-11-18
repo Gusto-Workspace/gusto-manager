@@ -10,6 +10,7 @@ const {
   buildReservationBankHoldStripeMetadata,
 } = require("../reservations/reservation-bank-hold-metadata.service");
 const { runWaitlistMaintenance } = require("../../routes/reservations.routes");
+const { sendQueuedExpirationEmails } = require("../reservations/reservation-expiration-email.service");
 const {
   buildReservationDateTime,
   getServiceBucketFromTime,
@@ -111,6 +112,19 @@ async function transitionReservationStatus({ reservation, nextStatus }) {
   const prevStatus = String(reservation?.status || "");
   if (!reservation?._id || prevStatus === nextStatus) return false;
 
+  if (nextStatus === "Expired") {
+    const now = new Date();
+    const updated = await ReservationModel.findOneAndUpdate(
+      { _id: reservation._id, status: prevStatus },
+      { $set: { status: "Expired", expiredAt: now, expirationEmailQueuedAt: now, activatedAt: null, finishedAt: null, noShowAt: null, reminder24hDueAt: null, reminder24hSentAt: null, reminder24hLockedAt: null } },
+      { new: true },
+    );
+    if (!updated) return false;
+    if (updated.customer) await onReservationStatusChanged(updated.customer, updated, prevStatus, nextStatus);
+    await broadcastReservationUpdated(updated);
+    return true;
+  }
+
   reservation.status = nextStatus;
   applyActivationFields(reservation, nextStatus);
   applyNoShowFields(reservation, nextStatus);
@@ -145,6 +159,7 @@ async function expirePendingReservation(reservation) {
         activatedAt: null,
         finishedAt: null,
         expiredAt,
+        expirationEmailQueuedAt: expiredAt,
         noShowAt: null,
         reminder24hDueAt: null,
         reminder24hSentAt: null,
@@ -403,6 +418,7 @@ async function runReservationLifecycleCron() {
           restaurant_id: { $in: restaurantIds },
           status,
           [dateField]: { $lte: cutoff },
+          $nor: [{ expirationEmailQueuedAt: { $ne: null }, expirationEmailSentAt: null, expirationEmailStatus: { $in: ["pending", "processing", null] } }],
         }).select(
           `_id restaurant_id customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status ${dateField} bankHold`,
         );
@@ -439,6 +455,7 @@ async function runReservationLifecycleCron() {
     );
 
     await runWaitlistMaintenance();
+    await sendQueuedExpirationEmails();
   } catch (error) {
     throw error;
   } finally {

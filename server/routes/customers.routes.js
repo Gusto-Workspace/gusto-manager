@@ -17,6 +17,77 @@ const ReservationModel = require("../models/reservation.model");
 const TakeAwayOrderModel = require("../models/take-away-order.model");
 const { isRestaurantOrderVisible } = require("../services/take-away/take-away-visibility.service");
 
+function reservationPhonePrefixes(value) {
+  const raw = String(value || "").trim();
+  if (!/^[\d+().\s-]+$/.test(raw)) return [];
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) return [];
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (!digits) return ["00", "+"];
+  const prefixes = new Set([digits, `+${digits}`]);
+  if (!digits.startsWith("0")) prefixes.add(`00${digits}`);
+  if (digits.startsWith("0")) {
+    prefixes.add(`33${digits.slice(1)}`);
+    prefixes.add(`+33${digits.slice(1)}`);
+    prefixes.add(`0033${digits.slice(1)}`);
+  } else if (digits.startsWith("33") && digits.length > 2) {
+    prefixes.add(`0${digits.slice(2)}`);
+  }
+  return [...prefixes];
+}
+
+function reservationNamePattern(value) {
+  const accents = {
+    a: "[aàáâãäåā]", c: "[cçćč]", e: "[eéèêëēėę]",
+    i: "[iíìîïī]", n: "[nñń]", o: "[oóòôõöøō]",
+    s: "[sśš]", u: "[uúùûüū]", y: "[yýÿ]", z: "[zźž]",
+  };
+  return Array.from(normalize(value), (character) => accents[character] || escapeRegex(character)).join("");
+}
+
+// Reservation staff can search the same customer file without access to the CRM.
+router.get(
+  "/restaurants/:id/reservation-customers",
+  authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "reservations" }),
+  async (req, res) => {
+    try {
+      const q = normalize(req.query.query);
+      const phonePrefixes = reservationPhonePrefixes(q);
+      const field = String(req.query.field || "");
+      if (field && !["firstName", "lastName", "email", "phone"].includes(field)) {
+        return res.status(400).json({ message: "Invalid search field" });
+      }
+      if (q.length < 2 && !phonePrefixes.length) return res.json({ customers: [] });
+      const escaped = escapeRegex(q);
+      const phoneConditions = phonePrefixes.map((prefix) => ({ phoneNorm: { $regex: `^${escapeRegex(prefix)}`, $options: "i" } }));
+      let conditions;
+      if (field === "firstName" || field === "lastName") {
+        conditions = [{ [field]: { $regex: reservationNamePattern(q), $options: "i" } }];
+      } else if (field === "email") {
+        conditions = [{ emailNorm: { $regex: escaped, $options: "i" } }];
+      } else if (field === "phone") {
+        conditions = phoneConditions;
+      } else {
+        conditions = [
+          { firstName: { $regex: escaped, $options: "i" } },
+          { lastName: { $regex: escaped, $options: "i" } },
+          { emailNorm: { $regex: `^${escaped}`, $options: "i" } },
+          ...phoneConditions,
+        ];
+      }
+      if (!conditions.length) return res.json({ customers: [] });
+      const customers = await CustomerModel.find({
+        restaurant_id: req.params.id,
+        $or: conditions,
+      }).select("firstName lastName email phone").limit(10).lean();
+      return res.json({ customers });
+    } catch (error) {
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  },
+);
+
 router.use(
   "/restaurants/:id/customers",
   authenticateToken,

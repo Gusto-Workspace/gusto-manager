@@ -376,6 +376,7 @@ test("the lifecycle runs completed-order cleanup server-side", async (t) => {
   require.cache[servicePath].exports = {
     ...originalServiceExports,
     expirePendingTakeAwayOrders: async () => ({ expired: 0 }),
+    finishOverdueTakeAwayOrders: async () => ({ finished: 0 }),
     replayPendingTakeAwayEffects: async () => ({ replayed: 0 }),
     cleanupConfiguredCompletedTakeAwayOrders: async () => {
       cleanupCalls += 1;

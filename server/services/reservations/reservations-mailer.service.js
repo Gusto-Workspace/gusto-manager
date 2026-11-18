@@ -105,6 +105,17 @@ L'équipe de {{restaurantName}}`,
 ];
 
 const NON_EDITABLE_TEMPLATE_DEFINITIONS = {
+  expired: {
+    subject: "Votre demande de réservation a expiré",
+    body: `Bonjour {{customerName}},
+
+Votre demande de réservation chez {{restaurantName}} pour {{guestCountLabel}}, le {{reservationDate}} à {{reservationTime}}, n'a pas été validée dans les délais et a expiré.
+
+Vous pouvez contacter le restaurant pour effectuer une nouvelle réservation.
+
+Cordialement,
+L'équipe de {{restaurantName}}`,
+  },
   reminder24h: {
     subject: "Rappel de votre réservation demain",
     body: `Bonjour {{customerName}},
@@ -241,6 +252,7 @@ async function sendEmail({
   toEmail,
   toName,
   restaurantName,
+  idempotencyKey,
 }) {
   if (!looksLikeEmail(toEmail))
     return { skipped: true, reason: "invalid_email" };
@@ -257,6 +269,7 @@ async function sendEmail({
     to: [{ email: String(toEmail).trim(), name: toName || "" }],
     subject,
     htmlContent,
+    ...(idempotencyKey ? { headers: { idempotencyKey } } : {}),
   };
 
   return apiInstance.sendTransacEmail(mainEmail);
@@ -609,6 +622,7 @@ async function sendReservationEmail(
     actionUrl,
     bankHoldAmountTotal,
     expiresAt,
+    idempotencyKey,
   },
 ) {
   if (!reservation) return { skipped: true, reason: "no_reservation" };
@@ -664,6 +678,7 @@ async function sendReservationEmail(
     toEmail: email,
     toName: variables.customerName,
     restaurantName: resolvedRestaurantName,
+    idempotencyKey,
   });
 }
 

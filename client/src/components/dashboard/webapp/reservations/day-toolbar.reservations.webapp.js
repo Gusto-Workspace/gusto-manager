@@ -7,6 +7,7 @@ import {
   Users,
   X,
   Printer,
+  Plus,
 } from "lucide-react";
 import { QuickSlotClosureActionButton } from "../../reservations/quick-slot-closures.reservations.component";
 
@@ -31,7 +32,7 @@ export default function DayHeaderReservationsWebapp(props) {
   return (
     <div className="flex flex-col gap-3 midTablet:gap-6">
       <div className="bg-lightGrey">
-        <div className="flex items-center justify-between gap-2">
+        <div className="h-[50px] flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
               onClick={() => {
@@ -96,6 +97,9 @@ export default function DayHeaderReservationsWebapp(props) {
                 <Pin className="size-4" />
               </button>
             ) : null}
+            <button type="button" onClick={props.handleAddClick} className="inline-flex shrink-0 items-center justify-center rounded-full bg-blue text-white shadow-sm active:scale-[0.98] transition p-3.5" aria-label="Ajouter une réservation" title="Ajouter une réservation">
+              <Plus className="size-4" />
+            </button>
           </div>
         </div>
 

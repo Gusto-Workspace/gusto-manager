@@ -5,7 +5,7 @@ const Stripe = require("stripe");
 const ReservationModel = require("../../models/reservation.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const { broadcastToRestaurant } = require("../shared/sse-bus.service");
-const { sendReservationEmail } = require("../reservations/reservations-mailer.service");
+const { sendQueuedExpirationEmails } = require("../reservations/reservation-expiration-email.service");
 const { decryptApiKey } = require("../shared/encryption.service");
 const {
   triggerWaitlistAutoPromotionForReservationSlot,
@@ -31,18 +31,21 @@ cron.schedule("*/5 * * * *", async () => {
       "bankHold.expiresAt": { $ne: null, $lte: now },
     });
 
-    for (const reservation of reservations) {
-      reservation.status = "Canceled";
-      reservation.canceledAt = new Date();
-      reservation.bankHold.status = "expired";
-      reservation.bankHold.lastError =
-        "Validation de l’empreinte bancaire non effectuée dans le délai imparti.";
-
-      reservation.reminder24hDueAt = null;
-      reservation.reminder24hSentAt = null;
-      reservation.reminder24hLockedAt = null;
-
-      await reservation.save();
+    for (const candidate of reservations) {
+      const reservation = await ReservationModel.findOneAndUpdate({
+        _id: candidate._id,
+        status: "AwaitingBankHold",
+        "bankHold.enabled": true,
+        "bankHold.status": { $in: ["setup_pending", "authorization_pending"] },
+        "bankHold.expiresAt": { $ne: null, $lte: now },
+      }, { $set: {
+        status: "Canceled", canceledAt: now,
+        "bankHold.status": "expired",
+        "bankHold.lastError": "Validation de l’empreinte bancaire non effectuée dans le délai imparti.",
+        reminder24hDueAt: null, reminder24hSentAt: null, reminder24hLockedAt: null,
+        expirationEmailQueuedAt: now,
+      } }, { new: true });
+      if (!reservation) continue;
 
       broadcastToRestaurant(String(reservation.restaurant_id), {
         type: "reservation_updated",
@@ -54,24 +57,8 @@ cron.schedule("*/5 * * * *", async () => {
 
       await triggerWaitlistAutoPromotionForReservationSlot(reservation);
 
-      try {
-        const restaurant = await RestaurantModel.findById(
-          reservation.restaurant_id,
-        ).select("name reservationsSettings.email_templates");
-
-        await sendReservationEmail("canceled", {
-          reservation,
-          restaurantName: restaurant?.name || "Restaurant",
-          restaurant,
-        });
-      } catch (mailErr) {
-        console.error(
-          "[bank-hold-expiration-email-error]",
-          reservation?._id?.toString?.(),
-          mailErr?.response?.body || mailErr,
-        );
-      }
     }
+    await sendQueuedExpirationEmails();
 
     /*
     ---------------------------------------------------------

@@ -3,7 +3,6 @@ require("./services/cron-job/backup.service");
 require("./services/cron-job/customer-tags.service");
 require("./services/cron-job/reservation-reminders.service");
 require("./services/cron-job/sms-reminders.service");
-require("./services/callsense/cron/callsense-metering.service");
 require("./services/callsense/cron/callsense-onboarding.service");
 require("./services/cron-job/reservation-bank-hold-authorization.service");
 require("./services/cron-job/reservation-bank-hold-expiration.service");
@@ -38,8 +37,14 @@ app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 // MONGOOSE
 mongoose
   .connect(process.env.CONNECTION_STRING, { connectTimeoutMS: 5000 })
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.log("MongoDB connection error:", err));
+ .then(() => {
+    console.log("Connected to MongoDB BDD");
+    try {
+      require("./services/callsense/cron/callsense-metering.service");
+    } catch (error) {
+      console.error("[callsense-initialization]", error);
+    }
+  })
 
 // CORS
 app.use(
