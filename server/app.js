@@ -44,7 +44,8 @@ mongoose
     } catch (error) {
       console.error("[callsense-initialization]", error);
     }
-  });
+  })
+  .catch((err) => console.error("MongoDB connection error:", err));
 
 // CORS
 app.use(
