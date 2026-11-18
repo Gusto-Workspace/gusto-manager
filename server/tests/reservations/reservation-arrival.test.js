@@ -165,7 +165,7 @@ function fixture(t, status = "Confirmed") {
     t.after(() => _removeClient(ids.restaurant, client));
     return events;
   };
-  return { reservation, other, writes, listen };
+  return { reservation, restaurant, other, writes, listen };
 }
 
 const arrivalRequest = (arrived, options) =>
@@ -216,11 +216,11 @@ test("validates role, live employee permission, restaurant and current service d
   assert.equal(other.arrivedAt, undefined);
   reservation.status = "Pending";
   assert.equal((await arrivalRequest(true)).statusCode, 409);
-  reservation.status = "Active";
+  reservation.status = "Confirmed";
   t.mock.timers.setTime(Date.parse("2026-11-19T01:00:00Z"));
   assert.equal(getCurrentReservationServiceDay(), serviceDay);
   assert.equal((await arrivalRequest(true)).statusCode, 200);
-  assert.equal(reservation.status, "Active");
+  assert.equal(reservation.status, "Confirmed");
   t.mock.timers.setTime(Date.parse("2026-11-19T05:00:00Z"));
   assert.equal(getCurrentReservationServiceDay(), "2026-11-19");
   assert.equal((await arrivalRequest(true)).statusCode, 409);
@@ -281,6 +281,75 @@ test("a change of booking day clears the arrival, a normal edit preserves it", a
   assert.equal(reservation.arrivalRevision, 2);
 });
 
+test("write endpoints reject Active while both Late update paths keep their existing behavior", async (t) => {
+  const { reservation, writes } = fixture(t);
+  const editPath = `${basePath}/:reservationId`;
+  const statusPath = `${editPath}/status`;
+  for (const [method, path] of [
+    ["put", editPath],
+    ["put", statusPath],
+    ["post", basePath],
+    ["post", `${basePath}/waitlist`],
+    ["post", `/dashboard${basePath}`],
+  ]) {
+    const invalid = await request(method, path, { body: { status: "Active" } });
+    assert.equal(invalid.statusCode, 400, path);
+    assert.equal(invalid.body.code, "INVALID_PAYLOAD", path);
+  }
+  assert.equal(writes.length, 0);
+  assert.equal(reservation.status, "Confirmed");
+
+  const normalized = await request("put", statusPath, { body: { status: "Late" } });
+  assert.equal(normalized.statusCode, 200);
+  assert.equal(normalized.body.reservation.status, "Confirmed");
+  assert.equal(normalized.body.noOp, true);
+
+  const late = await request("put", editPath, { body: { status: "Late" } });
+  assert.equal(late.statusCode, 200);
+  assert.equal(late.body.reservation.status, "Late");
+  assert.equal(reservation.activatedAt.toISOString(), now.toISOString());
+});
+
+test("the model rejects Active on new and hydrated documents", async (t) => {
+  const { reservation } = fixture(t, "Active");
+  const created = new Reservation(reservation);
+  const historical = Reservation.hydrate(reservation);
+  for (const document of [created, historical]) {
+    await assert.rejects(document.validate(), (error) => error.errors.status?.kind === "enum");
+  }
+  await new Reservation({ ...reservation, status: "Confirmed" }).validate();
+});
+
+test("arrival preserves availability and obsolete records are excluded from operational lists", async (t) => {
+  const { reservation, writes } = fixture(t);
+  const availability = () => request("get", `/public${basePath}`, {
+    user: null,
+    query: { from: serviceDay, to: serviceDay },
+  });
+  const initial = await availability();
+  assert.equal(initial.statusCode, 200);
+  assert.equal(initial.body.reservations.length, 1);
+
+  await arrivalRequest(true);
+  assert.deepEqual(await availability(), initial);
+
+  reservation.status = "Late";
+  const late = await availability();
+  assert.deepEqual(late.body.slotCoverUsage, initial.body.slotCoverUsage);
+  assert.deepEqual(late.body.serviceCoverUsage, initial.body.serviceCoverUsage);
+
+  reservation.status = "Active";
+  const legacy = await availability();
+  assert.deepEqual(legacy.body.reservations, []);
+  const managerList = await request("get", basePath, {
+    query: { from: serviceDay, to: serviceDay },
+  });
+  assert.deepEqual(managerList.body.reservations, []);
+  assert.equal((await arrivalRequest(true)).statusCode, 409);
+  assert.equal((await request("put", `${basePath}/:reservationId`, { body: { commentary: "Tentative" } })).statusCode, 400);
+  assert.equal(writes.length, 1);
+});
+
 test("the auto-finish job and an arrival can overlap without overwriting either", async (t) => {
   const { reservation, writes } = fixture(t);
   t.mock.method(cron, "schedule", () => {});
@@ -322,4 +391,21 @@ test("manual finish works for a legacy reservation without an arrival", async (t
   assert.equal(result.statusCode, 200);
   assert.equal(reservation.status, "Finished");
   assert.equal(reservation.arrivedAt, undefined);
+});
+
+test("with auto-finish disabled an arrived reservation still closes manually after the planned duration", async (t) => {
+  const { reservation, restaurant } = fixture(t);
+  restaurant.reservationsSettings.auto_finish_reservations = false;
+  t.mock.method(cron, "schedule", () => {});
+  const runReservationLifecycle = require("../../services/cron-job/reservation-lifecycle.service");
+  await arrivalRequest(true);
+  t.mock.timers.tick(2 * 60 * 60_000);
+  await runReservationLifecycle();
+  assert.equal(reservation.status, "Confirmed");
+  assert.equal(reservation.arrivedAt.toISOString(), now.toISOString());
+
+  const result = await request("put", `${basePath}/:reservationId/status`, { body: { status: "Finished" } });
+  assert.equal(result.statusCode, 200);
+  assert.equal(reservation.status, "Finished");
+  assert.equal(reservation.arrivedAt.toISOString(), now.toISOString());
 });

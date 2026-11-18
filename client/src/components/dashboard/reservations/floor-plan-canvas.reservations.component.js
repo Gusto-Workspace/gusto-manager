@@ -12,7 +12,12 @@ import {
 } from "react-konva";
 import { RotateCcw } from "lucide-react";
 import { getReservationStatusLabel } from "@/components/_shared/reservations/reservation-status.utils";
-import { buildReservationDateTime } from "@/_assets/utils/reservation-service-time";
+import {
+  buildReservationDateTime,
+  getReservationServiceClock,
+  getReservationServiceDateKey,
+  minutesFromReservationServiceTime,
+} from "@/_assets/utils/reservation-service-time";
 
 function safeArr(a) {
   return Array.isArray(a) ? a : [];
@@ -60,22 +65,13 @@ function clipRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function minutesFromHHmm(timeStr) {
-  const [h, m] = String(timeStr || "00:00")
-    .split(":")
-    .map(Number);
-  return (Number(h) || 0) * 60 + (Number(m) || 0);
-}
-
-function getServiceBucketFromTime(reservationTime) {
-  const [hh = "0"] = String(reservationTime || "00:00").split(":");
-  return Number(hh) < 16 ? "lunch" : "dinner";
+function serviceMinute(time) {
+  return minutesFromReservationServiceTime(String(time || "").slice(0, 5));
 }
 
 function getOccupancyMinutes(parameters, reservationTime) {
-  const bucket = getServiceBucketFromTime(reservationTime);
   const v =
-    bucket === "lunch"
+    (serviceMinute(reservationTime) ?? 0) < 16 * 60
       ? parameters?.table_occupancy_lunch_minutes
       : parameters?.table_occupancy_dinner_minutes;
 
@@ -83,24 +79,24 @@ function getOccupancyMinutes(parameters, reservationTime) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-function isPendingStillBlocking(reservation) {
+function isPendingStillBlocking(reservation, now) {
   if (!reservation) return false;
   if (reservation.status !== "Pending") return false;
   if (reservation.pendingExpiresAt == null) return true;
-  return new Date(reservation.pendingExpiresAt).getTime() > Date.now();
+  return new Date(reservation.pendingExpiresAt).getTime() > now.getTime();
 }
 
-function isBlockingReservation(reservation) {
+function isBlockingReservation(reservation, now) {
   if (!reservation) return false;
   if (
-    ["AwaitingBankHold", "Confirmed", "Active", "Late"].includes(
+    ["AwaitingBankHold", "Confirmed", "Late"].includes(
       reservation.status,
     )
   ) {
     return true;
   }
   if (reservation.status === "Pending") {
-    return isPendingStillBlocking(reservation);
+    return isPendingStillBlocking(reservation, now);
   }
   return false;
 }
@@ -132,140 +128,86 @@ function getDisplayName(reservation) {
   return String(reservation?.customerName || "").trim() || "Réservation";
 }
 
-function getReservationWindow(reservation, parameters) {
-  const start = minutesFromHHmm(reservation?.reservationTime);
-  const occupancy = getOccupancyMinutes(
-    parameters,
-    reservation?.reservationTime,
-  );
-  const end = start + occupancy;
-  return { start, end, occupancy };
-}
+const ARRIVAL_PRIORITY = 5;
+const LIVE_STATUS_PRIORITY = { Late: 4, Confirmed: 3, Pending: 2 };
 
-function getReferenceMinute({ liveMode, selectedTime }) {
-  if (liveMode) {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  }
-  return minutesFromHHmm(selectedTime || "00:00");
-}
-
-function getReferenceTimeString({ liveMode, selectedTime }) {
-  if (!liveMode) {
-    return String(selectedTime || "00:00").slice(0, 5);
-  }
-
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
-function getReferenceOccupancyMinutes({ parameters, liveMode, selectedTime }) {
-  const referenceTime = getReferenceTimeString({ liveMode, selectedTime });
-  return getOccupancyMinutes(parameters, referenceTime);
-}
-
-function getTableReservationState({
+export function getTableReservationState({
   reservations,
   parameters,
   liveMode,
   selectedTime,
+  serviceDateKey,
+  now = new Date(),
+  serviceClock = getReservationServiceClock(now),
+  selectionMode = false,
 }) {
-  const refMinute = getReferenceMinute({ liveMode, selectedTime });
+  const isLiveService = liveMode && serviceDateKey === serviceClock.dateKey;
+  const referenceTime = isLiveService ? serviceClock.time : selectedTime;
+  const refMinute = serviceMinute(referenceTime);
 
   const blocking = safeArr(reservations)
-    .filter((r) => isBlockingReservation(r))
-    .map((r) => {
-      const window = getReservationWindow(r, parameters);
-      return { reservation: r, ...window };
+    .filter((reservation) => isBlockingReservation(reservation, now))
+    .flatMap((reservation) => {
+      const start = serviceMinute(reservation.reservationTime);
+      if (start === null) return [];
+      const arrived =
+        isLiveService &&
+        reservation.status === "Confirmed" &&
+        getReservationServiceDateKey(reservation.reservationDate) === serviceDateKey &&
+        Boolean(reservation.arrivedAt) &&
+        Number.isFinite(new Date(reservation.arrivedAt).getTime());
+      return [
+        {
+          reservation,
+          start,
+          end: start + getOccupancyMinutes(parameters, reservation.reservationTime),
+          arrived,
+          priority: arrived
+            ? ARRIVAL_PRIORITY
+            : (LIVE_STATUS_PRIORITY[reservation.status] || 0),
+        },
+      ];
     });
 
-  const livePriority = {
-    Active: 5,
-    Late: 4,
-    Confirmed: 3,
-    Pending: 2,
-  };
+  const realCurrentEntry = blocking
+    .filter(({ reservation, arrived }) => arrived || reservation.status === "Late")
+    .sort((a, b) => b.priority - a.priority || b.start - a.start)[0];
+  const realCurrent = realCurrentEntry?.reservation || null;
+  const overlaps = ({ start, end }) =>
+    refMinute !== null && refMinute >= start && refMinute < end;
+  const theoreticalCurrent =
+    blocking.filter(overlaps).sort(
+      isLiveService
+        ? (a, b) => b.priority - a.priority || a.start - b.start
+        : (a, b) => b.start - a.start,
+    )[0]?.reservation || null;
 
-  // 1) Réservation réelle en cours côté métier
-  const realCurrent =
-    blocking
-      .filter((x) => ["Active", "Late"].includes(x.reservation?.status))
-      .sort((a, b) => {
-        const pa = livePriority[a.reservation?.status] || 0;
-        const pb = livePriority[b.reservation?.status] || 0;
-        if (pa !== pb) return pb - pa;
-
-        return (
-          minutesFromHHmm(b.reservation?.reservationTime) -
-          minutesFromHHmm(a.reservation?.reservationTime)
-        );
-      })[0]?.reservation || null;
-
-  // 2) Toutes les résas qui couvrent théoriquement le créneau affiché
-  const overlapping = blocking.filter(
-    (x) => refMinute >= x.start && refMinute < x.end,
-  );
-
-  let theoreticalCurrent = null;
-
-  if (liveMode) {
-    theoreticalCurrent =
-      overlapping.sort((a, b) => {
-        const pa = livePriority[a.reservation?.status] || 0;
-        const pb = livePriority[b.reservation?.status] || 0;
-        if (pa !== pb) return pb - pa;
-
-        return (
-          minutesFromHHmm(a.reservation?.reservationTime) -
-          minutesFromHHmm(b.reservation?.reservationTime)
-        );
-      })[0]?.reservation || null;
-  } else {
-    theoreticalCurrent =
-      overlapping.sort((a, b) => {
-        const aExact = a.start === refMinute ? 1 : 0;
-        const bExact = b.start === refMinute ? 1 : 0;
-        if (aExact !== bExact) return bExact - aExact;
-
-        if (a.start !== b.start) return b.start - a.start;
-
-        return (
-          minutesFromHHmm(a.reservation?.reservationTime) -
-          minutesFromHHmm(b.reservation?.reservationTime)
-        );
-      })[0]?.reservation || null;
-  }
-
-  // 3) Résa théorique en conflit avec la résa réelle en cours
-  // -> utile quand la prochaine résa a déjà atteint son heure
+  // Un client arrivé en avance peut entrer en conflit avec la réservation en cours.
   const conflictingReservation =
-    overlapping
-      .map((x) => x.reservation)
-      .filter((r) => !areSameReservation(r, realCurrent))
-      .sort(
-        (a, b) =>
-          minutesFromHHmm(a?.reservationTime) -
-          minutesFromHHmm(b?.reservationTime),
-      )[0] || null;
+    blocking
+      .filter((entry) => overlaps(entry) || entry.arrived)
+      .filter(({ reservation }) => !areSameReservation(reservation, realCurrent))
+      .sort((a, b) => a.start - b.start)[0]?.reservation || null;
 
-  // 4) Prochaine résa théorique future
   const nextReservation =
     blocking
-      .filter((x) => x.start > refMinute)
+      .filter((x) => refMinute !== null && x.start > refMinute)
       .filter((x) => !areSameReservation(x.reservation, realCurrent))
       .sort((a, b) => a.start - b.start)[0]?.reservation || null;
 
-  // 5) Réservation à afficher dans le tooltip / drawer
-  const displayReservation = liveMode
-    ? realCurrent || theoreticalCurrent || nextReservation || null
-    : theoreticalCurrent || nextReservation || null;
-
-  // 6) Réservation utilisée pour le statut visuel
-  const currentReservation = liveMode
+  const currentReservation = isLiveService
     ? realCurrent || theoreticalCurrent || null
     : theoreticalCurrent || null;
+  const tableStatus = getTableStatus({
+    currentReservation,
+    nextReservation,
+    conflictingReservation,
+    parameters,
+    refMinute,
+    referenceTime,
+    confirmedArrival: isLiveService && realCurrentEntry?.arrived,
+    selectionMode,
+  });
 
   return {
     currentReservation,
@@ -273,7 +215,8 @@ function getTableReservationState({
     theoreticalCurrent,
     realCurrent,
     conflictingReservation,
-    displayReservation,
+    displayReservation: currentReservation || nextReservation,
+    tableStatus,
   };
 }
 
@@ -282,15 +225,19 @@ function getTableStatus({
   nextReservation,
   conflictingReservation,
   parameters,
-  liveMode,
-  selectedTime,
+  refMinute,
+  referenceTime,
+  confirmedArrival,
+  selectionMode,
 }) {
-  const refMinute = getReferenceMinute({ liveMode, selectedTime });
-
   if (currentReservation) {
     const currentStatus = currentReservation?.status;
+    // Le sélecteur de tables garde sa représentation prévisionnelle.
+    if (currentStatus === "Confirmed" && !confirmedArrival && !selectionMode) {
+      return "assigned";
+    }
 
-    if (["Confirmed", "Active", "Late"].includes(currentStatus)) {
+    if (["Confirmed", "Late"].includes(currentStatus)) {
       // une autre résa devrait déjà être sur cette table
       if (
         conflictingReservation &&
@@ -304,7 +251,7 @@ function getTableStatus({
         nextReservation &&
         !areSameReservation(nextReservation, currentReservation)
       ) {
-        const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
+        const nextStart = serviceMinute(nextReservation.reservationTime);
         const minutesBeforeNext = nextStart - refMinute;
 
         if (minutesBeforeNext <= 15) {
@@ -320,14 +267,10 @@ function getTableStatus({
   }
 
   if (nextReservation) {
-    const nextStart = minutesFromHHmm(nextReservation?.reservationTime);
+    const nextStart = serviceMinute(nextReservation.reservationTime);
     const remainingMinutes = nextStart - refMinute;
 
-    const neededMinutes = getReferenceOccupancyMinutes({
-      parameters,
-      liveMode,
-      selectedTime,
-    });
+    const neededMinutes = getOccupancyMinutes(parameters, referenceTime);
 
     return remainingMinutes < neededMinutes ? "assigned" : "free";
   }
@@ -677,6 +620,7 @@ export default function FloorPlanCanvasReservationsComponent({
   selectedDate,
   selectedTime,
   liveMode,
+  liveClock,
   selectedTableState,
   onSelectTable,
   shouldResetView,
@@ -724,7 +668,6 @@ export default function FloorPlanCanvasReservationsComponent({
   const [scale, setScale] = useState(0.7);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
-  const [liveTick, setLiveTick] = useState(() => Date.now());
 
   const catalog = useMemo(() => safeArr(tablesCatalog), [tablesCatalog]);
   const objects = useMemo(() => safeArr(room?.objects), [room?.objects]);
@@ -785,14 +728,7 @@ export default function FloorPlanCanvasReservationsComponent({
       const reservationTableIds = getReservationTableIds(r);
       if (reservationTableIds.length === 0) continue;
 
-      const date = new Date(r?.reservationDate);
-      if (Number.isNaN(date.getTime())) continue;
-
-      const rDateKey = `${date.getFullYear()}-${String(
-        date.getMonth() + 1,
-      ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-      if (rDateKey !== dateKey) continue;
+      if (getReservationServiceDateKey(r.reservationDate) !== dateKey) continue;
 
       reservationTableIds.forEach((tableId) => {
         const arr = map.get(tableId) || [];
@@ -806,12 +742,12 @@ export default function FloorPlanCanvasReservationsComponent({
 
   const tableUiByObjectId = useMemo(() => {
     const map = new Map();
+    const now = new Date();
+    const serviceClock = liveClock || getReservationServiceClock(now);
     const blockedTableIds = getBlockedTableIdsMap(
       reservationParameters,
       selectedDate || new Date(),
-      liveMode
-        ? getReferenceTimeString({ liveMode, selectedTime })
-        : selectedTime,
+      liveMode && dateKey === serviceClock.dateKey ? serviceClock.time : selectedTime,
     );
 
     for (const obj of tableObjects) {
@@ -819,46 +755,26 @@ export default function FloorPlanCanvasReservationsComponent({
       const tableReservations =
         reservationsByTableId.get(String(obj?.tableRefId || "")) || [];
 
-      const {
-        currentReservation,
-        nextReservation,
-        theoreticalCurrent,
-        realCurrent,
-        conflictingReservation,
-        displayReservation,
-      } = getTableReservationState({
+      const state = getTableReservationState({
         reservations: tableReservations,
         parameters: reservationParameters,
         liveMode,
         selectedTime,
-      });
-
-      const baseTableStatus = getTableStatus({
-        currentReservation,
-        nextReservation,
-        theoreticalCurrent,
-        realCurrent,
-        conflictingReservation,
-        parameters: reservationParameters,
-        liveMode,
-        selectedTime,
+        serviceDateKey: dateKey,
+        now,
+        serviceClock,
+        selectionMode,
       });
 
       const tableStatus = getVisualTableState({
-        tableStatus: baseTableStatus,
+        tableStatus: state.tableStatus,
         ref,
         blockedTableIds,
       });
 
       map.set(String(obj.id), {
         ref,
-        tableReservations,
-        currentReservation,
-        nextReservation,
-        theoreticalCurrent,
-        realCurrent,
-        conflictingReservation,
-        displayReservation,
+        ...state,
         tableStatus,
       });
     }
@@ -870,24 +786,12 @@ export default function FloorPlanCanvasReservationsComponent({
     reservationsByTableId,
     reservationParameters,
     selectedDate,
+    dateKey,
     liveMode,
     selectedTime,
-    liveTick,
+    liveClock,
+    selectionMode,
   ]);
-
-  useEffect(() => {
-    if (!liveMode) return;
-
-    setLiveTick(Date.now());
-
-    const intervalId = window.setInterval(() => {
-      setLiveTick(Date.now());
-    }, 15000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [liveMode]);
 
   useLayoutEffect(() => {
     didInitialFitRef.current = false;
@@ -1948,14 +1852,10 @@ export default function FloorPlanCanvasReservationsComponent({
     if (!selectedTableState?.object || !stageSize.w || !stageSize.h)
       return null;
 
-    const ref = selectedTableState.ref || null;
-    const reservation = selectedTableState.reservation || null;
-    const currentReservation = selectedTableState.currentReservation || null;
-    const nextReservation = selectedTableState.nextReservation || null;
-    const theoreticalReservation =
-      selectedTableState.theoreticalReservation || null;
-    const realReservation = selectedTableState.realReservation || null;
-    const tableStatus = selectedTableState.tableStatus || "free";
+    const currentTable = tableUiByObjectId.get(String(selectedTableState.object.id));
+    if (!currentTable) return null;
+    const { ref, nextReservation, tableStatus } = currentTable;
+    const reservation = currentTable.displayReservation;
     const center = getObjectVisualCenter(selectedTableState.object, catalog);
 
     const worldX = center.x;
@@ -1994,14 +1894,12 @@ export default function FloorPlanCanvasReservationsComponent({
       top,
       ref,
       reservation,
-      currentReservation,
       nextReservation,
-      theoreticalReservation,
-      realReservation,
       tableStatus,
     };
   }, [
     selectedTableState,
+    tableUiByObjectId,
     selectionMode,
     pos,
     scale,

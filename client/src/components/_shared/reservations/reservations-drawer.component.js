@@ -401,7 +401,7 @@ export default function ReservationsDrawerComponent({
       return { type: "confirm", label: "Confirmer la place" };
     if (status === "Pending")
       return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
-    if (["Confirmed", "Active", "Late"].includes(status))
+    if (["Confirmed", "Late"].includes(status))
       return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
   }, [isPastPending, status, t]);

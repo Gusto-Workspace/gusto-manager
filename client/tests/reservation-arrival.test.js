@@ -24,10 +24,21 @@ function load(file, stubs = {}) {
   return module.exports;
 }
 
-const utils = load("_assets/utils/reservation-arrival.js");
+const serviceTime = load("_assets/utils/reservation-service-time.js");
+const utils = load("_assets/utils/reservation-arrival.js", {
+  "./reservation-service-time": serviceTime,
+});
 const utilStub = { "@/_assets/utils/reservation-arrival": utils };
 const shared = "components/_shared/reservations";
 const statusUtils = load(`${shared}/reservation-status.utils.js`);
+const { getTableReservationState } = load(
+  "components/dashboard/reservations/floor-plan-canvas.reservations.component.js",
+  {
+    "react-konva": {},
+    "@/components/_shared/reservations/reservation-status.utils": statusUtils,
+    "@/_assets/utils/reservation-service-time": serviceTime,
+  },
+);
 const t = (key, { time } = {}) => {
   const label = key.split(".").reduce((value, segment) => value?.[segment], translations);
   return label?.replace("{{time}}", time) || key;
@@ -41,9 +52,103 @@ const reservation = {
   status: "Confirmed",
 };
 const arrivedAt = "2026-11-18T11:05:00.000Z";
+const markedReservation = { ...reservation, arrivedAt };
+
+function floorState(reservations, now, options = {}) {
+  return getTableReservationState({
+    reservations,
+    now: new Date(now),
+    serviceDateKey: "2026-11-18",
+    liveMode: true,
+    parameters: {
+      table_occupancy_lunch_minutes: 60,
+      table_occupancy_dinner_minutes: 90,
+    },
+    ...options,
+  });
+}
+
+test("live floor plan distinguishes a booking from a recorded arrival, including late or extended stays", () => {
+  const duringSlot = "2026-11-18T11:20:00Z";
+  const afterSlot = "2026-11-18T12:10:00Z";
+  const expected = floorState([reservation], duringSlot);
+  assert.equal(expected.tableStatus, "assigned");
+  assert.equal(expected.displayReservation, reservation);
+  assert.equal(floorState([reservation], afterSlot).tableStatus, "free");
+
+  for (const at of [duringSlot, afterSlot]) {
+    const state = floorState([markedReservation], at);
+    assert.equal(state.tableStatus, "occupied");
+    assert.equal(state.realCurrent, markedReservation);
+  }
+  const lateArrival = { ...reservation, arrivedAt: afterSlot };
+  assert.equal(floorState([lateArrival], afterSlot).tableStatus, "occupied");
+  assert.equal(floorState([{ ...lateArrival, arrivedAt: null }], afterSlot).tableStatus, "free");
+});
+
+test("finishing a booking releases its table while retaining arrival history", () => {
+  const at = "2026-11-18T11:30:00Z";
+  for (const status of ["Finished", "Canceled", "Rejected", "Expired", "NoShow", "Waitlist"]) {
+    const terminal = { ...markedReservation, status };
+    assert.equal(floorState([terminal], at).tableStatus, "free", status);
+  }
+  for (const status of ["Pending", "AwaitingBankHold"]) {
+    const pending = { ...markedReservation, status };
+    assert.equal(floorState([pending], at).tableStatus, "assigned", status);
+  }
+});
+
+test("the upcoming time and running conflicts can require an occupied table to be released", () => {
+  const upcoming = { ...reservation, _id: "next", reservationTime: "13:30" };
+  const early = floorState([markedReservation, upcoming], "2026-11-18T12:10:00Z");
+  assert.equal(early.tableStatus, "occupied");
+  assert.equal(early.nextReservation, upcoming);
+
+  for (const at of ["2026-11-18T12:15:00Z", "2026-11-18T12:35:00Z"]) {
+    const state = floorState([markedReservation, upcoming], at);
+    assert.equal(state.tableStatus, "to_release");
+    assert.equal(state.currentReservation, markedReservation);
+  }
+  const nextArrives = { ...upcoming, arrivedAt: "2026-11-18T12:35:00Z" };
+  assert.equal(floorState([markedReservation, nextArrives], "2026-11-18T12:35:00Z").tableStatus, "to_release");
+  const finished = { ...markedReservation, status: "Finished" };
+  assert.equal(floorState([finished, upcoming], "2026-11-18T12:35:00Z").tableStatus, "assigned");
+  assert.equal(floorState([finished, nextArrives], "2026-11-18T12:35:00Z").currentReservation, nextArrives);
+});
+
+test("the live plan keeps the same service after midnight and ignores old arrivals after rollover", () => {
+  const evening = { ...markedReservation, reservationTime: "23:30", arrivedAt: "2026-11-18T22:36:00Z" };
+  const nightBooking = { ...reservation, _id: "night", reservationTime: "00:45" };
+  const beforeMidnight = floorState([evening, nightBooking], "2026-11-18T22:55:00Z");
+  assert.equal(beforeMidnight.tableStatus, "occupied");
+  assert.equal(beforeMidnight.nextReservation, nightBooking);
+  assert.equal(floorState([evening, nightBooking], "2026-11-18T23:35:00Z").tableStatus, "to_release");
+
+  assert.equal(floorState([evening], "2026-11-19T01:30:00Z").tableStatus, "occupied");
+  for (const at of ["2026-11-19T05:00:00Z", "2026-11-21T12:00:00Z"]) {
+    assert.equal(floorState([evening], at).tableStatus, "free");
+  }
+  assert.equal(floorState([nightBooking], "2026-11-19T00:00:00Z").tableStatus, "assigned");
+  assert.equal(serviceTime.getReservationServiceClock(new Date("2026-11-19T01:00:00Z")).dateKey, "2026-11-18");
+  assert.equal(serviceTime.getReservationServiceClock(new Date("2026-11-19T05:00:00Z")).dateKey, "2026-11-19");
+});
+
+test("Late retains its live behavior and the table picker remains a forecast", () => {
+  const at = "2026-11-18T12:20:00Z";
+  const late = { ...reservation, status: "Late", _id: "late" };
+  const obsolete = { ...markedReservation, status: "Active" };
+  assert.equal(floorState([late], at).tableStatus, "occupied");
+  assert.equal(floorState([obsolete], at).tableStatus, "free");
+  assert.equal(floorState([markedReservation, late], at).currentReservation, markedReservation);
+
+  const preview = { liveMode: false, selectedTime: "12:30" };
+  assert.equal(floorState([markedReservation], at, preview).tableStatus, "assigned");
+  assert.equal(floorState([markedReservation], at, { ...preview, selectionMode: true }).tableStatus, "occupied");
+  assert.equal(floorState([reservation], at, { ...preview, selectionMode: true }).tableStatus, "occupied");
+});
 
 test("operational eligibility follows the Paris service day through midnight", () => {
-  for (const status of ["Confirmed", "Active", "Late"]) {
+  for (const status of ["Confirmed", "Late"]) {
     const entry = { ...reservation, status };
     assert.equal(utils.canSignalReservationArrival(entry, new Date(arrivedAt)), true);
     assert.equal(utils.canSignalReservationArrival(entry, new Date("2026-11-19T04:59:00Z")), true);
@@ -73,7 +178,7 @@ test("both cards render an accessible check beside the existing badge, including
     }).default,
   ];
   for (const Card of cards) {
-    for (const status of ["Confirmed", "Active", "Late"]) {
+    for (const status of ["Confirmed", "Late"]) {
       const render = (arrival, responsiveInlineLayout = false) => renderToStaticMarkup(
         React.createElement(Card, {
           reservation: { ...reservation, status, ...arrival }, responsiveInlineLayout, t,
@@ -221,16 +326,21 @@ test("SSE, stale HTTP responses and planned finish converge on the highest arriv
   await loading;
   state = render();
   assert.equal(state.reservationsList[0].arrivedAt, arrivedAt);
+  assert.equal(floorState(state.reservationsList, "2026-11-18T11:30:00Z").tableStatus, "occupied");
 
+  send({ arrivedAt: null, arrivalRevision: 2 });
+  assert.equal(floorState(render().reservationsList, "2026-11-18T11:30:00Z").tableStatus, "assigned");
+  send({ arrivedAt, arrivalRevision: 3 });
   state.applyReservationUpdate({ ...reservation, status: "Finished" });
   assert.equal(render().reservationsList[0].arrivedAt, arrivedAt);
-  send({ arrivedAt: null, arrivalRevision: 2 });
+  assert.equal(floorState(render().reservationsList, "2026-11-18T11:30:00Z").tableStatus, "free");
+  send({ arrivedAt: null, arrivalRevision: 4 });
   state.applyReservationArrival({ reservationId: "booking", arrivedAt, arrivalRevision: 1 }, "restaurant");
   send({ arrivedAt, arrivalRevision: 10, restaurantId: "other" });
   const current = render().reservationsList[0];
   assert.equal(current.status, "Finished");
   assert.equal(current.arrivedAt, null);
-  assert.equal(current.arrivalRevision, 2);
+  assert.equal(current.arrivalRevision, 4);
 });
 
 test("arrival leaves month categories and their palette unchanged", () => {

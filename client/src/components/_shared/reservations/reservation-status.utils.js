@@ -18,7 +18,6 @@ export function getReservationDisplayStatus(status) {
     case "Pending":
       return "Pending";
     case "Confirmed":
-    case "Active":
     case "Late":
       return "Confirmed";
     case "Finished":

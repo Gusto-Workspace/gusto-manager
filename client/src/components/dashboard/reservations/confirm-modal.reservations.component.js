@@ -24,7 +24,6 @@ export default function ConfirmModalReservationsComponent(props) {
   const name = props.reservation?.customerName || fallbackName || "ce client";
 
   const isDelete = props.actionType === "delete";
-  const isActive = props.actionType === "active";
   const isConfirm = props.actionType === "confirm";
   const isFinish =
     props.actionType === "finish" || props.actionType === "finished";
@@ -45,7 +44,7 @@ export default function ConfirmModalReservationsComponent(props) {
     title = "Supprimer la réservation";
     content = `La réservation de ${name} sera supprimée définitivement. Cette action est irréversible.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Supprimer";
-  } else if (isConfirm || isActive) {
+  } else if (isConfirm) {
     title = "Confirmer la réservation";
     content = `La réservation de ${name} sera marquée comme confirmée. Cette action est irréversible.`;
     confirmLabel = props.isProcessing ? "Chargement..." : "Confirmer";
@@ -86,7 +85,7 @@ export default function ConfirmModalReservationsComponent(props) {
 
   const Icon = isDelete
     ? Trash2
-    : isConfirm || isActive || isFinish || isCaptureBankHold
+    : isConfirm || isFinish || isCaptureBankHold
       ? CheckCircle2
       : AlertTriangle;
 

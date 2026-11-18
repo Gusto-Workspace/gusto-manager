@@ -825,12 +825,12 @@ function normalizeReservationDayToUTC(dateInput) {
   );
 }
 
+const RESERVATION_STATUSES = ReservationModel.schema.path("status").enumValues;
 const BLOCKING_STATUSES = [
   "AwaitingBankHold",
   "Waitlist",
   "Pending",
   "Confirmed",
-  "Active",
   "Late",
 ];
 
@@ -1879,8 +1879,7 @@ function isDateTimeBlocked(parameters, candidateDT) {
 }
 
 function applyActivationFields(reservation, nextStatus) {
-  const ACTIVE_LIKE = new Set(["Active", "Late"]);
-  if (ACTIVE_LIKE.has(nextStatus)) {
+  if (nextStatus === "Late") {
     if (!reservation.activatedAt) reservation.activatedAt = new Date();
   } else {
     reservation.activatedAt = null;
@@ -2431,6 +2430,16 @@ const PUBLIC_RESERVATION_UPDATE_FIELDS = new Set([
   "commentary",
 ]);
 
+function validateProvidedReservationStatus(req, res, next) {
+  if (
+    Object.hasOwn(req.body || {}, "status") &&
+    !RESERVATION_STATUSES.includes(req.body.status)
+  ) {
+    return res.status(400).json({ message: "status invalide.", code: "INVALID_PAYLOAD" });
+  }
+  return next();
+}
+
 function sanitizePublicReservationUpdateData(rawData = {}) {
   const source =
     rawData && typeof rawData === "object" && !Array.isArray(rawData)
@@ -2494,6 +2503,12 @@ async function updateReservationDetailsInternal({
       );
     }),
   );
+  const requestedStatus = Object.hasOwn(nextUpdateData, "status")
+    ? nextUpdateData.status
+    : existing.status;
+  if (!RESERVATION_STATUSES.includes(requestedStatus)) {
+    throw createReservationRouteError(400, "status invalide.", "INVALID_PAYLOAD");
+  }
 
   const existingDate = normalizeReservationDayToUTC(existing.reservationDate);
   if (!existingDate) {
@@ -2670,7 +2685,7 @@ async function updateReservationDetailsInternal({
   if (
     touchesDateTime &&
     !statusExplicit &&
-    ["Active", "Late"].includes(String(existing.status || ""))
+    existing.status === "Late"
   ) {
     nextUpdateData.status = "Confirmed";
     nextUpdateData.finishedAt = null;
@@ -2999,15 +3014,10 @@ async function updateReservationStatusInternal({
     );
   }
 
-  const nextStatus =
-    requestedStatusValue === "Active" || requestedStatusValue === "Late"
-      ? "Confirmed"
-      : requestedStatusValue;
+  const nextStatus = requestedStatusValue === "Late" ? "Confirmed" : requestedStatusValue;
   const ALLOWED = new Set([
     "Pending",
     "Confirmed",
-    "Active",
-    "Late",
     "Finished",
     "Canceled",
     "Rejected",
@@ -3108,9 +3118,7 @@ async function updateReservationStatusInternal({
       }
     }
 
-    const mustCheckTable = ["Pending", "Confirmed", "Active", "Late"].includes(
-      nextStatus,
-    );
+    const mustCheckTable = ["Pending", "Confirmed"].includes(nextStatus);
     let tableReassigned = false;
     let tableChange = null;
     const hasConfiguredTable =
@@ -4017,7 +4025,7 @@ async function triggerWaitlistAutoPromotionIfBlockingSlotWasFreed(slot) {
   const prevStatus = String(slot?.status || "").trim();
   if (!slot?.restaurantId && !slot?.restaurant_id) return null;
   if (
-    !["AwaitingBankHold", "Pending", "Confirmed", "Active", "Late"].includes(
+    !["AwaitingBankHold", "Pending", "Confirmed", "Late"].includes(
       prevStatus,
     )
   ) {
@@ -5449,7 +5457,7 @@ router.post(
 /* --------------------------
    CREATE A PUBLIC WAITLIST ENTRY
 ----------------------------- */
-router.post("/restaurants/:id/reservations/waitlist", async (req, res) => {
+router.post("/restaurants/:id/reservations/waitlist", validateProvidedReservationStatus, async (req, res) => {
   const restaurantId = req.params.id;
   const reservationData = req.body || {};
 
@@ -5975,7 +5983,7 @@ router.post(
 /* --------------------------
    CREATE A NEW RESERVATION (public)
 ----------------------------- */
-router.post("/restaurants/:id/reservations", async (req, res) => {
+router.post("/restaurants/:id/reservations", validateProvidedReservationStatus, async (req, res) => {
   const restaurantId = req.params.id;
   const reservationData = req.body;
 
@@ -6453,6 +6461,7 @@ router.post("/restaurants/:id/reservations", async (req, res) => {
 router.post(
   "/dashboard/restaurants/:id/reservations",
   authenticateToken,
+  validateProvidedReservationStatus,
   async (req, res) => {
     const restaurantId = req.params.id;
     const reservationData = req.body;
@@ -7350,6 +7359,7 @@ router.get(
           : MANAGER_RESERVATION_LIST_SELECT,
         lean: true,
         dateRange,
+        statuses: RESERVATION_STATUSES,
         customerSummaryMode: "list",
         batchSize: 500,
       });
@@ -7406,7 +7416,7 @@ router.get(
 
       const toFix = reservations
         .filter((r) => {
-          // doit bloquer un slot (Pending non expirée, Confirmed/Active/Late)
+          // doit bloquer un slot (Pending non expirée, Confirmed/Late)
           if (!isBlockingReservation(r)) return false;
 
           return (

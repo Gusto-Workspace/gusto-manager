@@ -7,6 +7,11 @@ import {
   getActiveFloorPlanRooms,
   getDefaultActiveFloorPlanRoomId,
 } from "../../reservations/floor-plan.rooms.utils";
+import {
+  getReservationServiceDateKey,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
+import useFloorPlanClock from "../../reservations/use-floor-plan-clock";
 
 const FloorPlanCanvasReservationsComponent = dynamic(
   () => import("../../reservations/floor-plan-canvas.reservations.component"),
@@ -26,17 +31,6 @@ function dateKeyOf(date) {
     2,
     "0",
   )}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function isSameDay(a, b) {
-  const da = a instanceof Date ? a : new Date(a);
-  const db = b instanceof Date ? b : new Date(b);
-
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  );
 }
 
 function getInitialFloorPlanState(restaurantId) {
@@ -120,25 +114,28 @@ export default function FloorPlanReservationsWebapp({
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
 
-  const contextDate = selectedDay || new Date();
+  const liveClock = useFloorPlanClock();
+  const { dateKey: serviceDateKey } = liveClock;
+  const contextDate = useMemo(
+    () => selectedDay || new Date(`${serviceDateKey}T00:00:00`),
+    [selectedDay, serviceDateKey],
+  );
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
-  const isTodayContext = isSameDay(contextDate, new Date());
+  const isTodayContext = contextDateKey === serviceDateKey;
   const showLiveToggle = !isDayContext || isTodayContext;
 
   useEffect(() => {
     if (!restaurantId) return;
-    ensureReservationsDay?.(contextDateKey, {
+    ensureReservationsDay?.(contextDate, {
       restaurantId,
     });
-  }, [contextDateKey, ensureReservationsDay, restaurantId]);
+  }, [contextDate, ensureReservationsDay, restaurantId]);
 
   const dayReservations = useMemo(() => {
-    return safeArr(reservations).filter((r) => {
-      const d = new Date(r?.reservationDate);
-      if (Number.isNaN(d.getTime())) return false;
-      return dateKeyOf(d) === contextDateKey;
-    });
+    return safeArr(reservations).filter(
+      (r) => getReservationServiceDateKey(r?.reservationDate) === contextDateKey,
+    );
   }, [reservations, contextDateKey]);
 
   const timeOptions = useMemo(() => {
@@ -149,7 +146,7 @@ export default function FloorPlanReservationsWebapp({
           .filter(Boolean),
       ),
     );
-    return uniq.sort((a, b) => a.localeCompare(b));
+    return sortReservationTimesByServiceOrder(uniq);
   }, [dayReservations]);
 
   const activeRooms = useMemo(() => getActiveFloorPlanRooms(rooms), [rooms]);
@@ -236,20 +233,8 @@ export default function FloorPlanReservationsWebapp({
   }, [restaurantId]);
 
   useEffect(() => {
-    if (isDayContext) {
-      if (!isTodayContext) {
-        setLiveMode(false);
-      }
-
-      setSelectedTime((prev) => {
-        const hasPrev = timeOptions.includes(prev);
-        return hasPrev ? prev : timeOptions[0] || "";
-      });
-    } else {
-      setLiveMode(true);
-      setSelectedTime("");
-    }
-  }, [isDayContext, isTodayContext, timeOptions]);
+    setLiveMode(!isDayContext || isTodayContext);
+  }, [contextDateKey, isDayContext, isTodayContext]);
 
   useEffect(() => {
     setSelectedTableState(null);
@@ -275,7 +260,7 @@ export default function FloorPlanReservationsWebapp({
     const firstTime = timeOptions[0] || "";
     const hasSelectedTime = timeOptions.includes(selectedTime);
 
-    if (!hasSelectedTime && firstTime) {
+    if (!hasSelectedTime && selectedTime !== firstTime) {
       setSelectedTime(firstTime);
     }
   }, [isDayContext, liveMode, timeOptions, selectedTime]);
@@ -467,6 +452,7 @@ export default function FloorPlanReservationsWebapp({
             selectedDate={contextDate}
             selectedTime={selectedTime}
             liveMode={liveMode}
+            liveClock={liveClock}
             selectedTableState={selectedTableState}
             onSelectTable={setSelectedTableState}
             minSeatsFilter={minSeatsFilter}

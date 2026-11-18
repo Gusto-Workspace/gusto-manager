@@ -71,7 +71,7 @@ function groupRestaurantsByDeletionMinutes(restaurants = []) {
 }
 
 function applyActivationFields(reservation, nextStatus) {
-  if (["Active", "Late"].includes(nextStatus)) {
+  if (nextStatus === "Late") {
     if (!reservation.activatedAt) reservation.activatedAt = new Date();
   } else {
     reservation.activatedAt = null;
@@ -302,7 +302,6 @@ async function runReservationLifecycleCron() {
           $in: [
             "Confirmed",
             "Pending",
-            "Active",
             "Late",
             "Waitlist",
             "Finished",
@@ -331,7 +330,7 @@ async function runReservationLifecycleCron() {
       .map((restaurant) => restaurant._id);
     const autoFinishReservations = await ReservationModel.find({
       restaurant_id: { $in: autoFinishRestaurantIds },
-      status: { $in: ["Confirmed", "Active", "Late"] },
+      status: { $in: ["Confirmed", "Late"] },
       reservationDate: { $lte: getCurrentServiceDayEnd(now) },
     }).select(
       "_id restaurant_id customer customerFirstName customerLastName customerEmail customerPhone numberOfGuests reservationDate reservationTime status activatedAt finishedAt reminder24hDueAt reminder24hSentAt reminder24hLockedAt",

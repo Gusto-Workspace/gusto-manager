@@ -1,6 +1,34 @@
 const MINUTES_PER_DAY = 24 * 60;
 const DINNER_START_MINUTES = 17 * 60;
 const NIGHT_SERVICE_END_MINUTES = 6 * 60;
+const serviceClockFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Paris",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export function getReservationServiceClock(now = new Date()) {
+  const { year, month, day, hour, minute } = Object.fromEntries(
+    serviceClockFormatter.formatToParts(now).map(({ type, value }) => [type, value]),
+  );
+  // Les heures de nuit sont rattachées au jour de début du service.
+  const offset = Number(hour) * 60 < NIGHT_SERVICE_END_MINUTES ? 1 : 0;
+  const dateKey = new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day) - offset),
+  ).toISOString().slice(0, 10);
+
+  return { dateKey, time: `${hour}:${minute}` };
+}
+
+export function getReservationServiceDateKey(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
 
 export function minutesFromHHmm(timeStr) {
   const match = String(timeStr || "").trim().match(/^(\d{2}):(\d{2})$/);
@@ -30,7 +58,6 @@ export function getReservationServiceBucket(timeStr) {
 
 const COVER_COUNT_STATUSES = new Set([
   "Confirmed",
-  "Active",
   "Late",
   "Finished",
 ]);

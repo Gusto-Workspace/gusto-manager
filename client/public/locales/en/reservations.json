@@ -37,10 +37,6 @@
       "title": "Reservation Completed",
       "content": "Have the guests left the table and is this reservation completed? This action is irreversible."
     },
-    "activeReservation": {
-      "title": "Reservation in Progress",
-      "content": "Have the guests arrived? This action is irreversible."
-    },
     "confirmReservation": {
       "title": "Confirm Reservation",
       "content": "You are about to confirm the reservation, this action is irreversible."
@@ -63,7 +59,6 @@
     "status": {
       "pending": "Pending",
       "confirmed": "Confirmed",
-      "active": "In progress",
       "late": "Late",
       "finished": "Completed",
       "noShow": "No-shows"
@@ -94,7 +89,6 @@
     "validate": "Validate",
     "update": "Update",
     "finish": "Completed",
-    "active": "In progress",
     "yes": "Yes",
     "no": "No",
     "cancel": "Cancel",

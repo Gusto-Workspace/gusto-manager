@@ -1,12 +1,9 @@
-const arrivalStatuses = ["Confirmed", "Active", "Late"];
-const serviceDayFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Paris",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  hourCycle: "h23",
-});
+import {
+  getReservationServiceClock,
+  getReservationServiceDateKey,
+} from "./reservation-service-time";
+
+const arrivalStatuses = ["Confirmed", "Late"];
 const arrivalTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "Europe/Paris",
   hour: "2-digit",
@@ -17,15 +14,8 @@ const arrivalTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
 export function canSignalReservationArrival(reservation, now = new Date()) {
   if (!arrivalStatuses.includes(reservation?.status)) return false;
 
-  const { year, month, day, hour } = Object.fromEntries(
-    serviceDayFormatter.formatToParts(now).map(({ type, value }) => [type, value]),
-  );
-  // In Gusto, departures before 06:00 belong to the previous service day.
-  const offset = Number(hour) < 6 ? 1 : 0;
-  const serviceDay = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) - offset))
-    .toISOString()
-    .slice(0, 10);
-  return String(reservation.reservationDate || "").slice(0, 10) === serviceDay;
+  const { dateKey } = getReservationServiceClock(now);
+  return getReservationServiceDateKey(reservation.reservationDate) === dateKey;
 }
 
 export function canShowReservationArrival(reservation) {

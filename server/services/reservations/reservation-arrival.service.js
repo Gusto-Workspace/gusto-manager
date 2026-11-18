@@ -7,7 +7,7 @@ const {
   getCurrentReservationServiceDay,
 } = require("./reservation-service-time.service");
 
-const ARRIVAL_STATUSES = ["Confirmed", "Active", "Late"];
+const ARRIVAL_STATUSES = ["Confirmed", "Late"];
 const ARRIVAL_HISTORY_STATUSES = [...ARRIVAL_STATUSES, "Finished"];
 const ARRIVAL_SELECT = "_id arrivedAt arrivalRevision";
 

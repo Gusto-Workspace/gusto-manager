@@ -121,7 +121,6 @@ const ReservationSchema = new mongoose.Schema(
         "Waitlist",
         "Pending",
         "Confirmed",
-        "Active",
         "Late",
         "Finished",
         "Expired",
