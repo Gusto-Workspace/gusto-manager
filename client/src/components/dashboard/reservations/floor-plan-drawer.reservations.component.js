@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
 import {
@@ -15,7 +15,12 @@ import {
   getActiveFloorPlanRooms,
   getDefaultActiveFloorPlanRoomId,
 } from "./floor-plan.rooms.utils";
-import { sortReservationTimesByServiceOrder } from "@/_assets/utils/reservation-service-time";
+import {
+  getReservationServiceDateKey,
+  sortReservationTimesByServiceOrder,
+} from "@/_assets/utils/reservation-service-time";
+import { GlobalContext } from "@/contexts/global.context";
+import useFloorPlanClock from "./use-floor-plan-clock";
 
 const CLOSE_MS = 240;
 const OPEN_MS = 240;
@@ -118,10 +123,48 @@ export default function FloorPlanDrawerReservationsComponent({
   const tablesCatalog = restaurantData?.reservationsSettings?.tables || [];
   const reservationParameters = restaurantData?.reservationsSettings || {};
 
-  const contextDate = selectedDay || new Date();
+  const liveClock = useFloorPlanClock(effectiveOpen);
+  const { dateKey: serviceDateKey, refreshClock } = liveClock;
+  const contextDate = useMemo(
+    () => selectedDay || new Date(`${serviceDateKey}T00:00:00`),
+    [selectedDay, serviceDateKey],
+  );
   const contextDateKey = dateKeyOf(contextDate);
   const isDayContext = Boolean(selectedDay);
-  const isTodayContext = contextDateKey === dateKeyOf(new Date());
+  const isTodayContext = contextDateKey === serviceDateKey;
+  const { restaurantContext } = useContext(GlobalContext);
+  const { getCachedReservationsMonth, ensureReservationsMonth } =
+    restaurantContext || {};
+  const serviceReservations = isDayContext
+    ? reservations
+    : getCachedReservationsMonth?.(contextDate, restaurantId) ?? reservations;
+
+  useEffect(() => {
+    if (!effectiveOpen || isDayContext || !restaurantId || !ensureReservationsMonth) {
+      return;
+    }
+    if (getCachedReservationsMonth?.(contextDate, restaurantId)) return;
+
+    let open = true;
+    void ensureReservationsMonth(contextDate, {
+      restaurantId,
+      activate: false,
+      prefetchAdjacent: false,
+    }).then(() => {
+      if (open) refreshClock();
+    });
+    return () => {
+      open = false;
+    };
+  }, [
+    contextDate,
+    effectiveOpen,
+    ensureReservationsMonth,
+    getCachedReservationsMonth,
+    isDayContext,
+    refreshClock,
+    restaurantId,
+  ]);
 
   const showLiveToggle = !isDayContext || isTodayContext;
   const showHeader = !isPanel;
@@ -216,12 +259,10 @@ export default function FloorPlanDrawerReservationsComponent({
   };
 
   const dayReservations = useMemo(() => {
-    return safeArr(reservations).filter((r) => {
-      const d = new Date(r?.reservationDate);
-      if (Number.isNaN(d.getTime())) return false;
-      return dateKeyOf(d) === contextDateKey;
-    });
-  }, [reservations, contextDateKey]);
+    return safeArr(serviceReservations).filter(
+      (r) => getReservationServiceDateKey(r?.reservationDate) === contextDateKey,
+    );
+  }, [serviceReservations, contextDateKey]);
 
   const timeOptions = useMemo(() => {
     const uniq = Array.from(
@@ -392,32 +433,14 @@ export default function FloorPlanDrawerReservationsComponent({
   useEffect(() => {
     if (!effectiveOpen) return;
 
-    if (!isDayContext || isTodayContext) {
-      setLiveMode(true);
-      setSelectedTime("");
-      setSelectedTableState(null);
-      return;
-    }
-
-    setLiveMode(false);
-    setSelectedTime((prev) => {
-      const hasPrev = timeOptions.includes(prev);
-      return hasPrev ? prev : timeOptions[0] || "";
-    });
-    setSelectedTableState(null);
-  }, [
-    effectiveOpen,
-    contextDateKey,
-    isDayContext,
-    isTodayContext,
-    timeOptions,
-  ]);
+    setLiveMode(!isDayContext || isTodayContext);
+  }, [effectiveOpen, contextDateKey, isDayContext, isTodayContext]);
 
   useEffect(() => {
     if (!effectiveOpen) return;
     setSelectedTableState(null);
     setLegendOpen(false);
-  }, [effectiveOpen, activeRoomId, selectedTime, liveMode, selectedDay]);
+  }, [effectiveOpen, activeRoomId, selectedTime, liveMode, contextDateKey]);
 
   useEffect(() => {
     if (!effectiveOpen) return;
@@ -465,7 +488,7 @@ export default function FloorPlanDrawerReservationsComponent({
     const firstTime = timeOptions[0] || "";
     const hasSelectedTime = timeOptions.includes(selectedTime);
 
-    if (!hasSelectedTime && firstTime) {
+    if (!hasSelectedTime && selectedTime !== firstTime) {
       setSelectedTime(firstTime);
     }
   }, [effectiveOpen, isDayContext, liveMode, timeOptions, selectedTime]);
@@ -907,6 +930,7 @@ export default function FloorPlanDrawerReservationsComponent({
                   selectedDate={contextDate}
                   selectedTime={selectedTime}
                   liveMode={liveMode}
+                  liveClock={liveClock}
                   selectedTableState={selectedTableState}
                   onSelectTable={setSelectedTableState}
                   shouldResetView={shouldResetView}

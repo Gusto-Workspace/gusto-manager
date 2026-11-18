@@ -1,3 +1,5 @@
+export const CONFIRMED_RESERVATION_TEXT_CLASS = "text-[#16A34A]";
+
 export const RESERVATION_DISPLAY_STATUS_KEYS = [
   "Waitlist",
   "Pending",
@@ -16,7 +18,6 @@ export function getReservationDisplayStatus(status) {
     case "Pending":
       return "Pending";
     case "Confirmed":
-    case "Active":
     case "Late":
       return "Confirmed";
     case "Finished":
@@ -61,7 +62,7 @@ export function getReservationStatusClassName(status) {
     case "Pending":
       return "bg-[#93C5FD26] text-[#1D4ED8] border-[#93C5FD]";
     case "Confirmed":
-      return "bg-[#22C55E26] text-[#16A34A] border-[#22C55E99]";
+      return `bg-[#22C55E26] ${CONFIRMED_RESERVATION_TEXT_CLASS} border-[#22C55E99]`;
     case "Finished":
       return "bg-[#94A3B826] text-[#64748B] border-[#94A3B899]";
     case "Expired":

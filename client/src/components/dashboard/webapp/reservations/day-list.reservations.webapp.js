@@ -18,7 +18,10 @@ export default function DayListReservationsWebapp(props) {
   const { t } = useTranslation("reservations");
 
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [selectedReservationId, setSelectedReservationId] = useState(null);
+  const selectedReservation = props.dayData?.reservations?.find(
+    (reservation) => reservation._id === selectedReservationId,
+  );
   const [actionError, setActionError] = useState("");
   const autoOpenedReservationRef = useRef(null);
 
@@ -32,7 +35,7 @@ export default function DayListReservationsWebapp(props) {
   );
 
   const openDetails = (reservation) => {
-    setSelectedReservation(reservation);
+    setSelectedReservationId(reservation._id);
     setActionError("");
     setDetailsOpen(true);
   };
@@ -220,6 +223,7 @@ export default function DayListReservationsWebapp(props) {
                   <CardReservationWebapp
                     key={reservation._id}
                     reservation={reservation}
+                    t={t}
                     tablesCatalog={props.tablesCatalog}
                     openModalForAction={props.openModalForAction}
                     handleEditClick={props.handleEditClick}
@@ -233,7 +237,7 @@ export default function DayListReservationsWebapp(props) {
       </div>
 
       <ReservationsDrawerComponent
-        open={detailsOpen}
+        open={detailsOpen && Boolean(selectedReservation)}
         onClose={closeDetails}
         reservation={selectedReservation}
         t={t}

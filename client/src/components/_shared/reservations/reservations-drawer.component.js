@@ -20,8 +20,11 @@ import {
 import { CustomerTagPill } from "@/components/_shared/customers/customer-tags-ui";
 import { GlobalContext } from "@/contexts/global.context";
 import useMobileDrawerSwipe from "@/components/_shared/use-mobile-drawer-swipe";
+import ReservationArrivalRow from "./reservation-arrival-row.component";
 
 const CLOSE_MS = 280;
+const SECONDARY_ACTION_BUTTON_CLASS =
+  "inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white px-4 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5";
 
 function fmtDate(d) {
   if (!d) return "-";
@@ -398,7 +401,7 @@ export default function ReservationsDrawerComponent({
       return { type: "confirm", label: "Confirmer la place" };
     if (status === "Pending")
       return { type: "confirm", label: t?.("buttons.confirm") || "Confirmer" };
-    if (["Confirmed", "Active", "Late"].includes(status))
+    if (["Confirmed", "Late"].includes(status))
       return { type: "finish", label: t?.("buttons.finish") || "Terminer" };
     return null;
   }, [isPastPending, status, t]);
@@ -514,6 +517,16 @@ export default function ReservationsDrawerComponent({
               <X className="size-4 text-darkBlue/70" />
             </button>
           </div>
+          {reservation?._id && restaurantId ? (
+            <ReservationArrivalRow
+              key={reservation._id}
+              reservation={reservation}
+              restaurantId={restaurantId}
+              applyReservationArrival={restaurantContext?.applyReservationArrival}
+              buttonClassName={SECONDARY_ACTION_BUTTON_CLASS}
+              t={t}
+            />
+          ) : null}
         </div>
 
         {errorMessage ? (
@@ -830,7 +843,7 @@ export default function ReservationsDrawerComponent({
               {canEdit ? (
                 <button
                   onClick={() => onAction?.(reservation, "edit")}
-                  className="w-full inline-flex items-center justify-center rounded-xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition px-4 py-3 text-sm font-semibold text-darkBlue"
+                  className={`w-full ${SECONDARY_ACTION_BUTTON_CLASS}`}
                 >
                   {t?.("buttons.edit", "Modifier")}
                 </button>

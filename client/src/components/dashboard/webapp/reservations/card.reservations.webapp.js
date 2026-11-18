@@ -11,6 +11,7 @@ import {
   getReservationStatusClassName,
   getReservationStatusLabel,
 } from "@/components/_shared/reservations/reservation-status.utils";
+import ReservationArrivalIndicator from "@/components/_shared/reservations/reservation-arrival-indicator.component";
 import {
   CustomerTagPill,
   getPrimaryCustomerTag,
@@ -90,10 +91,13 @@ export default function CardReservationWebapp(props) {
                 </p>
               </div>
 
-              <span
-                className={`inline-flex shrink-0 items-center px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none border ${badgeClass}`}
-              >
-                {badgeLabel}
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <span
+                  className={`inline-flex shrink-0 items-center px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none border ${badgeClass}`}
+                >
+                  {badgeLabel}
+                </span>
+                <ReservationArrivalIndicator reservation={r} t={props.t} />
               </span>
             </div>
 

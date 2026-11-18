@@ -1,6 +1,24 @@
 const MINUTES_PER_DAY = 24 * 60;
 const DINNER_START_MINUTES = 17 * 60;
 const NIGHT_SERVICE_END_MINUTES = 6 * 60;
+const serviceDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Paris",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
+function getCurrentReservationServiceDay(now = new Date()) {
+  const { year, month, day, hour } = Object.fromEntries(
+    serviceDayFormatter.formatToParts(now).map(({ type, value }) => [type, value]),
+  );
+  const offset = Number(hour) * 60 < NIGHT_SERVICE_END_MINUTES ? 1 : 0;
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) - offset))
+    .toISOString()
+    .slice(0, 10);
+}
 
 function minutesFromHHmm(timeStr) {
   const [hour, minute] = String(timeStr || "00:00").split(":").map(Number);
@@ -131,6 +149,7 @@ function buildServiceRangeDateTimes(serviceDate, openTime, closeTime) {
 }
 
 module.exports = {
+  getCurrentReservationServiceDay,
   buildReservationDateTime,
   capPendingReservationDeadline,
   buildServiceRangeDateTimes,

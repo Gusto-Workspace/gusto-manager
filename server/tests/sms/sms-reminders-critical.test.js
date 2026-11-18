@@ -247,7 +247,6 @@ test("matrice d'éligibilité: seul Confirmed planifie un rappel", async () => {
     "Finished",
     "NoShow",
     "Waitlist",
-    "Active",
     "Late",
     "Expired",
   ];

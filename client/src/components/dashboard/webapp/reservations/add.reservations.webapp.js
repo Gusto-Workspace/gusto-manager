@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import CustomerSuggestions from "../../reservations/customer-suggestions.reservations.component";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
@@ -171,7 +171,7 @@ function isBlockingReservationFront(r) {
   }
 
   if (
-    !["AwaitingBankHold", "Pending", "Confirmed", "Active", "Late"].includes(
+    !["AwaitingBankHold", "Pending", "Confirmed", "Late"].includes(
       r.status,
     )
   )
@@ -784,7 +784,6 @@ export default function AddReservationComponent(props) {
     : [];
 
   const isEditing = !!props.reservation;
-  const editedCustomerFields = useRef(new Set());
 
   const manageDisponibilities =
     props.restaurantData?.reservationsSettings?.manage_disponibilities;
@@ -843,7 +842,9 @@ export default function AddReservationComponent(props) {
     if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) return;
     setReservationData((previous) => ({ ...previous, reservationDate: date }));
   }, [isEditing, router.isReady, router.query.date]);
-  useCallReservationPrefill(props.restaurantData?._id, isEditing, setReservationData);
+  const cancelCallPrefill = useCallReservationPrefill(
+    props.restaurantData?._id, isEditing, setReservationData,
+  );
 
   const [availableTimes, setAvailableTimes] = useState([]);
   const [availableTables, setAvailableTables] = useState([]);
@@ -1281,7 +1282,9 @@ export default function AddReservationComponent(props) {
 
   function handleInputChange(e) {
     const { name, value, type, checked } = e.target;
-    if (["customerFirstName", "customerLastName", "customerEmail", "customerPhone"].includes(name)) editedCustomerFields.current.add(name);
+    if (["customerFirstName", "customerLastName", "customerEmail", "customerPhone"].includes(name)) {
+      cancelCallPrefill();
+    }
 
     if (name === "numberOfGuests") setHasUserChangedSlot(true);
 
@@ -1305,17 +1308,9 @@ export default function AddReservationComponent(props) {
     }));
   }
 
-  function selectCustomer(customer) {
-    setReservationData((previous) => {
-      const next = { ...previous };
-      for (const [field, value] of Object.entries({
-        customerFirstName: customer.firstName, customerLastName: customer.lastName,
-        customerEmail: customer.email, customerPhone: customer.phone,
-      })) {
-        if (!editedCustomerFields.current.has(field) && !previous[field] && value) next[field] = value;
-      }
-      return next;
-    });
+  function selectCustomer(customerFields) {
+    cancelCallPrefill();
+    setReservationData((previous) => ({ ...previous, ...customerFields }));
   }
 
   function handleStructuredTableChange(e) {
