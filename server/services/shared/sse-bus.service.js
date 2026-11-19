@@ -47,6 +47,8 @@ function broadcastToRestaurant(restaurantId, payload) {
     const manager = res.locals?.gustoEventModules?.planning === true;
     const recipient = String(res.locals?.gustoEmployeeId || "");
     if (payload.recipientEmployeeId && recipient !== String(payload.recipientEmployeeId)) continue;
+    if (String(payload.type).startsWith("leave_request_") && !manager && recipient !== String(employeeId)) continue;
+    if (payload.notification?.type === "leave_request_created" && !manager) continue;
     if (payload.type === "planning_state_changed" && !manager) continue;
     if (payload.type === "planning_changed" && !manager && !payload.employeeIds?.includes(recipient)) continue;
     if (
@@ -85,9 +87,11 @@ function redactPlanningShifts(payload, own) {
   });
   const employee = payload.employee && {
     ...payload.employee,
+    leaveRequests: own ? payload.employee.leaveRequests : [],
     shifts: redact(payload.employee.shifts),
     restaurantProfiles: payload.employee.restaurantProfiles?.map((profile) => ({
       ...profile,
+      leaveRequests: own ? profile.leaveRequests : [],
       shifts: redact(profile.shifts),
     })),
   };

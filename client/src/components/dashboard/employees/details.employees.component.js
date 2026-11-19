@@ -121,8 +121,8 @@ function EmployeeDocuments({ baseUrl }) {
   );
 }
 
-function EmployeeActivity({ employeeId, restaurantId, profile }) {
-  const pending = (profile?.leaveRequests || []).filter((request) => request.status === "pending").length;
+function EmployeeActivity({ employeeId, restaurantId, leaveRequests }) {
+  const pending = (leaveRequests || []).filter((request) => request.status === "pending").length;
   const query = { employeeId, restaurantId };
   return (
     <section className="grid gap-3 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
@@ -230,7 +230,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         </div>
         <div {...panel("documents")}>{(selected === "documents" || visitedDocuments) && <EmployeeDocuments baseUrl={baseUrl} />}</div>
         <div {...panel("activity")}>
-          <EmployeeActivity employeeId={employeeId} restaurantId={restaurantId} profile={profile} />
+          <EmployeeActivity employeeId={employeeId} restaurantId={restaurantId} leaveRequests={employee.leaveRequests ?? profile?.leaveRequests} />
         </div>
       </>}
     </section>

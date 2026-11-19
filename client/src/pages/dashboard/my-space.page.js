@@ -84,6 +84,7 @@ export default function MySpacePage(props) {
                 <TimeClockMySpaceComponent restaurantId={restaurantId} />
 
                 <DaysOffMySpaceComponent
+                  key={`${restaurantId}:${employeeId}`}
                   employeeId={employeeId}
                   restaurantId={restaurantId}
                 />

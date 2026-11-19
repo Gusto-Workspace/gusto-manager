@@ -8,6 +8,7 @@ const cloudinary = require("cloudinary").v2;
 const Brevo = require("sib-api-v3-sdk");
 
 const testUri = process.env.GUSTO_HR_TEST_MONGO_URI;
+const leaveNotifications = [];
 const { ObjectId } = mongoose.Types;
 const employeePath = "/restaurants/:restaurantId/employees/:employeeId";
 const shiftPath = `${employeePath}/shifts/:shiftId`;
@@ -21,7 +22,11 @@ for (const [name, method] of [
 ]) {
   const filename = require.resolve(`../../services/${name}.service`);
   require.cache[filename] = {
-    id: filename, filename, loaded: true, exports: { [method]: async () => null },
+    id: filename, filename, loaded: true,
+    exports: { [method]: async (payload) => {
+      if (method === "createAndBroadcastNotification") leaveNotifications.push(payload);
+      return null;
+    } },
   };
 }
 
@@ -30,6 +35,7 @@ const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const EmployeeAssetDeletion = require("../../models/employee-asset-deletion.model");
 const { TimeClockPin } = require("../../models/time-clock-device.model");
+const { PlanningDay } = require("../../models/planning-period.model");
 const { retryEmployeeAssetDeletions } = require("../../services/employees/employee-asset-deletion.service");
 const employees = require("../../routes/employees.routes");
 const restaurants = require("../../routes/restaurants.routes");
@@ -250,6 +256,86 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     const current = st.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "ok" }));
     assert.deepEqual((await legacy.request("delete", shiftPath)).body.shifts, []);
     assert.equal(current.mock.callCount(), 0);
+  });
+
+  await t.test("leave requests retain history, isolate restaurants, and require exact confirmation before replacing shifts", async () => {
+    const f = await fixture(2);
+    const leavePath = `${employeePath}/leave-requests`;
+    const exact = `${leavePath}/:reqId`;
+    const requestDate = { startDate: "2026-11-18", endDate: "2026-11-18", type: "morning", absenceType: "paid_leave", note: "Commentaire fictif" };
+    const notifiedBefore = leaveNotifications.length;
+    const created = await f.request("post", leavePath, 0, requestDate);
+    assert.equal(created.code, 201);
+    const reqId = String(created.body[0]._id);
+    assert.equal((await f.request("post", leavePath, 0, requestDate)).code, 409);
+    assert.equal((await f.request("get", leavePath, 1)).body.length, 0);
+    assert.equal((await f.request("put", exact, 1, { status: "approved" }, { reqId })).code, 404);
+    const edited = await f.request("put", exact, 0, { ...requestDate, note: "Motif actualisé fictif" }, { reqId });
+    assert.equal(edited.code, 200);
+    assert.equal(edited.body.leaveRequest.history[0].action, "edited");
+    assert.equal(edited.body.leaveRequest.note, "Motif actualisé fictif");
+
+    const params = { reqId };
+    const preview = await f.request("get", `${exact}/conflicts`, 0, undefined, params);
+    assert.equal(preview.code, 200);
+    assert.equal(preview.body.conflictShifts.length, 1);
+    const [conflict] = preview.body.conflictShifts;
+    const decision = { status: "approved", resolveConflict: "delete_conflicting_shifts", decisionNote: "Décision fictive" };
+    assert.equal((await f.request("put", exact, 0, { status: "approved" }, params)).code, 409);
+    assert.equal((await f.request("put", exact, 0, { ...decision, confirmedConflicts: ["stale"] }, params)).code, 409);
+    assert.equal((await f.read()).restaurantProfiles[0].shifts.length, 1);
+
+    const confirmedConflicts = [`${conflict._id}:${+new Date(conflict.start)}:${+new Date(conflict.end)}`];
+    const lockId = `${f.restaurantIds[0]}:2026-11-18`;
+    await PlanningDay.collection.insertOne({ _id: lockId, restaurant: f.restaurantIds[0], date: "2026-11-18", lockedAt: new Date() });
+    const locked = await f.request("get", `${exact}/conflicts`, 0, undefined, params);
+    assert.equal(locked.body.locked.date, "2026-11-18");
+    assert.equal((await f.request("put", exact, 0, { ...decision, confirmedConflicts }, params)).code, 423);
+    assert.equal((await f.read()).restaurantProfiles[0].leaveRequests[0].status, "pending");
+    await PlanningDay.deleteOne({ _id: lockId });
+
+    const concurrent = await Promise.all([
+      f.request("put", exact, 0, { ...decision, confirmedConflicts }, params),
+      f.request("put", exact, 0, { ...decision, confirmedConflicts }, params),
+    ]);
+    assert.ok(concurrent.some(({ code }) => code === 200));
+    assert.ok(concurrent.every(({ code }) => [200, 409].includes(code)));
+    assert.equal((await f.request("put", exact, 0, { ...decision, confirmedConflicts }, params)).code, 200);
+    const stored = (await f.read()).restaurantProfiles[0];
+    assert.equal(stored.shifts.length, 1);
+    assert.equal(stored.shifts[0].isLeave, true);
+    assert.equal(stored.shifts[0].absenceDuration, "morning");
+    assert.equal(stored.shifts[0].absenceType, "paid_leave");
+    assert.equal(stored.shifts[0].requiresPlanningPublication, true);
+    assert.deepEqual(stored.leaveRequests[0].history.map(({ to }) => to), ["pending", "approved"]);
+    assert.deepEqual(leaveNotifications.slice(notifiedBefore).map(({ type }) => type), ["leave_request_created", "leave_request_decided"]);
+    assert.equal(leaveNotifications.at(-1).recipientEmployeeId, String(f.employeeId));
+    assert.equal((await f.request("put", exact, 0, { status: "canceled" }, params)).code, 200);
+    assert.equal((await f.read()).restaurantProfiles[0].shifts.length, 0);
+  });
+
+  await t.test("a standard employee can create, read, edit and cancel their own pending requests only", async () => {
+    const f = await fixture(2);
+    const leavePath = `${employeePath}/leave-requests`;
+    const restaurantId = String(f.restaurantIds[1]);
+    const employeeId = String(f.employeeId);
+    const employee = { role: "employee", id: f.employeeId, restaurantId };
+    const endpoint = (method, path, extra, body) =>
+      call(employees, method, path, employee, { restaurantId, employeeId, ...extra }, body);
+    const form = { startDate: "2026-11-28", endDate: "2026-11-28", type: "afternoon" };
+    const created = await endpoint("post", leavePath, {}, form);
+    assert.equal(created.code, 201);
+    const reqId = String(created.body[0]._id);
+    assert.equal((await endpoint("get", leavePath, {})).body.length, 1);
+    assert.equal((await endpoint("get", leavePath, { employeeId: String(new ObjectId()) })).code, 403);
+    assert.equal((await endpoint("put", `${leavePath}/:reqId`, { reqId }, { status: "approved" })).code, 403);
+    assert.equal((await endpoint("put", `${leavePath}/:reqId`, { reqId }, { ...form, note: "Fictif" })).code, 200);
+    assert.equal((await endpoint("put", `${leavePath}/:reqId`, { reqId }, { status: "canceled" })).code, 200);
+    assert.equal((await endpoint("get", leavePath, {})).body[0].status, "canceled");
+    const pending = await endpoint("post", leavePath, {}, form);
+    const refusedId = String(pending.body.at(-1)._id);
+    assert.equal((await f.request("put", `${leavePath}/:reqId`, 1, { status: "rejected" }, { reqId: refusedId })).code, 200);
+    assert.equal((await endpoint("get", leavePath, {})).body.at(-1).history.at(-1).to, "rejected");
   });
 
   await t.test("file deletion acknowledges Cloudinary success and already-absent files", async (st) => {

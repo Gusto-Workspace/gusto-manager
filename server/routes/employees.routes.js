@@ -48,6 +48,7 @@ const {
   resolvePlanningAbsence,
 } = require("../services/employees/planning-absence.service");
 const { applyPlanningAction } = require("../services/employees/planning-actions.service");
+const { readLeaveRequest, canTransitionLeave } = require("../services/employees/leave-request.service");
 const {
   periodDates, planningFence, assertPlanningUnlocked, withPlanningWrite, visiblePlanningShifts,
   getPlanningState, setPlanningLock, publishPlanning, deliverPlanningEmails, planningError,
@@ -3134,34 +3135,39 @@ router.put(`${planningActionsPath}/lock`, planningManager(async (req, res, resta
 
 // ---------- DEMANDES DE CONGÉS (par restaurant) ----------
 
+const leaveRequestPath = "/restaurants/:restaurantId/employees/:employeeId/leave-requests";
+
+async function leaveRequestAccess(req, { managerOnly = false } = {}) {
+  const { restaurantId, employeeId, reqId } = req.params;
+  if (![restaurantId, employeeId, ...(reqId ? [reqId] : [])].every(mongoose.isValidObjectId)) {
+    return { error: { status: 400, message: "Identifiant invalide." } };
+  }
+  const access = await getEmployeeRouteAccess(req, restaurantId, employeeId, { managerOnly, requireModule: true });
+  if (!access.error && !(access.restaurant.employees || []).some((item) => String(item._id || item) === String(employeeId))) {
+    return { error: { status: 404, message: "Salarié introuvable dans ce restaurant." } };
+  }
+  return access;
+}
+
+function leaveConflictKey(shift) {
+  return [String(shift._id), +new Date(shift.start), +new Date(shift.end)].join(":");
+}
+
 // CREATE LEAVE-REQUEST
 router.post(
-  "/restaurants/:restaurantId/employees/:employeeId/leave-requests",
+  leaveRequestPath,
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
-      const { start, end, type } = req.body;
-
-      const accessContext = await getEmployeeRouteAccess(
-        req,
-        restaurantId,
-        employeeId,
-      );
+      const accessContext = await leaveRequestAccess(req);
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)
           .json({ message: accessContext.error.message });
       }
 
-      if (!start || !end) {
-        return res.status(400).json({ message: "start et end sont requis" });
-      }
-
-      const parsedStart = toValidDate(start);
-      const parsedEnd = toValidDate(end);
-      if (!parsedStart || !parsedEnd || parsedEnd <= parsedStart) {
-        return res.status(400).json({ message: "Dates de congé invalides" });
-      }
+      const candidate = readLeaveRequest(req.body || {});
+      if (!candidate) return res.status(400).json({ message: "Vérifiez les dates, les horaires et le motif de la demande." });
 
       let emp = await EmployeeModel.findById(employeeId);
       if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
@@ -3175,8 +3181,8 @@ router.post(
       }
       const activeConflict = findActiveLeaveRequestConflict(
         profile,
-        parsedStart,
-        parsedEnd,
+        candidate.start,
+        candidate.end,
       );
       if (activeConflict) {
         return res.status(409).json({
@@ -3185,9 +3191,7 @@ router.post(
       }
 
       profile.leaveRequests.push({
-        start: parsedStart,
-        end: parsedEnd,
-        type: ["full", "morning", "afternoon"].includes(type) ? type : "full",
+        ...candidate,
         createdAt: new Date(),
         status: "pending",
       });
@@ -3207,7 +3211,9 @@ router.post(
         restaurantId: String(restaurantId),
         module: "employees",
         type: "leave_request_created",
+        dedupeKey: `leave:created:${last._id}`,
         data: {
+          restaurantId,
           employeeName: `${emp?.firstname || ""} ${emp?.lastname || ""}`.trim(),
           employeeId: String(emp._id),
           leaveRequestId: String(last._id),
@@ -3216,7 +3222,7 @@ router.post(
           type: last?.type,
           status: last?.status,
         },
-      });
+      }).catch(() => console.error("Notification de demande de congé indisponible"));
 
       sendLeaveRequestOwnerEmail({
         restaurantId,
@@ -3228,6 +3234,9 @@ router.post(
 
       return res.status(201).json(profile.leaveRequests);
     } catch (err) {
+      if (err instanceof mongoose.Error.VersionError || err instanceof mongoose.Error.DocumentNotFoundError) {
+        return res.status(409).json({ message: "Les demandes ont changé. Actualisez avant de réessayer." });
+      }
       console.error("Erreur création leaveRequest:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -3236,16 +3245,12 @@ router.post(
 
 // LIST LEAVE-REQUESTS
 router.get(
-  "/restaurants/:restaurantId/employees/:employeeId/leave-requests",
+  leaveRequestPath,
   async (req, res) => {
     try {
       const { restaurantId, employeeId } = req.params;
 
-      const accessContext = await getEmployeeRouteAccess(
-        req,
-        restaurantId,
-        employeeId,
-      );
+      const accessContext = await leaveRequestAccess(req);
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)
@@ -3269,22 +3274,45 @@ router.get(
   },
 );
 
+router.get(`${leaveRequestPath}/:reqId/conflicts`, async (req, res) => {
+  try {
+    const access = await leaveRequestAccess(req, { managerOnly: true });
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    const { restaurantId, employeeId, reqId } = req.params;
+    const employee = await EmployeeModel.findById(employeeId).lean();
+    const profile = employee && employeeWorksInRestaurant(employee, restaurantId) && findRestaurantProfile(employee, restaurantId);
+    const request = profile?.leaveRequests?.find((item) => String(item._id) === reqId);
+    if (!request) return res.status(404).json({ message: "Demande introuvable." });
+    if (request.status !== "pending") return res.json({ conflictShifts: [], locked: null });
+    const shifts = findShiftConflicts(profile, request.start, request.end, { excludeLeaveRequestId: request._id });
+    let locked = null;
+    try {
+      await assertPlanningUnlocked(restaurantId, [request, ...shifts], null);
+    } catch (error) {
+      if (error.planningStatus !== 423) throw error;
+      locked = { date: error.date, message: error.message };
+    }
+    return res.json({ conflictShifts: shifts.map(serializeShiftConflict), locked });
+  } catch {
+    return res.status(500).json({ message: "Impossible de vérifier les conflits du planning." });
+  }
+});
+
 // UPDATE LEAVE-REQUEST STATUS
 router.put(
-  "/restaurants/:restaurantId/employees/:employeeId/leave-requests/:reqId",
+  `${leaveRequestPath}/:reqId`,
   async (req, res) => {
     try {
       const { restaurantId, employeeId, reqId } = req.params;
-      const { status, resolveConflict } = req.body;
-      if (!["pending", "approved", "rejected", "canceled"].includes(status)) {
+      const { status, resolveConflict, confirmedConflicts, decisionNote } = req.body || {};
+      if (status !== undefined && !["pending", "approved", "rejected", "canceled"].includes(status)) {
         return res.status(400).json({ message: "status invalide" });
       }
+      if (decisionNote != null && (typeof decisionNote !== "string" || decisionNote.length > 1000)) {
+        return res.status(400).json({ message: "Le commentaire de décision doit contenir au plus 1000 caractères." });
+      }
 
-      const accessContext = await getEmployeeRouteAccess(
-        req,
-        restaurantId,
-        employeeId,
-      );
+      const accessContext = await leaveRequestAccess(req);
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)
@@ -3303,17 +3331,24 @@ router.put(
       const isSelf =
         String(accessContext.currentEmployee?._id || "") === String(employeeId);
 
-      if (!accessContext.isManager) {
-        if (!isSelf || status !== "canceled") {
-          return res.status(403).json({ message: "Forbidden" });
-        }
+      if (!accessContext.isManager && (!isSelf || (status !== undefined && status !== "canceled"))) {
+        return res.status(403).json({ message: "Action non autorisée." });
+      }
 
-        if (lr.status !== "pending") {
-          return res.status(409).json({
-            message:
-              "Seules les demandes en attente peuvent être annulées par le salarié.",
-          });
+      if (status === lr.status) return res.json({ leaveRequest: lr });
+      const before = lr.status;
+      const editing = status === undefined;
+      if (editing ? before !== "pending" : !canTransitionLeave(before, status, accessContext.isManager)) {
+        return res.status(409).json({ message: "Cette demande ne peut plus être modifiée de cette façon." });
+      }
+
+      if (editing) {
+        const candidate = readLeaveRequest(req.body || {});
+        if (!candidate) return res.status(400).json({ message: "Vérifiez les dates, les horaires et le motif de la demande." });
+        if (findActiveLeaveRequestConflict(profile, candidate.start, candidate.end, { excludeReqId: lr._id })) {
+          return res.status(409).json({ message: "Une demande de congé existe déjà sur cette période." });
         }
+        lr.set(candidate);
       }
 
       let filesToRemove = [];
@@ -3337,7 +3372,9 @@ router.put(
             (shift) => shift.canDelete === true,
           );
 
-          if (resolveConflict === "delete_conflicting_shifts") {
+          const unchanged = confirmedConflicts === undefined || (Array.isArray(confirmedConflicts) &&
+            JSON.stringify([...confirmedConflicts].sort()) === JSON.stringify(overlappingShifts.map(leaveConflictKey).sort()));
+          if (resolveConflict === "delete_conflicting_shifts" && unchanged) {
             if (!canResolveByDeletion) {
               return res.status(409).json({
                 message:
@@ -3375,7 +3412,14 @@ router.put(
         }
       }
 
-      lr.status = status;
+      if (!editing) lr.status = status;
+      const author = publicationAuthor(req);
+      lr.history ??= [];
+      lr.history.push({
+        action: editing ? "edited" : "decision", from: before, to: lr.status, at: new Date(),
+        actor: { id: author.id, name: author.name, role: author.role },
+        ...(decisionNote?.trim() && { note: decisionNote.trim() }),
+      });
 
       if (status === "approved") {
         const already = profile.shifts.some(
@@ -3387,6 +3431,8 @@ router.put(
             start: lr.start,
             end: lr.end,
             isLeave: true,
+            absenceType: lr.absenceType,
+            absenceDuration: lr.type,
             requiresPlanningPublication: true,
             leaveRequestId: lr._id,
             source: "leave_request",
@@ -3417,6 +3463,13 @@ router.put(
         leaveRequest: lr?.toObject ? lr.toObject() : { ...lr },
         shifts: profile.shifts || [],
       });
+      if (["approved", "rejected"].includes(status)) {
+        await createAndBroadcastNotification({
+          restaurantId, module: "my_planning", type: "leave_request_decided",
+          recipientEmployeeId: employeeId, dedupeKey: `leave:${status}:${reqId}`,
+          data: { status, leaveRequestId: reqId },
+        }).catch(() => console.error("Notification de décision de congé indisponible"));
+      }
       return res.json({
         leaveRequest: lr,
         shifts: accessContext.isManager ? profile.shifts : await visiblePlanningShifts(restaurantId, employeeId, profile.shifts),
@@ -3435,16 +3488,12 @@ router.put(
 
 // DELETE LEAVE-REQUEST
 router.delete(
-  "/restaurants/:restaurantId/employees/:employeeId/leave-requests/:reqId",
+  `${leaveRequestPath}/:reqId`,
   async (req, res) => {
     try {
       const { restaurantId, employeeId, reqId } = req.params;
 
-      const accessContext = await getEmployeeRouteAccess(
-        req,
-        restaurantId,
-        employeeId,
-      );
+      const accessContext = await leaveRequestAccess(req);
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)

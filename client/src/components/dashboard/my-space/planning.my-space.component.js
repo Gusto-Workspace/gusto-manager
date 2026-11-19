@@ -28,15 +28,6 @@ const normalizeTitle = (value) =>
     .toLowerCase();
 const NO_EVENTS = [];
 
-const getLocalDateKey = (value = new Date()) => {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
 
 const isLeaveShiftRecord = (shift) =>
   Boolean(
@@ -156,12 +147,6 @@ export default function PlanningMySpaceComponent({
   const [schedule, setSchedule] = useState(null);
   const scheduleKey = `${restaurantId}:${employeeId}`;
   const events = schedule?.key === scheduleKey ? schedule.events : NO_EVENTS;
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  const [leaveModalData, setLeaveModalData] = useState({
-    startDate: getLocalDateKey(),
-    endDate: getLocalDateKey(),
-    type: "full",
-  });
 
   // ✅ webapp mobile
   const [isMobile, setIsMobile] = useState(false);
@@ -188,7 +173,6 @@ export default function PlanningMySpaceComponent({
   }, [isMobile]);
 
   const [tooltipInfo, setTooltipInfo] = useState(null);
-  const [alreadyExisting, setAlreadyExisting] = useState(false);
 
   const locales = { fr: frLocale };
   const localizer = dateFnsLocalizer({
@@ -206,10 +190,10 @@ export default function PlanningMySpaceComponent({
     if (typeof document === "undefined") return;
     document.body.classList.toggle(
       "overflow-hidden",
-      leaveModalOpen || !!tooltipInfo,
+      Boolean(tooltipInfo),
     );
     return () => document.body.classList.remove("overflow-hidden");
-  }, [leaveModalOpen, tooltipInfo]);
+  }, [tooltipInfo]);
 
   // chargement des shifts (par restaurant)
   useEffect(() => {
@@ -343,92 +327,6 @@ export default function PlanningMySpaceComponent({
     );
   };
 
-  function openLeaveModal() {
-    const today = getLocalDateKey();
-    setLeaveModalData({ startDate: today, endDate: today, type: "full" });
-    setLeaveModalOpen(true);
-  }
-
-  async function submitLeave() {
-    if (!employeeId || !restaurantId) return;
-
-    const { startDate, endDate, type } = leaveModalData;
-    const candidate = { ...buildInterval({ startDate, endDate, type }), type };
-
-    try {
-      const { data: existing } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`,
-      );
-
-      if (hasExactDuplicate(existing, candidate)) {
-        setAlreadyExisting(true);
-        return;
-      }
-    } catch (e) {
-      console.error("Erreur lecture demandes existantes :", e);
-    }
-
-    if (new Date(candidate.end) <= new Date(candidate.start)) {
-      return window.alert(
-        t(
-          "leaveModal.errorDates",
-          "La date de fin doit être après la date de début",
-        ),
-      );
-    }
-
-    try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`,
-        { start: candidate.start, end: candidate.end, type },
-      );
-      window.dispatchEvent(new Event("leaveRequestAdded"));
-      setLeaveModalOpen(false);
-    } catch (err) {
-      console.error(err);
-      window.alert(t("leaveModal.errorSubmit", "Erreur lors de la demande"));
-    }
-  }
-
-  function buildInterval({ startDate, endDate, type }) {
-    if (startDate === endDate && type !== "full") {
-      if (type === "morning") {
-        return {
-          start: new Date(`${startDate}T00:00:00`).toISOString(),
-          end: new Date(`${startDate}T12:00:00`).toISOString(),
-        };
-      }
-      return {
-        start: new Date(`${startDate}T12:00:00`).toISOString(),
-        end: new Date(`${startDate}T23:59:59`).toISOString(),
-      };
-    }
-    return {
-      start: new Date(`${startDate}T00:00:00`).toISOString(),
-      end: new Date(`${endDate}T23:59:59`).toISOString(),
-    };
-  }
-
-  function sameRequest(a, b) {
-    const aType = a.type || "full";
-    const bType = b.type || "full";
-    return a.start === b.start && a.end === b.end && aType === bType;
-  }
-
-  function hasExactDuplicate(existing, candidate) {
-    return (existing || []).some(
-      (r) =>
-        (r.status === "pending" || r.status === "approved") &&
-        sameRequest(
-          {
-            start: new Date(r.start).toISOString(),
-            end: new Date(r.end).toISOString(),
-            type: r.type,
-          },
-          candidate,
-        ),
-    );
-  }
 
   // ✅ toolbar webapp (label + prev/next + segmented)
   const rangeLabel = useMemo(() => {
@@ -500,7 +398,7 @@ export default function PlanningMySpaceComponent({
 
         <button
           type="button"
-          onClick={openLeaveModal}
+          onClick={() => window.dispatchEvent(new CustomEvent("openLeaveRequest", { detail: { restaurantId, employeeId } }))}
           className="
             rounded-2xl bg-violet text-white
             px-4 py-3 text-sm font-semibold
@@ -580,113 +478,6 @@ export default function PlanningMySpaceComponent({
         </div>
       </div>
 
-      {/* Modale demande de congé */}
-      {leaveModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100] px-4">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => {
-              setLeaveModalOpen(false);
-              setAlreadyExisting(false);
-            }}
-          />
-
-          <div className="relative bg-white/95 w-full max-w-[420px] rounded-2xl border border-darkBlue/10 shadow-[0_22px_55px_rgba(19,30,54,0.20)] p-6 z-10">
-            <h2 className="text-lg tablet:text-xl font-semibold mb-4 text-center text-darkBlue">
-              {t("leaveModal.title", "Demande de congé")}
-            </h2>
-
-            <div className="space-y-4 mb-4">
-              <label className="block text-sm text-darkBlue">
-                {t("leaveModal.startDate", "Date de début")} :
-                <input
-                  type="date"
-                  className="mt-1 w-full h-11 px-3 rounded-xl border border-darkBlue/20 bg-white/95"
-                  value={leaveModalData.startDate}
-                  onChange={(e) =>
-                    setLeaveModalData((d) => ({
-                      ...d,
-                      startDate: e.target.value,
-                      endDate:
-                        e.target.value > d.endDate ? e.target.value : d.endDate,
-                      type: e.target.value === d.endDate ? d.type : "full",
-                    }))
-                  }
-                />
-              </label>
-
-              <label className="block text-sm text-darkBlue">
-                {t("leaveModal.endDate", "Date de fin")} :
-                <input
-                  type="date"
-                  className="mt-1 w-full h-11 px-3 rounded-xl border border-darkBlue/20 bg-white/95"
-                  value={leaveModalData.endDate}
-                  min={leaveModalData.startDate}
-                  onChange={(e) =>
-                    setLeaveModalData((d) => ({
-                      ...d,
-                      endDate: e.target.value,
-                      type: d.startDate === e.target.value ? d.type : "full",
-                    }))
-                  }
-                />
-              </label>
-
-              {leaveModalData.startDate === leaveModalData.endDate && (
-                <div className="flex flex-wrap gap-4">
-                  {["full", "morning", "afternoon"].map((opt) => (
-                    <label
-                      key={opt}
-                      className="flex items-center gap-2 text-sm text-darkBlue"
-                    >
-                      <input
-                        type="radio"
-                        name="leaveType"
-                        value={opt}
-                        checked={leaveModalData.type === opt}
-                        onChange={() =>
-                          setLeaveModalData((d) => ({ ...d, type: opt }))
-                        }
-                      />
-                      {
-                        {
-                          full: t("leaveModal.full", "Journée"),
-                          morning: t("leaveModal.morning", "Matin"),
-                          afternoon: t("leaveModal.afternoon", "Après-midi"),
-                        }[opt]
-                      }
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={submitLeave}
-                className="rounded-xl bg-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue/90 transition"
-              >
-                {t("buttons.submit", "Envoyer")}
-              </button>
-              <button
-                onClick={() => {
-                  setLeaveModalOpen(false);
-                  setAlreadyExisting(false);
-                }}
-                className="rounded-xl bg-red px-4 py-2.5 text-sm font-semibold text-white hover:bg-red/90 transition"
-              >
-                {t("buttons.cancel", "Annuler")}
-              </button>
-            </div>
-
-            {alreadyExisting && (
-              <p className="text-xs text-red italic mt-3 text-center">
-                Une demande est déjà existante pour cette date
-              </p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Calendrier (webapp) */}
       <div className="rounded-3xl border border-darkBlue/10 bg-white/70 overflow-hidden">

@@ -201,9 +201,18 @@ function buildNotificationContent({ type, data }) {
         message: `${emp} • ${periodText}`.replace(/\s+/g, " ").trim(),
         link: buildPath("/dashboard/employees/planning/days-off", {
           employeeId: data?.employeeId || null,
+          requestId: data?.leaveRequestId || null,
+          restaurantId: data?.restaurantId || null,
         }),
       };
     }
+
+    case "leave_request_decided":
+      return {
+        title: data.status === "approved" ? "Demande de congé approuvée" : "Demande de congé refusée",
+        message: "Consultez la décision dans votre espace personnel.",
+        link: "/dashboard/my-space#my-leave-requests",
+      };
 
     case "takeaway_order_created": {
       const name = [data?.customerFirstName, data?.customerLastName]
@@ -267,6 +276,8 @@ function buildPushLink({
   if (module === "employees" && type === "leave_request_created") {
     return buildPath("/dashboard/employees/planning/days-off", {
       employeeId: data?.employeeId || null,
+      requestId: data?.leaveRequestId || null,
+      restaurantId,
     });
   }
 
@@ -327,6 +338,7 @@ async function createAndBroadcastNotification({
   type,
   data = {},
   dedupeKey = null,
+  recipientEmployeeId = null,
 }) {
   const content = buildNotificationContent({ type, data });
   const meta = buildNotificationMeta({ type, data });
@@ -343,6 +355,7 @@ async function createAndBroadcastNotification({
       data,
       meta,
       dedupeKey: dedupeKey || null,
+      recipientEmployeeId,
       read: false,
       readAt: null,
     });
@@ -357,10 +370,12 @@ async function createAndBroadcastNotification({
     restaurantId,
     module,
     read: false,
+    recipientEmployeeId,
   });
 
   broadcastToRestaurant(String(restaurantId), {
     type: "notification_created",
+    ...(recipientEmployeeId && { recipientEmployeeId }),
     notification: {
       _id: String(notif._id),
       restaurantId: String(restaurantId),
@@ -371,6 +386,7 @@ async function createAndBroadcastNotification({
       link: notif.link,
       data: notif.data,
       meta: notif.meta,
+      recipientEmployeeId,
       read: notif.read,
       createdAt: notif.createdAt,
     },
@@ -378,6 +394,7 @@ async function createAndBroadcastNotification({
 
   // 🔔 Envoi push OS (web push)
   try {
+    if (recipientEmployeeId) return notif;
     await sendPushToModule({
       restaurantId,
       module,

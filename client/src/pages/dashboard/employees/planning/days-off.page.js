@@ -29,7 +29,7 @@ export default function EmployeesDaysOffPage() {
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[88px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <main className="min-h-screen min-w-0 flex-1 bg-lightGrey p-3 text-darkBlue mobile:p-6 tablet:ml-[88px]">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -38,8 +38,7 @@ export default function EmployeesDaysOffPage() {
               restaurantData={restaurantContext.restaurantData}
             />
 
-              <hr className="opacity-20" />
-
+            <div className="mt-5 border-t border-darkBlue/10 pt-4">
             {!restaurantContext.dataLoading &&
             canManagePersonnel(restaurantContext.restaurantData, restaurantContext.userConnected) ? (
               <DaysOffEmployeesComponent key={restaurantContext.restaurantData._id} />
@@ -48,7 +47,8 @@ export default function EmployeesDaysOffPage() {
                 dataLoading={restaurantContext.dataLoading}
               />
             )}
-          </div>
+            </div>
+          </main>
         </div>
       </div>
     </>
@@ -58,7 +58,7 @@ export default function EmployeesDaysOffPage() {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "employees"])),
+      ...(await serverSideTranslations(locale, ["common", "employees", "planning"])),
     },
   };
 }

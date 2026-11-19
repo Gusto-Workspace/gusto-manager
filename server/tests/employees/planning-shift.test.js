@@ -221,7 +221,12 @@ test("restaurant SSE keeps employee drafts private and targets personal notifica
     assert.equal(messages.get("employee").shifts[0].notes, "Privé");
     assert.equal(messages.get("manager").shifts.length, 2);
     assert.equal(messages.get("employee").shifts.length, 1);
-    assert.deepEqual(messages.get("colleague").shifts, []);
+    assert.equal(messages.has("colleague"), false);
+    messages.clear();
+    sse.broadcastToRestaurant(restaurant, {
+      type: "notification_created", notification: { type: "leave_request_created", title: "Demande de congés" },
+    });
+    assert.deepEqual([...messages.keys()], ["manager"]);
     messages.clear();
     sse.broadcastToRestaurant(restaurant, {
       type: "notification_created", recipientEmployeeId: "employee-a", notification: { title: "Planning disponible" },

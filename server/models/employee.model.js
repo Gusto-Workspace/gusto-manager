@@ -119,8 +119,21 @@ const leaveRequestSchema = new mongoose.Schema(
     end: { type: Date, required: true },
     type: {
       type: String,
-      enum: ["full", "morning", "afternoon"],
+      enum: ABSENCE_DURATIONS,
       default: "full",
+    },
+    absenceType: { type: String, enum: ABSENCE_TYPES, default: null },
+    note: { type: String, maxlength: 1000 },
+    history: {
+      type: [new mongoose.Schema({
+        action: { type: String, enum: ["edited", "decision"], required: true },
+        from: String,
+        to: String,
+        at: { type: Date, required: true },
+        actor: { id: String, name: String, role: String },
+        note: { type: String, maxlength: 1000 },
+      }, { _id: false })],
+      default: undefined,
     },
     status: {
       type: String,

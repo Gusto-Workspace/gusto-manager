@@ -1178,6 +1178,9 @@ export default function RestaurantContext() {
 
         if (payload.type === "planning_changed") setPlanningRevision((previous) => previous + 1);
         if (payload.type === "planning_state_changed") setPlanningStateRevision((previous) => previous + 1);
+        if (String(payload.type).startsWith("leave_request_") && String(payload.employeeId) === String(userConnected?.id)) {
+          window.dispatchEvent(new CustomEvent("leaveRequestAdded", { detail: { restaurantId } }));
+        }
 
         if (payload.type === "notification_created" && payload.notification) {
           const n = payload.notification;
@@ -1536,6 +1539,7 @@ export default function RestaurantContext() {
     loadReservationPeriod,
     removeReservationFromCache,
     restaurantData?._id,
+    userConnected?.id,
     userConnected?.role,
   ]);
 

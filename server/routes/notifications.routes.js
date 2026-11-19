@@ -10,9 +10,17 @@ const NotificationModel = require("../models/notification.model");
 
 const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
-function notificationAudience(user) {
+function notificationAudience(req) {
+  const { user, authorizedRestaurant } = req;
   const recipient = user?.role === "employee" ? String(user.id) : null;
-  return recipient ? { recipientEmployeeId: { $in: [null, recipient] } } : { recipientEmployeeId: null };
+  if (!recipient) return { recipientEmployeeId: null };
+  const manager = authorizedRestaurant?.employees?.some((employee) => String(employee._id) === recipient &&
+    employee.restaurantProfiles?.some((profile) => String(profile.restaurant) === String(authorizedRestaurant._id) &&
+      profile.options?.employees === true));
+  return {
+    recipientEmployeeId: { $in: [null, recipient] },
+    ...(!manager && { type: { $ne: "leave_request_created" } }),
+  };
 }
 
 async function canAccessTakeAwayNotifications(req) {
@@ -43,7 +51,7 @@ router.get(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const q = { restaurantId, ...notificationAudience(req.user) };
+      const q = { restaurantId, ...notificationAudience(req) };
       if (module) {
         q.module = module;
       } else if (!canReadTakeAway) {
@@ -91,7 +99,7 @@ router.get(
       const agg = await NotificationModel.aggregate([
         {
           $match: {
-            ...notificationAudience(req.user),
+            ...notificationAudience(req),
             restaurantId:
               require("mongoose").Types.ObjectId.createFromHexString(
                 String(restaurantId),
@@ -129,7 +137,7 @@ router.post(
         {
           _id: notifId,
           restaurantId,
-          ...notificationAudience(req.user),
+          ...notificationAudience(req),
           ...(canReadTakeAway ? {} : { module: { $ne: "take_away" } }),
         },
         { $set: { read: true, readAt: new Date() } },
@@ -168,7 +176,7 @@ router.post(
       }
 
       const personalRecipient = req.user?.role === "employee" ? String(req.user.id) : null;
-      const q = { restaurantId, read: false, recipientEmployeeId: null };
+      const q = { restaurantId, read: false, ...notificationAudience(req), recipientEmployeeId: null };
       if (module) {
         q.module = module;
       } else if (!canReadTakeAway) {
