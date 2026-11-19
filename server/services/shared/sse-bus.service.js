@@ -40,10 +40,15 @@ function broadcastToRestaurant(restaurantId, payload) {
       })}\n\n`
     : line;
   const employeeId = payload.employee?._id || payload.employeeId;
-  const hasPlanningNotes = payload.type === "employee_updated" ||
+  const hasPlanningShifts = payload.type === "employee_updated" ||
     ["leave_request_updated", "leave_request_deleted"].includes(payload.type);
-  let lineWithoutPlanningNotes;
+  let lineWithoutPlanningShifts;
   for (const res of set) {
+    const manager = res.locals?.gustoEventModules?.planning === true;
+    const recipient = String(res.locals?.gustoEmployeeId || "");
+    if (payload.recipientEmployeeId && recipient !== String(payload.recipientEmployeeId)) continue;
+    if (payload.type === "planning_state_changed" && !manager) continue;
+    if (payload.type === "planning_changed" && !manager && !payload.employeeIds?.includes(recipient)) continue;
     if (
       isTakeAwayPayload(payload) &&
       res.locals?.gustoEventModules?.take_away !== true
@@ -54,10 +59,16 @@ function broadcastToRestaurant(restaurantId, payload) {
     const canReadArrival = res.locals?.gustoEventModules?.reservations === true;
     if (payload.type === "reservation_arrival_updated" && !canReadArrival) continue;
     try {
-      const ownsShift = employeeId && String(res.locals?.gustoEmployeeId || "") === String(employeeId);
-      if (hasPlanningNotes && res.locals?.gustoEventModules?.planning !== true && !ownsShift) {
-        lineWithoutPlanningNotes ??= `data: ${JSON.stringify(omitPlanningNotes(payload))}\n\n`;
-        res.write(lineWithoutPlanningNotes);
+      if (payload.type === "planning_changed" && !manager) {
+        res.write('data: {"type":"planning_changed"}\n\n');
+      } else if (hasPlanningShifts && !manager) {
+        const ownsShift = employeeId && recipient === String(employeeId);
+        const redacted = redactPlanningShifts(payload, ownsShift);
+        if (ownsShift) res.write(`data: ${JSON.stringify(redacted)}\n\n`);
+        else {
+          lineWithoutPlanningShifts ??= `data: ${JSON.stringify(redacted)}\n\n`;
+          res.write(lineWithoutPlanningShifts);
+        }
       } else {
         res.write(canReadArrival ? line : lineWithoutArrival);
       }
@@ -67,10 +78,9 @@ function broadcastToRestaurant(restaurantId, payload) {
   }
 }
 
-function omitPlanningNotes(payload) {
-  const redact = (shifts) => shifts?.map((shift) => {
+function redactPlanningShifts(payload, own) {
+  const redact = (shifts) => shifts?.filter((shift) => own && !shift.requiresPlanningPublication).map((shift) => {
     const publicShift = shift.toObject ? shift.toObject() : { ...shift };
-    delete publicShift.notes;
     return publicShift;
   });
   const employee = payload.employee && {

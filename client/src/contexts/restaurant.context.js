@@ -14,6 +14,7 @@ const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
   gift_cards: 0,
   employees: 0,
+  my_planning: 0,
   take_away: 0,
 };
 
@@ -139,6 +140,8 @@ export default function RestaurantContext() {
   const [restaurantData, setRestaurantData] = useState(null);
   const [callSenseEvents, setCallSenseEvents] = useState({});
   const [callSenseCountRevision, setCallSenseCountRevision] = useState(0);
+  const [planningRevision, setPlanningRevision] = useState(0);
+  const [planningStateRevision, setPlanningStateRevision] = useState(0);
   const [callSenseReadEvent, setCallSenseReadEvent] = useState({});
   const [callSenseReconnect, setCallSenseReconnect] = useState(0);
   const [callSenseIdentityChange, setCallSenseIdentityChange] = useState(null);
@@ -1173,6 +1176,9 @@ export default function RestaurantContext() {
           return;
         }
 
+        if (payload.type === "planning_changed") setPlanningRevision((previous) => previous + 1);
+        if (payload.type === "planning_state_changed") setPlanningStateRevision((previous) => previous + 1);
+
         if (payload.type === "notification_created" && payload.notification) {
           const n = payload.notification;
 
@@ -1492,27 +1498,25 @@ export default function RestaurantContext() {
 
         if (payload.type === "notifications_read_all") {
           const mod = payload.module;
+          const eligible = (n) => (!mod || n.module === mod) &&
+            (!payload.publicOnly || !n.recipientEmployeeId) &&
+            (!payload.recipientEmployeeId || n.recipientEmployeeId === payload.recipientEmployeeId);
 
           setNotifications((prev) =>
             prev.map((n) =>
-              !n.read && (!mod || n.module === mod)
+              !n.read && eligible(n)
                 ? { ...n, read: true, readAt: new Date() }
                 : n,
             ),
           );
 
           setUnreadCounts((prev) => {
-            if (!mod) {
-              return {
-                total: 0,
-                byModule: EMPTY_UNREAD_BY_MODULE,
-              };
-            }
             const nextBy = {
-              ...EMPTY_UNREAD_BY_MODULE,
-              ...prev.byModule,
-              [mod]: 0,
+              ...(mod ? prev.byModule : EMPTY_UNREAD_BY_MODULE),
             };
+            if (mod) nextBy[mod] = 0;
+            else if (payload.recipientEmployeeId) Object.assign(nextBy, prev.byModule, { my_planning: 0 });
+            else if (payload.publicOnly) nextBy.my_planning = prev.byModule.my_planning || 0;
             const total = countUnreadTotal(nextBy);
             return { total, byModule: nextBy };
           });
@@ -2549,6 +2553,8 @@ export default function RestaurantContext() {
 
   return {
     restaurantData,
+    planningRevision,
+    planningStateRevision,
     callSenseEvents,
     callSenseCountRevision,
     callSenseReadEvent,

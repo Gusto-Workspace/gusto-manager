@@ -12,6 +12,7 @@ const notificationSchema = new mongoose.Schema(
     module: { type: String, required: true, index: true },
 
     type: { type: String, required: true, index: true },
+    recipientEmployeeId: { type: String, default: null },
 
     title: { type: String, required: true },
     message: { type: String, required: true },
@@ -31,6 +32,7 @@ const notificationSchema = new mongoose.Schema(
 );
 
 notificationSchema.index({ restaurantId: 1, createdAt: -1 });
+notificationSchema.index({ restaurantId: 1, recipientEmployeeId: 1, createdAt: -1 });
 notificationSchema.index({
   restaurantId: 1,
   module: 1,

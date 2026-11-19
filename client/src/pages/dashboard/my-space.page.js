@@ -1,5 +1,6 @@
 import { useContext } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n } from "next-i18next";
@@ -20,6 +21,7 @@ import TimeClockMySpaceComponent from "@/components/dashboard/my-space/time-cloc
 
 export default function MySpacePage(props) {
   const { restaurantContext } = useContext(GlobalContext);
+  const { query } = useRouter();
 
   let title;
   let description;
@@ -75,6 +77,8 @@ export default function MySpacePage(props) {
                   employeeId={employeeId}
                   restaurantId={restaurantId}
                   openingHours={restaurantContext.restaurantData?.opening_hours}
+                  planningRevision={restaurantContext.planningRevision}
+                  initialPlanningDate={query.planningDate}
                 />
 
                 <TimeClockMySpaceComponent restaurantId={restaurantId} />

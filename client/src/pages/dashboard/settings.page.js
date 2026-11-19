@@ -21,6 +21,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import GeneralFormSettingsComponent from "@/components/dashboard/settings/general-form.settings.component";
 import PasswordFormSettingsComponent from "@/components/dashboard/settings/password-form.settings.component";
+import TimeClockPinSettings from "@/components/dashboard/settings/time-clock-pin.settings.component";
 
 export default function SettingsPage(props) {
   const { t } = useTranslation("");
@@ -28,6 +29,7 @@ export default function SettingsPage(props) {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
   const role = restaurantContext?.userConnected?.role;
+  const restaurant = restaurantContext?.restaurantData;
 
   function fetchUserData() {
     const token = localStorage.getItem("token");
@@ -127,6 +129,9 @@ export default function SettingsPage(props) {
               restaurantContext={restaurantContext}
             />
             <PasswordFormSettingsComponent />
+            {role === "employee" && restaurant?.options?.employees && (
+              <TimeClockPinSettings key={restaurant._id} restaurant={restaurant} />
+            )}
           </div>
         </div>
       </div>

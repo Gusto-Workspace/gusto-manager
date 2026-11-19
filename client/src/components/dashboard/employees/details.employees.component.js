@@ -1,9 +1,11 @@
 import { useRouter } from "next/router";
-import { useContext, useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useContext, useState, useEffect, useId, useRef } from "react";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
+import { Clock3, Files, ShieldCheck, UserRound } from "lucide-react";
 
 // SVG
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
@@ -14,7 +16,12 @@ import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
-import TimeClockEmployeesComponent from "./time-clock.employees.component";
+
+const profileTabs = [
+  { id: "personal", label: "labels.personalInformation", defaultLabel: "Informations personnelles", Icon: UserRound },
+  { id: "access", label: "labels.assignRights", Icon: ShieldCheck },
+  { id: "documents", label: "labels.documents", Icon: Files },
+];
 
 const DEFAULT_OPTIONS = {
   dashboard: false,
@@ -37,6 +44,8 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const { restaurantContext } = useContext(GlobalContext);
   const router = useRouter();
   const fileInputRef = useRef();
+  const tabsId = useId();
+  const [activeTab, setActiveTab] = useState("personal");
 
   const [employee, setEmployee] = useState(null);
   const [profileFile, setProfileFile] = useState(null);
@@ -378,6 +387,32 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const displayFirstname = currentSnapshot.firstname || employee.firstname;
   const displayLastname = currentSnapshot.lastname || employee.lastname;
   const employeeIsAccountant = employee.accountType === "accountant";
+  const tabs = employeeIsAccountant ? profileTabs.slice(0, 1) : profileTabs;
+  const visibleTab = tabs.some(({ id }) => id === activeTab) ? activeTab : "personal";
+
+  function handleTabKey(event, index) {
+    let next;
+    switch (event.key) {
+      case "ArrowRight": next = (index + 1) % tabs.length; break;
+      case "ArrowLeft": next = (index - 1 + tabs.length) % tabs.length; break;
+      case "Home": next = 0; break;
+      case "End": next = tabs.length - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    const id = tabs[next].id;
+    setActiveTab(id);
+    document.getElementById(`${tabsId}-tab-${id}`)?.focus();
+  }
+
+  function panelProps(id) {
+    return {
+      id: `${tabsId}-panel-${id}`,
+      role: "tabpanel",
+      "aria-labelledby": `${tabsId}-tab-${id}`,
+      hidden: visibleTab !== id,
+    };
+  }
 
   return (
     <section className="flex flex-col gap-6">
@@ -391,70 +426,100 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         subtitle={`${displayFirstname} ${displayLastname}${
           employeeIsAccountant ? " · Comptable" : ""
         }`.trim()}
+        actions={!employeeIsAccountant && (
+          <Link
+            href={{ pathname: "/dashboard/employees/time-clock", query: { employeeId } }}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-darkBlue/15 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-lightGrey focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue"
+          >
+            <Clock3 size={17} aria-hidden="true" />
+            {t("buttons.viewTimeClock", "Voir les pointages")}
+          </Link>
+        )}
       />
 
+      <div role="tablist" aria-label={t("labels.employeeProfile", "Fiche salarié")} className="flex flex-wrap gap-x-1 border-b border-darkBlue/10">
+        {tabs.map(({ id, label, defaultLabel, Icon }, index) => (
+          <button
+            key={id}
+            type="button"
+            id={`${tabsId}-tab-${id}`}
+            role="tab"
+            aria-selected={id === visibleTab}
+            aria-controls={`${tabsId}-panel-${id}`}
+            tabIndex={id === visibleTab ? 0 : -1}
+            onClick={() => setActiveTab(id)}
+            onKeyDown={(event) => handleTabKey(event, index)}
+            className={`-mb-px inline-flex min-h-12 items-center gap-1.5 border-b-2 px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue sm:gap-2 sm:px-5 sm:text-sm ${
+              id === visibleTab ? "border-blue text-blue" : "border-transparent text-darkBlue/65 hover:text-darkBlue"
+            }`}
+          >
+            <Icon size={17} className="shrink-0" aria-hidden="true" />
+            {t(label, { defaultValue: defaultLabel })}
+          </button>
+        ))}
+      </div>
+
       {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
-      <DataEmployeesComponent
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        handleDetailsSubmit={handleDetailsSubmit}
-        onSaveDetails={onSaveDetails}
-        regDetails={regDetails}
-        isSavingDetails={isSavingDetails}
-        employee={employee}
-        currentSnapshot={currentSnapshot}
-        currentEmployment={currentEmployment}
-        previewUrl={previewUrl}
-        fileInputRef={fileInputRef}
-        handleFileSelect={handleFileSelect}
-        resetDetails={resetDetails}
-        setProfileFile={setProfileFile}
-        setPreviewUrl={setPreviewUrl}
-        detailsDirty={detailsDirty}
-        profileFile={profileFile}
-      />
+      <div {...panelProps("personal")}>
+        <DataEmployeesComponent
+          isEditing={isEditing}
+          setIsEditing={setIsEditing}
+          handleDetailsSubmit={handleDetailsSubmit}
+          onSaveDetails={onSaveDetails}
+          regDetails={regDetails}
+          isSavingDetails={isSavingDetails}
+          employee={employee}
+          currentSnapshot={currentSnapshot}
+          currentEmployment={currentEmployment}
+          previewUrl={previewUrl}
+          fileInputRef={fileInputRef}
+          handleFileSelect={handleFileSelect}
+          resetDetails={resetDetails}
+          setProfileFile={setProfileFile}
+          setPreviewUrl={setPreviewUrl}
+          detailsDirty={detailsDirty}
+          profileFile={profileFile}
+        />
+      </div>
 
       {/* Attribuer des droits (par restaurant) */}
       {!employeeIsAccountant ? (
-        <AccessRightsEmployeesComponent
-          handleOptionsSubmit={handleOptionsSubmit}
-          onSaveOptions={onSaveOptions}
-          employee={employee}
-          isSavingOptions={isSavingOptions}
-          isEditing={isEditing}
-          isSavingDetails={isSavingDetails}
-          optionLabels={optionLabels}
-          optionsSaved={optionsSaved}
-          optionsDirty={optionsDirty}
-          regOptions={regOptions}
-          options={currentOptions}
-        />
+        <div {...panelProps("access")}>
+          <AccessRightsEmployeesComponent
+            handleOptionsSubmit={handleOptionsSubmit}
+            onSaveOptions={onSaveOptions}
+            employee={employee}
+            isSavingOptions={isSavingOptions}
+            isEditing={isEditing}
+            isSavingDetails={isSavingDetails}
+            optionLabels={optionLabels}
+            optionsSaved={optionsSaved}
+            optionsDirty={optionsDirty}
+            regOptions={regOptions}
+            options={currentOptions}
+          />
+        </div>
       ) : null}
 
       {/* Documents (par restaurant) */}
       {!employeeIsAccountant ? (
-        <DocumentsEmployeeComponent
-          onDocsChange={onDocsChange}
-          isUploadingDocs={isUploadingDocs}
-          docs={docs}
-          onSaveDocs={onSaveDocs}
-          employee={employee}
-          restaurantId={restaurantId}
-          baseUrl={baseUrl}
-          currentDocuments={currentDocuments}
-          confirmDeleteDoc={confirmDeleteDoc}
-          isDeletingDocId={isDeletingDocId}
-          removeSelectedDoc={removeSelectedDoc}
-          onDocTitleChange={onDocTitleChange}
-          showUploader
-        />
-      ) : null}
-
-      {!employeeIsAccountant ? (
-        <TimeClockEmployeesComponent
-          restaurantId={restaurantId}
-          employeeId={employeeId}
-        />
+        <div {...panelProps("documents")}>
+          <DocumentsEmployeeComponent
+            onDocsChange={onDocsChange}
+            isUploadingDocs={isUploadingDocs}
+            docs={docs}
+            onSaveDocs={onSaveDocs}
+            employee={employee}
+            restaurantId={restaurantId}
+            baseUrl={baseUrl}
+            currentDocuments={currentDocuments}
+            confirmDeleteDoc={confirmDeleteDoc}
+            isDeletingDocId={isDeletingDocId}
+            removeSelectedDoc={removeSelectedDoc}
+            onDocTitleChange={onDocTitleChange}
+            showUploader
+          />
+        </div>
       ) : null}
 
       {/* Modal doublon */}

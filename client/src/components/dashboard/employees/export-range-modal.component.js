@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Download, Send, Users } from "lucide-react";
+import { CalendarDays, Download, Users } from "lucide-react";
 
 export default function ExportRangeModalComponent({
   open = false,
@@ -10,14 +10,11 @@ export default function ExportRangeModalComponent({
   initialFrom = "",
   initialTo = "",
   initialFormat = "pdf",
-  mode = "download",
   loading = false,
   submitError = "",
   onClose,
   onConfirm,
 }) {
-  const ActionIcon = mode === "send" ? Send : Download;
-  const showFormatPicker = mode !== "send";
   const employeeIds = useMemo(
     () => employees.map((employee) => String(employee.id)),
     [employees],
@@ -99,12 +96,8 @@ export default function ExportRangeModalComponent({
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-darkBlue/10 px-5 py-5">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue/10 bg-blue/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-blue">
-              <ActionIcon className="size-3.5" />
-              {showFormatPicker
-                ? format === "excel"
-                  ? "EXCEL"
-                  : "PDF"
-                : "EMAIL"}
+              <Download className="size-3.5" />
+              {format === "excel" ? "EXCEL" : "PDF"}
             </div>
 
             <h3
@@ -163,8 +156,7 @@ export default function ExportRangeModalComponent({
               </label>
             </div>
 
-            {showFormatPicker ? (
-              <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
+            <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
                 <p className="text-sm font-medium text-darkBlue">Format</p>
                 <div className="mt-3 grid gap-3 midTablet:grid-cols-2">
                   {[
@@ -203,8 +195,7 @@ export default function ExportRangeModalComponent({
                     );
                   })}
                 </div>
-              </section>
-            ) : null}
+            </section>
 
             <section className="rounded-[28px] border border-darkBlue/10 bg-lightGrey/35 p-4">
               <div className="flex flex-col gap-3 midTablet:flex-row midTablet:items-center midTablet:justify-between">
@@ -295,11 +286,9 @@ export default function ExportRangeModalComponent({
               {loading ? (
                 <span className="size-4 rounded-full border-2 border-white/35 border-t-white animate-spin" />
               ) : (
-                <ActionIcon className="size-4" />
+                <Download className="size-4" />
               )}
-              {showFormatPicker
-                ? `${confirmLabel} ${format === "excel" ? "Excel" : "PDF"}`
-                : confirmLabel}
+              {`${confirmLabel} ${format === "excel" ? "Excel" : "PDF"}`}
             </button>
           </div>
         </form>

@@ -5,12 +5,7 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CardEmployeesComponent from "./card.employees.component";
-import ExportRangeModalComponent from "./export-range-modal.component";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
-import {
-  getAuthConfig,
-  openTimeClockInNewTab,
-} from "../time-clock/time-clock.utils";
 
 import {
   Search,
@@ -18,47 +13,8 @@ import {
   Calendar,
   Plus,
   Clock3,
-  Download,
   Briefcase,
 } from "lucide-react";
-
-function pad2(value) {
-  return String(value).padStart(2, "0");
-}
-
-function getCurrentMonthRange() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-
-  return {
-    from: `${year}-${pad2(month + 1)}-01`,
-    to: `${year}-${pad2(month + 1)}-${pad2(lastDay)}`,
-  };
-}
-
-async function getExportErrorMessage(error, fallbackMessage) {
-  const responseData = error?.response?.data;
-
-  if (
-    typeof responseData?.message === "string" &&
-    responseData.message.trim()
-  ) {
-    return responseData.message;
-  }
-
-  if (responseData instanceof Blob) {
-    try {
-      const parsed = JSON.parse(await responseData.text());
-      if (typeof parsed?.message === "string" && parsed.message.trim()) {
-        return parsed.message;
-      }
-    } catch {}
-  }
-
-  return fallbackMessage;
-}
 
 function normalize(value) {
   return String(value || "")
@@ -78,9 +34,6 @@ export default function ListEmployeesComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoadingDelete, setIsLoadingDelete] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [isHoursExportOpen, setIsHoursExportOpen] = useState(false);
-  const [isHoursExportLoading, setIsHoursExportLoading] = useState(false);
-  const [hoursExportError, setHoursExportError] = useState("");
 
   const searchRef = useRef(null);
 
@@ -143,24 +96,6 @@ export default function ListEmployeesComponent() {
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "fr"));
   }, [getSnapshotForRestaurant, personnel]);
 
-  const exportEmployees = useMemo(() => {
-    return personnel
-      .filter((employee) => employee.accountType !== "accountant")
-      .map((employee) => {
-        const snapshot = getSnapshotForRestaurant(employee);
-        const firstname = snapshot.firstname ?? employee.firstname ?? "";
-        const lastname = snapshot.lastname ?? employee.lastname ?? "";
-        const post = snapshot.post ?? employee.post ?? "";
-
-        return {
-          id: employee._id,
-          label: `${firstname} ${lastname}`.trim(),
-          subtitle: post || "Poste non renseigné",
-        };
-      });
-  }, [getSnapshotForRestaurant, personnel]);
-
-  const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
   const totalEmployees = personnel.length;
 
   const handleSearchChange = (e) => setSearchTerm(e.target.value);
@@ -195,57 +130,6 @@ export default function ListEmployeesComponent() {
     }
   };
 
-  async function handleExportHours(payload) {
-    if (!restaurantId) return;
-
-    setIsHoursExportLoading(true);
-    setHoursExportError("");
-
-    try {
-      const format = payload?.format === "excel" ? "excel" : "pdf";
-      const endpoint = format === "excel" ? "excel" : "pdf";
-      const extension = format === "excel" ? "xlsx" : "pdf";
-      const fallbackMimeType =
-        format === "excel"
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          : "application/pdf";
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/export/${endpoint}`,
-        payload,
-        {
-          ...getAuthConfig(),
-          responseType: "blob",
-        },
-      );
-
-      const blob = new Blob([response.data], {
-        type: response.headers?.["content-type"] || fallbackMimeType,
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `heures-salaries-${payload.from}-au-${payload.to}.${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      setIsHoursExportOpen(false);
-    } catch (error) {
-      console.error("Erreur export heures salariés :", error);
-      setHoursExportError(
-        await getExportErrorMessage(
-          error,
-          `Impossible de generer l'export ${
-            payload?.format === "excel" ? "Excel" : "PDF"
-          } pour le moment.`,
-        ),
-      );
-    } finally {
-      setIsHoursExportLoading(false);
-    }
-  }
-
   return (
     <section className="flex flex-col gap-6">
       <hr className="opacity-20" />
@@ -260,33 +144,14 @@ export default function ListEmployeesComponent() {
             <>
               <button
                 type="button"
-                onClick={() => {
-                  setHoursExportError("");
-                  setIsHoursExportOpen(true);
-                }}
+                onClick={() => router.push("/dashboard/employees/time-clock")}
                 className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Télécharger les heures"
-                title="Télécharger les heures"
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                  <Download className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  Télécharger les heures
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openTimeClockInNewTab}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Ouvrir la pointeuse"
-                title="Ouvrir la pointeuse"
+                aria-label="Pointeuse"
               >
                 <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
                   <Clock3 className="size-4" />
                 </span>
-                <span className="whitespace-nowrap">Ouvrir la pointeuse</span>
+                <span className="whitespace-nowrap">Pointeuse</span>
               </button>
 
               <button
@@ -326,33 +191,14 @@ export default function ListEmployeesComponent() {
         <div className="grid grid-cols-2 gap-2 midTablet:hidden">
           <button
             type="button"
-            onClick={() => {
-              setHoursExportError("");
-              setIsHoursExportOpen(true);
-            }}
+            onClick={() => router.push("/dashboard/employees/time-clock")}
             className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Télécharger les heures"
-            title="Télécharger les heures"
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
-              <Download className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              Télécharger les heures
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openTimeClockInNewTab}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Ouvrir la pointeuse"
-            title="Ouvrir la pointeuse"
+            aria-label="Pointeuse"
           >
             <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
               <Clock3 className="size-4" />
             </span>
-            <span className="min-w-0 leading-tight">Ouvrir la pointeuse</span>
+            <span className="min-w-0 leading-tight">Pointeuse</span>
           </button>
 
           <button
@@ -570,23 +416,6 @@ export default function ListEmployeesComponent() {
         </div>
       )}
 
-      <ExportRangeModalComponent
-        open={isHoursExportOpen}
-        title="Télécharger les heures des salariés"
-        description="Choisissez une periode, les salaries a inclure et le format d'export."
-        confirmLabel="Telecharger"
-        employees={exportEmployees}
-        initialFrom={defaultExportRange.from}
-        initialTo={defaultExportRange.to}
-        loading={isHoursExportLoading}
-        submitError={hoursExportError}
-        onClose={() => {
-          if (isHoursExportLoading) return;
-          setIsHoursExportOpen(false);
-          setHoursExportError("");
-        }}
-        onConfirm={handleExportHours}
-      />
     </section>
   );
 }

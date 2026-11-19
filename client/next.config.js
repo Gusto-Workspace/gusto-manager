@@ -6,6 +6,11 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   runtimeCaching: [
     {
+      urlPattern: ({ url }) => /^\/api\/(?:restaurants\/[^/]+\/)?time-clock(?:\/|$)/.test(url.pathname),
+      method: "GET",
+      handler: "NetworkOnly",
+    },
+    {
       urlPattern: ({ url }) => /^\/api\/restaurants\/[^/]+\/callsense(?:\/|$)/.test(url.pathname),
       method: "GET",
       handler: "NetworkOnly",

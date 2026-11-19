@@ -22,6 +22,24 @@
       "new": "Le mot de passe doit contenir au moins 6 caractères"
     }
   },
+  "clockPin": {
+    "title": "Code PIN de la Pointeuse",
+    "setup": "Générez le code à quatre chiffres qui vous permettra de pointer chez {{restaurant}}.",
+    "description": "Votre code personnel à quatre chiffres pour pointer chez {{restaurant}}.",
+    "hidden": "Code PIN masqué",
+    "show": "Afficher",
+    "hide": "Masquer",
+    "generate": "Générer mon code",
+    "regenerate": "Générer un nouveau code",
+    "confirmRotate": "Le nouveau code remplace immédiatement l’ancien sur les tablettes connectées.",
+    "confirmGenerate": "Gusto va générer votre code personnel à quatre chiffres.",
+    "confirmAction": "Générer le code",
+    "cancel": "Annuler",
+    "saved": "Votre nouveau code PIN est prêt.",
+    "cooldown": "Attendez avant de générer un nouveau code.",
+    "loadError": "Impossible de vérifier votre code PIN. Actualisez la page.",
+    "saveError": "Impossible de générer votre code PIN. Réessayez."
+  },
   "buttons": {
     "save": "Enregistrer",
     "loading" : "En cours..."

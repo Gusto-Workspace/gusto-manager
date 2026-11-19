@@ -18,6 +18,7 @@ import { CalendarSvg } from "@/components/_shared/_svgs/calendar.svg";
 // ICONS
 import { ChevronLeft, ChevronRight, UtensilsCrossed } from "lucide-react";
 import { getShiftMealMeta } from "../employees/planning-meals.utils";
+import { parsePlanningDate } from "../employees/planning-grid.utils.mjs";
 
 const normalizeTitle = (value) =>
   (value || "")
@@ -25,6 +26,7 @@ const normalizeTitle = (value) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+const NO_EVENTS = [];
 
 const getLocalDateKey = (value = new Date()) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -146,10 +148,14 @@ export default function PlanningMySpaceComponent({
   employeeId,
   restaurantId,
   openingHours = [],
+  planningRevision,
+  initialPlanningDate,
 }) {
   const { t } = useTranslation("myspace");
 
-  const [events, setEvents] = useState([]);
+  const [schedule, setSchedule] = useState(null);
+  const scheduleKey = `${restaurantId}:${employeeId}`;
+  const events = schedule?.key === scheduleKey ? schedule.events : NO_EVENTS;
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leaveModalData, setLeaveModalData] = useState({
     startDate: getLocalDateKey(),
@@ -170,6 +176,10 @@ export default function PlanningMySpaceComponent({
 
   // ✅ date + view contrôlés (toolbar custom)
   const [date, setDate] = useState(new Date());
+  useEffect(() => {
+    const selected = parsePlanningDate(initialPlanningDate);
+    if (selected) setDate(selected);
+  }, [initialPlanningDate]);
   const [currentView, setCurrentView] = useState(Views.WEEK);
 
   useEffect(() => {
@@ -204,15 +214,19 @@ export default function PlanningMySpaceComponent({
   // chargement des shifts (par restaurant)
   useEffect(() => {
     if (!employeeId || !restaurantId) return;
+    const controller = new AbortController();
 
     (async () => {
       try {
         const { data } = await axios.get(
           `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
+          { params: { scope: "personal" }, signal: controller.signal },
         );
+        if (controller.signal.aborted) return;
 
-        setEvents(
-          (data.shifts || []).flatMap((s, i) => {
+        setSchedule({
+          key: scheduleKey,
+          events: (data.shifts || []).flatMap((s, i) => {
             const startDate = new Date(s.start);
             const endDate = new Date(s.end);
             const shiftLabel = getShiftDisplayTitle(s);
@@ -244,12 +258,16 @@ export default function PlanningMySpaceComponent({
               },
             ];
           }),
-        );
+        });
       } catch (err) {
-        console.error("Erreur fetch shifts :", err);
+        if (!controller.signal.aborted) {
+          setSchedule(null);
+          console.error("Erreur fetch shifts :", err);
+        }
       }
     })();
-  }, [employeeId, openingHours, restaurantId]);
+    return () => controller.abort();
+  }, [employeeId, openingHours, restaurantId, planningRevision, scheduleKey]);
 
   const CustomEvent = ({ event }) => {
     const timeLabel = formatEventTimeRange(event.start, event.end);
@@ -460,6 +478,7 @@ export default function PlanningMySpaceComponent({
 
   return (
     <section
+      id="my-planning"
       className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
         hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
       } flex flex-col gap-4 min-w-0`}

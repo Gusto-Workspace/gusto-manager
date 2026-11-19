@@ -84,7 +84,8 @@ export default function SettingsComponent() {
   const profilePictureUrl =
     restaurantContext?.userConnected?.profilePictureUrl || null;
 
-  const unreadCount = restaurantContext?.unreadCounts?.total || 0;
+  const isEmployee = restaurantContext?.userConnected?.role === "employee";
+  const unreadCount = (isEmployee ? restaurantContext?.unreadCounts?.byModule?.my_planning : restaurantContext?.unreadCounts?.total) || 0;
 
   return (
     <section className="dashboard-settings flex flex-col-reverse tablet:flex-row min-h-16 gap-6 tablet:gap-7 justify-between items-center relative">
@@ -168,8 +169,7 @@ export default function SettingsComponent() {
             </button>
           </div>
 
-          {/* ✅ NOTIFS : owner only  --> pour employee aussi, ["owner", "employee"] */}
-          {["owner"].includes(restaurantContext?.userConnected?.role) && (
+          {(isEmployee || restaurantContext?.userConnected?.role === "owner") && (
             <div className="relative pl-1.5">
               <div className="relative">
                 <button
@@ -193,7 +193,8 @@ export default function SettingsComponent() {
                 open={openNotificationsDrawer}
                 onClose={() => setOpenNotificationsDrawer(false)}
                 notifications={restaurantContext?.notifications}
-                nextCursor={restaurantContext?.notificationsNextCursor}
+                modulesFilter={isEmployee ? "my_planning" : undefined}
+                nextCursor={isEmployee ? restaurantContext?.notificationsNextCursorByModule?.my_planning : restaurantContext?.notificationsNextCursor}
                 loading={restaurantContext?.notificationsLoading}
                 fetchNotifications={restaurantContext?.fetchNotifications}
                 markNotificationRead={restaurantContext?.markNotificationRead}

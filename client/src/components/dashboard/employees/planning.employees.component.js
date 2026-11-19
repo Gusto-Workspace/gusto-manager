@@ -4,6 +4,10 @@ import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
 import ExportRangeModalComponent from "./export-range-modal.component";
 import { PlanningGrid, PlanningToolbar } from "./planning-grid.employees.component";
+import { PlanningCommands, usePlanningCommands } from "./planning-commands.employees.component";
+import {
+  PlanningLockDialog, PlanningPublicationDialog, usePlanningPeriodState,
+} from "./planning-publication.employees.component";
 import axios from "axios";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 import { X } from "lucide-react";
@@ -22,7 +26,7 @@ import {
   validateShiftDraft,
 } from "./shift-editor.utils.mjs";
 import {
-  buildPlanningGrid, getPlanningEmployees, getPlanningPeriod, isLeaveShiftRecord,
+  buildPlanningGrid, getPlanningEmployees, getPlanningPeriod, isLeaveShiftRecord, publicationRanges,
   movePlanningDate, normalizePlanningText, parisPlanningDateKey, parsePlanningDate,
   plannedShiftMinutes, planningDateKey, restorePlanningConsultation, PLANNING_TIME_ZONE, PLANNING_VIEWS,
 } from "./planning-grid.utils.mjs";
@@ -135,7 +139,7 @@ export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { label: editorLabel } = useShiftEditorLabels();
   const { restaurantContext } = useContext(GlobalContext);
-  const { restaurantData, setRestaurantData } = restaurantContext;
+  const { restaurantData, setRestaurantData, userConnected, planningStateRevision } = restaurantContext;
   const router = useRouter();
 
   // 🔥 FIX iOS : désactive le hack global uniquement sur cette page
@@ -182,9 +186,9 @@ export default function PlanningEmployeesComponent() {
   const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
   const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
   const [planningExportError, setPlanningExportError] = useState("");
-  const [isPlanningSendOpen, setIsPlanningSendOpen] = useState(false);
-  const [isPlanningSendLoading, setIsPlanningSendLoading] = useState(false);
-  const [planningSendError, setPlanningSendError] = useState("");
+  const [publicationOpen, setPublicationOpen] = useState(false);
+  const [lockRange, setLockRange] = useState(null);
+  const [periodRevision, setPeriodRevision] = useState(0);
 
   const [draft, setDraft] = useState(null);
   const [extra, setExtra] = useState([]);
@@ -332,8 +336,30 @@ export default function PlanningEmployeesComponent() {
   const employeeColors = useMemo(() => new Map(allEmployees.map((employee, index) => [String(employee._id), index])), [allEmployees]);
   const noPost = t("planning:grid.noPost");
   const grid = useMemo(() => buildPlanningGrid(filteredEmployees, period, group, noPost), [filteredEmployees, period, group, noPost]);
+  const currentEmployee = roster?.find(({ _id }) => String(_id) === String(userConnected?.id));
+  const currentProfile = currentEmployee?.restaurantProfiles?.find(
+    ({ restaurant }) => String(restaurant?._id ?? restaurant) === String(restaurantId),
+  );
+  const commands = usePlanningCommands({
+    enabled: Boolean(restaurantId && (userConnected?.role === "owner" ||
+      (userConnected?.role === "employee" && currentProfile?.options?.employees === true))),
+    restaurantId, employees: allEmployees, setRestaurantData,
+  });
+  const exportDateRange = {
+    from: planningDateKey(period.start),
+    to: planningDateKey(period.days.at(-1)),
+  };
+  const revision = `${periodRevision}:${planningStateRevision}`;
+  const { data: publicationState } = usePlanningPeriodState(commands.enabled ? restaurantId : null, exportDateRange, revision);
+  const lockedByDate = new Map((publicationState?.days || []).map(({ date, locked }) => [date, locked]));
+  const refreshPeriod = () => setPeriodRevision((previous) => previous + 1);
+  useEffect(() => {
+    setPublicationOpen(false);
+    setLockRange(null);
+  }, [restaurantId]);
 
   function openShiftForm(employeeId, slot, position) {
+    if (commands.busy) return;
     setSubmitError("");
     const post = position ?? allEmployees.find((employee) => String(employee._id) === String(employeeId))?.post ?? "";
     setDraft(makeShiftDraft({ employeeId, slot, position: post }));
@@ -465,36 +491,6 @@ export default function PlanningEmployeesComponent() {
     }
   }
 
-  async function handlePlanningSend(payload) {
-    if (!restaurantId) return;
-
-    setIsPlanningSendLoading(true);
-    setPlanningSendError("");
-
-    try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/send`,
-        payload,
-        getAuthConfig(),
-      );
-
-      setIsPlanningSendOpen(false);
-    } catch (error) {
-      console.error("Erreur envoi planning salariés :", error);
-      setPlanningSendError(
-        error?.response?.data?.message ||
-          "Impossible d'envoyer le planning pour le moment.",
-      );
-    } finally {
-      setIsPlanningSendLoading(false);
-    }
-  }
-
-  const exportDateRange = {
-    from: planningDateKey(period.start),
-    to: planningDateKey(period.days.at(-1)),
-  };
-
   return (
     <section className="flex flex-col gap-2 min-w-0">
       <PlanningToolbar
@@ -512,11 +508,17 @@ export default function PlanningEmployeesComponent() {
         onBack={() => router.push("/dashboard/employees")}
         onLeaves={() => router.push("/dashboard/employees/planning/days-off")}
         onExport={() => { setPlanningExportError(""); setIsPlanningExportOpen(true); }}
-        onSend={() => { setPlanningSendError(""); setIsPlanningSendOpen(true); }}
+        onPublish={commands.enabled ? () => setPublicationOpen(true) : undefined}
+        publicationStatus={publicationState?.status}
+        onLockPeriod={publicationState ? () => setLockRange(exportDateRange) : undefined}
+        hasPeriodLock={publicationState?.days.some(({ locked }) => locked)}
       />
+      <PlanningCommands {...{ commands }} employees={allEmployees} Dialog={PlanningDialog} />
       <PlanningGrid
-        {...{ view, period, employeeColors, openingHours }}
+        {...{ view, period, employeeColors, openingHours, commands, group }}
         data={grid}
+        lockedByDate={lockedByDate}
+        onLockDay={publicationState ? (date) => setLockRange({ from: date, to: date }) : undefined}
         onDay={(day) => updateConsultation({ date: day, view: PLANNING_VIEWS.DAY })}
         onAdd={openShiftForm}
         onOpen={handleSelectEvent}
@@ -656,24 +658,13 @@ export default function PlanningEmployeesComponent() {
         onConfirm={handlePlanningExport}
       />
 
-      <ExportRangeModalComponent
-        open={isPlanningSendOpen}
-        title="Envoyer le planning aux salariés"
-        description="Choisissez une période et les salariés qui recevront leur planning individuel par email."
-        confirmLabel="Envoyer le planning"
-        mode="send"
-        employees={exportEmployees}
-        initialFrom={exportDateRange.from}
-        initialTo={exportDateRange.to}
-        loading={isPlanningSendLoading}
-        submitError={planningSendError}
-        onClose={() => {
-          if (isPlanningSendLoading) return;
-          setIsPlanningSendOpen(false);
-          setPlanningSendError("");
-        }}
-        onConfirm={handlePlanningSend}
-      />
+      {publicationOpen && commands.enabled && <PlanningPublicationDialog Dialog={PlanningDialog}
+        key={restaurantId} {...{ restaurantId, revision }} ranges={publicationRanges(period, view)}
+        initialDate={planningDateKey(date)} onClose={() => setPublicationOpen(false)} onChanged={refreshPeriod} />}
+      {lockRange && commands.enabled && <PlanningLockDialog Dialog={PlanningDialog} restaurantId={restaurantId}
+        range={lockRange} lockedDays={(publicationState?.days || []).filter(({ date }) =>
+          date >= lockRange.from && date <= lockRange.to).map(({ locked }) => locked)}
+        onClose={() => setLockRange(null)} onChanged={refreshPeriod} />}
     </section>
   );
 }

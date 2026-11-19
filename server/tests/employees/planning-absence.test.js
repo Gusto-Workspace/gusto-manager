@@ -3,6 +3,7 @@ const test = require("node:test");
 const mongoose = require("mongoose");
 const EmployeeModel = require("../../models/employee.model");
 const RestaurantModel = require("../../models/restaurant.model");
+const { PlanningDay } = require("../../models/planning-period.model");
 
 for (const [name, method] of [
   ["shared/notifications", "createAndBroadcastNotification"],
@@ -30,6 +31,9 @@ const dates = {
 };
 
 function mockShiftRoutes(t) {
+  t.mock.method(mongoose.connection, "transaction", (run) => run(null));
+  t.mock.method(RestaurantModel.collection, "updateOne", async () => ({ modifiedCount: 1 }));
+  t.mock.method(PlanningDay, "find", () => ({ select: () => ({ session: () => ({ lean: async () => [] }) }) }));
   const restaurantId = new mongoose.Types.ObjectId();
   const employeeId = new mongoose.Types.ObjectId();
   const ownerId = new mongoose.Types.ObjectId();

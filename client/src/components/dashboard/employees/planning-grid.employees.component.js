@@ -4,13 +4,17 @@ import { useTranslation } from "next-i18next";
 import { enGB, fr } from "date-fns/locale";
 import {
   ArrowLeft,
+  CalendarCheck,
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   Download,
+  Hourglass,
+  Lock,
+  LockOpen,
   Plus,
   Search,
-  Send,
   UtensilsCrossed,
   X,
 } from "lucide-react";
@@ -31,6 +35,11 @@ import {
   PLANNING_VIEWS,
 } from "./planning-grid.utils.mjs";
 import { getShiftMealMeta } from "./planning-meals.utils";
+import { eventsInCell } from "./planning-actions.utils.mjs";
+import {
+  CellSelection, cellInteractionProps, DragPreview, DropChoices,
+  ShiftContextMenu, ShiftMenuTrigger, usePlanningDrag, useShiftMenu,
+} from "./planning-drag.employees";
 
 const EMPLOYEE_COLORS = [
   "#405d9c",
@@ -60,7 +69,10 @@ export function PlanningToolbar({
   onBack,
   onLeaves,
   onExport,
-  onSend,
+  onPublish,
+  publicationStatus,
+  onLockPeriod,
+  hasPeriodLock,
 }) {
   const { t, i18n } = useTranslation("employees");
   const label = (key) => t(`planning:grid.${key}`);
@@ -70,6 +82,11 @@ export function PlanningToolbar({
   if (view === PLANNING_VIEWS.WEEK)
     rangeLabel = `${fmt(period.start, "d MMM")} – ${fmt(period.days.at(-1), "d MMM yyyy")}`;
   if (view === PLANNING_VIEWS.MONTH) rangeLabel = fmt(date, "MMMM yyyy");
+  const partlyPublished = publicationStatus === "partial";
+  const fullyPublished = publicationStatus === "published";
+  const PublishIcon = fullyPublished ? Check : partlyPublished ? Hourglass : CalendarCheck;
+  const publishLabel = t(fullyPublished || partlyPublished ? "planning:publication.published" : "planning:publication.publish");
+  const partialLabel = partlyPublished ? t("planning:publication.partial") : undefined;
 
   return (
     <header className={styles.toolbar}>
@@ -105,20 +122,22 @@ export function PlanningToolbar({
             <Download aria-hidden="true" size={16} />
             {label("export")}
           </button>
-          <button
-            type="button"
-            className={styles.control}
-            onClick={onSend}
-            title={label("send")}
-          >
-            <Send aria-hidden="true" size={16} />
-            {label("send")}
-          </button>
+          {onPublish && (
+            <button type="button" className={`${styles.control} ${styles.publicationPrimary}`} onClick={onPublish}
+              aria-label={partialLabel} title={partialLabel}>
+              <PublishIcon aria-hidden="true" size={16} />
+              {publishLabel}
+            </button>
+          )}
         </div>
       </div>
 
       <div className={styles.navigationRow}>
         <div className={styles.periodControls}>
+          {onLockPeriod && <button type="button" className={styles.iconButton} onClick={onLockPeriod}
+            title={t("planning:publication.lockTitle")} aria-label={t("planning:publication.lockTitle")}>
+            {hasPeriodLock ? <Lock size={17} aria-hidden="true" /> : <LockOpen size={17} aria-hidden="true" />}
+          </button>}
           <button
             type="button"
             className={styles.iconButton}
@@ -242,6 +261,8 @@ function ShiftCard({
   style,
   shiftTime,
   label,
+  interactions,
+  cell,
 }) {
   const { event } = segment;
   const isWeek = mode === "week";
@@ -271,12 +292,30 @@ function ShiftCard({
   const postColor = event.position && EMPLOYEE_COLORS[
     [...event.position].reduce((index, character) => (index * 31 + character.codePointAt(0)) % EMPLOYEE_COLORS.length, 0)
   ];
-  return (
+  const { commands, drag, menuState } = interactions;
+  const interactive = commands?.enabled && !event.isLeave;
+  return <div
+    className={`${styles.shiftItem} ${mode === "day" ? styles.dayShiftItem : ""} ${interactive ? styles.manageableShift : ""}`}
+    style={style}
+    data-planning-shift={event.id}
+  >
     <button
       type="button"
       className={`${styles.shift} ${styles[`${mode}Shift`]} ${event.isLeave ? styles.leave : ""}`}
-      style={{ ...style, "--employee-accent": postColor || color }}
-      onClick={() => onOpen(event)}
+      style={{ "--employee-accent": postColor || color }}
+      onClick={(e) => {
+        if (drag.wasDrag(e)) return;
+        if (!commands?.busy) onOpen(event);
+      }}
+      {...(interactive && {
+        onPointerDown: (e) => drag.start(e, cell, "card", [event]),
+        onPointerMove: drag.move, onPointerUp: drag.finish,
+        onPointerCancel: drag.cancel, onLostPointerCapture: drag.cancel,
+        onContextMenu: (e) => {
+          e.preventDefault();
+          if (!commands.busy) menuState.open(event, e.currentTarget, cell);
+        },
+      })}
       title={description}
       aria-label={description}
     >
@@ -300,7 +339,9 @@ function ShiftCard({
         <UtensilsCrossed className={styles.meal} size={12} aria-hidden="true" />
       )}
     </button>
-  );
+    {interactive && <ShiftMenuTrigger shift={event} {...{ menuState, cell }} busy={commands.busy}
+      label={`${commands.label("menu")} · ${description}`} />}
+  </div>;
 }
 
 function PlanningCell({
@@ -316,18 +357,20 @@ function PlanningCell({
   openingHours,
   onAdd,
   onOpen,
+  interactions,
+  cell,
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = mode === "month" && !expanded ? segments.slice(0, 2) : segments;
   const extra = segments.length - 2;
   return (
     <div
-      className={`${styles.cellContent} ${mode === "week" && segments.length ? styles.weekWithShifts : ""}`}
+      className={styles.cellContent}
     >
       {shown.map((segment) => (
         <ShiftCard
           key={segment.event.id}
-          {...{ segment, mode, label, shiftTime, color, openingHours, onOpen }}
+          {...{ segment, mode, label, shiftTime, color, openingHours, onOpen, interactions, cell }}
         />
       ))}
       {mode === "month" && extra > 0 && (
@@ -365,6 +408,8 @@ function DayLane({
   openingHours,
   onAdd,
   onOpen,
+  interactions,
+  cell,
 }) {
   const { start, startInstant, endInstant } = period;
   const positioned = layOutPlanningDay(segments, startInstant, endInstant);
@@ -410,7 +455,7 @@ function DayLane({
             width: `${width}%`,
             top: `calc(7px + ${lane} * 42px)`,
           }}
-          {...{ segment, label, shiftTime, color, openingHours, onOpen }}
+          {...{ segment, label, shiftTime, color, openingHours, onOpen, interactions, cell }}
         />
       ))}
     </div>
@@ -426,6 +471,10 @@ export function PlanningGrid({
   onDay,
   onAdd,
   onOpen,
+  commands,
+  group,
+  lockedByDate,
+  onLockDay,
 }) {
   const { t, i18n } = useTranslation("employees");
   const locale = i18n.language?.startsWith("en") ? enGB : fr;
@@ -458,6 +507,11 @@ export function PlanningGrid({
       ? (timeline.minutes / 60) * 52
       : period.days.length * (isMonth ? 58 : 120));
   const columnCount = (isDay ? 1 : period.days.length) + 2;
+  const visibleRows = [...new Set(data.groups.flatMap(({ rows }) => rows.map(({ employee }) => String(employee._id))))];
+  const selectedIds = new Set(commands?.selection?.events.map(({ id }) => id));
+  const drag = usePlanningDrag(commands, visibleRows);
+  const menuState = useShiftMenu();
+  const interactions = { commands, drag, menuState, allowHandle: !isDay && group === PLANNING_GROUPS.EMPLOYEES };
 
   function dayClass(day, index) {
     return `${planningDateKey(day) === today ? styles.today : ""} ${isMonth && index > 0 && day.getDay() === 1 ? styles.weekBreak : ""}`;
@@ -513,6 +567,7 @@ export function PlanningGrid({
                     scope="col"
                     className={dayClass(day, index)}
                   >
+                    <div className={styles.dayControls}>
                     <button
                       type="button"
                       className={styles.dayHeader}
@@ -525,6 +580,13 @@ export function PlanningGrid({
                       <span>{fmt(day, "EEE")}</span>
                       <strong>{fmt(day, isMonth ? "d" : "d MMM")}</strong>
                     </button>
+                    {onLockDay && <button type="button" className={styles.dayLock} data-locked={lockedByDate.get(planningDateKey(day)) || undefined}
+                      onClick={() => onLockDay(planningDateKey(day))}
+                      title={t(lockedByDate.get(planningDateKey(day)) ? "planning:publication.unlock" : "planning:publication.lock")}
+                      aria-label={`${t(lockedByDate.get(planningDateKey(day)) ? "planning:publication.unlock" : "planning:publication.lock")} · ${fmt(day, "PPP")}`}>
+                      {lockedByDate.get(planningDateKey(day)) ? <Lock size={13} aria-hidden="true" /> : <LockOpen size={13} aria-hidden="true" />}
+                    </button>}
+                    </div>
                   </th>
                 ))
               )}
@@ -556,6 +618,19 @@ export function PlanningGrid({
                 </tr>
               )}
               {rows.map(({ employee, cells, position, minutes: rowMinutes }) => {
+                const rowKey = `${groupLabel}:${employee._id}`;
+                const getCell = (day, segments) => {
+                  const date = planningDateKey(day);
+                  const employeeId = String(employee._id);
+                  const key = `${rowKey}:${date}`;
+                  const events = eventsInCell(segments);
+                  const selectable = commands?.enabled && interactions.allowHandle && events.length > 0;
+                  return {
+                    key, employeeId, date, name: employee.name, events, selectable,
+                    selected: Boolean(selectable && commands.selection?.key === key && events.every(({ id }) => selectedIds.has(id))),
+                  };
+                };
+                const dayCell = isDay ? getCell(period.start, cells[0]) : null;
                 const color =
                   EMPLOYEE_COLORS[
                     (employeeColors.get(String(employee._id)) || 0) %
@@ -592,7 +667,7 @@ export function PlanningGrid({
                       </div>
                     </th>
                     {isDay ? (
-                      <td className={styles.dayCell}>
+                      <td className={`${styles.dayCell} ${styles.dropCell}`} {...cellInteractionProps(dayCell, drag)}>
                         <DayLane
                           {...{
                             employee,
@@ -606,17 +681,22 @@ export function PlanningGrid({
                             openingHours,
                             onAdd,
                             onOpen,
+                            interactions,
                           }}
+                          cell={dayCell}
                           segments={cells[0]}
                         />
+                        {commands?.enabled && <DropChoices drag={drag} cell={dayCell} label={commands.label} />}
                       </td>
                     ) : (
                       cells.map((segments, index) => {
                         const day = period.days[index];
+                        const cell = getCell(day, segments);
                         return (
                           <td
                             key={planningDateKey(day)}
-                            className={dayClass(day, index)}
+                            className={`${dayClass(day, index)} ${styles.dropCell}`}
+                            {...cellInteractionProps(cell, drag, isMonth)}
                           >
                             <PlanningCell
                               mode={isMonth ? "month" : "week"}
@@ -632,8 +712,12 @@ export function PlanningGrid({
                                 openingHours,
                                 onAdd,
                                 onOpen,
+                                interactions,
+                                cell,
                               }}
                             />
+                            {cell.selectable && <CellSelection {...{ cell, interactions }} />}
+                            {commands?.enabled && <DropChoices {...{ drag, cell }} label={commands.label} />}
                           </td>
                         );
                       })
@@ -666,6 +750,10 @@ export function PlanningGrid({
           </tfoot>
         </table>
       </div>
+      {commands?.enabled && <>
+        <ShiftContextMenu state={menuState} commands={commands} />
+        <DragPreview preview={drag.preview} ghost={drag.ghost} label={commands.label} time={parisPlanningTime} />
+      </>}
       <div className={styles.legend}>
         <span>
           <i className={styles.workSwatch} />

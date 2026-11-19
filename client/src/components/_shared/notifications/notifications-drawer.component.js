@@ -95,6 +95,7 @@ function IconForNotification({ n }) {
   if (n?.module === "gift_cards") return <Gift className="size-4" />;
   if (n?.module === "take_away") return <ShoppingBag className="size-4" />;
   if (n?.module === "employees") return <Users className="size-4" />;
+  if (n?.module === "my_planning") return <CalendarCheck2 className="size-4" />;
   if (n?.module === "messages") return <MessageSquareText className="size-4" />;
 
   return <Bell className="size-4" />;

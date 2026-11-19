@@ -767,6 +767,7 @@ const restaurantSchema = new mongoose.Schema({
     default: () => ({}),
   },
   employees: [{ type: mongoose.Schema.Types.ObjectId, ref: "Employee" }],
+  planningRevision: { type: Number, select: false },
   giftCardSold: { type: giftCardSoldSchema, default: () => ({}) },
   created_at: { type: Date, default: Date.now },
 });

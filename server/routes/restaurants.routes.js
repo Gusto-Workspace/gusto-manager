@@ -28,6 +28,7 @@ const {
   decorateRestaurantEmployees,
   sanitizeEmployeeForRestaurants,
 } = require("../services/employees/employee-serialization.service");
+const { provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservations/reservation-service-closure.service");
@@ -544,8 +545,12 @@ router.post(
           .json({ message: "Employee already in this restaurant" });
       }
 
-      const profile = findRestaurantProfile(employee, restaurantId);
-      const linked = await mongoose.connection.transaction(async (session) => {
+      const existingProfile = findRestaurantProfile(employee, restaurantId);
+      const profile = existingProfile || {
+        ...createRestaurantProfile(employee, restaurantId),
+        _id: new mongoose.Types.ObjectId(),
+      };
+      const linked = await withClockPinTransaction(async (session) => {
         const result = await EmployeeModel.updateOne(
           {
             _id: employee._id,
@@ -555,7 +560,7 @@ router.post(
           {
             $addToSet: { restaurants: restaurantId },
             $inc: { __v: 1 },
-            ...(!profile && { $push: { restaurantProfiles: createRestaurantProfile(employee, restaurantId) } }),
+            ...(!existingProfile && { $push: { restaurantProfiles: profile } }),
           },
           { session, runValidators: true },
         );
@@ -563,6 +568,12 @@ router.post(
         await RestaurantModel.updateOne(
           { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
         );
+        if (employee.accountType !== "accountant") {
+          await provisionInitialClockPin({
+            restaurant: restaurantId, employee: employee._id, profile: String(profile._id || ""),
+            changedBy: String(req.user.id), session,
+          });
+        }
         return true;
       });
       if (!linked) return res.status(409).json({ message: "Le rattachement du salarié a changé." });
@@ -580,7 +591,7 @@ router.post(
 
       return res.json({ restaurant: decoratedRestaurant });
     } catch (e) {
-      console.error("Error importing employee:", e);
+      console.error("Error importing employee", { code: e.code || e.name });
       return res.status(500).json({ message: "Internal server error" });
     }
   },

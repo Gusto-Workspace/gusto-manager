@@ -5,10 +5,11 @@ const { Readable, Writable } = require("node:stream");
 const test = require("node:test");
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
-const { Types } = require("mongoose");
+const { Types, connection } = require("mongoose");
 const EmployeeModel = require("../../models/employee.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const sse = require("../../services/shared/sse-bus.service");
+const { PlanningDay } = require("../../models/planning-period.model");
 
 for (const [name, method] of [
   ["shared/notifications", "createAndBroadcastNotification"],
@@ -60,6 +61,9 @@ function response() {
 }
 
 function fixture(t) {
+  t.mock.method(connection, "transaction", (run) => run(null));
+  t.mock.method(RestaurantModel.collection, "updateOne", async () => ({ modifiedCount: 1 }));
+  t.mock.method(PlanningDay, "find", () => ({ select: () => ({ session: () => ({ lean: async () => [] }) }) }));
   const restaurantId = new Types.ObjectId();
   const otherRestaurant = new Types.ObjectId();
   const employeeId = new Types.ObjectId();
@@ -153,7 +157,7 @@ test("PDF and Excel receive Paris times and net totals, including legacy shifts"
 test("shift attachments are stored privately and scoped to the permitted restaurant, employee and shift", async (t) => {
   const { call, profile, otherRestaurant, employeeId } = fixture(t);
   const shiftId = new Types.ObjectId();
-  profile.shifts = [{ _id: shiftId, title: "" }, { _id: new Types.ObjectId(), title: "" }];
+  profile.shifts = [{ ...first, _id: shiftId, title: "" }, { ...second, _id: new Types.ObjectId(), title: "" }];
   const params = { shiftId };
   const upload = t.mock.method(cloudinary.uploader, "upload_stream", (options, callback) => {
     assert.equal(options.type, "authenticated");
@@ -198,7 +202,7 @@ test("shift attachments are stored privately and scoped to the permitted restaur
   assert.equal(download.mock.callCount(), 1);
 });
 
-test("restaurant SSE shares shift notes with planning managers and the assigned employee", () => {
+test("restaurant SSE keeps employee drafts private and targets personal notifications", () => {
   const restaurant = "scoped-restaurant";
   const messages = new Map();
   for (const [name, locals] of [
@@ -211,11 +215,18 @@ test("restaurant SSE shares shift notes with planning managers and the assigned 
   try {
     sse.broadcastToRestaurant(restaurant, {
       type: "leave_request_updated", employeeId: "employee-a",
-      shifts: [{ _id: "shift", notes: "Privé" }],
+      shifts: [{ _id: "shift", notes: "Privé" }, { _id: "draft", requiresPlanningPublication: true }],
     });
     assert.equal(messages.get("manager").shifts[0].notes, "Privé");
     assert.equal(messages.get("employee").shifts[0].notes, "Privé");
-    assert.equal(messages.get("colleague").shifts[0].notes, undefined);
+    assert.equal(messages.get("manager").shifts.length, 2);
+    assert.equal(messages.get("employee").shifts.length, 1);
+    assert.deepEqual(messages.get("colleague").shifts, []);
+    messages.clear();
+    sse.broadcastToRestaurant(restaurant, {
+      type: "notification_created", recipientEmployeeId: "employee-a", notification: { title: "Planning disponible" },
+    });
+    assert.deepEqual([...messages.keys()], ["employee"]);
   } finally {
     sse._clientsPerRestaurant.delete(restaurant);
   }

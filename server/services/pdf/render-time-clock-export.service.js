@@ -42,6 +42,10 @@ function formatDateTime(value) {
   }
 }
 
+const exportTime = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
 function formatMinutes(value) {
   const minutes = Math.max(0, Number(value || 0));
   const hours = Math.floor(minutes / 60);
@@ -333,6 +337,10 @@ async function buildTimeClockExportPdf({
       (total, item) => total + Number(item?.range?.totalBreakMinutes || 0),
       0,
     );
+    const globalPayroll = employees.reduce(
+      (total, item) => total + Number(item?.range?.totalPayrollMinutes || 0),
+      0,
+    );
     const globalSessions = employees.reduce(
       (total, item) => total + Number(item?.range?.totalSessions || 0),
       0,
@@ -383,7 +391,7 @@ async function buildTimeClockExportPdf({
     const summaryBoxY = doc.y;
     const summaryBoxX = doc.page.margins.left;
     const summaryBoxWidth = 250;
-    const summaryBoxHeight = 116;
+    const summaryBoxHeight = 132;
     doc
       .roundedRect(
         summaryBoxX,
@@ -404,17 +412,18 @@ async function buildTimeClockExportPdf({
       .fillColor(COLORS.text)
       .text(`Salariés: ${employees.length}`, summaryBoxX + 14, summaryBoxY + 30)
       .text(
-        `Heures nettes: ${formatMinutes(globalWorked)}`,
+        `Heures pointées nettes: ${formatMinutes(globalWorked)}`,
         summaryBoxX + 14,
         summaryBoxY + 46,
       )
       .text(
-        `Pauses: ${formatMinutes(globalBreaks)}`,
+        `Heures rémunérées nettes: ${formatMinutes(globalPayroll)}`,
         summaryBoxX + 14,
         summaryBoxY + 62,
       )
-      .text(`Services: ${globalSessions}`, summaryBoxX + 14, summaryBoxY + 78)
-      .text(`Repas: ${globalMeals}`, summaryBoxX + 14, summaryBoxY + 94);
+      .text(`Pauses pointées: ${formatMinutes(globalBreaks)}`, summaryBoxX + 14, summaryBoxY + 78)
+      .text(`Services: ${globalSessions}`, summaryBoxX + 14, summaryBoxY + 94)
+      .text(`Repas: ${globalMeals}`, summaryBoxX + 14, summaryBoxY + 110);
 
     doc.x = doc.page.margins.left;
     doc.y = summaryBoxY + summaryBoxHeight + 18;
@@ -437,7 +446,7 @@ async function buildTimeClockExportPdf({
       const employee = employeeReport?.employee || {};
       const range = employeeReport?.range || {};
       const activeDays = (range.days || []).filter(
-        (day) => day.sessionCount > 0 || (day.anomalies || []).length > 0,
+        (day) => day.sessionCount > 0 || day.payroll?.length || day.reportedAbsences?.length || (day.anomalies || []).length > 0,
       );
 
       doc.x = doc.page.margins.left;
@@ -464,12 +473,16 @@ async function buildTimeClockExportPdf({
         .fontSize(10)
         .fillColor(COLORS.text)
         .text(
-          `Heures nettes: ${formatMinutes(range.totalWorkedMinutes)}`,
+          `Heures pointées nettes: ${formatMinutes(range.totalWorkedMinutes)}`,
           doc.page.margins.left,
           doc.y,
         )
         .text(
-          `Pauses: ${formatMinutes(range.totalBreakMinutes)}`,
+          `Heures rémunérées nettes: ${formatMinutes(range.totalPayrollMinutes)}`,
+          doc.page.margins.left,
+        )
+        .text(
+          `Pauses pointées: ${formatMinutes(range.totalBreakMinutes)}`,
           doc.page.margins.left,
         )
         .text(
@@ -506,12 +519,12 @@ async function buildTimeClockExportPdf({
       const rows = activeDays.map((day) => {
         const serviceLines = (day.sessions || []).map((session) => {
           const startLabel = session?.dayTotals?.startAt
-            ? formatDateTime(session.dayTotals.startAt).slice(11)
-            : formatDateTime(session.clockInAt).slice(11);
+            ? exportTime.format(new Date(session.dayTotals.startAt))
+            : exportTime.format(new Date(session.clockInAt));
           const endLabel = session?.dayTotals?.endAt
-            ? formatDateTime(session.dayTotals.endAt).slice(11)
+            ? exportTime.format(new Date(session.dayTotals.endAt))
             : session.clockOutAt
-              ? formatDateTime(session.clockOutAt).slice(11)
+              ? exportTime.format(new Date(session.clockOutAt))
               : "en cours";
 
           return {
@@ -520,12 +533,22 @@ async function buildTimeClockExportPdf({
             suffix: `(${formatMinutes(session?.dayTotals?.workedMinutes || 0)})`,
           };
         });
+        const paidLines = (day.payroll || []).map(({ timings, manual, absent }) => {
+          if (absent) return "Absence constatée (0h00)";
+          const start = exportTime.format(new Date(timings.startAt));
+          const end = exportTime.format(new Date(timings.endAt));
+          return `${start} – ${end} (${formatMinutes(timings.workedMinutes)})\nPause ${formatMinutes(timings.breakMinutes)}${manual ? " · Corrigé" : ""}`;
+        });
+        for (const shift of day.reportedAbsences || []) {
+          paidLines.push(`Absence constatée (0h00)\nPrévu ${exportTime.format(new Date(shift.start))} – ${exportTime.format(new Date(shift.end))}`);
+        }
 
         return [
           formatDateKey(day.date),
           serviceLines.length
             ? { type: "arrow_lines", lines: serviceLines }
             : "-",
+          paidLines.join("\n") || "-",
           formatMinutes(day.totalWorkedMinutes),
           formatMinutes(day.totalBreakMinutes),
           formatMinutes(day.totalGrossMinutes),
@@ -536,9 +559,9 @@ async function buildTimeClockExportPdf({
 
       drawTable(
         doc,
-        ["Jour", "Services", "Net", "Pauses", "Brut", "Repas", "Anomalies"],
+        ["Jour", "Horaires pointés", "Horaires rémunérés", "Net pointé", "Pauses", "Brut", "Repas", "Anomalies"],
         rows,
-        [80, 168, 54, 54, 54, 42, 78],
+        [72, 103, 104, 57, 42, 35, 43, 55],
       );
     });
 

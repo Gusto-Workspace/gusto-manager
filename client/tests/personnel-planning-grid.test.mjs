@@ -10,6 +10,7 @@ import {
   movePlanningDate,
   parsePlanningDate,
   planningDateKey,
+  publicationRanges,
   restorePlanningConsultation,
 } from "../src/components/dashboard/employees/planning-grid.utils.mjs";
 import { getShiftMealMeta } from "../src/components/dashboard/employees/planning-meals.utils.js";
@@ -24,6 +25,19 @@ const plan = (employees, day, view, group = "employees") =>
     "Sans poste",
   );
 const shift = (_id, start, end, extra = {}) => ({ _id, start, end, ...extra });
+
+test("month publication offers explicit Monday-to-Sunday weeks across month and year boundaries", () => {
+  assert.deepEqual(publicationRanges(getPlanningPeriod(date("2026-11-19"), "day"), "day"), [
+    { from: "2026-11-19", to: "2026-11-19" },
+  ]);
+  assert.deepEqual(publicationRanges(getPlanningPeriod(date("2026-11-19"), "week"), "week"), [
+    { from: "2026-11-16", to: "2026-11-22" },
+  ]);
+  const ranges = publicationRanges(getPlanningPeriod(date("2026-12-15"), "month"), "month");
+  assert.equal(ranges.length, 5);
+  assert.deepEqual(ranges[0], { from: "2026-11-30", to: "2026-12-06" });
+  assert.deepEqual(ranges.at(-1), { from: "2026-12-28", to: "2027-01-03" });
+});
 
 test("the week starts on Monday and a period can cross a year boundary", () => {
   const period = getPlanningPeriod(date("2026-01-01"), "week");

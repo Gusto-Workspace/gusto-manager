@@ -66,6 +66,7 @@ const documentSchema = new mongoose.Schema(
 function stripEmployeeDocumentsFromSerializedValue(_document, value) {
   for (const profile of value?.restaurantProfiles || []) {
     profile.documents = [];
+    if (Array.isArray(profile.shifts)) profile.shifts = profile.shifts.filter((shift) => !shift.requiresPlanningPublication);
     delete profile.planningBatches;
     delete profile.planningFiles;
   }
@@ -74,6 +75,7 @@ function stripEmployeeDocumentsFromSerializedValue(_document, value) {
 }
 
 const shiftSchema = new mongoose.Schema({
+  requiresPlanningPublication: Boolean,
   title: { type: String, default: "" },
   start: { type: Date, required: true },
   end: { type: Date, required: true },

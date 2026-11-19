@@ -21,6 +21,8 @@ const {
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
+const { TimeClockPin } = require("../models/time-clock-device.model");
+const { provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const RestaurantModel = require("../models/restaurant.model");
 const OwnerModel = require("../models/owner.model");
 const TrainingSession = require("../models/logs/training-session.model");
@@ -45,6 +47,11 @@ const {
 const {
   resolvePlanningAbsence,
 } = require("../services/employees/planning-absence.service");
+const { applyPlanningAction } = require("../services/employees/planning-actions.service");
+const {
+  periodDates, planningFence, assertPlanningUnlocked, withPlanningWrite, visiblePlanningShifts,
+  getPlanningState, setPlanningLock, publishPlanning, deliverPlanningEmails, planningError,
+} = require("../services/employees/planning-period.service");
 const {
   attemptEmployeeAssetDeletions,
   enqueueEmployeeAssetDeletions,
@@ -1235,7 +1242,6 @@ router.post(
           .json({ message: accessContext.error.message });
       }
 
-      const restaurant = accessContext.restaurant;
       let profilePicture = null;
       if (req.file) {
         const cloudinaryResponse = await uploadFromBuffer(
@@ -1293,7 +1299,7 @@ router.post(
       // ---------- CAS 1 : NOUVEL EMPLOYÉ ----------
       if (!existingEmployee) {
         const temporaryPassword = generatePassword();
-        const newEmployee = new EmployeeModel({
+        const employeeData = {
           accountType: normalizedAccountType,
           lastname: lastName,
           firstname: firstName,
@@ -1348,12 +1354,22 @@ router.post(
                   : normalizedEmployment,
             },
           ],
+        };
+
+        const newEmployee = await withClockPinTransaction(async (session) => {
+          const employee = await new EmployeeModel(employeeData).save({ session });
+          const roster = await RestaurantModel.updateOne(
+            { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
+          );
+          if (!roster.matchedCount) throw new Error("Employee restaurant unavailable");
+          if (normalizedAccountType === "employee") {
+            await provisionInitialClockPin({
+              restaurant: restaurantId, employee: employee._id,
+              profile: String(employee.restaurantProfiles[0]._id), changedBy: String(req.user.id), session,
+            });
+          }
+          return employee;
         });
-
-        await newEmployee.save();
-
-        restaurant.employees.push(newEmployee._id);
-        await restaurant.save();
 
         if (newEmployee.email) {
           const emailParams = {
@@ -1381,7 +1397,7 @@ router.post(
               <p>${
                 normalizedAccountType === "accountant"
                   ? "En cas de besoin, utilisez « Mot de passe oublié » depuis la page de connexion."
-                  : "Merci de modifier votre mot de passe lors de votre première connexion."
+                  : "Merci de modifier votre mot de passe lors de votre première connexion. Si votre restaurant utilise la Pointeuse, retrouvez votre code PIN dans les paramètres de votre compte."
               }</p>
               <p>— L’équipe Gusto Manager</p>
             `,
@@ -1459,7 +1475,9 @@ router.post(
 
       // 🔹 Profil spécifique à CE restaurant
       const existingProfile = findRestaurantProfile(existingEmployee, restaurantId);
-      const profile = existingProfile || { restaurant: restaurantId, snapshot: {}, employment: {} };
+      const profile = existingProfile || {
+        _id: new mongoose.Types.ObjectId(), restaurant: restaurantId, snapshot: {}, employment: {},
+      };
       profile.snapshot ??= {};
       profile.employment ??= {};
 
@@ -1537,7 +1555,7 @@ router.post(
           normalizedEmployment.contractualUnit;
       }
 
-      const linked = await mongoose.connection.transaction(async (session) => {
+      const linked = await withClockPinTransaction(async (session) => {
         if (existingEmployee.isModified()) await savePlanningEmployee(existingEmployee, session);
         const result = await EmployeeModel.updateOne({
           _id: existingEmployee._id,
@@ -1552,6 +1570,12 @@ router.post(
         await RestaurantModel.updateOne(
           { _id: restaurantId }, { $addToSet: { employees: existingEmployee._id } }, { session },
         );
+        if (normalizedAccountType === "employee") {
+          await provisionInitialClockPin({
+            restaurant: restaurantId, employee: existingEmployee._id,
+            profile: String(profile._id || ""), changedBy: String(req.user.id), session,
+          });
+        }
         return true;
       });
       if (!linked) return res.status(409).json({ message: "Le rattachement du salarié a changé." });
@@ -1560,7 +1584,7 @@ router.post(
 
       return res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
-      console.error("Error creating/importing employee:", error);
+      console.error("Error creating/importing employee", { code: error.code || error.name });
       res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -2079,6 +2103,7 @@ router.delete(
         await RestaurantModel.updateOne(
           { _id: restaurantId }, { $pull: { employees: employeeId } }, { session },
         );
+        await TimeClockPin.deleteOne({ restaurant: restaurantId, employee: employeeId }, { session });
         return enqueueEmployeeAssetDeletions(assets, session);
       });
       if (!jobIds) return res.status(404).json({ message: "Employee not found" });
@@ -2102,6 +2127,42 @@ router.delete(
 
 // ---------- SHIFTS (par restaurant) ----------
 
+function planningFailure(res, error) {
+  const { message, conflictType, employeeId, date } = error;
+  return res.status(error.planningStatus).json({ message, conflictType, employeeId, date });
+}
+
+function broadcastPlanningChange(restaurant, employeeIds) {
+  broadcastToRestaurant(restaurant, { type: "planning_changed", employeeIds: employeeIds.map(String) });
+}
+
+function planningManager(handler) {
+  return async (req, res) => {
+    try {
+      const restaurant = toObjectIdOrNull(req.params.restaurantId);
+      if (!restaurant) return res.status(400).json({ message: "Restaurant invalide." });
+      const access = await getEmployeesAccessContext(req, restaurant);
+      if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+      if (!access.isManager) return res.status(403).json({ message: "Accès au planning refusé." });
+      const roster = new Set((access.restaurant.employees || []).map((employee) => String(employee._id || employee)));
+      return await handler(req, res, restaurant, roster, access);
+    } catch (error) {
+      if (error.planningStatus) return planningFailure(res, error);
+      console.error("[planning-actions]", error);
+      return res.status(500).json({ message: "L’action de planning a échoué." });
+    }
+  };
+}
+
+const planningActionsPath = "/restaurants/:restaurantId/employees/planning";
+
+router.post(`${planningActionsPath}/actions`, planningManager(async (req, res, restaurant, roster) => {
+  const { updates, jobIds, replayed } = await applyPlanningAction(restaurant, roster, req.body, isLeaveShift);
+  const assetCleanupPending = await attemptEmployeeAssetDeletions(jobIds);
+  if (!replayed) broadcastPlanningChange(restaurant, updates.map(({ employeeId }) => employeeId));
+  return res.json({ updates, replayed, assetCleanupPending });
+}));
+
 const planningFilesPath = "/restaurants/:restaurantId/employees/:employeeId/shifts/:shiftId/files";
 
 async function authorizePlanningFiles(req, res, next) {
@@ -2121,8 +2182,8 @@ async function authorizePlanningFiles(req, res, next) {
     const entry = profile?.shifts?.find(({ _id }) => _id.equals(shift));
     if (!entry || isLeaveShift(entry)) return res.status(404).json({ message: "Shift de travail introuvable." });
     req.planningFiles = {
-      target, restaurant, shift,
-      shiftMatch: { _id: shift, isLeave: { $ne: true }, leaveRequestId: null, title: entry.title ?? null },
+      target, restaurant, shift, entry,
+      shiftMatch: { _id: shift, isLeave: { $ne: true }, leaveRequestId: null, title: entry.title ?? null, start: entry.start, end: entry.end },
       files: (profile.planningFiles || []).filter(({ shiftId: id }) => id.equals(shift)),
     };
     return next();
@@ -2148,7 +2209,7 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
     return next();
   });
 }, async (req, res) => {
-  const { target, restaurant, shift, shiftMatch, files } = req.planningFiles;
+  const { target, restaurant, shift, entry, shiftMatch, files } = req.planningFiles;
   const freeSlots = Array.from({ length: MAX_PLANNING_FILES }, (_, slot) => slot)
     .filter((slot) => !files.some((file) => file.slot === slot));
   if (!req.files?.length || req.files.length > freeSlots.length) {
@@ -2157,6 +2218,7 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
   const uploaded = [];
   let writeAttempted = false;
   try {
+    await assertPlanningUnlocked(restaurant, [entry], null);
     const documents = req.files.map(validateEmployeeDocumentFile);
     const folder = `Gusto_Workspace/restaurants/${restaurant}/employees/${target._id}/planning/${shift}`;
     for (const [index, document] of documents.entries()) {
@@ -2175,7 +2237,7 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
       });
     }
     writeAttempted = true;
-    const result = await EmployeeModel.updateOne({
+    const result = await withPlanningWrite(restaurant, [entry], (session) => EmployeeModel.updateOne({
       ...target,
       restaurantProfiles: { $elemMatch: {
         restaurant, shifts: { $elemMatch: shiftMatch },
@@ -2184,13 +2246,17 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
     }, {
       $push: { "restaurantProfiles.$[profile].planningFiles": { $each: uploaded } },
       $inc: { __v: 1 },
-    }, { runValidators: true, arrayFilters: [{ "profile.restaurant": restaurant }] });
+    }, { runValidators: true, arrayFilters: [{ "profile.restaurant": restaurant }], session }));
     if (!result.modifiedCount) {
       await cleanPlanningFileAssets(uploaded);
       return res.status(409).json({ message: "Le shift ou ses pièces jointes ont changé. Actualisez la liste." });
     }
     return sendPlanningFiles(res, [...files, ...uploaded], 201);
   } catch (error) {
+    if (error.planningStatus) {
+      await cleanPlanningFileAssets(uploaded);
+      return planningFailure(res, error);
+    }
     if (error instanceof EmployeeDocumentValidationError) {
       return res.status(400).json({ message: "Format, contenu ou nom de fichier invalide." });
     }
@@ -2234,16 +2300,16 @@ router.get(`${planningFilesPath}/:fileId/download`, authorizePlanningFiles, asyn
 });
 
 router.delete(`${planningFilesPath}/:fileId`, authorizePlanningFiles, async (req, res) => {
-  const { target, restaurant, shift, files } = req.planningFiles;
+  const { target, restaurant, shift, entry, shiftMatch, files } = req.planningFiles;
   const file = files.find(({ _id }) => String(_id) === req.params.fileId);
   if (!file) return res.status(404).json({ message: "Pièce jointe introuvable." });
   try {
-    const jobIds = await mongoose.connection.transaction(async (session) => {
+    const jobIds = await withPlanningWrite(restaurant, [entry], async (session) => {
       const deleted = await EmployeeModel.updateOne({
         ...target,
         restaurantProfiles: { $elemMatch: {
           restaurant,
-          "shifts._id": shift,
+          shifts: { $elemMatch: shiftMatch },
           planningFiles: { $elemMatch: { _id: file._id, shiftId: shift, public_id: file.public_id } },
         } },
       }, {
@@ -2259,6 +2325,7 @@ router.delete(`${planningFilesPath}/:fileId`, authorizePlanningFiles, async (req
     }
     return res.status(204).end();
   } catch (error) {
+    if (error.planningStatus) return planningFailure(res, error);
     console.error("Erreur suppression de pièce jointe planning:", error?.message);
     return res.status(502).json({ message: "Impossible de retirer cette pièce jointe. Réessayez." });
   }
@@ -2323,9 +2390,10 @@ router.post(
         ...shift,
         _id: new mongoose.Types.ObjectId(),
         source: "manual",
+        requiresPlanningPublication: true,
         seriesId: batch.repeating ? batch.key : null,
       }));
-      const updated = await EmployeeModel.findOneAndUpdate(
+      const updated = await withPlanningWrite(restaurant, entries, (session) => EmployeeModel.findOneAndUpdate(
         {
           ...target,
           restaurantProfiles: { $elemMatch: {
@@ -2341,10 +2409,11 @@ router.post(
           },
           $inc: { __v: 1 },
         },
-        { new: true, runValidators: true, projection, arrayFilters: [{ "profile.restaurant": restaurant }] },
-      ).lean();
+        { new: true, runValidators: true, projection, arrayFilters: [{ "profile.restaurant": restaurant }], session },
+      ).lean());
       if (updated) {
         const updatedProfile = findRestaurantProfile(updated, restaurant);
+        broadcastPlanningChange(restaurant, [employee]);
         return res.status(201).json({ shifts: updatedProfile.shifts, createdCount: entries.length });
       }
 
@@ -2354,6 +2423,7 @@ router.post(
       if (sendConflict(profile)) return;
       return res.status(409).json({ message: "Le planning a changé. Réessayez après vérification." });
     } catch (error) {
+      if (error.planningStatus) return planningFailure(res, error);
       console.error("Erreur création groupée de shifts:", error);
       return res.status(500).json({ message: "Impossible d’enregistrer les shifts." });
     }
@@ -2387,7 +2457,17 @@ router.get(
         (p) => String(p.restaurant) === String(restaurantId),
       );
 
-      return res.json({ shifts: profile?.shifts || [] });
+      const personal = req.query?.scope === "personal";
+      if ((personal && (req.user.role !== "employee" || String(req.user.id) !== String(employeeId))) ||
+          ((personal || !accessContext.isManager) && req.user.restaurantId && String(req.user.restaurantId) !== String(restaurantId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const shifts = profile?.shifts || [];
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json({
+        shifts: accessContext.isManager && !personal
+          ? shifts : await visiblePlanningShifts(restaurantId, employeeId, shifts),
+      });
     } catch (err) {
       console.error("Erreur fetch shifts:", err);
       return res.status(500).json({ message: "Internal server error" });
@@ -2497,7 +2577,7 @@ router.post(
 
       const shiftId = new mongoose.Types.ObjectId();
 
-      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+      const updatedEmployee = await withPlanningWrite(restaurantObjectId, [{ start: parsedStart, end: parsedEnd }], (session) => EmployeeModel.findOneAndUpdate(
         {
           _id: employeeObjectId,
           restaurants: restaurantObjectId,
@@ -2514,6 +2594,7 @@ router.post(
               start: parsedStart,
               end: parsedEnd,
               isLeave: leaveShift,
+              requiresPlanningPublication: true,
               leaveRequestId: leaveRequestObjectId,
               ...absence,
               ...work,
@@ -2527,8 +2608,9 @@ router.post(
           arrayFilters: [{ "profile.restaurant": restaurantObjectId }],
           projection: getRestaurantProfileProjection(restaurantObjectId),
           runValidators: true,
+          session,
         },
-      );
+      ));
 
       if (!updatedEmployee) {
         return res.status(409).json({ message: "Le planning a changé. Réessayez après vérification." });
@@ -2538,12 +2620,14 @@ router.post(
       const created =
         profile?.shifts?.id?.(shiftId) ||
         profile?.shifts?.find((shift) => String(shift._id) === String(shiftId));
+      broadcastPlanningChange(restaurantObjectId, [employeeObjectId]);
 
       return res.status(201).json({
         shift: created || null,
         shifts: profile?.shifts || [],
       });
     } catch (err) {
+      if (err.planningStatus) return planningFailure(res, err);
       console.error("Erreur création shift:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -2685,7 +2769,8 @@ router.put(
         });
       }
 
-      const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+      const updatedEmployee = await withPlanningWrite(restaurantObjectId,
+        [currentShift, { start: nextStart, end: nextEnd }], (session) => EmployeeModel.findOneAndUpdate(
         {
           _id: employeeObjectId,
           restaurants: restaurantObjectId,
@@ -2719,6 +2804,9 @@ router.put(
               work.position,
             "restaurantProfiles.$[profile].shifts.$[shift].notes":
               work.notes,
+            ...(planningDayKey(new Date(currentShift.start)) !== planningDayKey(nextStart) && {
+              "restaurantProfiles.$[profile].shifts.$[shift].requiresPlanningPublication": true,
+            }),
             ...(leaveShift && { "restaurantProfiles.$[profile].shifts.$[shift].seriesId": null }),
           },
           $inc: { __v: 1 },
@@ -2731,8 +2819,9 @@ router.put(
           new: true,
           projection: getRestaurantProfileProjection(restaurantObjectId),
           runValidators: true,
+          session,
         },
-      );
+      ));
 
       if (!updatedEmployee) {
         return res.status(409).json({
@@ -2744,9 +2833,11 @@ router.put(
 
       const profile = findRestaurantProfile(updatedEmployee, restaurantId);
       const shift = profile?.shifts?.id?.(shiftObjectId);
+      broadcastPlanningChange(restaurantObjectId, [employeeObjectId]);
 
       return res.json({ shift: shift || null, shifts: profile?.shifts || [] });
     } catch (err) {
+      if (err.planningStatus) return planningFailure(res, err);
       console.error("Erreur modification shift:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -2781,6 +2872,7 @@ router.delete(
       }
 
       const removed = await mongoose.connection.transaction(async (session) => {
+        await planningFence(restaurantObjectId, session);
         const previousEmployee = await EmployeeModel.collection.findOneAndUpdate(
           {
             _id: employeeObjectId,
@@ -2808,6 +2900,7 @@ router.delete(
         );
         if (!previousEmployee) return null;
         const profile = findRestaurantProfile(previousEmployee, restaurantId);
+        await assertPlanningUnlocked(restaurantObjectId, profile.shifts.filter(({ _id }) => _id.equals(shiftObjectId)), session);
         const assets = (profile.planningFiles || []).filter(({ shiftId: id }) => id?.equals(shiftObjectId));
         return {
           shifts: profile.shifts.filter(({ _id }) => !_id.equals(shiftObjectId)),
@@ -2820,8 +2913,10 @@ router.delete(
       }
 
       const assetCleanupPending = await attemptEmployeeAssetDeletions(removed.jobIds);
+      broadcastPlanningChange(restaurantObjectId, [employeeObjectId]);
       return res.json({ shifts: removed.shifts, ...(assetCleanupPending && { assetCleanupPending }) });
     } catch (err) {
+      if (err.planningStatus) return planningFailure(res, err);
       console.error("Erreur suppression shift:", err);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -3027,169 +3122,95 @@ router.post(
   },
 );
 
-router.post(
-  "/restaurants/:restaurantId/employees/planning/send",
-  async (req, res) => {
-    try {
-      const { restaurantId } = req.params;
-      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.from || ""))
-        ? String(req.body.from)
-        : null;
-      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.to || ""))
-        ? String(req.body.to)
-        : null;
-      const bounds = from && to ? getDateRangeBounds(from, to) : null;
+async function planningRecipients(restaurant, roster) {
+  const employees = await EmployeeModel.find({
+    _id: { $in: [...roster] }, restaurants: restaurant, ...workforceAccountFilter(),
+  }).select("firstname lastname email post restaurantProfiles").lean();
+  return employees.map((employee) => {
+    const snapshot = findRestaurantProfile(employee, restaurant)?.snapshot || {};
+    const firstName = snapshot.firstname || employee.firstname || "";
+    const name = `${firstName} ${snapshot.lastname || employee.lastname || ""}`.trim() || "Salarié";
+    const email = normalizeEmail(snapshot.email || employee.email);
+    return { employeeId: String(employee._id), name, firstName, email, emailAvailable: isValidEmail(email), employee };
+  }).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
 
-      if (!bounds) {
-        return res.status(400).json({
-          message: "Les dates de debut et de fin sont invalides.",
-        });
-      }
+function publicationAuthor(req) {
+  return {
+    name: [req.user.firstname, req.user.lastname].filter(Boolean).join(" ") || "Responsable",
+    id: String(req.user.id), role: req.user.role,
+  };
+}
 
-      const accessContext = await getEmployeesAccessContext(req, restaurantId);
-      if (accessContext.error) {
-        return res
-          .status(accessContext.error.status)
-          .json({ message: accessContext.error.message });
-      }
+router.get(`${planningActionsPath}/publication`, planningManager(async (req, res, restaurant, roster) => {
+  const { from, to } = req.query;
+  periodDates(from, to);
+  const recipients = await planningRecipients(restaurant, roster);
+  const state = await getPlanningState(restaurant, from, to, recipients.map(({ employeeId }) => employeeId));
+  return res.json({
+    ...state, recipients: recipients.map(({ employeeId, name, emailAvailable }) => ({ employeeId, name, emailAvailable })),
+  });
+}));
 
-      if (!accessContext.isManager) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+router.post(`${planningActionsPath}/publication`, planningManager(async (req, res, restaurant, roster, access) => {
+  const { employeeIds, from, to } = req.body || {};
+  if (!Array.isArray(employeeIds) || !employeeIds.length || employeeIds.some((id) => typeof id !== "string" || !roster.has(id))) {
+    throw planningError(400, "Sélectionnez les salariés du restaurant actif.");
+  }
+  const ids = new Set(employeeIds);
+  const recipients = (await planningRecipients(restaurant, roster)).filter(({ employeeId }) => ids.has(employeeId));
+  if (recipients.length !== ids.size) throw planningError(409, "La liste des salariés a changé.");
+  const { publication, notifications } = await publishPlanning(restaurant, req.body, publicationAuthor(req), recipients);
+  broadcastToRestaurant(restaurant, { type: "planning_state_changed" });
+  broadcastPlanningChange(restaurant, [...ids]);
+  for (const notification of notifications) {
+    const record = notification.toObject();
+    broadcastToRestaurant(restaurant, {
+      type: "notification_created", recipientEmployeeId: record.recipientEmployeeId, notification: record,
+    });
+  }
 
-      const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
-        ? req.body.employeeIds.map((value) => String(value))
-        : [];
-      const fallbackEmployeeIds = (
-        accessContext.restaurant?.employees || []
-      ).map((value) => String(value));
-      const selectedEmployeeIds = Array.from(
-        new Set(
-          requestedEmployeeIds.length
-            ? requestedEmployeeIds
-            : fallbackEmployeeIds,
-        ),
-      );
-
-      if (!selectedEmployeeIds.length) {
-        return res.status(400).json({ message: "Aucun salarie selectionne." });
-      }
-
-      const employees = await EmployeeModel.find({
-        _id: { $in: selectedEmployeeIds },
-        restaurants: restaurantId,
-        ...workforceAccountFilter(),
-      }).lean();
-
-      if (!employees.length) {
-        return res.status(404).json({ message: "Employees not found" });
-      }
-
-      const employeeOrder = new Map(
-        selectedEmployeeIds.map((id, index) => [String(id), index]),
-      );
-      const orderedEmployees = [...employees].sort((left, right) => {
-        const leftOrder = employeeOrder.get(String(left._id));
-        const rightOrder = employeeOrder.get(String(right._id));
-
-        if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder)) {
-          return leftOrder - rightOrder;
-        }
-
-        return String(left._id).localeCompare(String(right._id));
+  const bounds = getDateRangeBounds(from, to);
+  const restaurantName = access.restaurant.name || "Restaurant";
+  const format = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: PLANNING_TIME_ZONE, day: "2-digit", month: "long", year: "numeric",
+  });
+  const formattedFrom = format.format(bounds.start);
+  const formattedTo = format.format(bounds.end);
+  try {
+    const result = await deliverPlanningEmails(publication, async (employeeId) => {
+      if (!await RestaurantModel.exists({ _id: restaurant, employees: employeeId })) return false;
+      const [recipient] = await planningRecipients(restaurant, [employeeId]);
+      if (!recipient?.emailAvailable) return false;
+      const profile = findRestaurantProfile(recipient.employee, restaurant);
+      if (profile) profile.shifts = await visiblePlanningShifts(restaurant, employeeId, profile.shifts);
+      await sendTransactionalEmail({
+        to: [{ email: recipient.email, name: recipient.name }],
+        subject: `Votre planning du ${formattedFrom} au ${formattedTo} - ${restaurantName}`,
+        htmlContent: buildPlanningEmailHtml({
+          restaurantName, employeeName: recipient.name, firstName: recipient.firstName,
+          formattedFrom, formattedTo, employeePlanning: buildPlanningExportEmployee(recipient.employee, restaurant, bounds), bounds,
+        }),
       });
+      return true;
+    });
+    return res.json({ publication: result });
+  } catch (error) {
+    console.error("[planning-publication] Résultats e-mail indisponibles", error?.message);
+    return res.json({
+      publication: {
+        from, to, notify: publication.notify, email: publication.email,
+        recipients: publication.recipients.map(({ employeeId, name }) => ({ employeeId, name, emailStatus: "unknown" })),
+      },
+    });
+  }
+}));
 
-      const restaurantName = accessContext.restaurant?.name || "Restaurant";
-      const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
-        timeZone: PLANNING_TIME_ZONE,
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      });
-      const formattedFrom = dateFormatter.format(bounds.start);
-      const formattedTo = dateFormatter.format(bounds.end);
-      const sent = [];
-      const skipped = [];
-      const failed = [];
-
-      for (const employee of orderedEmployees) {
-        const profile = findRestaurantProfile(employee, restaurantId);
-        const snapshot = profile?.snapshot || {};
-        const email = normalizeEmail(snapshot.email || employee.email);
-        const firstname = snapshot.firstname || employee.firstname || "";
-        const lastname = snapshot.lastname || employee.lastname || "";
-        const displayName = `${firstname} ${lastname}`.trim() || "Salarié";
-
-        if (!isValidEmail(email)) {
-          skipped.push({
-            employeeId: String(employee._id),
-            reason: "invalid_email",
-          });
-          continue;
-        }
-
-        const planningEmployee = buildPlanningExportEmployee(
-          employee,
-          restaurantId,
-          bounds,
-        );
-
-        try {
-          await sendTransactionalEmail({
-            to: [{ email, name: displayName }],
-            subject: `Votre planning du ${formattedFrom} au ${formattedTo} - ${restaurantName}`,
-            htmlContent: buildPlanningEmailHtml({
-              restaurantName,
-              employeeName: displayName,
-              firstName: firstname,
-              formattedFrom,
-              formattedTo,
-              employeePlanning: planningEmployee,
-              bounds,
-            }),
-          });
-          sent.push({ employeeId: String(employee._id), email });
-        } catch (error) {
-          console.error("Error sending planning email:", {
-            employeeId: String(employee._id),
-            email,
-            error: error?.response?.body || error?.message || error,
-          });
-          failed.push({ employeeId: String(employee._id), email });
-        }
-      }
-
-      if (!sent.length && failed.length) {
-        return res.status(502).json({
-          message: "Impossible d'envoyer le planning pour le moment.",
-          sentCount: sent.length,
-          skippedCount: skipped.length,
-          failedCount: failed.length,
-        });
-      }
-
-      if (!sent.length) {
-        return res.status(400).json({
-          message:
-            "Aucun salarié sélectionné ne possède une adresse email valide.",
-          sentCount: sent.length,
-          skippedCount: skipped.length,
-          failedCount: failed.length,
-        });
-      }
-
-      return res.json({
-        message: "Planning envoyé.",
-        sentCount: sent.length,
-        skippedCount: skipped.length,
-        failedCount: failed.length,
-      });
-    } catch (error) {
-      console.error("Error sending planning:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  },
-);
+router.put(`${planningActionsPath}/lock`, planningManager(async (req, res, restaurant) => {
+  await setPlanningLock(restaurant, req.body || {}, publicationAuthor(req).id);
+  broadcastToRestaurant(restaurant, { type: "planning_state_changed" });
+  return res.json({ locked: req.body.locked });
+}));
 
 // ---------- DEMANDES DE CONGÉS (par restaurant) ----------
 
@@ -3376,7 +3397,9 @@ router.put(
       }
 
       let filesToRemove = [];
+      const touchedShifts = profile.shifts.filter((shift) => String(shift.leaveRequestId) === String(lr._id));
       if (status === "approved") {
+        touchedShifts.push({ start: lr.start, end: lr.end });
         const overlappingShifts = findShiftConflicts(
           profile,
           new Date(lr.start),
@@ -3408,6 +3431,7 @@ router.put(
             const conflictingShiftIds = new Set(
               overlappingShifts.map((shift) => String(shift?._id)),
             );
+            touchedShifts.push(...overlappingShifts);
             profile.shifts = (profile.shifts || []).filter(
               (shift) => !conflictingShiftIds.has(String(shift?._id)),
             );
@@ -3443,6 +3467,7 @@ router.put(
             start: lr.start,
             end: lr.end,
             isLeave: true,
+            requiresPlanningPublication: true,
             leaveRequestId: lr._id,
             source: "leave_request",
           });
@@ -3456,12 +3481,13 @@ router.put(
       }
 
       let assetCleanupPending = false;
-      if (filesToRemove.length) {
-        const jobIds = await mongoose.connection.transaction(async (session) => {
+      if (touchedShifts.length) {
+        const jobIds = await withPlanningWrite(restaurantId, touchedShifts, async (session) => {
           await savePlanningEmployee(emp, session);
-          return enqueueEmployeeAssetDeletions(filesToRemove, session);
+          return filesToRemove.length ? enqueueEmployeeAssetDeletions(filesToRemove, session) : [];
         });
         assetCleanupPending = await attemptEmployeeAssetDeletions(jobIds);
+        broadcastPlanningChange(restaurantId, [employeeId]);
       } else {
         await savePlanningEmployee(emp);
       }
@@ -3473,10 +3499,11 @@ router.put(
       });
       return res.json({
         leaveRequest: lr,
-        shifts: profile.shifts,
+        shifts: accessContext.isManager ? profile.shifts : await visiblePlanningShifts(restaurantId, employeeId, profile.shifts),
         ...(assetCleanupPending && { assetCleanupPending }),
       });
     } catch (error) {
+      if (error.planningStatus) return planningFailure(res, error);
       if (error instanceof mongoose.Error.VersionError || error instanceof mongoose.Error.DocumentNotFoundError) {
         return res.status(409).json({ message: "Le planning a changé. Vérifiez les conflits avant de réessayer." });
       }
@@ -3520,12 +3547,16 @@ router.delete(
         return res.status(403).json({ message: "Forbidden" });
       }
 
+      const removedShifts = profile.shifts.filter((s) => String(s.leaveRequestId) === String(reqId));
       profile.shifts = profile.shifts.filter(
         (s) => String(s.leaveRequestId) !== String(reqId),
       );
 
       lr.deleteOne();
-      await savePlanningEmployee(emp);
+      if (removedShifts.length) {
+        await withPlanningWrite(restaurantId, removedShifts, (session) => savePlanningEmployee(emp, session));
+        broadcastPlanningChange(restaurantId, [employeeId]);
+      } else await savePlanningEmployee(emp);
       broadcastToRestaurant(String(restaurantId), {
         type: "leave_request_deleted",
         employeeId: String(emp._id),
@@ -3535,9 +3566,10 @@ router.delete(
 
       return res.json({
         leaveRequests: profile.leaveRequests,
-        shifts: profile.shifts,
+        shifts: accessContext.isManager ? profile.shifts : await visiblePlanningShifts(restaurantId, employeeId, profile.shifts),
       });
     } catch (error) {
+      if (error.planningStatus) return planningFailure(res, error);
       if (error instanceof mongoose.Error.VersionError || error instanceof mongoose.Error.DocumentNotFoundError) {
         return res.status(409).json({ message: "Le planning a changé. Réessayez après vérification." });
       }
@@ -3668,7 +3700,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     }
 
     let decoratedRestaurant = null;
-    let decoratedEmployee = emp.toObject();
+    let decoratedEmployee = { ...emp.toObject(), restaurantProfiles: [], shifts: [] };
 
     if (restaurant?._id) {
       const coworkerIds = Array.isArray(restaurant.employees)
@@ -3695,8 +3727,11 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       decoratedEmployee =
         decorateEmployeeForRestaurant(emp, restaurant._id, {
           includeDocuments: false,
-        }) || emp.toObject();
+        }) || decoratedEmployee;
       currentProfile = findRestaurantProfile(decoratedEmployee, restaurant._id);
+      const visible = await visiblePlanningShifts(restaurant._id, emp._id, decoratedEmployee.shifts);
+      decoratedEmployee.shifts = visible;
+      if (currentProfile) currentProfile.shifts = visible;
     }
 
     return res.json({

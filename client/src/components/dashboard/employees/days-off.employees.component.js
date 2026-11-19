@@ -129,6 +129,7 @@ export default function DaysOffEmployeesComponent() {
   );
   const [resolvingApprovalConflict, setResolvingApprovalConflict] =
     useState(false);
+  const [updateError, setUpdateError] = useState("");
   useEffect(() => {
     const objectIdToDate = (oid) =>
       new Date(parseInt(String(oid).substring(0, 8), 16) * 1000);
@@ -212,9 +213,10 @@ export default function DaysOffEmployeesComponent() {
     status,
     { resolveConflict = null } = {},
   ) {
+    setUpdateError("");
     try {
       if (!restaurantId) {
-        window.alert("Restaurant introuvable");
+        setUpdateError("Restaurant introuvable");
         return;
       }
 
@@ -272,7 +274,7 @@ export default function DaysOffEmployeesComponent() {
         return;
       }
 
-      window.alert(
+      setUpdateError(
         responseData?.message ||
           t("daysOff.errorUpdate", "Impossible de mettre à jour"),
       );
@@ -299,6 +301,10 @@ export default function DaysOffEmployeesComponent() {
     } finally {
       setResolvingApprovalConflict(false);
     }
+  }
+
+  function closeApprovalConflict() {
+    if (!resolvingApprovalConflict) setApprovalConflictModal(getEmptyApprovalConflictModal());
   }
 
   // 9) Labels
@@ -343,6 +349,11 @@ export default function DaysOffEmployeesComponent() {
             "Visualisez et gérez les demandes de congés des employés, par statut.",
           )}
         </p>
+        {updateError && !approvalConflictModal.open && (
+          <p role="alert" className="rounded-xl bg-red/5 px-4 py-3 text-sm font-medium text-red">
+            {updateError}
+          </p>
+        )}
 
         {/* ─── Barre de recherche ───────────────────────────────────── */}
         <div className={`midTablet:w-[380px]`}>
@@ -506,15 +517,17 @@ export default function DaysOffEmployeesComponent() {
       </section>
 
       {approvalConflictModal.open ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-darkBlue/55 p-4">
-          <div className="w-full max-w-[680px] rounded-[28px] border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.28)]">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-darkBlue/55 p-4"
+          onClick={(event) => { if (event.target === event.currentTarget) closeApprovalConflict(); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="approval-conflict-title"
+            className="w-full max-w-[680px] rounded-[28px] border border-darkBlue/10 bg-white shadow-[0_24px_80px_rgba(19,30,54,0.28)]">
             <div className="flex items-start justify-between gap-4 border-b border-darkBlue/10 px-5 py-5 midTablet:px-6">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 inline-flex size-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
                   <AlertTriangle className="size-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-darkBlue">
+                  <h3 id="approval-conflict-title" className="text-lg font-semibold text-darkBlue">
                     Conflit de planning
                   </h3>
                   <p className="mt-1 text-sm text-darkBlue/60">
@@ -527,11 +540,9 @@ export default function DaysOffEmployeesComponent() {
 
               <button
                 type="button"
-                onClick={() =>
-                  !resolvingApprovalConflict &&
-                  setApprovalConflictModal(getEmptyApprovalConflictModal())
-                }
+                onClick={closeApprovalConflict}
                 className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
+                aria-label="Fermer"
                 disabled={resolvingApprovalConflict}
               >
                 ×
@@ -539,6 +550,7 @@ export default function DaysOffEmployeesComponent() {
             </div>
 
             <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto px-5 py-5 midTablet:px-6">
+              {updateError && <p role="alert" className="rounded-xl bg-red/5 px-4 py-3 text-sm font-medium text-red">{updateError}</p>}
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 {approvalConflictModal.message}
               </div>
@@ -594,9 +606,7 @@ export default function DaysOffEmployeesComponent() {
             <div className="flex flex-col gap-2 border-t border-darkBlue/10 px-5 py-4 midTablet:flex-row midTablet:justify-end midTablet:px-6">
               <button
                 type="button"
-                onClick={() =>
-                  setApprovalConflictModal(getEmptyApprovalConflictModal())
-                }
+                onClick={closeApprovalConflict}
                 className="h-12 rounded-2xl border border-darkBlue/10 bg-white px-5 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
                 disabled={resolvingApprovalConflict}
               >

@@ -22,6 +22,24 @@
       "new": "New password must contain at least 6 characters"
     }
   },
+  "clockPin": {
+    "title": "Time clock PIN",
+    "setup": "Generate a four-digit code to clock in and out at {{restaurant}}.",
+    "description": "Your personal four-digit time clock code for {{restaurant}}.",
+    "hidden": "PIN hidden",
+    "show": "Show",
+    "hide": "Hide",
+    "generate": "Generate my code",
+    "regenerate": "Generate a new code",
+    "confirmRotate": "The new code immediately replaces the old one on connected tablets.",
+    "confirmGenerate": "Gusto will generate your personal four-digit code.",
+    "confirmAction": "Generate code",
+    "cancel": "Cancel",
+    "saved": "Your new PIN is ready.",
+    "cooldown": "Wait before generating a new code.",
+    "loadError": "Could not check your PIN. Refresh the page.",
+    "saveError": "Could not generate your PIN. Try again."
+  },
   "buttons": {
     "save": "Save",
     "loading": "Loading..."

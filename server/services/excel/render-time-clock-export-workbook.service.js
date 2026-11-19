@@ -63,7 +63,7 @@ function toUtcDateKey(value) {
   )}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
-function formatTime(value) {
+function formatTime(value, timeZone) {
   if (!value) return "";
 
   const date = value instanceof Date ? value : new Date(value);
@@ -73,6 +73,7 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
+    timeZone,
   }).format(date);
 }
 
@@ -950,6 +951,7 @@ function buildSummaryRows(reports = [], bounds, generatedAt = new Date()) {
       toIntegerCell(range.totalMealCount || 0),
       toIntegerCell(activeDays),
       safeArr(range.anomalies).join(", "),
+      toNumberCell(minutesToHours(range.totalPayrollMinutes || 0)),
     ];
   });
 }
@@ -1087,6 +1089,31 @@ function buildDetailRows(
     if (nameCompare !== 0) return nameCompare;
     return String(left[8] || "").localeCompare(String(right[8] || ""));
   });
+}
+
+function buildPayrollRows(reports) {
+  return reports.flatMap(({ employee, range, profile }) => safeArr(range?.days).flatMap((day) => {
+    const identity = [employee?.firstname || "", employee?.lastname || "", profile?.employment?.payrollCode || "", formatDateKey(day.date)];
+    const paid = safeArr(day.payroll).map(({ id, timings, manual, absent }) => {
+      const actual = safeArr(day.sessions).find((session) => session.id === id)?.dayTotals;
+      return [
+        ...identity,
+        formatTime(actual?.startAt, "Europe/Paris"),
+        formatTime(actual?.endAt, "Europe/Paris"),
+        actual ? toNumberCell(minutesToHours(actual.workedMinutes)) : "",
+        formatTime(timings.startAt, "Europe/Paris"),
+        formatTime(timings.endAt, "Europe/Paris"),
+        toNumberCell(minutesToHours(timings.breakMinutes)),
+        toNumberCell(minutesToHours(timings.workedMinutes)),
+        absent ? "Absence constatée" : manual ? "Corrigé" : "Automatique",
+      ];
+    });
+    const absences = safeArr(day.reportedAbsences).map((shift) => [
+      ...identity, "", "", "", "", "", "", toNumberCell(0), "Absence constatée",
+      formatTime(shift.start, "Europe/Paris"), formatTime(shift.end, "Europe/Paris"),
+    ]);
+    return [...paid, ...absences];
+  }));
 }
 
 function buildLeaveRows(reports = [], bounds, generatedAt = new Date()) {
@@ -1256,6 +1283,7 @@ function buildWorkbookDefinition({
         "Repas",
         "Jours actifs",
         "Anomalies",
+        "Heures rémunérées (h)",
       ],
       rows: buildSummaryRows(reports, bounds, generatedAt),
     },
@@ -1339,6 +1367,16 @@ function buildWorkbookDefinition({
         "Congés disponibles",
       ],
       rows: buildLeaveBalanceRows(reports, referenceYear),
+    },
+    {
+      name: "Horaires rémunérés",
+      title: "Horaires et pauses rémunérés",
+      headers: [
+        "Prénom", "Nom", "Matricule de paie", "Date", "Début pointé", "Fin pointée", "Net pointé (h)",
+        "Début rémunéré", "Fin rémunérée", "Pauses rémunérées (h)", "Net rémunéré (h)", "Origine",
+        "Début prévu (absence)", "Fin prévue (absence)",
+      ],
+      rows: buildPayrollRows(reports),
     },
   ].map((sheet) => ({
     ...sheet,

@@ -55,7 +55,10 @@ export default function EmployeeDetailsPage(props) {
             />
 
             {restaurantContext?.restaurantData?.options?.employees ? (
-              <DetailsEmployeesComponent employeeId={employeeId} />
+              <DetailsEmployeesComponent
+                key={`${restaurantContext.restaurantData._id}:${employeeId}`}
+                employeeId={employeeId}
+              />
             ) : (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}

@@ -94,6 +94,17 @@ export function getPlanningPeriod(date, view) {
   };
 }
 
+export function publicationRanges(period, view) {
+  const range = ({ days }) => ({ from: planningDateKey(days[0]), to: planningDateKey(days.at(-1)) });
+  if (view !== PLANNING_VIEWS.MONTH) return [range(period)];
+  const weeks = new Map();
+  for (const date of period.days) {
+    const week = range(getPlanningPeriod(date, PLANNING_VIEWS.WEEK));
+    weeks.set(week.from, week);
+  }
+  return [...weeks.values()];
+}
+
 export function normalizePlanningText(value = "") {
   return String(value)
     .normalize("NFD")
