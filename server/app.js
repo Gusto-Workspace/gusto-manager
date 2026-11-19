@@ -31,6 +31,11 @@ const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
 app.use("/api", smsmodeWebhookRoutes);
 
 // JSON
+// A series can include up to 200 shifts with notes. Keep the larger parser scoped to that endpoint.
+app.post(
+  "/api/restaurants/:restaurantId/employees/:employeeId/shifts/batch",
+  express.json({ limit: "3mb" }),
+);
 app.use(express.json());
 app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 

@@ -39,6 +39,10 @@ function broadcastToRestaurant(restaurantId, payload) {
         reservation: omitReservationArrival(payload.reservation),
       })}\n\n`
     : line;
+  const employeeId = payload.employee?._id || payload.employeeId;
+  const hasPlanningNotes = payload.type === "employee_updated" ||
+    ["leave_request_updated", "leave_request_deleted"].includes(payload.type);
+  let lineWithoutPlanningNotes;
   for (const res of set) {
     if (
       isTakeAwayPayload(payload) &&
@@ -50,11 +54,44 @@ function broadcastToRestaurant(restaurantId, payload) {
     const canReadArrival = res.locals?.gustoEventModules?.reservations === true;
     if (payload.type === "reservation_arrival_updated" && !canReadArrival) continue;
     try {
-      res.write(canReadArrival ? line : lineWithoutArrival);
+      const ownsShift = employeeId && String(res.locals?.gustoEmployeeId || "") === String(employeeId);
+      if (hasPlanningNotes && res.locals?.gustoEventModules?.planning !== true && !ownsShift) {
+        lineWithoutPlanningNotes ??= `data: ${JSON.stringify(omitPlanningNotes(payload))}\n\n`;
+        res.write(lineWithoutPlanningNotes);
+      } else {
+        res.write(canReadArrival ? line : lineWithoutArrival);
+      }
     } catch (_error) {
       // Ignore broken SSE connections; cleanup happens on close events.
     }
   }
+}
+
+function omitPlanningNotes(payload) {
+  const redact = (shifts) => shifts?.map((shift) => {
+    const publicShift = shift.toObject ? shift.toObject() : { ...shift };
+    delete publicShift.notes;
+    return publicShift;
+  });
+  const employee = payload.employee && {
+    ...payload.employee,
+    shifts: redact(payload.employee.shifts),
+    restaurantProfiles: payload.employee.restaurantProfiles?.map((profile) => ({
+      ...profile,
+      shifts: redact(profile.shifts),
+    })),
+  };
+  return { ...payload, employee, shifts: redact(payload.shifts) };
+}
+
+async function canManagePlanningEvents(user, restaurantId) {
+  if (user.role === "owner") return true; // The connection already passed the restaurant ownership check.
+  const restaurant = await RestaurantModel.findOne({ _id: restaurantId, employees: user.id }).select("_id").lean();
+  return Boolean(restaurant && await EmployeeModel.exists({
+    _id: user.id,
+    restaurants: restaurantId,
+    restaurantProfiles: { $elemMatch: { restaurant: restaurantId, "options.employees": true } },
+  }));
 }
 
 function isTakeAwayPayload(payload) {
@@ -142,7 +179,9 @@ function mountSseRoute(appOrRouter, opts = {}) {
         take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
         callsense: await canAccessCallSenseEvents(req.user, restaurantId),
         reservations: await canAccessReservationArrivals(req.user, restaurantId),
+        planning: await canManagePlanningEvents(req.user, restaurantId),
       };
+      res.locals.gustoEmployeeId = req.user.role === "employee" ? req.user.id : null;
     } catch {
       return res.status(500).json({ message: "Server error" });
     }
@@ -190,6 +229,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
           take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
           callsense: await canAccessCallSenseEvents(req.user, restaurantId),
           reservations: await canAccessReservationArrivals(req.user, restaurantId),
+          planning: await canManagePlanningEvents(req.user, restaurantId),
         };
 
         res.write(":\n\n");

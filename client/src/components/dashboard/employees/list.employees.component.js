@@ -293,14 +293,14 @@ export default function ListEmployeesComponent() {
                 type="button"
                 onClick={() => router.push("/dashboard/employees/planning")}
                 className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label={t("buttons.planning")}
-                title={t("buttons.planning")}
+                aria-label={t("titles.planning")}
+                title={t("titles.planning")}
               >
                 <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
                   <Calendar className="size-4" />
                 </span>
                 <span className="whitespace-nowrap">
-                  {t("buttons.planning")}
+                  {t("titles.planning")}
                 </span>
               </button>
 
@@ -359,14 +359,14 @@ export default function ListEmployeesComponent() {
             type="button"
             onClick={() => router.push("/dashboard/employees/planning")}
             className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label={t("buttons.planning")}
-            title={t("buttons.planning")}
+            aria-label={t("titles.planning")}
+            title={t("titles.planning")}
           >
             <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-violet text-white">
               <Calendar className="size-4" />
             </span>
             <span className="min-w-0 leading-tight">
-              {t("buttons.planning")}
+              {t("titles.planning")}
             </span>
           </button>
 

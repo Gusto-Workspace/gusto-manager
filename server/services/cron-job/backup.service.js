@@ -7,6 +7,8 @@ const fs = require("fs");
 const tar = require("tar");
 const path = require("path");
 const cloudinary = require("cloudinary").v2;
+const mongoose = require("mongoose");
+const { retryEmployeeAssetDeletions } = require("../employees/employee-asset-deletion.service");
 
 /**
  * Fonction qui réalise le backup :
@@ -120,7 +122,14 @@ async function runBackup() {
 // Cron programmé dès l’import du module, toutes les 4 h en heure de Paris
 cron.schedule(
   "0 */4 * * *", // à 00h, 04h, 08h, 12h, 16h, 20h
-  () => runBackup().catch((err) => console.error("Backup échoué ❌", err)),
+  () => {
+    runBackup().catch((err) => console.error("Backup échoué ❌", err));
+    if (mongoose.connection.readyState === 1) {
+      retryEmployeeAssetDeletions().catch((error) =>
+        console.error("[employee-asset-deletion] Scheduled retry deferred:", error?.code || "unavailable"),
+      );
+    }
+  },
   { timezone: "Europe/Paris" },
 );
 console.log("Backup programmé toutes les 4 heures (Europe/Paris)");

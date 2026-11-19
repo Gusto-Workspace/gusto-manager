@@ -1,3 +1,5 @@
+import { parisPlanningDateTime } from "./planning-grid.utils.mjs";
+
 function safeArr(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -27,21 +29,21 @@ function rangesOverlap(startA, endA, startB, endB) {
 
 function getMinutesSinceStartOfDay(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) return 0;
-  return value.getHours() * 60 + value.getMinutes();
+  return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
 function isSameCalendarDay(left, right) {
   return (
     left instanceof Date &&
     right instanceof Date &&
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
+    left.getUTCFullYear() === right.getUTCFullYear() &&
+    left.getUTCMonth() === right.getUTCMonth() &&
+    left.getUTCDate() === right.getUTCDate()
   );
 }
 
 function getOpeningDayIndex(date) {
-  const weekday = date.getDay();
+  const weekday = date.getUTCDay();
   return weekday === 0 ? 6 : weekday - 1;
 }
 
@@ -50,7 +52,7 @@ function getOpeningDay(openingHours, date) {
 }
 
 function getDayCursor(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 const MEAL_WINDOWS = {
@@ -80,7 +82,7 @@ function getOpeningSegmentsForDay(openingHours, date) {
       );
 
   const previousDate = new Date(date.getTime());
-  previousDate.setDate(previousDate.getDate() - 1);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
   const previousDay = getOpeningDay(openingHours, previousDate);
   const carryOverSegments = previousDay?.isClosed
     ? []
@@ -119,17 +121,20 @@ export function getShiftMealMeta({
     return { hasMeal: false, mealCount: 0, mealPeriods: [] };
   }
 
-  const shiftStart = start instanceof Date ? start : new Date(start);
-  const shiftEnd = end instanceof Date ? end : new Date(end);
+  const startInstant = new Date(start);
+  const endInstant = new Date(end);
 
   if (
-    Number.isNaN(shiftStart.getTime()) ||
-    Number.isNaN(shiftEnd.getTime()) ||
-    shiftEnd <= shiftStart
+    Number.isNaN(startInstant.getTime()) ||
+    Number.isNaN(endInstant.getTime()) ||
+    endInstant <= startInstant
   ) {
     return { hasMeal: false, mealCount: 0, mealPeriods: [] };
   }
 
+  // The meal windows use Paris civil time even when the dashboard is opened abroad.
+  const shiftStart = new Date(`${parisPlanningDateTime(startInstant)}:00Z`);
+  const shiftEnd = new Date(`${parisPlanningDateTime(endInstant)}:00Z`);
   const mealPeriods = new Set();
   const dayCursor = getDayCursor(shiftStart);
   const lastDay = getDayCursor(shiftEnd);
@@ -176,7 +181,7 @@ export function getShiftMealMeta({
       });
     }
 
-    dayCursor.setDate(dayCursor.getDate() + 1);
+    dayCursor.setUTCDate(dayCursor.getUTCDate() + 1);
   }
 
   const periods = Array.from(mealPeriods);

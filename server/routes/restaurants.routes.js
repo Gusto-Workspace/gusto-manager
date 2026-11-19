@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
@@ -31,57 +32,22 @@ const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservations/reservation-service-closure.service");
 
-// Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
-function ensureEmployeeRestaurantLink(employee, restaurantId) {
-  const idStr = String(restaurantId);
-  if (!Array.isArray(employee.restaurants)) {
-    employee.restaurants = [];
-  }
-  const alreadyLinked = employee.restaurants.some(
-    (rId) => String(rId) === idStr,
-  );
-  if (!alreadyLinked) {
-    employee.restaurants.push(restaurantId);
-  }
-}
-
-// Crée un profil "snapshot" pour ce restaurant si inexistant
-function getOrCreateRestaurantProfile(employee, restaurantId) {
-  const idStr = String(restaurantId);
-
-  if (!Array.isArray(employee.restaurantProfiles)) {
-    employee.restaurantProfiles = [];
-  }
-
-  let profile = employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === idStr,
-  );
-
-  if (!profile) {
-    profile = {
-      restaurant: restaurantId,
-      options: {},
-      documents: [],
-      shifts: [],
-      leaveRequests: [],
-      employment: {},
-      snapshot: {
-        firstname: employee.firstname || "",
-        lastname: employee.lastname || "",
-        email: employee.email || "",
-        phone: employee.phone || "",
-        secuNumber: employee.secuNumber || "",
-        address: employee.address || "",
-        emergencyContact: employee.emergencyContact || "",
-        post: employee.post || "",
-        dateOnPost: employee.dateOnPost || null,
-      },
-    };
-
-    employee.restaurantProfiles.push(profile);
-  }
-
-  return profile;
+// Build a new profile without hydrating or serializing the other profiles.
+function createRestaurantProfile(employee, restaurantId) {
+  return {
+    restaurant: restaurantId,
+    snapshot: {
+      firstname: employee.firstname || "",
+      lastname: employee.lastname || "",
+      email: employee.email || "",
+      phone: employee.phone || "",
+      secuNumber: employee.secuNumber || "",
+      address: employee.address || "",
+      emergencyContact: employee.emergencyContact || "",
+      post: employee.post || "",
+      dateOnPost: employee.dateOnPost || null,
+    },
+  };
 }
 
 // Trouve le profil de restaurant pour cet employé
@@ -578,18 +544,28 @@ router.post(
           .json({ message: "Employee already in this restaurant" });
       }
 
-      // On lie l'employé à ce resto + on crée le profil pour ce resto au besoin
-      ensureEmployeeRestaurantLink(employee, restaurantId);
-      getOrCreateRestaurantProfile(employee, restaurantId);
-
-      await employee.save();
-
-      if (
-        !restaurant.employees.some((id) => String(id) === String(employee._id))
-      ) {
-        restaurant.employees.push(employee._id);
-        await restaurant.save();
-      }
+      const profile = findRestaurantProfile(employee, restaurantId);
+      const linked = await mongoose.connection.transaction(async (session) => {
+        const result = await EmployeeModel.updateOne(
+          {
+            _id: employee._id,
+            restaurants: { $ne: restaurantId },
+            __v: employee.__v ?? { $exists: false },
+          },
+          {
+            $addToSet: { restaurants: restaurantId },
+            $inc: { __v: 1 },
+            ...(!profile && { $push: { restaurantProfiles: createRestaurantProfile(employee, restaurantId) } }),
+          },
+          { session, runValidators: true },
+        );
+        if (!result.modifiedCount) return false;
+        await RestaurantModel.updateOne(
+          { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
+        );
+        return true;
+      });
+      if (!linked) return res.status(409).json({ message: "Le rattachement du salarié a changé." });
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")

@@ -33,14 +33,17 @@ function getEmptyApprovalConflictModal() {
 export default function DaysOffEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
+  const { setRestaurantData } = restaurantContext;
   const router = useRouter();
 
   const restaurantId = restaurantContext.restaurantData?._id;
+  const roster = restaurantContext.restaurantData?.employees;
 
   // 1) Liste brute des employés
-  const allEmployees = (
-    restaurantContext.restaurantData?.employees || []
-  ).filter((employee) => employee.accountType !== "accountant");
+  const allEmployees = useMemo(
+    () => (roster || []).filter((employee) => employee.accountType !== "accountant"),
+    [roster],
+  );
 
   // 2) HYDRATATION DES LEAVE-REQUESTS AU MONTAGE ──────────────────────────────
   useEffect(() => {
@@ -76,8 +79,8 @@ export default function DaysOffEmployeesComponent() {
 
         if (canceled) return;
 
-        restaurantContext.setRestaurantData((prev) => {
-          if (!prev) return prev;
+        setRestaurantData((prev) => {
+          if (!prev || String(prev._id) !== String(restaurantId)) return prev;
           const prevEmployees = prev.employees || [];
           return {
             ...prev,
@@ -99,7 +102,7 @@ export default function DaysOffEmployeesComponent() {
     return () => {
       canceled = true;
     };
-  }, [restaurantId, allEmployees.length]);
+  }, [restaurantId, allEmployees, setRestaurantData]);
 
   // 3) Search state + normalisation sans accents
   const [searchTerm, setSearchTerm] = useState("");
@@ -180,8 +183,8 @@ export default function DaysOffEmployeesComponent() {
       ),
     );
 
-    restaurantContext.setRestaurantData((prev) => {
-      if (!prev) return prev;
+    setRestaurantData((prev) => {
+      if (!prev || String(prev._id) !== String(restaurantId)) return prev;
 
       return {
         ...prev,
