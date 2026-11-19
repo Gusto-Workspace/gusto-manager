@@ -51,10 +51,10 @@ export default function AccessRightsEmployeesComponent({ options = {}, onSave, h
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
-      <header>
-        <h2 className="text-lg font-semibold">Compte et accès</h2>
-        {!hasEmail && <p className="mt-1 text-sm text-darkBlue/70">Ce compte n’a pas d’e-mail de connexion.</p>}
+    <form onSubmit={submit} className="grid gap-4 overflow-hidden rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+      <header className="-mx-4 -mt-4 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:-mx-5 midTablet:-mt-5 midTablet:px-5">
+        <h2 className="flex min-h-10 items-center text-lg font-semibold">Compte et accès</h2>
+        {!hasEmail && <p className="text-sm text-darkBlue/70">Ce compte n’a pas d’e-mail de connexion.</p>}
       </header>
       <fieldset className="grid gap-x-6 gap-y-1 midTablet:grid-cols-2 [&>label:last-of-type]:border-b-0 midTablet:[&>label:nth-last-of-type(2):nth-of-type(odd)]:border-b-0" disabled={saving}>
         <legend className="mb-2 text-sm font-semibold">Modules autorisés pour ce restaurant</legend>

@@ -2,14 +2,14 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useContext, useEffect, useId, useState } from "react";
 import axios from "axios";
-import { ArrowLeft, BriefcaseBusiness, CalendarDays, Clock3, Files, ShieldCheck, UserRound } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, Files, ShieldCheck, UserRound } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
 import EmployeePin from "./employee-pin.employees.component";
-import { EmployeeAvatar } from "./list.employees.component";
 import { applyRosterResponse, directoryPath, employeeDirectoryEntry, employeeProfile } from "./employee-directory.utils.mjs";
 
 const tabs = [
@@ -125,12 +125,17 @@ function EmployeeActivity({ employeeId, restaurantId, leaveRequests }) {
   const pending = (leaveRequests || []).filter((request) => request.status === "pending").length;
   const query = { employeeId, restaurantId };
   return (
-    <section className="grid gap-3 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
-      <h2 className="text-lg font-semibold">Planning et absences</h2>
-      <p className="text-sm text-darkBlue/70">{pending ? `${pending} demande${pending > 1 ? "s" : ""} de congé en attente.` : "Aucune demande de congé en attente."}</p>
-      <div className="flex flex-wrap gap-2">
-        <Link href={{ pathname: `${directoryPath}/planning`, query }} className={action}>Voir son planning</Link>
-        <Link href={{ pathname: `${directoryPath}/planning/days-off`, query }} className={action}>Voir ses demandes de congé</Link>
+    <section className="grid gap-4 overflow-hidden rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+      <header className="-mx-4 -mt-4 flex min-h-16 items-center border-b border-darkBlue/10 px-4 py-3 midTablet:-mx-5 midTablet:-mt-5 midTablet:px-5">
+        <h2 className="flex min-h-10 items-center text-lg font-semibold">Planning et absences</h2>
+      </header>
+      <div className="grid gap-3">
+        <p className="text-sm text-darkBlue/70">{pending ? `${pending} demande${pending > 1 ? "s" : ""} de congé en attente.` : "Aucune demande de congé en attente."}</p>
+        <div className="flex flex-wrap gap-2">
+          <Link href={{ pathname: `${directoryPath}/planning`, query }} className={action}>Voir son planning</Link>
+          <Link href={{ pathname: `${directoryPath}/planning/days-off`, query }} className={action}>Voir ses demandes de congé</Link>
+          <Link href={{ pathname: `${directoryPath}/time-clock`, query: { employeeId } }} className={action}>Voir le pointage</Link>
+        </div>
       </div>
     </section>
   );
@@ -152,11 +157,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
     if (selected === "documents") setVisitedDocuments(true);
   }, [selected]);
 
+  const returnToDirectory = () => router.push(directoryPath);
+
   if (!employee) return (
-    <section className="grid gap-3 rounded-xl border border-darkBlue/10 bg-white p-5">
-      <h1 className="text-lg font-semibold">Fiche indisponible dans ce restaurant</h1>
-      <Link href={directoryPath} className={`${action} w-fit`}>Retour au répertoire</Link>
-    </section>
+    <CatalogHeaderDashboardComponent
+      title="Fiche indisponible dans ce restaurant"
+      onBack={returnToDirectory}
+      backLabel="Retour à la liste des salariés"
+    />
   );
 
   const entry = employeeDirectoryEntry(employee, restaurantId);
@@ -189,21 +197,14 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   }
 
   return (
-    <section className="grid min-w-0 gap-4 border-t border-darkBlue/10 pt-4">
-      <Link href={directoryPath} className="inline-flex min-h-9 w-fit items-center gap-2 text-sm font-semibold text-darkBlue/75 hover:text-blue">
-        <ArrowLeft size={16} aria-hidden="true" /> Répertoire
-      </Link>
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-darkBlue/10 bg-white px-4 py-4 midTablet:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <EmployeeAvatar entry={entry} large />
-          <div className="min-w-0">
-            <h1 className="break-words text-xl font-bold tracking-tight midTablet:text-2xl">{entry.name}</h1>
-            <p className="mt-1 break-words text-sm text-darkBlue/70">{[workforce ? entry.post || "Salarié" : "Comptable", restaurant.name].filter(Boolean).join(" · ")}</p>
-          </div>
-        </div>
-        {workforce && <Link href={{ pathname: `${directoryPath}/time-clock`, query: { employeeId } }} className={action}>
-          <Clock3 size={17} aria-hidden="true" /> Voir les pointages
-        </Link>}
+    <section className="grid min-w-0 gap-4">
+      <header>
+        <CatalogHeaderDashboardComponent
+          title={<span className="[overflow-wrap:anywhere]">{entry.name}</span>}
+          subtitle={workforce ? entry.post || "Salarié" : "Comptable"}
+          onBack={returnToDirectory}
+          backLabel="Retour à la liste des salariés"
+        />
       </header>
 
       <div role="tablist" aria-label="Fiche salarié" className="flex flex-wrap gap-x-2 border-b border-darkBlue/10">

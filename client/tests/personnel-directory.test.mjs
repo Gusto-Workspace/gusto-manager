@@ -18,8 +18,8 @@ test("the directory uses the current restaurant's job and contract and combines 
   assert.equal(entries[0].post, "Salle");
   assert.equal(entries[0].contract, "CDD");
   assert.equal(employeeDirectoryEntry(employee, "first").post, "Cuisine");
-  assert.deepEqual(filterDirectory(entries, { search: "dupont elodie", post: "salle", account: "employee", access: "email" }), [entries[0]]);
-  assert.deepEqual(filterDirectory(entries, { account: "accountant", access: "no-email" }), [entries[1]]);
+  assert.deepEqual(filterDirectory(entries, { search: "dupont elodie", post: "salle", account: "employee" }), [entries[0]]);
+  assert.deepEqual(filterDirectory(entries, { account: "accountant" }), [entries[1]]);
   assert.deepEqual(filterDirectory(entries, { post: "cuisine", search: "elodie" }), []);
 });
 

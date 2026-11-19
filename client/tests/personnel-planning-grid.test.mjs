@@ -71,7 +71,7 @@ test("the month uses real civil days and clamps reference dates when navigating"
   assert.equal(date("2026-2-03"), null);
 });
 
-test("the selected date and view return without restoring another tenant's employee or query", () => {
+test("planning restores the date and view, scopes saved search, and discards saved employee selections", () => {
   const saved = {
     restaurantId: "a",
     employeeId: "emp",
@@ -81,14 +81,12 @@ test("the selected date and view return without restoring another tenant's emplo
     date: "2026-06-07",
   };
   assert.deepEqual(restorePlanningConsultation(saved, "a"), {
-    employeeId: "emp",
     query: "Café",
     group: "posts",
     view: "month",
     date: date(saved.date),
   });
   const next = restorePlanningConsultation(saved, "b");
-  assert.equal(next.employeeId, null);
   assert.equal(next.query, "");
   assert.equal(planningDateKey(next.date), saved.date);
   assert.equal(

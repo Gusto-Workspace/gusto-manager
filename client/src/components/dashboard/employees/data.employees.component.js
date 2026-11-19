@@ -89,8 +89,8 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
 
   return (
     <section className="overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
-        <h2 className="text-lg font-semibold">{title}</h2>
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
+        <h2 className="flex min-h-10 items-center text-lg font-semibold">{title}</h2>
         {!editing && <button type="button" onClick={startEditing} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 px-3 text-sm font-semibold hover:bg-lightGrey">
           <Pencil size={15} aria-hidden="true" /> Modifier
         </button>}

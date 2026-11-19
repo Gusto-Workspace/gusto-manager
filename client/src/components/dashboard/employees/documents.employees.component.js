@@ -28,7 +28,7 @@ export default function DocumentsEmployeeComponent(props) {
 
   // styles communs
   const sectionCls =
-    "bg-white/60 p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4";
+    "overflow-hidden rounded-xl border border-darkBlue/10 bg-white";
   const cardWrap =
     "rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col gap-2";
   const inputBaseCls =
@@ -99,15 +99,11 @@ export default function DocumentsEmployeeComponent(props) {
   return (
     <section className={sectionCls}>
       {/* Header + bouton upload */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-lg font-semibold text-darkBlue">
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
+        <div className="flex min-h-10 items-center">
+          <h2 className="text-lg font-semibold text-darkBlue">
             {t("labels.documents")}
-          </h3>
-          <p className="text-xs text-darkBlue/50">
-            {props.description ||
-              t("Ajoutez et gérez les documents liés à cet employé")}
-          </p>
+          </h2>
         </div>
 
         {/* Input caché */}
@@ -141,14 +137,15 @@ export default function DocumentsEmployeeComponent(props) {
             +
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Liste des fichiers en attente d’upload avec champ titre */}
-      {props.docs.length > 0 && (
-        <div className="mt-2 flex flex-col gap-3">
-          <h4 className="text-xs font-medium text-darkBlue/70 uppercase tracking-wide">
-            {t("Documents en attente d’enregistrement")}
-          </h4>
+      <div className="flex flex-col gap-4 p-4 midTablet:p-5">
+        {/* Liste des fichiers en attente d’upload avec champ titre */}
+        {props.docs.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <h4 className="text-xs font-medium text-darkBlue/70 uppercase tracking-wide">
+              {t("Documents en attente d’enregistrement")}
+            </h4>
 
           <ul className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 gap-3">
             {props.docs.map((d, i) => (
@@ -211,16 +208,11 @@ export default function DocumentsEmployeeComponent(props) {
               t("buttons.save")
             )}
           </button>
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Documents déjà uploadés (profil du resto courant) */}
-      {currentDocuments.length > 0 && (
-        <div className="mt-4 flex flex-col gap-3">
-          <h4 className="text-xs font-medium text-darkBlue/70 uppercase tracking-wide">
-            {t("Documents enregistrés")}
-          </h4>
-
+        {/* Documents déjà uploadés (profil du resto courant) */}
+        {currentDocuments.length > 0 && (
           <ul className="flex flex-col gap-2">
             {currentDocuments.map((doc) => (
               <EmployeeDocumentRow
@@ -235,8 +227,8 @@ export default function DocumentsEmployeeComponent(props) {
               />
             ))}
           </ul>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

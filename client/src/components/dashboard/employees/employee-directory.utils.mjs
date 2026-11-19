@@ -36,13 +36,12 @@ export function normalizePersonnelSearch(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-export function filterDirectory(entries, { search, post, account, access }) {
+export function filterDirectory(entries, { search, post, account }) {
   const terms = normalizePersonnelSearch(search).split(/\s+/).filter(Boolean);
   return entries.filter((entry) => {
     const searchable = normalizePersonnelSearch(`${entry.name} ${entry.email} ${entry.phone}`);
     return (!post || normalizePersonnelSearch(entry.post) === post) &&
       (!account || entry.accountType === account) &&
-      (!access || Boolean(entry.email) === (access === "email")) &&
       terms.every((term) => searchable.includes(term));
   });
 }

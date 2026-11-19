@@ -156,6 +156,7 @@ export default function PlanningEmployeesComponent() {
 
   const [consultation, setConsultation] = useState(() => restorePlanningConsultation(null, restaurantId));
   const [consultationReady, setConsultationReady] = useState(false);
+  const [employeeFilter, setEmployeeFilter] = useState(null);
   const { date, view, group, query: searchTerm } = consultation;
   const updateConsultation = (patch) => setConsultation((previous) => ({ ...previous, ...patch }));
 
@@ -169,13 +170,14 @@ export default function PlanningEmployeesComponent() {
     setConsultationReady(true);
   }, [restaurantId]);
 
-  const linkedEmployeeId = router.query.restaurantId === String(restaurantId) ? router.query.employeeId : null;
-  const linkedEmployeeExists = typeof linkedEmployeeId === "string" &&
-    roster?.some((employee) => String(employee._id) === linkedEmployeeId);
+  const { employeeId: requestedEmployeeId, restaurantId: requestedRestaurantId } = router.query;
+  const linkedEmployeeId = requestedRestaurantId === String(restaurantId) &&
+    typeof requestedEmployeeId === "string" &&
+    roster?.some((employee) => String(employee._id) === requestedEmployeeId) ? requestedEmployeeId : null;
   useEffect(() => {
-    if (!linkedEmployeeExists) return;
-    setConsultation((previous) => ({ ...previous, employeeId: linkedEmployeeId, query: "" }));
-  }, [linkedEmployeeId, linkedEmployeeExists]);
+    setEmployeeFilter(linkedEmployeeId);
+    if (linkedEmployeeId) setConsultation((previous) => ({ ...previous, query: "" }));
+  }, [linkedEmployeeId]);
 
   useEffect(() => {
     if (!consultationReady || !restaurantId) return;
@@ -212,8 +214,8 @@ export default function PlanningEmployeesComponent() {
     () => getPlanningEmployees(roster, restaurantId),
     [roster, restaurantId],
   );
-  const selectedEmployeeId = allEmployees.some((employee) => String(employee._id) === consultation.employeeId)
-    ? consultation.employeeId : null;
+  const selectedEmployeeId = allEmployees.some((employee) => String(employee._id) === employeeFilter)
+    ? employeeFilter : null;
   const exportEmployees = useMemo(
     () =>
       allEmployees.map((employee) => ({
@@ -511,8 +513,8 @@ export default function PlanningEmployeesComponent() {
         onView={(selected) => updateConsultation({ view: selected })}
         onGroup={(selected) => updateConsultation({ group: selected })}
         onQuery={(query) => updateConsultation({ query })}
-        onEmployee={(employeeId) => updateConsultation({ employeeId })}
-        onClear={() => updateConsultation({ query: "", employeeId: null })}
+        onEmployee={setEmployeeFilter}
+        onClear={() => { setEmployeeFilter(null); updateConsultation({ query: "" }); }}
         onBack={() => router.push("/dashboard/employees")}
         onLeaves={() => router.push("/dashboard/employees/planning/days-off")}
         onExport={() => { setPlanningExportError(""); setIsPlanningExportOpen(true); }}

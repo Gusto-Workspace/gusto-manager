@@ -67,10 +67,6 @@ export function restorePlanningConsultation(
       : PLANNING_GROUPS.EMPLOYEES,
     query:
       sameRestaurant && typeof saved?.query === "string" ? saved.query : "",
-    employeeId:
-      sameRestaurant && typeof saved?.employeeId === "string"
-        ? saved.employeeId
-        : null,
   };
 }
 
