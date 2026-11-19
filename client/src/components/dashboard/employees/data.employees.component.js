@@ -1,412 +1,137 @@
-// SVG
-import { AvatarSvg } from "@/components/_shared/_svgs/avatar.svg";
-import { EditSvg } from "@/components/_shared/_svgs/edit.svg";
-import Image from "next/image";
-
-// I18N
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { Pencil } from "lucide-react";
 import { useTranslation } from "next-i18next";
 
-// ICONS LUCIDE
-import {
-  User,
-  Briefcase,
-  CalendarDays,
-  Mail,
-  Phone,
-  Shield,
-  Home,
-  PhoneCall,
-  Loader2,
-} from "lucide-react";
+export const contractTypes = ["CDI", "CDD", "Extra", "Intérim", "Alternance", "Stage"];
+export const contractUnits = { week: "h / semaine", month: "h / mois" };
 
-const CONTRACT_TYPE_OPTIONS = [
-  { value: "", label: "Type de contrat" },
-  { value: "CDI", label: "CDI" },
-  { value: "CDD", label: "CDD" },
-  { value: "Extra", label: "Extra" },
-  { value: "Intérim", label: "Intérim" },
-  { value: "Alternance", label: "Alternance" },
-  { value: "Stage", label: "Stage" },
-];
+const input = "min-h-10 w-full rounded-lg border border-darkBlue/20 bg-white px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
 
-const CONTRACT_UNIT_OPTIONS = [
-  { value: "week", label: "h / semaine" },
-  { value: "month", label: "h / mois" },
-];
-
-function formatContractualLabel(employment = {}) {
-  const value = employment?.contractualValue;
-  const unit = employment?.contractualUnit || "";
-
-  if (!value && !unit) return "—";
-  if (!unit) return `${value || 0} h`;
-  if (unit === "week") return `${value || 0} h / semaine`;
-  if (unit === "month") return `${value || 0} h / mois`;
-  return `${value || 0} ${unit}`.trim();
-}
-
-export default function DataEmployeesComponent(props) {
+export default function DataEmployeesComponent({ section, employee, profile, onSave }) {
   const { t } = useTranslation("employees");
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState("");
+  const { register, handleSubmit, reset, formState: { dirtyFields, errors, isDirty, isSubmitting } } = useForm();
+  const isEmployment = section === "employment";
+  const isAccountant = employee.accountType === "accountant";
+  const snapshot = profile?.snapshot || {};
+  const employment = profile?.employment || {};
+  const title = isEmployment ? "Emploi et contrat" : t("labels.personalInformation", "Informations personnelles");
+  const value = (key) => snapshot[key] ?? employee[key] ?? "";
+  const date = snapshot.dateOnPost === null ? null : value("dateOnPost");
 
-  const {
-    employee,
-    currentSnapshot,
-    currentEmployment,
-    isEditing,
-    setIsEditing,
-    handleDetailsSubmit,
-    onSaveDetails,
-    regDetails,
-    isSavingDetails,
-    previewUrl,
-    resetDetails,
-    detailsDirty,
-  } = props || {};
-  const isAccountant = employee?.accountType === "accountant";
+  const fields = isEmployment ? [
+    { key: "post", label: t("labels.post"), value: value("post"), required: true },
+    { key: "dateOnPost", label: t("labels.dateOnPost"), value: date ? String(date).slice(0, 10) : "", type: "date" },
+    { key: "contractType", label: "Type de contrat", value: employment.contractType ?? "", options: contractTypes },
+    { key: "contractualValue", label: "Volume horaire", value: employment.contractualUnit || employment.contractualValue ? employment.contractualValue ?? "" : "", type: "number" },
+    { key: "contractualUnit", label: "Unité", value: employment.contractualUnit ?? "", options: Object.keys(contractUnits) },
+  ] : [
+    { key: "firstname", label: t("labels.firstname"), value: value("firstname"), required: true },
+    { key: "lastname", label: t("labels.lastname"), value: value("lastname"), required: true },
+    { key: "email", label: t("labels.email"), value: value("email"), type: "email", required: isAccountant },
+    { key: "phone", label: t("labels.phone"), value: value("phone"), type: "tel", required: true },
+    ...(!isAccountant ? [
+      { key: "secuNumber", label: t("labels.secuNumber"), value: value("secuNumber") },
+      { key: "address", label: t("labels.address"), value: value("address") },
+      { key: "emergencyContact", label: t("labels.emergencyContact"), value: value("emergencyContact") },
+    ] : []),
+  ];
 
-  // On fusionne snapshot + global (snapshot prioritaire)
-  const merged = {
-    firstname: currentSnapshot?.firstname ?? employee?.firstname ?? "",
-    lastname: currentSnapshot?.lastname ?? employee?.lastname ?? "",
-    email: currentSnapshot?.email ?? employee?.email ?? "",
-    phone: currentSnapshot?.phone ?? employee?.phone ?? "",
-    secuNumber: currentSnapshot?.secuNumber ?? employee?.secuNumber ?? "",
-    address: currentSnapshot?.address ?? employee?.address ?? "",
-    emergencyContact:
-      currentSnapshot?.emergencyContact ?? employee?.emergencyContact ?? "",
-    post: currentSnapshot?.post ?? employee?.post ?? "",
-    dateOnPost: currentSnapshot?.dateOnPost ?? employee?.dateOnPost ?? null,
-    contractType:
-      currentEmployment?.contractType ??
-      employee?.employment?.contractType ??
-      "",
-    contractualValue:
-      currentEmployment?.contractualValue ??
-      employee?.employment?.contractualValue ??
-      "",
-    contractualUnit:
-      currentEmployment?.contractualUnit ??
-      employee?.employment?.contractualUnit ??
-      "",
-  };
+  function startEditing() {
+    reset(Object.fromEntries(fields.map((field) => [field.key, String(field.value)])));
+    setError("");
+    setEditing(true);
+  }
 
-  // format date pour l'affichage (en lecture seule)
-  const formattedDateOnPost = merged.dateOnPost
-    ? new Date(merged.dateOnPost).toLocaleDateString("fr-FR")
-    : "—";
+  async function save(values) {
+    setError("");
+    try {
+      const changed = Object.fromEntries(fields.filter(({ key }) => dirtyFields[key]).map(({ key }) => [key, values[key]]));
+      await onSave(changed);
+      setEditing(false);
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible d’enregistrer les modifications.");
+    }
+  }
 
-  const cardWrap =
-    "group relative rounded-xl bg-white/60 px-4 py-3 border border-darkBlue/10 transition-shadow";
-  const labelCls =
-    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
-  const valueCls = "text-sm text-darkBlue";
-  const inputBase =
-    "h-10 w-full rounded-lg border bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
-  const inputNormal = `${inputBase} border-darkBlue/20`;
+  function display(field) {
+    if (field.value === "") return "—";
+    if (field.type === "date") return new Date(`${field.value}T12:00:00Z`).toLocaleDateString("fr-FR");
+    if (field.key === "contractualValue") return `${field.value} ${contractUnits[employment.contractualUnit] || employment.contractualUnit || "h"}`;
+    return field.value;
+  }
 
-  const fields = [
-    {
-      key: "post",
-      label: t("labels.post"),
-      value: merged.post || "—",
-      icon: <Briefcase className="size-4" />,
-      type: "text",
-      required: true,
-      defaultValue: merged.post || "",
-    },
-    {
-      key: "dateOnPost",
-      label: t("labels.dateOnPost"),
-      value: formattedDateOnPost,
-      icon: <CalendarDays className="size-4" />,
-      type: "date",
-      required: true,
-      defaultValue: merged.dateOnPost
-        ? String(merged.dateOnPost).slice(0, 10)
-        : "",
-    },
-    {
-      key: "email",
-      label: t("labels.email"),
-      value: merged.email || "—",
-      icon: <Mail className="size-4" />,
-      type: "email",
-      required: true,
-      defaultValue: merged.email || "",
-    },
-    {
-      key: "phone",
-      label: t("labels.phone"),
-      value: merged.phone || "—",
-      icon: <Phone className="size-4" />,
-      type: "text",
-      required: true,
-      defaultValue: merged.phone || "",
-    },
-    {
-      key: "secuNumber",
-      label: t("labels.secuNumber"),
-      value: merged.secuNumber || "—",
-      icon: <Shield className="size-4" />,
-      type: "text",
-      required: false,
-      defaultValue: merged.secuNumber || "",
-    },
-    {
-      key: "address",
-      label: t("labels.address"),
-      value: merged.address || "—",
-      icon: <Home className="size-4" />,
-      type: "text",
-      required: false,
-      defaultValue: merged.address || "",
-    },
-    {
-      key: "emergencyContact",
-      label: t("labels.emergencyContact"),
-      value: merged.emergencyContact || "—",
-      icon: <PhoneCall className="size-4" />,
-      type: "text",
-      required: false,
-      defaultValue: merged.emergencyContact || "",
-    },
-  ].filter((field) => !isAccountant || ["email", "phone"].includes(field.key));
-
-  // URL finale de l'avatar (toujours en mode vue)
-  const avatarUrl = previewUrl || employee?.profilePicture?.url || null;
+  function renderField(field) {
+    const binding = register(field.key, {
+      required: field.required ? "Ce champ est requis." : false,
+      validate: field.type === "email" ? (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Saisissez une adresse e-mail valide." : undefined,
+      min: field.type === "number" ? { value: 0, message: "Le volume horaire doit être positif." } : undefined,
+    });
+    return (
+      <label key={field.key} className="grid min-w-0 content-start gap-1.5 text-sm font-medium">
+        <span>{field.label}</span>
+        {field.options ? (
+          <select {...binding} disabled={isSubmitting} className={input}>
+            <option value="">Non renseigné</option>
+            {field.value && !field.options.includes(field.value) && <option value={field.value}>{field.value}</option>}
+            {field.options.map((option) => <option key={option} value={option}>{contractUnits[option] || option}</option>)}
+          </select>
+        ) : (
+          <input {...binding} type={field.type || "text"} aria-invalid={Boolean(errors[field.key])} disabled={isSubmitting}
+            {...(field.type === "number" && { min: 0, step: "any" })} className={input} />
+        )}
+        {errors[field.key] && <span role="alert" className="text-xs text-red">{errors[field.key].message}</span>}
+      </label>
+    );
+  }
 
   return (
-    <section className="bg-white/60 p-2 midTablet:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col midTablet:flex-row justify-between items-start gap-6 relative">
-      {/* Bouton éditer (mode vue uniquement) */}
-      {!isEditing && (
-        <button
-          className="absolute z-10 right-3 top-3 p-1.5 rounded-full hover:bg-darkBlue/5 transition"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsEditing?.(true);
-          }}
-        >
-          <EditSvg
-            width={18}
-            height={18}
-            strokeColor="#131E36"
-            fillColor="#131E36"
-          />
-        </button>
-      )}
-
-      <form
-        onSubmit={handleDetailsSubmit(onSaveDetails)}
-        className="flex flex-col-reverse midTablet:flex-row justify-between items-start w-full gap-6"
-      >
-        {/* PARTIE GAUCHE : infos employé */}
-        <div className="flex flex-col gap-3 w-full midTablet:w-[85%]">
-          {/* Nom + prénom */}
-          <div className={cardWrap}>
-            <div className={labelCls}>
-              <User className="size-4" />
-              {t("Prénom & nom")}
+    <section className="overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {!editing && <button type="button" onClick={startEditing} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 px-3 text-sm font-semibold hover:bg-lightGrey">
+          <Pencil size={15} aria-hidden="true" /> Modifier
+        </button>}
+      </header>
+      {editing ? (
+        <form onSubmit={handleSubmit(save)} noValidate className="grid gap-4 p-4 midTablet:p-5">
+          <div className="grid gap-4 midTablet:grid-cols-2">
+            {isEmployment ? <>
+              {fields.slice(0, 3).map(renderField)}
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-2">
+                {fields.slice(3).map(renderField)}
+              </div>
+            </> : fields.map(renderField)}
+          </div>
+          {error && <p role="alert" className="text-sm text-red">{error}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={isSubmitting} onClick={() => setEditing(false)} className="min-h-10 rounded-lg border border-darkBlue/15 px-3 text-sm font-semibold">{t("buttons.cancel")}</button>
+            <button type="submit" disabled={!isDirty || isSubmitting} className="min-h-10 rounded-lg bg-blue px-3 text-sm font-semibold text-white disabled:opacity-45">
+              {isSubmitting ? t("buttons.loading") : t("buttons.save")}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <dl className="grid gap-x-8 gap-y-4 p-4 midTablet:grid-cols-2 midTablet:p-5 [&>div:last-child]:border-b-0 midTablet:[&>div:nth-last-child(2):nth-child(odd)]:border-b-0">
+          {fields.filter(({ key }) => key !== "contractualUnit").map((field) => (
+            <div className="min-w-0 border-b border-darkBlue/10 pb-3" key={field.key}>
+              <dt className="text-xs font-medium text-darkBlue/65">{field.label}</dt>
+              <dd className={`mt-1 text-sm font-medium ${field.key === "contractualValue" ? "whitespace-nowrap" : "break-words"}`}>{display(field)}</dd>
             </div>
-
-            {isEditing ? (
-              <div className="flex flex-col mobile:flex-row gap-2">
-                <input
-                  {...regDetails("firstname", { required: true })}
-                  defaultValue={merged.firstname}
-                  disabled={isSavingDetails}
-                  placeholder={t("labels.firstname")}
-                  className={inputNormal}
-                />
-                <input
-                  {...regDetails("lastname", { required: true })}
-                  defaultValue={merged.lastname}
-                  disabled={isSavingDetails}
-                  placeholder={t("labels.lastname")}
-                  className={inputNormal}
-                />
-              </div>
-            ) : (
-              <p className="text-lg font-semibold text-darkBlue">
-                {merged.firstname} {merged.lastname}
-              </p>
-            )}
-          </div>
-
-          {/* Autres champs dans une grille */}
-          <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
-            {!isAccountant ? (
-              <>
-                <div className={cardWrap}>
-                  <div className={labelCls}>
-                    <Briefcase className="size-4" />
-                    Type de contrat
-                  </div>
-
-                  {isEditing ? (
-                    <select
-                      {...regDetails("contractType")}
-                      defaultValue={merged.contractType || ""}
-                      disabled={isSavingDetails}
-                      className={inputNormal}
-                    >
-                      {CONTRACT_TYPE_OPTIONS.map((option) => (
-                        <option
-                          key={option.value || "empty"}
-                          value={option.value}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className={valueCls}>{merged.contractType || "—"}</p>
-                  )}
-                </div>
-
-                <div className={cardWrap}>
-                  <div className={labelCls}>
-                    <CalendarDays className="size-4" />
-                    Temps contractuel
-                  </div>
-
-                  {isEditing ? (
-                    <div className="flex flex-col gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        {...regDetails("contractualValue")}
-                        defaultValue={
-                          merged.contractualValue ||
-                          merged.contractualValue === 0
-                            ? String(merged.contractualValue || "")
-                            : ""
-                        }
-                        disabled={isSavingDetails}
-                        className={inputNormal}
-                        placeholder="Ex. 35"
-                      />
-
-                      <select
-                        {...regDetails("contractualUnit")}
-                        defaultValue={merged.contractualUnit || ""}
-                        disabled={isSavingDetails}
-                        className={inputNormal}
-                      >
-                        <option value="" disabled hidden>
-                          Sélectionner
-                        </option>
-                        {CONTRACT_UNIT_OPTIONS.map((option) => (
-                          <option
-                            key={option.value || "empty"}
-                            value={option.value}
-                          >
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <p className={valueCls}>
-                      {formatContractualLabel({
-                        contractualValue: merged.contractualValue,
-                        contractualUnit: merged.contractualUnit,
-                      })}
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : null}
-
-            {fields.map((f) => {
-              const isRequired = f.required;
-
-              return (
-                <div key={f.key} className={cardWrap}>
-                  <div className={labelCls}>
-                    {f.icon}
-                    {f.label}
-                    {isRequired && isEditing && (
-                      <span className="text-red text-[10px] ml-1">*</span>
-                    )}
-                  </div>
-
-                  {isEditing ? (
-                    <input
-                      type={f.type}
-                      {...regDetails(f.key, { required: isRequired })}
-                      defaultValue={f.defaultValue}
-                      disabled={isSavingDetails}
-                      className={inputNormal}
-                    />
-                  ) : (
-                    <p className={valueCls}>{f.value || "—"}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* PARTIE DROITE : photo (aperçu uniquement, jamais éditable ici) */}
-        <div className="relative flex flex-col items-center gap-2 w-full midTablet:w-auto">
-          <div className="relative w-40 h-40 midTablet:w-36 midTablet:h-36 flex-shrink-0 mx-auto midTablet:mx-0 rounded-full overflow-hidden border border-darkBlue/15 bg-white/70 shadow-sm">
-            {avatarUrl ? (
-              <Image
-                src={avatarUrl}
-                alt="aperçu"
-                fill
-                sizes="160px"
-                className="object-cover"
-                unoptimized
-              />
-            ) : (
-              <div className="flex items-center justify-center w-full h-full bg-lightGrey/60">
-                <AvatarSvg width={40} height={40} fillColor="#131E3690" />
-              </div>
-            )}
-          </div>
-
-          {employee?.profilePicture?.url && (
-            <p className="text-[11px] text-darkBlue/50">
-              {t("labels.profilePicture") || "Photo de profil"}
-            </p>
-          )}
-        </div>
-
-        {/* Boutons en mode édition */}
-        {isEditing && (
-          <div className="midTablet:absolute bottom-4 right-4 flex gap-2 flex-row-reverse w-full midTablet:w-auto ">
-            <button
-              type="button"
-              disabled={isSavingDetails}
-              onClick={() => {
-                // Reset RHF aux valeurs par défaut (définies dans le parent via resetDetails)
-                resetDetails();
-                setIsEditing?.(false);
-              }}
-              className="px-4 py-2 rounded-lg bg-red text-white text-sm w-full midTablet:w-auto font-medium disabled:opacity-50"
-            >
-              {t("buttons.cancel")}
-            </button>
-
-            <button
-              type="submit"
-              disabled={!detailsDirty || isSavingDetails}
-              className="px-4 py-2 rounded-lg bg-blue text-white text-sm w-full midTablet:w-auto font-medium disabled:opacity-40"
-            >
-              {isSavingDetails ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" />
-                  <span>En cours…</span>
-                </div>
-              ) : (
-                t("buttons.save")
-              )}
-            </button>
-          </div>
-        )}
-      </form>
+          ))}
+          {isEmployment && [
+            ["Matricule", employment.payrollCode],
+            ["Établissement principal", employment.primaryEstablishment],
+          ].filter(([, field]) => field).map(([label, field]) => (
+            <div className="border-b border-darkBlue/10 pb-3" key={label}>
+              <dt className="text-xs font-medium text-darkBlue/65">{label}</dt>
+              <dd className="mt-1 break-words text-sm font-medium">{field}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </section>
   );
 }

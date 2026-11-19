@@ -32,7 +32,18 @@ const pinSchema = new mongoose.Schema({
 pinSchema.index({ restaurant: 1, employee: 1 }, { unique: true });
 pinSchema.index({ restaurant: 1, lookup: 1 }, { unique: true });
 
+const pinAuditSchema = new mongoose.Schema({
+  restaurant: { type: ObjectId, required: true },
+  employee: { type: ObjectId, required: true },
+  actor: { type: ObjectId, required: true },
+  actorRole: { type: String, enum: ["owner", "employee"], required: true },
+  action: { type: String, enum: ["viewed", "reset"], required: true },
+  at: { type: Date, default: Date.now, required: true },
+});
+pinAuditSchema.index({ restaurant: 1, at: -1 });
+
 module.exports = {
   TimeClockDevice: mongoose.model("TimeClockDevice", deviceSchema),
   TimeClockPin: mongoose.model("TimeClockPin", pinSchema),
+  TimeClockPinAudit: mongoose.model("TimeClockPinAudit", pinAuditSchema),
 };

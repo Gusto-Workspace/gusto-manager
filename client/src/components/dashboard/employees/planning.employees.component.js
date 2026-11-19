@@ -169,6 +169,14 @@ export default function PlanningEmployeesComponent() {
     setConsultationReady(true);
   }, [restaurantId]);
 
+  const linkedEmployeeId = router.query.restaurantId === String(restaurantId) ? router.query.employeeId : null;
+  const linkedEmployeeExists = typeof linkedEmployeeId === "string" &&
+    roster?.some((employee) => String(employee._id) === linkedEmployeeId);
+  useEffect(() => {
+    if (!linkedEmployeeExists) return;
+    setConsultation((previous) => ({ ...previous, employeeId: linkedEmployeeId, query: "" }));
+  }, [linkedEmployeeId, linkedEmployeeExists]);
+
   useEffect(() => {
     if (!consultationReady || !restaurantId) return;
     try {

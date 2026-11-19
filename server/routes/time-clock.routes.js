@@ -12,8 +12,9 @@ const TimeClockAbsence = require("../models/time-clock-absence.model");
 const OwnerModel = require("../models/owner.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
 const {
-  authenticateClockDevice, credentialIsCurrent, installClockDeviceRoutes, minimalKioskState,
+  authenticateClockDevice, installClockDeviceRoutes, minimalKioskState,
 } = require("./time-clock-devices.routes");
+const { credentialIsCurrent, workforceAccountFilter, workforceRoster } = require("../services/employees/time-clock-pin.service");
 const { readPunchGrant, verifyPunchProof } = require("../services/employees/time-clock-device.service");
 const {
   buildRegisterRows,
@@ -60,12 +61,6 @@ function employeeWorksInRestaurant(employee, restaurantId) {
   return Array.isArray(employee?.restaurants)
     ? employee.restaurants.some((id) => String(id) === target)
     : false;
-}
-
-function workforceAccountFilter() {
-  return {
-    $or: [{ accountType: "employee" }, { accountType: { $exists: false } }],
-  };
 }
 
 function findRestaurantProfile(employee, restaurantId) {
@@ -219,14 +214,6 @@ async function requireClockManager(req, res, next) {
   } catch (error) {
     return next(error);
   }
-}
-
-function workforceRoster(restaurantId, restaurant) {
-  return {
-    _id: { $in: restaurant.employees || [] },
-    restaurants: restaurantId,
-    ...workforceAccountFilter(),
-  };
 }
 
 async function getTargetEmployee(employeeId, restaurantId) {
@@ -1812,7 +1799,7 @@ router._timeClockSecurity = {
 };
 
 installClockDeviceRoutes(router, {
-  authenticateToken, requireClockManager, getAccessContext, workforceRoster, buildKioskStatesPayload,
+  authenticateToken, requireClockManager, getAccessContext, buildKioskStatesPayload,
 });
 
 module.exports = router;

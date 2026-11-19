@@ -2,27 +2,20 @@ const { randomBytes } = require("node:crypto");
 const { isValidObjectId } = require("mongoose");
 const Employee = require("../models/employee.model");
 const Restaurant = require("../models/restaurant.model");
-const { TimeClockDevice, TimeClockPin } = require("../models/time-clock-device.model");
+const { TimeClockDevice, TimeClockPin, TimeClockPinAudit } = require("../models/time-clock-device.model");
 const {
   ATTEMPT_WINDOW_MS, FAILED_ATTEMPT_LIMIT, ONLINE_ATTEMPT_LIMIT, ONLINE_LIFETIME_MS, OFFLINE_LIFETIME_MS, PAIRING_LIFETIME_MS,
   isPersonalPin, issuePunchGrant, lookupPin, offlinePinTag, pairingDigest,
   revealPin, validDevicePublicKeys, wrapDevicePinKey,
 } = require("../services/employees/time-clock-device.service");
-const { rotateClockPin } = require("../services/employees/time-clock-pin.service");
+const {
+  activeProfileId, clockPinWriteProblem, credentialIsCurrent, rotateClockPin, workforceRoster,
+} = require("../services/employees/time-clock-pin.service");
 const { toLocalDateKey } = require("../services/employees/time-clock.service");
+const { isSuperAdminSession } = require("../services/shared/account-session.service");
 
 const deviceFields = "name activatedAt pairingExpiresAt revokedAt lastContactAt lastLimitedAt";
 const pairingError = "Le lien d’association est invalide ou expiré.";
-
-function activeProfileId(employee, restaurantId) {
-  return String((employee.restaurantProfiles || []).find(
-    (profile) => String(profile.restaurant) === String(restaurantId),
-  )?._id || "");
-}
-
-function credentialIsCurrent(credential, employee, restaurantId) {
-  return Boolean(credential && employee && credential.profile === activeProfileId(employee, restaurantId));
-}
 
 async function authenticateClockDevice(req, res, next) {
   try {
@@ -51,17 +44,50 @@ function clockRequest(handler) {
       res.set("Cache-Control", "no-store");
       return await handler(req, res, next);
     } catch (error) {
+      const problem = clockPinWriteProblem(error);
+      if (problem) return res.status(409).json(problem);
       console.error("Time clock request failed", { route: req.route?.path, code: error.code || error.name });
       return res.status(503).json({ message: "La Pointeuse est momentanément indisponible." });
     }
   };
 }
 
-function installClockDeviceRoutes(router, { authenticateToken, requireClockManager, getAccessContext, workforceRoster, buildKioskStatesPayload }) {
+function installClockDeviceRoutes(router, { authenticateToken, requireClockManager, getAccessContext, buildKioskStatesPayload }) {
   const manager = "/restaurants/:restaurantId/time-clock";
   const kiosk = "/time-clock/device";
   const managerHandlers = [authenticateToken, requireClockManager];
   const memberFields = "firstname lastname restaurantProfiles.restaurant restaurantProfiles._id";
+  const employeePinRoute = `${manager}/employees/:employeeId/pin`;
+
+  function readEmployeePin({ reveal = false } = {}) {
+    return clockRequest(async (req, res) => {
+      res.set("Cache-Control", "private, no-store");
+      const { restaurantId, employeeId } = req.params;
+      if (!isValidObjectId(employeeId)) return res.status(400).json({ message: "Salarié invalide." });
+      const roster = workforceRoster(restaurantId, req.timeClockAccess.restaurant);
+      const employee = await Employee.findOne({ ...roster, _id: { ...roster._id, $eq: employeeId } })
+        .select(memberFields).lean();
+      if (!employee) return res.status(404).json({ message: "Salarié introuvable dans ce restaurant." });
+      const credential = await TimeClockPin.findOne({ restaurant: restaurantId, employee: employee._id })
+        .select(reveal ? "restaurant employee profile sealedPin" : "profile").lean();
+      if (!credentialIsCurrent(credential, employee, restaurantId)) return res.json({ configured: false });
+      if (!reveal) return res.json({ configured: true });
+
+      const pin = revealPin(credential);
+      await TimeClockPinAudit.create({ restaurant: restaurantId, employee: employee._id, actor: req.user.id, actorRole: "owner", action: "viewed" });
+      return res.json({ configured: true, pin });
+    });
+  }
+
+  function requireClockOwner(req, res, next) {
+    if (req.user.role !== "owner" || isSuperAdminSession(req.user)) {
+      return res.status(403).json({ message: "Consultation du PIN réservée au propriétaire." });
+    }
+    return next();
+  }
+
+  router.get(employeePinRoute, ...managerHandlers, readEmployeePin());
+  router.get(`${employeePinRoute}/reveal`, authenticateToken, requireClockOwner, requireClockManager, readEmployeePin({ reveal: true }));
 
   router.get(`${manager}/devices`, ...managerHandlers, clockRequest(async (req, res) => {
     const { restaurantId } = req.params;
@@ -99,6 +125,7 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
   }));
 
   async function regenerate(req, res, employeeId) {
+    if (isSuperAdminSession(req.user)) return res.status(403).json({ message: "Réinitialisation réservée aux comptes autorisés." });
     const restaurantId = req.params.restaurantId;
     if (Object.keys(req.body || {}).length || !isValidObjectId(employeeId)) {
       return res.status(400).json({ message: "Le code est généré automatiquement." });
@@ -106,6 +133,7 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
     const outcome = await rotateClockPin({
       restaurant: restaurantId,
       changedBy: String(req.user.id),
+      actorRole: req.user.role,
       findMember: async (session) => {
         const restaurant = await Restaurant.findOne({
           _id: restaurantId, employees: employeeId, "options.employees": true,
@@ -122,13 +150,13 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
       return res.status(429).json({ message: "Attendez avant de générer un nouveau code." });
     }
     if (!outcome.found) return res.status(404).json({ message: "Salarié introuvable dans ce restaurant." });
-    if (!outcome.rotated) return res.status(409).json({ message: "Aucun code disponible dans ce restaurant." });
+    if (!outcome.rotated) return res.status(409).json({ code: "time_clock_pin_exhausted", message: "Aucun code disponible dans ce restaurant." });
     return res.json({ configured: true });
   }
 
   router.post(`${selfRoute}/regenerate`, ...selfHandlers, clockRequest((req, res) =>
     regenerate(req, res, req.clockPinEmployee._id)));
-  router.post(`${manager}/employees/:employeeId/pin/regenerate`, ...managerHandlers, clockRequest((req, res) =>
+  router.post(`${employeePinRoute}/regenerate`, ...managerHandlers, clockRequest((req, res) =>
     regenerate(req, res, req.params.employeeId)));
 
   router.post(`${manager}/devices`, ...managerHandlers, clockRequest(async (req, res) => {
@@ -252,4 +280,4 @@ function minimalKioskState(summary) {
   };
 }
 
-module.exports = { activeProfileId, authenticateClockDevice, credentialIsCurrent, installClockDeviceRoutes, minimalKioskState };
+module.exports = { authenticateClockDevice, installClockDeviceRoutes, minimalKioskState };

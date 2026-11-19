@@ -1,421 +1,204 @@
-import { useRouter } from "next/router";
-import { useState, useContext, useMemo, useRef, useCallback } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { CalendarDays, ChevronRight, Clock3, Plus, Search, Trash2, UsersRound } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
-import { useTranslation } from "next-i18next";
-import { EmployeesSvg } from "../../_shared/_svgs/_index";
-import CardEmployeesComponent from "./card.employees.component";
-import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
-
 import {
-  Search,
-  X,
-  Calendar,
-  Plus,
-  Clock3,
-  Briefcase,
-} from "lucide-react";
+  applyRosterResponse, directoryPath, employeeDirectoryEntry, filterDirectory, normalizePersonnelSearch,
+} from "./employee-directory.utils.mjs";
 
-function normalize(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+const emptyFilters = { search: "", post: "", account: "", access: "" };
+const control = "min-h-10 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
+const action = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey";
+const rowAction = "inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-darkBlue/15 bg-white hover:bg-lightGrey focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
+const headCell = "px-4 py-3 text-left text-xs font-semibold text-darkBlue/70 whitespace-nowrap";
+const cell = "px-4 py-3 text-sm";
+
+export function EmployeeAvatar({ entry, large = false }) {
+  const image = entry.employee.profilePicture?.url;
+  return (
+    <span aria-hidden="true" className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-blue/10 font-semibold text-blue ${large ? "size-14 text-lg" : "size-9 text-xs"}`}>
+      {image ? <Image src={image} alt="" fill sizes={large ? "56px" : "36px"} className="object-cover" unoptimized />
+        : entry.initials || <UsersRound size={18} />}
+    </span>
+  );
 }
 
 export default function ListEmployeesComponent() {
-  const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
-  const router = useRouter();
+  const { restaurantData: restaurant, setRestaurantData } = restaurantContext;
+  const restaurantId = restaurant._id;
+  const storageKey = `gusto:employee-directory:${restaurantContext.userConnected.id}:${restaurantId}`;
+  const [filters, setFilters] = useState(emptyFilters);
+  const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const removalDialog = useRef(null);
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [postFilter, setPostFilter] = useState("all");
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isLoadingDelete, setIsLoadingDelete] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  useEffect(() => {
+    const dialog = removalDialog.current;
+    if (!selected) return undefined;
+    dialog.showModal();
+    return () => dialog.close();
+  }, [selected]);
 
-  const searchRef = useRef(null);
-
-  // filtered employees
-  const restaurantId = restaurantContext.restaurantData?._id;
-  const personnel = useMemo(
-    () => [
-      ...(restaurantContext.restaurantData?.employees || []),
-      ...(restaurantContext.restaurantData?.accountants || []),
-    ],
-    [
-      restaurantContext.restaurantData?.accountants,
-      restaurantContext.restaurantData?.employees,
-    ],
-  );
-
-  const getSnapshotForRestaurant = useCallback(
-    (emp) => {
-      const profile =
-        (emp.restaurantProfiles || []).find(
-          (p) => String(p.restaurant) === String(restaurantId),
-        ) || null;
-      return profile?.snapshot || {};
-    },
-    [restaurantId],
-  );
-
-  const filtered = useMemo(() => {
-    const list = personnel;
-    const selectedPost = normalize(postFilter);
-    const hasSearch = Boolean(searchTerm.trim());
-
-    const norm = normalize(searchTerm);
-
-    return list.filter((e) => {
-      const snap = getSnapshotForRestaurant(e);
-      const firstname = snap.firstname ?? e.firstname ?? "";
-      const lastname = snap.lastname ?? e.lastname ?? "";
-      const post = snap.post ?? e.post ?? "";
-
-      const matchesSearch = hasSearch
-        ? normalize(`${firstname} ${lastname}`).includes(norm)
-        : true;
-      const matchesPost =
-        postFilter === "all" ? true : normalize(post) === selectedPost;
-
-      return matchesSearch && matchesPost;
-    });
-  }, [searchTerm, postFilter, getSnapshotForRestaurant, personnel]);
-
-  const postOptions = useMemo(() => {
-    const map = new Map();
-    personnel.forEach((employee) => {
-      if (employee.accountType === "accountant") return;
-      const snapshot = getSnapshotForRestaurant(employee);
-      const post = String(snapshot.post ?? employee.post ?? "").trim();
-      if (!post) return;
-      map.set(normalize(post), post);
-    });
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "fr"));
-  }, [getSnapshotForRestaurant, personnel]);
-
-  const totalEmployees = personnel.length;
-
-  const handleSearchChange = (e) => setSearchTerm(e.target.value);
-
-  const clearSearch = () => {
-    setSearchTerm("");
-    searchRef.current?.focus?.();
-  };
-
-  const handleDeleteClick = (emp) => {
-    setSelectedEmployee(emp);
-    setIsDeleting(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!selectedEmployee) return;
-    setIsLoadingDelete(true);
+  useEffect(() => {
     try {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees/${selectedEmployee._id}`;
-      const response = await axios.delete(url);
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-    } catch (err) {
-      console.error("Error deleting employee:", err);
-    } finally {
-      setIsLoadingDelete(false);
-      setIsDeleting(false);
-      setSelectedEmployee(null);
+      const saved = JSON.parse(sessionStorage.getItem(storageKey));
+      if (saved) setFilters({ ...emptyFilters, ...saved });
+    } catch {
+      // Filters remain available for the current visit.
     }
-  };
+  }, [storageKey]);
+
+  function updateFilters(next) {
+    setFilters(next);
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // Keep filtering if browser storage is unavailable.
+    }
+  }
+
+  const entries = [...(restaurant.employees || []), ...(restaurant.accountants || [])]
+    .map((employee) => employeeDirectoryEntry(employee, restaurantId))
+    .sort((a, b) => a.lastname.localeCompare(b.lastname, "fr", { sensitivity: "base" }) ||
+      a.firstname.localeCompare(b.firstname, "fr", { sensitivity: "base" }));
+  const posts = [...new Map(entries.filter((entry) => entry.post && entry.accountType === "employee")
+    .map((entry) => [normalizePersonnelSearch(entry.post), entry.post]))]
+    .sort(([, a], [, b]) => a.localeCompare(b, "fr"));
+  const visible = filterDirectory(entries, filters);
+  const filtered = Object.values(filters).some(Boolean);
+
+  async function removeEmployee() {
+    setBusy(true);
+    setError("");
+    try {
+      const { data } = await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${selected.id}`);
+      setRestaurantData((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
+      setSelected(null);
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible de retirer ce membre.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
+    <section className="grid min-w-0 gap-5 border-t border-darkBlue/10 pt-5">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Gestion du personnel</h1>
+          <p className="mt-1 text-sm text-darkBlue/70">{restaurant.name}</p>
+        </div>
+        <nav aria-label="Gestion du personnel" className="flex flex-wrap gap-2">
+          <Link href={`${directoryPath}/planning`} className={action}><CalendarDays size={16} aria-hidden="true" /> Planning</Link>
+          <Link href={`${directoryPath}/time-clock`} className={action}><Clock3 size={16} aria-hidden="true" /> Pointeuse</Link>
+          <Link href={`${directoryPath}/add`} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue px-3 text-sm font-semibold text-white hover:bg-blue/90">
+            <Plus size={17} aria-hidden="true" /> Ajouter un employé
+          </Link>
+        </nav>
+      </header>
 
-      {/* Header + actions */}
-      <div className="flex flex-col gap-4">
-        <CatalogHeaderDashboardComponent
-          icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
-          title={t("employees:titles.main")}
-          subtitle={`${totalEmployees} membre${totalEmployees > 1 || totalEmployees === 0 ? "s" : ""}`}
-          actions={
-            <>
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/employees/time-clock")}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Pointeuse"
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                  <Clock3 className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">Pointeuse</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/employees/planning")}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label={t("titles.planning")}
-                title={t("titles.planning")}
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-                  <Calendar className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  {t("titles.planning")}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/employees/add")}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-blue bg-white px-4 py-2 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
-                aria-label={t("buttons.addEmployee")}
-                title={t("buttons.addEmployee")}
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
-                  <Plus className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  {t("buttons.addEmployee")}
-                </span>
-              </button>
-            </>
-          }
-        />
-
-        {/* Mobile webapp actions row */}
-        <div className="grid grid-cols-2 gap-2 midTablet:hidden">
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/employees/time-clock")}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Pointeuse"
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
-              <Clock3 className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">Pointeuse</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/employees/planning")}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label={t("titles.planning")}
-            title={t("titles.planning")}
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-violet text-white">
-              <Calendar className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              {t("titles.planning")}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/employees/add")}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-blue bg-white px-3 py-3 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
-            aria-label={t("buttons.addEmployee")}
-            title={t("buttons.addEmployee")}
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15">
-              <Plus className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              {t("buttons.addEmployee")}
-            </span>
-          </button>
+      <div className="min-w-0 rounded-xl border border-darkBlue/10 bg-white">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
+          <h2 className="text-lg font-semibold">Répertoire</h2>
+          <p role="status" className="text-sm text-darkBlue/70">{visible.length}{filtered ? ` sur ${entries.length}` : ""} {entries.length === 1 ? "membre" : "membres"}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <label className="relative min-w-[min(100%,15rem)] flex-1">
+            <Search aria-hidden="true" size={17} className="pointer-events-none absolute left-3 top-3 text-darkBlue/55" />
+            <input type="search" aria-label="Rechercher un membre" placeholder="Nom, e-mail ou téléphone" value={filters.search}
+              onChange={(event) => updateFilters({ ...filters, search: event.target.value })} className={`${control} w-full pl-9`} />
+          </label>
+          <select className={control} aria-label="Filtrer par poste" value={filters.post} onChange={(event) => updateFilters({ ...filters, post: event.target.value })}>
+            <option value="">Tous les postes</option>
+            {posts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <select className={control} aria-label="Filtrer par type de compte" value={filters.account} onChange={(event) => updateFilters({ ...filters, account: event.target.value })}>
+            <option value="">Tous les types</option><option value="employee">Salariés</option><option value="accountant">Comptables</option>
+          </select>
+          <select className={control} aria-label="Filtrer par présence d’un e-mail de connexion" value={filters.access} onChange={(event) => updateFilters({ ...filters, access: event.target.value })}>
+            <option value="">Tout accès</option><option value="email">Avec e-mail</option><option value="no-email">Sans e-mail</option>
+          </select>
+          {filtered && <button type="button" className={action} onClick={() => updateFilters(emptyFilters)}>Effacer les filtres</button>}
         </div>
 
-        {/* Search + post filter */}
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(150px,240px)] gap-2">
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <input
-              ref={searchRef}
-              type="text"
-              inputMode="search"
-              placeholder={t(
-                "placeholders.searchEmployee",
-                "Rechercher un employé",
-              )}
-              value={searchTerm}
-              onChange={handleSearchChange}
-              className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-                searchTerm ? "pr-12" : "pr-4"
-              } pl-9 text-base`}
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-2 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
-                aria-label={t("buttons.clear", "Effacer")}
-                title={t("buttons.clear", "Effacer")}
-              >
-                <X className="size-4 text-darkBlue/60" />
-              </button>
-            )}
+        {visible.length ? (
+          <div className="overflow-x-auto rounded-b-xl" tabIndex={0} role="region" aria-label="Liste des membres">
+            <table className="w-full min-w-[720px] border-separate border-spacing-0">
+              <thead className="bg-[#f4f6fb]">
+                <tr>
+                  <th scope="col" className={headCell}>Nom et prénom</th>
+                  <th scope="col" className={headCell}>Poste</th>
+                  <th scope="col" className={headCell}>Contrat</th>
+                  <th scope="col" className={headCell}>Compte</th>
+                  <th scope="col" className={`${headCell} w-[30%]`}>Contact</th>
+                  <th scope="col" className={`${headCell} w-px`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((entry) => {
+                  const href = `${directoryPath}/${entry.id}`;
+                  return (
+                    <tr key={entry.id} className="hover:bg-lightGrey/70 [&>td]:border-t [&>td]:border-darkBlue/10">
+                      <td className={cell}>
+                        <Link href={href} className="inline-flex min-h-10 items-center gap-2.5 rounded font-semibold hover:text-blue">
+                          <EmployeeAvatar entry={entry} /><span className="min-w-24">{entry.name}</span>
+                        </Link>
+                      </td>
+                      <td className={cell}>{entry.post || "—"}</td>
+                      <td className={cell}>{entry.contract || "—"}</td>
+                      <td className={cell}>
+                        <span className="whitespace-nowrap rounded-md bg-blue/10 px-2 py-1 text-xs font-semibold text-blue">{entry.accountType === "accountant" ? "Comptable" : "Salarié"}</span>
+                        {!entry.email && <span className="mt-1 block whitespace-nowrap text-xs text-darkBlue/60">Sans e-mail</span>}
+                      </td>
+                      <td className={`${cell} max-w-0`}>
+                        <p className="truncate" title={entry.email || undefined}>{entry.email || "—"}</p>
+                        {entry.phone && <p className="mt-0.5 whitespace-nowrap text-xs text-darkBlue/65">{entry.phone}</p>}
+                      </td>
+                      <td className={cell}>
+                        <div className="inline-flex items-center gap-1">
+                          <Link href={href} aria-label={`Ouvrir la fiche de ${entry.name}`} className={rowAction}><ChevronRight size={17} aria-hidden="true" /></Link>
+                          <button type="button" aria-label={`Retirer ${entry.name} du restaurant`} className={`${rowAction} text-red`}
+                            onClick={() => { setError(""); setSelected(entry); }}><Trash2 size={15} aria-hidden="true" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-
-          <div className="relative min-w-0">
-            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <select
-              value={postFilter}
-              onChange={(e) => setPostFilter(e.target.value)}
-              className="h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 pl-9 pr-4 text-base text-darkBlue outline-none"
-              aria-label="Filtrer par poste"
-            >
-              <option value="all">Tous les postes</option>
-              {postOptions.map((post) => (
-                <option key={post} value={post}>
-                  {post}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        ) : (
+          <p className="border-t border-darkBlue/10 px-4 py-10 text-center text-sm text-darkBlue/70">
+            {entries.length ? "Aucun membre ne correspond à ces filtres." : "Aucun membre n’est rattaché à ce restaurant."}
+          </p>
+        )}
       </div>
 
-      {/* Grille d’employés */}
-      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-4 gap-2 gap-y-8 midTablet:gap-4 midTablet:gap-y-8">
-        {filtered.map((emp) => (
-          <CardEmployeesComponent
-            key={emp._id}
-            employee={emp}
-            restaurantId={restaurantContext.restaurantData._id}
-            handleDeleteClick={handleDeleteClick}
-          />
-        ))}
-      </div>
-
-      {/* Confirmation de suppression */}
-      {isDeleting && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end midTablet:items-center justify-center p-3 midTablet:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-employee-title"
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && !isLoadingDelete) setIsDeleting(false);
-          }}
-        >
-          {/* Overlay */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isLoadingDelete) return;
-              setIsDeleting(false);
-            }}
-            className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
-            aria-label={t("buttons.close", "Fermer")}
-          />
-
-          {/* Modal card */}
-          <div className="relative w-full max-w-[460px]">
-            <div className="rounded-3xl border border-darkBlue/10 bg-white/90 backdrop-blur shadow-[0_20px_60px_rgba(0,0,0,0.15)] overflow-hidden animate-[fadeInUp_.18s_ease-out]">
-              {/* Header */}
-              <div className="flex items-start justify-between gap-3 px-5 pt-5">
-                <div className="min-w-0">
-                  <h2
-                    id="delete-employee-title"
-                    className="text-lg font-semibold text-darkBlue"
-                  >
-                    {t("modale.titles.deleteEmployee")}
-                  </h2>
-                  <p className="mt-1 text-sm text-darkBlue/70">
-                    {t("modale.description.deleteEmployee")}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLoadingDelete) return;
-                    setIsDeleting(false);
-                  }}
-                  className="shrink-0 inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-                  aria-label={t("buttons.close", "Fermer")}
-                  title={t("buttons.close", "Fermer")}
-                  disabled={isLoadingDelete}
-                >
-                  <span className="text-xl leading-none text-darkBlue/60">
-                    ×
-                  </span>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="px-5 pb-5">
-                <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
-                  <div className="text-sm text-darkBlue/70">
-                    <span className="font-medium text-darkBlue">
-                      {selectedEmployee?.firstname} {selectedEmployee?.lastname}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-darkBlue/50">
-                    {t(
-                      "modale.hint.deleteEmployee",
-                      "Cette action est définitive.",
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="mt-5 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isLoadingDelete) return;
-                      setIsDeleting(false);
-                    }}
-                    disabled={isLoadingDelete}
-                    className="flex-1 h-12 rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold hover:bg-darkBlue/5 transition disabled:opacity-60"
-                  >
-                    {t("buttons.cancel")}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={confirmDelete}
-                    disabled={isLoadingDelete}
-                    className="flex-1 h-12 rounded-2xl bg-red text-white font-semibold shadow-sm hover:bg-red/90 active:scale-[0.99] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
-                  >
-                    {isLoadingDelete ? (
-                      <>
-                        <span className="size-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                        <span>{t("buttons.loading")}</span>
-                      </>
-                    ) : (
-                      t("buttons.confirm")
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Small animation keyframes (Tailwind arbitrary) */}
-            <style jsx>{`
-              @keyframes fadeInUp {
-                from {
-                  opacity: 0;
-                  transform: translateY(10px);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateY(0);
-                }
-              }
-            `}</style>
+      <dialog ref={removalDialog}
+        aria-labelledby="employee-remove-title"
+        aria-describedby="employee-remove-description"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (!busy) setSelected(null);
+        }}
+        className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-5 text-darkBlue shadow-lg backdrop:bg-darkBlue/35"
+      >
+        {selected && <div className="grid gap-4">
+          <h2 id="employee-remove-title" className="text-balance font-semibold">Retirer {selected.name} de {restaurant.name} ?</h2>
+          <p id="employee-remove-description" className="text-balance text-sm text-darkBlue/70">Ce retrait supprime les données RH de ce restaurant pour ce membre.</p>
+          {error && <p role="alert" className="text-sm text-red">{error}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={busy} className={action} onClick={() => setSelected(null)}>Annuler</button>
+            <button type="button" disabled={busy} className="min-h-10 rounded-lg bg-red px-3 text-sm font-semibold text-white disabled:opacity-60" onClick={removeEmployee}>
+              {busy ? "Retrait en cours…" : "Retirer du restaurant"}
+            </button>
           </div>
-        </div>
-      )}
-
+        </div>}
+      </dialog>
     </section>
   );
 }

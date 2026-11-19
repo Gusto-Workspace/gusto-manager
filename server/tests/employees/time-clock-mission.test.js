@@ -8,7 +8,7 @@ const jwt = require("jsonwebtoken");
 process.env.JWT_SECRET = "clock-synthetic-test-dashboard-secret";
 process.env.TIME_CLOCK_SECRET = "clock-synthetic-test-private-secret";
 
-const { TimeClockPin, TimeClockDevice } = require("../../models/time-clock-device.model");
+const { TimeClockPin, TimeClockDevice, TimeClockPinAudit } = require("../../models/time-clock-device.model");
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const Owner = require("../../models/owner.model");
@@ -19,6 +19,7 @@ const { buildRegisterRows, buildRegisterHistory } = require("../../services/empl
 const { payrollDays } = require("../../services/employees/time-clock-payroll.service");
 const { getRangeBounds, toLocalDateKey } = require("../../services/employees/time-clock.service");
 const { provisionInitialClockPin, withClockPinTransaction } = require("../../services/employees/time-clock-pin.service");
+const { runPinBackfill } = require("../../services/employees/time-clock-pin-backfill.service");
 const {
   isPersonalPin, issuePunchGrant, lookupPin, offlinePinTag, readPunchGrant,
   sealPin, validDevicePublicKeys, verifyPunchProof, wrapDevicePinKey,
@@ -226,7 +227,7 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   t.after(async () => {
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
-  await Promise.all([TimeClockDevice.init(), TimeClockPin.init(), Session.init(), Absence.init()]);
+  await Promise.all([TimeClockDevice.init(), TimeClockPin.init(), TimeClockPinAudit.init(), Session.init(), Absence.init()]);
 
   const [restaurant, other, owner, alice, bob, outside, accountant] = Array.from({ length: 7 }, () => new ObjectId());
   const member = (id, firstname, restaurants, accountType = "employee") => ({
@@ -274,11 +275,43 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
     authorization: auth(employee, "employee"), body,
   });
   const initialProfile = (await Employee.findById(alice).lean()).restaurantProfiles[0];
-  await withClockPinTransaction((session) => provisionInitialClockPin({
-    restaurant, employee: alice, profile: String(initialProfile._id), changedBy: String(owner), session,
-  }));
+  await TimeClockPin.create({
+    restaurant, employee: alice, ...sealPin({
+      restaurant, employee: alice, profile: String(initialProfile._id), pin: "0042", changedBy: String(owner),
+    }),
+  });
   const storedPin = await TimeClockPin.findOne({ restaurant, employee: alice }).lean();
   assert.equal(storedPin.lastRotatedAt, undefined);
+  const statusPath = base + "/employees/:employeeId/pin";
+  const pinStatus = await call("get", statusPath, { employeeId: String(alice), query: { reveal: "true" } });
+  assert.deepEqual(pinStatus.data, { configured: true });
+  assert.equal(pinStatus.headers["Cache-Control"], "private, no-store");
+  assert.deepEqual((await call("get", statusPath, { employeeId: String(alice), restaurantId: other })).data, { configured: false });
+  assert.equal((await call("get", statusPath, { employeeId: String(outside) })).status, 404);
+  assert.equal((await call("get", statusPath, { employeeId: String(accountant) })).status, 404);
+  assert.equal((await call("get", statusPath, { employeeId: String(alice), authorization: auth(alice, "employee") })).status, 403);
+  assert.equal((await call("get", statusPath, { employeeId: String(alice), authorization: auth(accountant, "accountant") })).status, 403);
+  const ownerPinPath = statusPath + "/reveal";
+  const revealAsOwner = (employee, options) => call("get", ownerPinPath, { employeeId: String(employee), ...options });
+  const ownerView = await revealAsOwner(alice);
+  assert.deepEqual(ownerView.data, { configured: true, pin: "0042" });
+  assert.equal(ownerView.headers["Cache-Control"], "private, no-store");
+  assert.deepEqual((await revealAsOwner(bob)).data, { configured: false });
+  assert.equal((await revealAsOwner(alice, { authorization: auth(alice, "employee") })).status, 403);
+  assert.equal((await revealAsOwner(alice, { authorization: auth(accountant, "accountant") })).status, 403);
+  const support = "Bearer " + jwt.sign({
+    id: String(owner), role: "owner", superAdmin: true, authMethod: "super_admin", superAdminSessionId: randomUUID(),
+  }, process.env.JWT_SECRET);
+  assert.equal((await revealAsOwner(alice, { authorization: support })).status, 403);
+  assert.equal((await revealAsOwner(outside)).status, 404);
+  assert.deepEqual((await revealAsOwner(alice, { restaurantId: other })).data, { configured: false });
+  const unrelatedOwner = await Owner.collection.insertOne({ firstname: "Autre propriétaire fictif" });
+  assert.equal((await revealAsOwner(alice, { authorization: auth(unrelatedOwner.insertedId, "owner") })).status, 403);
+  const viewed = await TimeClockPinAudit.find({ action: "viewed" }).lean();
+  assert.equal(viewed.length, 1);
+  assert.equal(String(viewed[0].actor), String(owner));
+  assert.equal(String(viewed[0].employee), String(alice));
+  assert.doesNotMatch(JSON.stringify(viewed), /"0042"|sealedPin|lookup|revision/);
   const self = await call("get", pinPath, { authorization: auth(alice, "employee") });
   assert.deepEqual(self.data, { configured: true });
   const revealed = await reveal(alice);
@@ -751,4 +784,54 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   });
   assert.deepEqual(managerPin.data, { configured: true });
   assert.notEqual((await reveal(newMembers[0]._id, other)).data.pin, initialCodes[0]);
+
+  // This historical member predates both per-restaurant profiles and PINs.
+  await Employee.collection.updateOne({ _id: outside }, { $set: { restaurantProfiles: [] } });
+  const statusOptions = { restaurantId: other, employeeId: String(outside), query: { reveal: "true" } };
+  assert.deepEqual((await call("get", statusPath, statusOptions)).data, { configured: false });
+  const backfill = await runPinBackfill({ apply: true });
+  assert.equal(backfill.totals.assigned, 1);
+  assert.equal(backfill.totals.errors, 0);
+  assert.deepEqual((await call("get", statusPath, statusOptions)).data, { configured: true });
+  const migratedPin = (await reveal(outside, other)).data.pin;
+  assert.match(migratedPin, /^\d{4}$/);
+  assert.deepEqual((await revealAsOwner(outside, { restaurantId: other })).data, { configured: true, pin: migratedPin });
+  assert.equal((await call("get", statusPath, { employeeId: String(outside) })).status, 404);
+
+  const newLink = await call("post", base + "/devices", { restaurantId: other, body: { name: "Tablette recette historique" } });
+  const newTablet = await call("post", deviceBase + "/pair", {
+    body: { code: newLink.data.code, signingKey: keys.signingKey, wrappingKey: keys.wrappingKey },
+  });
+  assert.equal(newTablet.status, 201);
+  const tabletAuth = `Device ${newTablet.data.id}.${newTablet.data.token}`;
+  const identified = await call("post", deviceBase + "/identify", { restaurantId: other, authorization: tabletAuth, body: { pin: migratedPin } });
+  assert.equal(identified.status, 200);
+  assert.equal(identified.data.kiosk.employee.id, String(outside));
+  const migratedVault = await call("post", deviceBase + "/vault", { restaurantId: other, authorization: tabletAuth });
+  const offlineEntry = migratedVault.data.entries.find((entry) => entry.kiosk.employee.id === String(outside));
+  assert.ok(offlineEntry);
+  assert.equal(migratedVault.data.expiresAt - migratedVault.data.asOf, 12 * 60 * 60 * 1000);
+  const lookupKey = privateDecrypt({ key: keys.wrapping.privateKey, oaepHash: "sha256" }, Buffer.from(newTablet.data.pinKey, "base64url"));
+  assert.equal(offlineEntry.tag, createHmac("sha256", lookupKey).update(migratedPin).digest("base64url"));
+  assert.equal((await call("post", deviceBase + "/vault", { restaurantId: other, authorization: manager })).status, 401);
+  assert.equal((await runPinBackfill({ apply: true })).totals.assigned, 0);
+
+  const resetPath = statusPath + "/regenerate";
+  const resetOptions = { employeeId: String(outside), restaurantId: other };
+  const rejectedChoice = await call("post", resetPath, { ...resetOptions, body: { pin: "0042" } });
+  assert.equal(rejectedChoice.status, 400);
+  const resetRuns = await Promise.all([call("post", resetPath, resetOptions), call("post", resetPath, resetOptions)]);
+  assert.deepEqual(resetRuns.map(({ status }) => status).sort(), [200, 429]);
+  assert.deepEqual(resetRuns.find(({ status }) => status === 200).data, { configured: true });
+  const resetPin = (await revealAsOwner(outside, { restaurantId: other })).data.pin;
+  assert.notEqual(resetPin, migratedPin);
+  assert.equal((await revealAsOwner(alice, { restaurantId: other })).data.pin, alicePin);
+  const audit = await TimeClockPinAudit.find({ employee: outside, restaurant: other, action: "reset" }).lean();
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].actorRole, "owner");
+  assert.deepEqual(Object.keys(audit[0]).filter((key) => !["_id", "__v"].includes(key)).sort(),
+    ["action", "actor", "actorRole", "at", "employee", "restaurant"]);
+  const identifyPin = (pin) => call("post", deviceBase + "/identify", { restaurantId: other, authorization: tabletAuth, body: { pin } });
+  assert.equal((await identifyPin(migratedPin)).status, 401);
+  assert.equal((await identifyPin(resetPin)).data.kiosk.employee.id, String(outside));
 });

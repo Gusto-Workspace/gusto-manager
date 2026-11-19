@@ -5,6 +5,7 @@ const { Readable, Writable } = require("node:stream");
 const { test } = require("node:test");
 const mongoose = require("mongoose");
 const cloudinary = require("cloudinary").v2;
+const Brevo = require("sib-api-v3-sdk");
 
 const testUri = process.env.GUSTO_HR_TEST_MONGO_URI;
 const { ObjectId } = mongoose.Types;
@@ -28,6 +29,7 @@ require("../../models/menu.model");
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const EmployeeAssetDeletion = require("../../models/employee-asset-deletion.model");
+const { TimeClockPin } = require("../../models/time-clock-device.model");
 const { retryEmployeeAssetDeletions } = require("../../services/employees/employee-asset-deletion.service");
 const employees = require("../../routes/employees.routes");
 const restaurants = require("../../routes/restaurants.routes");
@@ -75,6 +77,7 @@ async function fixture(count = 1) {
   }));
   await Restaurant.collection.insertMany(restaurantIds.map((_id, index) => ({
     _id, owner_id: owner.id, name: `Resto ${index}`, employees: [employeeId], menus: [],
+    options: { employees: true },
   })));
   const email = `fixture-${employeeId}@example.test`;
   await Employee.collection.insertOne({
@@ -127,7 +130,7 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     const before = await f.read();
     const result = await f.request("patch", employeePath, 0, {
       firstname: "Camille", post: "Salle", contractType: "CDD", contractualValue: 28,
-      contractualUnit: "week", options: { employees: true, reservations: true },
+      contractualUnit: "week", options: { reservations: true },
     });
     assert.equal(result.code, 200);
     assert.equal(JSON.stringify(result.body).includes("planningFiles"), false);
@@ -137,6 +140,7 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(first.employment.contractType, "CDD");
     assert.equal(first.employment.contractualValue, 28);
     assert.equal(first.options.reservations, true);
+    assert.equal(first.options.employees, true);
     assert.equal(second.snapshot.firstname, "Camille");
     assert.deepEqual(second.employment, before.restaurantProfiles[1].employment);
     assert.deepEqual(second.options, before.restaurantProfiles[1].options);
@@ -171,12 +175,62 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
       [restaurants, `${attach}/import`, { employeeId: String(f.employeeId) }],
     ]) {
       const _id = new ObjectId();
-      await Restaurant.collection.insertOne({ _id, owner_id: f.owner.id, name: "Rattachement", employees: [], menus: [] });
+      await Restaurant.collection.insertOne({ _id, owner_id: f.owner.id, name: "Rattachement", employees: [], menus: [], options: { employees: true } });
       assert.equal((await call(router, "post", path, f.owner, { restaurantId: String(_id) }, body)).code, 200);
       const employee = await f.read();
       assert.equal(employee.restaurantProfiles.some(({ restaurant }) => restaurant.equals(_id)), true);
       assert.deepEqual(employee.restaurantProfiles[0], original);
     }
+  });
+
+  await t.test("creating and linking a workforce account without email provisions separate PINs and never invites", async () => {
+    const [first, second, foreign] = Array.from({ length: 3 }, () => new ObjectId());
+    const owner = { role: "owner", id: new ObjectId() };
+    const externalOwner = { role: "owner", id: new ObjectId() };
+    await Restaurant.collection.insertMany([first, second, foreign].map((_id) => ({
+      _id, owner_id: _id.equals(foreign) ? externalOwner.id : owner.id,
+      name: "Restaurant fictif", employees: [], menus: [], options: { employees: true },
+    })));
+    const path = "/restaurants/:restaurantId/employees";
+    const create = (restaurant, body, user = owner) => call(employees, "post", path, user,
+      { restaurantId: String(restaurant) }, body);
+    const form = { firstName: "Ari", lastName: "Fictif", phone: "0600000000", post: "Cuisine", contractType: "CDI" };
+    assert.equal((await create(first, { ...form, accountType: "accountant" })).code, 400);
+    const created = await create(first, form);
+    assert.equal(created.code, 201);
+    const employeeId = created.body.employeeId;
+    const original = await Employee.collection.findOne({ _id: employeeId });
+    const linked = await create(second, { ...form, existingEmployeeId: String(employeeId), post: "Salle" });
+    assert.equal(linked.code, 200);
+    assert.deepEqual(linked.body.employeeId, employeeId);
+    assert.equal((await create(second, { ...form, existingEmployeeId: String(employeeId) })).code, 409);
+    assert.equal((await create(foreign, { ...form, existingEmployeeId: String(employeeId) }, externalOwner)).code, 404);
+    const linkedAccount = await Employee.collection.findOne({ _id: employeeId });
+    assert.deepEqual(linkedAccount.restaurantProfiles[0], original.restaurantProfiles[0]);
+    assert.equal(linkedAccount.restaurantProfiles[1].snapshot.post, "Salle");
+    assert.equal(await TimeClockPin.countDocuments({ employee: employeeId }), 2);
+  });
+
+  await t.test("concurrent creation in one restaurant sends a single mocked invitation", async (st) => {
+    const restaurantId = new ObjectId();
+    const owner = { role: "owner", id: new ObjectId() };
+    const sent = st.mock.fn(async () => ({}));
+    st.mock.method(Brevo, "TransactionalEmailsApi", function MockBrevo() {
+      return { sendTransacEmail: sent };
+    });
+    await Restaurant.collection.insertOne({
+      _id: restaurantId, owner_id: owner.id, name: "Restaurant fictif",
+      employees: [], menus: [], options: { employees: true },
+    });
+    const params = { restaurantId: String(restaurantId) };
+    const path = "/restaurants/:restaurantId/employees";
+    const form = { firstName: "Ari", lastName: "Fictif", phone: "0600000000", email: "invitation@example.test" };
+    const create = (user) => call(employees, "post", path, user, params, form);
+    assert.equal((await create({ role: "owner", id: new ObjectId() })).code, 403);
+    const results = await Promise.all([create(owner), create(owner)]);
+    assert.deepEqual(results.map(({ code }) => code).sort(), [201, 409]);
+    assert.equal(await Employee.countDocuments({ email: form.email }), 1);
+    assert.equal(sent.mock.callCount(), 1);
   });
 
   await t.test("legacy employees with a missing profile and shifts without attachments remain editable", async (st) => {

@@ -2,6 +2,7 @@ import { useContext } from "react";
 import Head from "next/head";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { GlobalContext } from "@/contexts/global.context";
+import { canManagePersonnel } from "@/components/dashboard/employees/employee-directory.utils.mjs";
 import Nav from "@/components/_shared/nav/nav.component";
 import Settings from "@/components/_shared/settings/settings.component";
 import NoAvailable from "@/components/_shared/options/no-available.options.component";
@@ -12,12 +13,7 @@ export default function TimeClockPage() {
   if (!context.isAuth) return null;
 
   const restaurant = context.restaurantData;
-  const user = context.userConnected;
-  const employee = restaurant?.employees?.find((item) => String(item._id) === String(user?.id));
-  const profile = employee?.restaurantProfiles?.find((item) => String(item.restaurant) === String(restaurant._id));
-  const canManage = restaurant?.options?.employees && (
-    user?.role === "owner" || (user?.role === "employee" && profile?.options?.employees === true)
-  );
+  const canManage = !context.dataLoading && canManagePersonnel(restaurant, context.userConnected);
 
   return (
     <>

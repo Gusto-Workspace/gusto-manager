@@ -28,7 +28,7 @@ const {
   decorateRestaurantEmployees,
   sanitizeEmployeeForRestaurants,
 } = require("../services/employees/employee-serialization.service");
-const { provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
+const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservations/reservation-service-closure.service");
@@ -484,9 +484,7 @@ router.get("/owner/employees", authenticateToken, async (req, res) => {
     })
       .select(
         `
-        accountType firstname lastname email phone secuNumber address emergencyContact
-        post dateOnPost profilePicture
-        restaurants restaurantProfiles
+        accountType firstname lastname email phone restaurants
       `,
       )
       .populate("restaurants", "name _id")
@@ -526,6 +524,9 @@ router.post(
       if (String(restaurant.owner_id) !== String(req.user.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      if (restaurant.options?.employees !== true || !mongoose.isValidObjectId(employeeId)) {
+        return res.status(400).json({ message: "Rattachement indisponible." });
+      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee) {
@@ -544,6 +545,12 @@ router.post(
           .status(409)
           .json({ message: "Employee already in this restaurant" });
       }
+      const canLink = await RestaurantModel.exists({
+        _id: { $in: employee.restaurants },
+        owner_id: req.user.id,
+        employees: employee._id,
+      });
+      if (!canLink) return res.status(404).json({ message: "Compte à rattacher introuvable." });
 
       const existingProfile = findRestaurantProfile(employee, restaurantId);
       const profile = existingProfile || {
@@ -591,6 +598,8 @@ router.post(
 
       return res.json({ restaurant: decoratedRestaurant });
     } catch (e) {
+      const problem = clockPinWriteProblem(e);
+      if (problem) return res.status(409).json(problem);
       console.error("Error importing employee", { code: e.code || e.name });
       return res.status(500).json({ message: "Internal server error" });
     }

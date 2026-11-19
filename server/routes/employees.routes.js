@@ -22,7 +22,7 @@ const {
 // MODELS
 const EmployeeModel = require("../models/employee.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
-const { provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
+const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const RestaurantModel = require("../models/restaurant.model");
 const OwnerModel = require("../models/owner.model");
 const TrainingSession = require("../models/logs/training-session.model");
@@ -81,7 +81,7 @@ const {
 // ---------- HELPERS MULTI-RESTAURANTS / PROFILES ----------
 
 function normalizeEmail(email) {
-  return (email || "").trim().toLowerCase();
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
 }
 
 function normalizeAccountType(value) {
@@ -204,9 +204,10 @@ function syncEmployeeIdentityAcrossProfiles(employee, updates = {}) {
   });
 }
 
-function setEmployeeProfileOptions(profile, options) {
+function setEmployeeProfileOptions(profile, options, { partial = false } = {}) {
   profile.options ??= {};
   for (const key of Object.keys(profile.schema.path("options").schema.paths)) {
+    if (partial && !Object.hasOwn(options, key)) continue;
     profile.options[key] = options?.[key] ?? false;
   }
 }
@@ -230,7 +231,7 @@ function broadcastEmployeeUpdate(employee) {
 
 async function getEmployeesAccessContext(request, restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId).select(
-    "name owner_id employees",
+    "name owner_id employees options.employees",
   );
 
   if (!restaurant) {
@@ -253,6 +254,7 @@ async function getEmployeesAccessContext(request, restaurantId) {
     );
     if (
       !currentEmployee ||
+      isAccountant(currentEmployee) ||
       !isListedByRestaurant ||
       !employeeWorksInRestaurant(currentEmployee, restaurantId)
     ) {
@@ -313,6 +315,7 @@ async function getEmployeeRouteAccess(
   employeeId,
   {
     managerOnly = false,
+    requireModule = false,
     allowSelf = true,
     allowAccountantSelf = false,
     allowAccountantTarget = false,
@@ -327,6 +330,9 @@ async function getEmployeeRouteAccess(
 
   if (managerOnly && !accessContext.isManager) {
     return { error: { status: 403, message: "Forbidden" } };
+  }
+  if (requireModule && accessContext.restaurant.options?.employees !== true) {
+    return { error: { status: 403, message: "Le module Gestion du personnel est indisponible." } };
   }
 
   if (
@@ -1202,6 +1208,7 @@ router.post(
       contractualValue,
       contractualUnit,
       accountType,
+      existingEmployeeId,
     } = req.body;
 
     const normalizedEmail = normalizeEmail(email);
@@ -1227,6 +1234,9 @@ router.post(
       if (normalizedEmail && !isValidEmail(normalizedEmail)) {
         return res.status(400).json({ message: "Invalid email" });
       }
+      if (normalizedAccountType !== "accountant" && dateOnPost && Number.isNaN(+new Date(dateOnPost))) {
+        return res.status(400).json({ message: "La date de prise de poste est invalide." });
+      }
 
       const accessContext = await getEmployeeRouteAccess(
         req,
@@ -1234,6 +1244,7 @@ router.post(
         null,
         {
           managerOnly: true,
+          requireModule: true,
         },
       );
       if (accessContext.error) {
@@ -1242,21 +1253,16 @@ router.post(
           .json({ message: accessContext.error.message });
       }
 
-      let profilePicture = null;
-      if (req.file) {
-        const cloudinaryResponse = await uploadFromBuffer(
-          req.file.buffer,
-          `Gusto_Workspace/restaurants/${restaurantId}/employees`,
-        );
-        profilePicture = {
-          url: cloudinaryResponse.secure_url,
-          public_id: cloudinaryResponse.public_id,
-        };
-      }
-
       // 1) Vérifier si un employé existe déjà avec cet email
       let existingEmployee = null;
-      if (normalizedEmail) {
+      if (existingEmployeeId) {
+        if (req.user.role !== "owner") return res.status(403).json({ message: "Forbidden" });
+        if (!mongoose.isValidObjectId(existingEmployeeId)) return res.status(400).json({ message: "Identifiant invalide" });
+        existingEmployee = await EmployeeModel.findById(existingEmployeeId);
+        if (!existingEmployee || normalizeEmail(existingEmployee.email) !== normalizedEmail) {
+          return res.status(404).json({ message: "Compte à rattacher introuvable." });
+        }
+      } else if (normalizedEmail) {
         const [employeeDuplicate, ownerDuplicate] = await Promise.all([
           EmployeeModel.findOne({ email: normalizedEmail }),
           OwnerModel.findOne({ email: normalizedEmail }),
@@ -1273,6 +1279,17 @@ router.post(
         existingEmployee = employeeDuplicate;
       }
 
+      if (existingEmployee && !employeeWorksInRestaurant(existingEmployee, restaurantId) &&
+          !(await RestaurantModel.exists({
+            _id: { $in: existingEmployee.restaurants },
+            owner_id: accessContext.restaurant.owner_id,
+            employees: existingEmployee._id,
+          }))) {
+        return res.status(existingEmployeeId ? 404 : 409).json({
+          message: existingEmployeeId ? "Compte à rattacher introuvable." : "Cette adresse e-mail ne peut pas être utilisée pour ce compte.",
+        });
+      }
+
       if (
         existingEmployee &&
         employeeWorksInRestaurant(existingEmployee, restaurantId)
@@ -1282,6 +1299,12 @@ router.post(
           message:
             "Un employé utilise déjà cette adresse mail dans ce restaurant.",
         });
+      }
+
+      let profilePicture = null;
+      if (!existingEmployee && req.file) {
+        const result = await uploadFromBuffer(req.file.buffer, `Gusto_Workspace/restaurants/${restaurantId}/employees`);
+        profilePicture = { url: result.secure_url, public_id: result.public_id };
       }
 
       if (
@@ -1357,6 +1380,7 @@ router.post(
         };
 
         const newEmployee = await withClockPinTransaction(async (session) => {
+          if (normalizedEmail && await EmployeeModel.exists({ email: normalizedEmail }).session(session)) return null;
           const employee = await new EmployeeModel(employeeData).save({ session });
           const roster = await RestaurantModel.updateOne(
             { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
@@ -1369,6 +1393,10 @@ router.post(
             });
           }
           return employee;
+        });
+        if (!newEmployee) return res.status(409).json({
+          code: "EMPLOYEE_EMAIL_EXISTS",
+          message: "Un compte utilise déjà cette adresse e-mail. Vérifiez le rattachement et réessayez.",
         });
 
         if (newEmployee.email) {
@@ -1411,148 +1439,32 @@ router.post(
 
         const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
-        return res.status(201).json({ restaurant: updatedRestaurant });
+        return res.status(201).json({ restaurant: updatedRestaurant, employeeId: newEmployee._id });
       }
 
-      // ---------- CAS 2 : EMPLOYÉ EXISTANT ----------
-      // 🔹 Photo globale (si upload)
-      if (profilePicture) {
-        existingEmployee.profilePicture = profilePicture;
-      }
-
-      // 🔹 Mettre à jour les infos "globales" de l'employé
-      //    -> on prend ce qui vient du formulaire si ce n'est pas vide,
-      //       sinon on garde ce qu'il y avait déjà.
-      if (typeof lastName !== "undefined" && lastName !== "") {
-        existingEmployee.lastname = lastName;
-      }
-      if (typeof firstName !== "undefined" && firstName !== "") {
-        existingEmployee.firstname = firstName;
-      }
-      if (typeof phone !== "undefined" && phone !== "") {
-        existingEmployee.phone = phone;
-      }
-      if (
-        normalizedAccountType !== "accountant" &&
-        typeof secuNumber !== "undefined" &&
-        secuNumber !== ""
-      ) {
-        existingEmployee.secuNumber = secuNumber;
-      }
-      if (
-        normalizedAccountType !== "accountant" &&
-        typeof address !== "undefined" &&
-        address !== ""
-      ) {
-        existingEmployee.address = address;
-      }
-      if (
-        normalizedAccountType !== "accountant" &&
-        typeof emergencyContact !== "undefined" &&
-        emergencyContact !== ""
-      ) {
-        existingEmployee.emergencyContact = emergencyContact;
-      }
-      if (
-        normalizedAccountType !== "accountant" &&
-        typeof post !== "undefined" &&
-        post !== ""
-      ) {
-        existingEmployee.post = post;
-      }
-      if (
-        normalizedAccountType !== "accountant" &&
-        typeof dateOnPost !== "undefined" &&
-        dateOnPost !== ""
-      ) {
-        existingEmployee.dateOnPost = new Date(dateOnPost);
-      }
-
-      // 🔹 Email global normalisé
-      if (typeof normalizedEmail !== "undefined" && normalizedEmail !== "") {
-        existingEmployee.email = normalizedEmail;
-      }
-
-      // 🔹 Profil spécifique à CE restaurant
+      // ---------- CAS 2 : RATTACHEMENT D’UN COMPTE ----------
       const existingProfile = findRestaurantProfile(existingEmployee, restaurantId);
       const profile = existingProfile || {
         _id: new mongoose.Types.ObjectId(), restaurant: restaurantId, snapshot: {}, employment: {},
       };
       profile.snapshot ??= {};
-      profile.employment ??= {};
+      profile.snapshot.firstname = existingEmployee.firstname;
+      profile.snapshot.lastname = existingEmployee.lastname;
+      profile.snapshot.email = existingEmployee.email;
+      profile.snapshot.phone = phone;
 
-      if (normalizedAccountType === "accountant" && existingProfile) {
-        setEmployeeProfileOptions(profile, {});
-      }
-
-      // Snapshot = données figées pour CE restaurant
-      profile.snapshot.firstname =
-        typeof firstName !== "undefined" && firstName !== ""
-          ? firstName
-          : existingEmployee.firstname;
-
-      profile.snapshot.lastname =
-        typeof lastName !== "undefined" && lastName !== ""
-          ? lastName
-          : existingEmployee.lastname;
-
-      profile.snapshot.email =
-        typeof normalizedEmail !== "undefined" && normalizedEmail !== ""
-          ? normalizedEmail
-          : existingEmployee.email;
-
-      profile.snapshot.phone =
-        typeof phone !== "undefined" && phone !== ""
-          ? phone
-          : existingEmployee.phone;
-
-      profile.snapshot.secuNumber =
-        normalizedAccountType !== "accountant" &&
-        typeof secuNumber !== "undefined" &&
-        secuNumber !== ""
-          ? secuNumber
-          : normalizedAccountType === "accountant"
-            ? ""
-            : existingEmployee.secuNumber;
-
-      profile.snapshot.address =
-        normalizedAccountType !== "accountant" &&
-        typeof address !== "undefined" &&
-        address !== ""
-          ? address
-          : normalizedAccountType === "accountant"
-            ? ""
-            : existingEmployee.address;
-
-      profile.snapshot.emergencyContact =
-        normalizedAccountType !== "accountant" &&
-        typeof emergencyContact !== "undefined" &&
-        emergencyContact !== ""
-          ? emergencyContact
-          : normalizedAccountType === "accountant"
-            ? ""
-            : existingEmployee.emergencyContact;
-
-      profile.snapshot.post =
-        normalizedAccountType === "accountant"
-          ? ""
-          : typeof post !== "undefined" && post !== ""
-            ? post
-            : existingEmployee.post;
-
-      profile.snapshot.dateOnPost =
-        normalizedAccountType === "accountant"
-          ? undefined
-          : typeof dateOnPost !== "undefined" && dateOnPost !== ""
-            ? new Date(dateOnPost)
-            : existingEmployee.dateOnPost || profile.snapshot.dateOnPost;
-
-      if (normalizedAccountType !== "accountant") {
-        profile.employment.contractType = normalizedEmployment.contractType;
-        profile.employment.contractualValue =
-          normalizedEmployment.contractualValue;
-        profile.employment.contractualUnit =
-          normalizedEmployment.contractualUnit;
+      if (normalizedAccountType === "accountant") {
+        if (existingProfile) setEmployeeProfileOptions(profile, {});
+      } else {
+        Object.assign(profile.snapshot, {
+          secuNumber: secuNumber || "",
+          address: address || "",
+          emergencyContact: emergencyContact || "",
+          post: post || "",
+          dateOnPost: dateOnPost ? new Date(dateOnPost) : null,
+        });
+        profile.employment ??= {};
+        Object.assign(profile.employment, normalizedEmployment);
       }
 
       const linked = await withClockPinTransaction(async (session) => {
@@ -1582,8 +1494,10 @@ router.post(
 
       const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
-      return res.status(200).json({ restaurant: updatedRestaurant });
+      return res.status(200).json({ restaurant: updatedRestaurant, employeeId: existingEmployee._id });
     } catch (error) {
+      const problem = clockPinWriteProblem(error);
+      if (problem) return res.status(409).json(problem);
       console.error("Error creating/importing employee", { code: error.code || error.name });
       res.status(500).json({ message: "Internal server error" });
     }
@@ -1618,7 +1532,7 @@ router.patch(
         req,
         restaurantId,
         employeeId,
-        { managerOnly: true, allowAccountantTarget: true },
+        { managerOnly: true, requireModule: true, allowAccountantTarget: true },
       );
       if (accessContext.error) {
         return res
@@ -1627,8 +1541,31 @@ router.patch(
       }
 
       let employee = await EmployeeModel.findById(employeeId);
-      if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
+      if (!employee || !employeeWorksInRestaurant(employee, restaurantId) ||
+          !accessContext.restaurant.employees.some((id) => String(id) === employeeId)) {
         return res.status(404).json({ message: "Employee not found" });
+      }
+      const normalizedEmail = normalizeEmail(email);
+      const employeeIsAccountant = isAccountant(employee);
+      if (email !== undefined && ((normalizedEmail && !isValidEmail(normalizedEmail)) ||
+          (employeeIsAccountant && !normalizedEmail))) {
+        return res.status(400).json({ message: "Saisissez une adresse e-mail valide." });
+      }
+      if ([firstname, lastname, phone].some((value) => value !== undefined && !String(value || "").trim())) {
+        return res.status(400).json({ message: "Le prénom, le nom et le téléphone sont requis." });
+      }
+      if (!employeeIsAccountant && dateOnPost && Number.isNaN(+new Date(dateOnPost))) {
+        return res.status(400).json({ message: "La date de prise de poste est invalide." });
+      }
+      let optionChanges;
+      if (!employeeIsAccountant && options !== undefined) {
+        try {
+          optionChanges = typeof options === "string" ? JSON.parse(options) : options;
+          if (!optionChanges || typeof optionChanges !== "object" || Array.isArray(optionChanges) ||
+              Object.values(optionChanges).some((value) => typeof value !== "boolean")) throw new Error();
+        } catch {
+          return res.status(400).json({ message: "Les droits d’accès sont invalides." });
+        }
       }
       employee = await ensureEmployeeProfileForEdit(employee, restaurantId);
       const profile = findRestaurantProfile(employee, restaurantId);
@@ -1651,8 +1588,6 @@ router.patch(
         };
       }
 
-      const employeeIsAccountant = isAccountant(employee);
-
       if (!profile.snapshot) {
         profile.snapshot = {};
       }
@@ -1665,34 +1600,16 @@ router.patch(
         });
       }
 
-      if (phone !== undefined) {
-        employee.phone = phone;
-        profile.snapshot.phone = phone;
-      }
-      if (!employeeIsAccountant && secuNumber !== undefined) {
-        employee.secuNumber = secuNumber;
-        profile.snapshot.secuNumber = secuNumber;
-      }
-      if (!employeeIsAccountant && address !== undefined) {
-        employee.address = address;
-        profile.snapshot.address = address;
-      }
-      if (!employeeIsAccountant && emergencyContact !== undefined) {
-        employee.emergencyContact = emergencyContact;
-        profile.snapshot.emergencyContact = emergencyContact;
-      }
-      if (!employeeIsAccountant && post !== undefined) {
-        employee.post = post;
-        profile.snapshot.post = post;
-      }
-      if (!employeeIsAccountant && dateOnPost !== undefined) {
-        employee.dateOnPost = dateOnPost ? new Date(dateOnPost) : undefined;
-        profile.snapshot.dateOnPost = dateOnPost
-          ? new Date(dateOnPost)
-          : undefined;
+      const scopedChanges = employeeIsAccountant ? { phone } : {
+        phone, secuNumber, address, emergencyContact, post,
+        dateOnPost: dateOnPost === undefined ? undefined : dateOnPost ? new Date(dateOnPost) : null,
+      };
+      for (const [key, value] of Object.entries(scopedChanges)) {
+        if (value === undefined) continue;
+        profile.snapshot[key] = value;
+        if (employee.restaurants.length === 1) employee[key] = value;
       }
 
-      const normalizedEmail = normalizeEmail(email);
       if (email !== undefined) {
         if (normalizedEmail && normalizedEmail !== employee.email) {
           const [employeeDuplicate, ownerDuplicate] = await Promise.all([
@@ -1717,8 +1634,8 @@ router.patch(
         }
       }
 
-      if (!employeeIsAccountant && options !== undefined) {
-        setEmployeeProfileOptions(profile, typeof options === "string" ? JSON.parse(options) : options);
+      if (optionChanges) {
+        setEmployeeProfileOptions(profile, optionChanges, { partial: true });
       } else if (employeeIsAccountant) {
         setEmployeeProfileOptions(profile, {});
       }
@@ -1744,6 +1661,9 @@ router.patch(
 
       res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
+      if (["VersionError", "DocumentNotFoundError"].includes(error.name)) {
+        return res.status(409).json({ message: "Cette fiche a été mise à jour entre-temps. Réessayez." });
+      }
       console.error("Error updating employee:", error);
       res.status(500).json({ message: "Internal server error" });
     }
@@ -2060,7 +1980,7 @@ router.delete(
         req,
         restaurantId,
         employeeId,
-        { managerOnly: true, allowAccountantTarget: true },
+        { managerOnly: true, requireModule: true, allowAccountantTarget: true },
       );
       if (accessContext.error) {
         return res

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useContext, useEffect } from "react";
+import { useState, useContext, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { createPortal } from "react-dom";
 
@@ -19,72 +19,37 @@ import { useTranslation } from "next-i18next";
 // SVG
 import { EmployeesSvg } from "../../_shared/_svgs/_index";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
+import { contractTypes, contractUnits } from "./data.employees.component";
+import { applyRosterResponse, directoryPath, normalizePersonnelSearch } from "./employee-directory.utils.mjs";
 
 // ICONS LUCIDE
 import {
   User,
-  Mail,
-  Phone,
-  Briefcase,
-  CalendarDays,
-  Shield,
-  Home,
-  PhoneCall,
   Search,
   X,
   Loader2,
 } from "lucide-react";
 
-/* ---------- Utils ---------- */
-
-function getImportedEmployment(employee) {
-  const profiles = Array.isArray(employee?.restaurantProfiles)
-    ? employee.restaurantProfiles
-    : [];
-  const firstEmployment = profiles.find(
-    (profile) => profile?.employment,
-  )?.employment;
-
-  return {
-    contractType: firstEmployment?.contractType || "",
-    contractualValue:
-      firstEmployment?.contractualValue ||
-      firstEmployment?.contractualValue === 0
-        ? String(firstEmployment.contractualValue || "")
-        : "",
-    contractualUnit: firstEmployment?.contractualUnit || "",
-  };
-}
-
-const CONTRACT_TYPE_OPTIONS = [
-  { value: "", label: "Type de contrat" },
-  { value: "CDI", label: "CDI" },
-  { value: "CDD", label: "CDD" },
-  { value: "Extra", label: "Extra" },
-  { value: "Intérim", label: "Intérim" },
-  { value: "Alternance", label: "Alternance" },
-  { value: "Stage", label: "Stage" },
-];
-
-const CONTRACT_UNIT_OPTIONS = [
-  { value: "week", label: "h / semaine" },
-  { value: "month", label: "h / mois" },
-];
+const initialValues = { accountType: "employee" };
 
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [step, setStep] = useState(1);
+  const [linkedEmployee, setLinkedEmployee] = useState(null);
+  const live = useRef(false);
   const router = useRouter();
 
   const {
     register,
     handleSubmit,
     reset,
+    trigger,
     watch,
-    formState: { errors, isSubmitted },
-  } = useForm({ defaultValues: { accountType: "employee" } });
+    formState: { errors },
+  } = useForm({ defaultValues: initialValues });
 
   const accountType = watch("accountType") || "employee";
 
@@ -98,10 +63,10 @@ export default function AddEmployeesComponent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isBrowser, setIsBrowser] = useState(false);
 
-  const [importLoadingId, setImportLoadingId] = useState(null);
-
   useEffect(() => {
+    live.current = true;
     setIsBrowser(true);
+    return () => { live.current = false; };
   }, []);
 
   useEffect(() => {
@@ -123,11 +88,7 @@ export default function AddEmployeesComponent() {
       setIsLoadingExisting(true);
       setImportError("");
 
-      const ownerId =
-        restaurantContext?.restaurantData?.owner_id?._id ||
-        restaurantContext?.restaurantData?.owner_id;
-
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/owner/employees?ownerId=${ownerId}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/owner/employees`;
       const { data } = await axios.get(url);
 
       setExistingEmployees(data.employees || []);
@@ -163,11 +124,8 @@ export default function AddEmployeesComponent() {
   const filteredEmployees = existingEmployees.filter((emp) => {
     if (emp.accountType === "accountant") return false;
     if (!searchTerm.trim()) return true;
-    const q = searchTerm.toLowerCase();
-    const fullName =
-      `${emp.firstname || ""} ${emp.lastname || ""}`.toLowerCase();
-    const email = (emp.email || "").toLowerCase();
-    return fullName.includes(q) || email.includes(q);
+    return normalizePersonnelSearch(`${emp.firstname || ""} ${emp.lastname || ""} ${emp.email || ""}`)
+      .includes(normalizePersonnelSearch(searchTerm));
   });
 
   // ---------- IMPORT EMPLOYÉ ----------
@@ -178,61 +136,51 @@ export default function AddEmployeesComponent() {
     if (!selected) return;
 
     setImportError("");
-    setImportLoadingId(employeeId);
-
-    const employment = getImportedEmployment(selected);
-
+    setLinkedEmployee(selected);
+    setStep(1);
     reset({
+      ...initialValues,
       lastName: selected.lastname || "",
       firstName: selected.firstname || "",
       email: selected.email || "",
       phone: selected.phone || "",
-      post: selected.post || "",
-      dateOnPost: "",
-      secuNumber: selected.secuNumber || "",
-      address: selected.address || "",
-      emergencyContact: selected.emergencyContact || "",
-      contractType: employment.contractType,
-      contractualValue: employment.contractualValue,
-      contractualUnit: employment.contractualUnit,
     });
 
     setShowImportModal(false);
-    setImportLoadingId(null);
   }
 
   // ---------- SUBMIT FORMULAIRE AJOUT / IMPORT ----------
 
   async function onSubmit(data) {
     setCreateErrorModal(null);
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${currentRestaurantId}/employees`;
     const formData = new FormData();
     formData.append("lastName", data.lastName);
     formData.append("firstName", data.firstName);
-    formData.append("email", data.email);
+    formData.append("email", data.email || "");
     formData.append("phone", data.phone);
     formData.append("accountType", data.accountType || "employee");
-    formData.append("post", data.post);
-    formData.append("dateOnPost", data.dateOnPost);
+    formData.append("post", data.post || "");
+    formData.append("dateOnPost", data.dateOnPost || "");
     formData.append("secuNumber", data.secuNumber || "");
     formData.append("address", data.address || "");
     formData.append("emergencyContact", data.emergencyContact || "");
     formData.append("contractType", data.contractType || "");
     formData.append("contractualValue", data.contractualValue || "");
     formData.append("contractualUnit", data.contractualUnit || "");
+    if (linkedEmployee) formData.append("existingEmployeeId", linkedEmployee._id);
 
     setIsSaving(true);
     try {
       const response = await axios.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-      reset();
-      router.replace("/dashboard/employees");
+      restaurantContext.setRestaurantData((previous) => applyRosterResponse(previous, currentRestaurantId, response.data.restaurant));
+      if (!live.current) return;
+      router.replace(response.data.employeeId ? {
+        pathname: `${directoryPath}/[employeeId]`,
+        query: { employeeId: response.data.employeeId, ...(data.accountType !== "accountant" && { tab: "access" }) },
+      } : directoryPath);
     } catch (err) {
       console.error("Error creating employee:", err);
       const code = err?.response?.data?.code || "";
@@ -257,14 +205,7 @@ export default function AddEmployeesComponent() {
 
   // ---------- Styles communs ----------
 
-  const fieldWrap =
-    "group relative rounded-xl bg-white/50 px-3 py-2 h-[80px] transition-shadow";
-  const labelCls =
-    "flex items-center gap-2 text-xs font-medium text-darkBlue/60 mb-1";
-  const inputBaseCls =
-    "h-11 w-full rounded-lg border bg-white px-3 text-[15px] outline-none transition placeholder:text-darkBlue/40";
-  const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
-  const inputErrorCls = `${inputBaseCls} border-red`;
+  const inputClass = "min-h-10 w-full rounded-lg border bg-white px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
 
   // ---------- Modale d'import (portal) ----------
 
@@ -278,18 +219,22 @@ export default function AddEmployeesComponent() {
             />
             <section
               onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="employee-import-title"
               className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white p-6 shadow-xl flex flex-col gap-4"
             >
               <button
                 type="button"
                 onClick={handleCloseImportModal}
+                aria-label="Fermer"
                 className="absolute right-3 top-3 p-1 rounded-full hover:bg-black/5"
               >
                 <X className="w-5 h-5 text-darkBlue/70" />
               </button>
 
               <div className="flex flex-col gap-1 pr-8">
-                <h2 className="text-lg font-semibold text-darkBlue">
+                <h2 id="employee-import-title" className="text-lg font-semibold text-darkBlue">
                   {t("titles.importExistingEmployee", {
                     defaultValue: "Importer un employé existant",
                   })}
@@ -307,6 +252,7 @@ export default function AddEmployeesComponent() {
                 <Search className="w-4 h-4 text-darkBlue/50" />
                 <input
                   type="text"
+                  aria-label="Rechercher un compte à rattacher"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder={t("placeholders.searchEmployee", {
@@ -349,11 +295,10 @@ export default function AddEmployeesComponent() {
                         currentRestaurantId &&
                         Array.isArray(emp.restaurants) &&
                         emp.restaurants.some(
-                          (r) => String(r._id) === String(currentRestaurantId),
+                          (r) => String(r._id || r) === String(currentRestaurantId),
                         );
 
-                      const disabled =
-                        importLoadingId !== null || alreadyInCurrent;
+                      const disabled = alreadyInCurrent;
 
                       return (
                         <li
@@ -385,11 +330,7 @@ export default function AddEmployeesComponent() {
 
                           <button
                             type="button"
-                            onClick={() =>
-                              !alreadyInCurrent &&
-                              !importLoadingId &&
-                              handleImportEmployee(emp._id)
-                            }
+                            onClick={() => handleImportEmployee(emp._id)}
                             disabled={disabled}
                             className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm ${
                               alreadyInCurrent
@@ -401,11 +342,7 @@ export default function AddEmployeesComponent() {
                               ? t("labels.existingEmployee", {
                                   defaultValue: "Existant",
                                 })
-                              : importLoadingId === emp._id
-                                ? t("buttons.loading", {
-                                    defaultValue: "En cours...",
-                                  })
-                                : t("buttons.importExistingEmployee", {
+                              : t("buttons.importExistingEmployee", {
                                     defaultValue: "Importer",
                                   })}
                           </button>
@@ -488,352 +425,141 @@ export default function AddEmployeesComponent() {
         )
       : null;
 
+  const employeeAccount = accountType !== "accountant";
+  const accountFields = [
+    { key: "firstName", label: t("labels.firstname"), required: true, readOnly: Boolean(linkedEmployee) },
+    { key: "lastName", label: t("labels.lastname"), required: true, readOnly: Boolean(linkedEmployee) },
+    { key: "email", label: t("labels.email"), type: "email", required: !employeeAccount, readOnly: Boolean(linkedEmployee) },
+    { key: "phone", label: t("labels.phone"), type: "tel", required: true },
+  ];
+  const employmentFields = [
+    { key: "post", label: t("labels.post"), required: true },
+    { key: "dateOnPost", label: t("labels.dateOnPost"), type: "date" },
+    { key: "contractType", label: "Type de contrat", choices: contractTypes },
+    { key: "contractualValue", label: "Volume horaire", type: "number" },
+    { key: "contractualUnit", label: "Unité", choices: Object.keys(contractUnits) },
+  ];
+  const personalFields = [
+    { key: "secuNumber", label: t("labels.secuNumber") },
+    { key: "address", label: t("labels.address") },
+    { key: "emergencyContact", label: t("labels.emergencyContact") },
+  ];
+
+  function renderFields(fields, columns = "midTablet:grid-cols-2") {
+    return (
+      <div className={`grid gap-4 ${columns}`}>
+        {fields.map(({ key, label, type, choices, required, readOnly }) => {
+          const binding = register(key, {
+            required: required ? "Ce champ est requis." : false,
+            validate: type === "email" ? (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Saisissez une adresse e-mail valide." : undefined,
+            min: type === "number" ? { value: 0, message: "Le volume horaire doit être positif." } : undefined,
+          });
+          const className = `${inputClass} ${errors[key] ? "border-red" : "border-darkBlue/20"} ${readOnly ? "bg-lightGrey text-darkBlue/65" : ""}`;
+          return (
+            <label key={key} className="grid content-start gap-1.5 text-sm font-medium">
+              <span>{label}{required && " *"}</span>
+              {choices ? (
+                <select {...binding} className={className}>
+                  <option value="">Non renseigné</option>
+                  {choices.map((choice) => <option key={choice} value={choice}>{contractUnits[choice] || choice}</option>)}
+                </select>
+              ) : (
+                <input {...binding} type={type || "text"} readOnly={readOnly}
+                  {...(type === "number" && { min: 0, step: "any" })}
+                  className={className} aria-invalid={Boolean(errors[key])} />
+              )}
+              {errors[key] && <span role="alert" className="text-xs text-red">{errors[key].message}</span>}
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function submit(event) {
+    if (step === 1 && employeeAccount) {
+      event.preventDefault();
+      trigger(accountFields.map(({ key }) => key), { shouldFocus: true }).then((valid) => {
+        if (valid) setStep(2);
+      });
+      return;
+    }
+    handleSubmit(onSubmit, (invalid) => {
+      if (accountFields.some(({ key }) => invalid[key])) setStep(1);
+    })(event);
+  }
+
   return (
     <>
       {importModal}
       {createEmployeeErrorModal}
-
-      <section className="flex flex-col gap-6">
-        <hr className="opacity-20" />
-
+      <section className="grid min-w-0 gap-5 border-t border-darkBlue/10 pt-4">
         <CatalogHeaderDashboardComponent
           icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
           title={t("employees:titles.main")}
-          onTitleClick={() => router.push("/dashboard/employees")}
-          onBack={() => router.push("/dashboard/employees")}
-          subtitle={t("buttons.add", "Ajouter")}
-          actions={
-            accountType === "employee" ? (
-              <button
-                type="button"
-                onClick={handleOpenImportModal}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue/40 bg-white/70 px-4 py-2 text-sm font-medium text-blue shadow-sm hover:bg-blue/5 transition"
-              >
-                <User className="w-4 h-4" />
-                {t("buttons.importExistingEmployeeFull", {
-                  defaultValue: "Importer un employé existant",
-                })}
-              </button>
-            ) : null
-          }
+          onTitleClick={() => router.push(directoryPath)}
+          onBack={() => router.push(directoryPath)}
+          subtitle={linkedEmployee ? "Rattacher un salarié" : "Ajouter un employé"}
+          actions={step === 1 && employeeAccount && restaurantContext.userConnected?.role === "owner" ? (
+            <button type="button" onClick={handleOpenImportModal}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue/30 bg-white px-3 text-sm font-semibold text-blue hover:bg-blue/5">
+              <User size={16} aria-hidden="true" /> Rattacher un salarié existant
+            </button>
+          ) : null}
         />
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="relative flex flex-col gap-3"
-        >
-          <section className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-            <p className="text-sm font-semibold text-darkBlue">
-              Type de compte
-            </p>
-            <p className="mt-1 text-xs text-darkBlue/55">
-              Le compte comptable accède uniquement aux exports d’heures et aux
-              documents.
-            </p>
-            <div className="mt-3 grid gap-2 mobile:grid-cols-2">
-              {[
-                {
-                  value: "employee",
-                  label: "Salarié",
-                  description: "Planning, pointeuse et données RH.",
-                },
-                {
-                  value: "accountant",
-                  label: "Comptable",
-                  description: "Heures et dépôt de documents uniquement.",
-                },
-              ].map((option) => (
-                <label
-                  key={option.value}
-                  className={`cursor-pointer rounded-xl border p-3 transition ${
-                    accountType === option.value
-                      ? "border-blue/30 bg-blue/5"
-                      : "border-darkBlue/10 bg-white/70"
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-darkBlue">
-                    <input
-                      type="radio"
-                      value={option.value}
-                      {...register("accountType")}
-                      className="text-blue focus:ring-blue"
-                    />
-                    {option.label}
-                  </span>
-                  <span className="mt-1 block pl-6 text-xs text-darkBlue/55">
-                    {option.description}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          <div className="grid grid-cols-1 midTablet:grid-cols-3 gap-2">
-            {/* Prénom */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="firstName" className={labelCls}>
-                  <User className="size-4" />
-                  {t("labels.firstname")}
-                </label>
-                <input
-                  id="firstName"
-                  type="text"
-                  {...register("firstName", { required: true })}
-                  className={
-                    errors.firstName && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
+        <form onSubmit={submit} noValidate className="grid gap-4">
+          <div hidden={step !== 1}>
+            <section className="grid gap-4 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+              <div>
+                <h2 className="text-lg font-semibold">Profil et accès</h2>
+                <p className="mt-1 text-sm text-darkBlue/70">{restaurantContext.restaurantData.name}</p>
               </div>
-            </div>
-
-            {/* Nom */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="lastName" className={labelCls}>
-                  <User className="size-4" />
-                  {t("labels.lastname")}
-                </label>
-                <input
-                  id="lastName"
-                  type="text"
-                  {...register("lastName", { required: true })}
-                  className={
-                    errors.lastName && isSubmitted
-                      ? inputErrorCls
-                      : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Email */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="email" className={labelCls}>
-                  <Mail className="size-4" />
-                  {t("labels.email")}
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  {...register("email", { required: true })}
-                  className={
-                    errors.email && isSubmitted ? inputErrorCls : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Téléphone */}
-            <div className="w-full">
-              <div className={fieldWrap}>
-                <label htmlFor="phone" className={labelCls}>
-                  <Phone className="size-4" />
-                  {t("labels.phone")}
-                </label>
-                <input
-                  id="phone"
-                  type="text"
-                  {...register("phone", { required: true })}
-                  className={
-                    errors.phone && isSubmitted ? inputErrorCls : inputNormalCls
-                  }
-                />
-              </div>
-            </div>
-
-            {accountType !== "accountant" ? (
-              <>
-                {/* Poste */}
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="post" className={labelCls}>
-                      <Briefcase className="size-4" />
-                      {t("labels.post")}
-                    </label>
-                    <input
-                      id="post"
-                      type="text"
-                      {...register("post", { required: true })}
-                      className={
-                        errors.post && isSubmitted
-                          ? inputErrorCls
-                          : inputNormalCls
-                      }
-                    />
-                  </div>
+              {linkedEmployee ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-blue/5 p-3 text-sm">
+                  <span>Compte à rattacher · <strong>{linkedEmployee.firstname} {linkedEmployee.lastname}</strong></span>
+                  <button type="button" onClick={() => { setLinkedEmployee(null); reset(initialValues); }}
+                    className="min-h-9 font-semibold text-blue underline">Choisir un nouveau compte</button>
+                  <input type="hidden" value="employee" {...register("accountType")} />
                 </div>
-
-                {/* Date de prise de poste */}
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="dateOnPost" className={labelCls}>
-                      <CalendarDays className="size-4" />
-                      {t("labels.dateOnPost")}
+              ) : (
+                <fieldset className="grid gap-2 midTablet:grid-cols-2">
+                  <legend className="mb-2 text-sm font-medium">Type de compte</legend>
+                  {[
+                    { value: "employee", label: "Salarié", description: "Planning, Pointeuse et accès selon les droits attribués." },
+                    { value: "accountant", label: "Comptable", description: "Exports d’heures et dépôt de documents." },
+                  ].map(({ value, label, description }) => (
+                    <label key={value} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm ${accountType === value ? "border-blue/35 bg-blue/5" : "border-darkBlue/10"}`}>
+                      <input type="radio" value={value} {...register("accountType")} className="mt-1 text-blue focus:ring-blue" />
+                      <span><strong>{label}</strong><span className="mt-1 block text-xs text-darkBlue/70">{description}</span></span>
                     </label>
-                    <input
-                      id="dateOnPost"
-                      type="date"
-                      {...register("dateOnPost")}
-                      className={
-                        errors.dateOnPost && isSubmitted
-                          ? inputErrorCls
-                          : inputNormalCls
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="contractType" className={labelCls}>
-                      <Briefcase className="size-4" />
-                      Type de contrat
-                    </label>
-                    <select
-                      id="contractType"
-                      {...register("contractType")}
-                      className={inputNormalCls}
-                    >
-                      {CONTRACT_TYPE_OPTIONS.map((option) => (
-                        <option
-                          key={option.value || "empty"}
-                          value={option.value}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="contractualValue" className={labelCls}>
-                      <CalendarDays className="size-4" />
-                      Temps contractuel
-                    </label>
-                    <input
-                      id="contractualValue"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      {...register("contractualValue")}
-                      className={inputNormalCls}
-                      placeholder="Ex. 35"
-                    />
-                  </div>
-                </div>
-
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="contractualUnit" className={labelCls}>
-                      <CalendarDays className="size-4" />
-                      Base du temps contractuel
-                    </label>
-                    <select
-                      id="contractualUnit"
-                      {...register("contractualUnit")}
-                      className={inputNormalCls}
-                    >
-                      <option value="" disabled hidden>
-                        Sélectionner
-                      </option>
-                      {CONTRACT_UNIT_OPTIONS.map((option) => (
-                        <option
-                          key={option.value || "empty"}
-                          value={option.value}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Numéro de SS */}
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="secuNumber" className={labelCls}>
-                      <Shield className="size-4" />
-                      {t("labels.secuNumber")}
-                    </label>
-                    <input
-                      id="secuNumber"
-                      type="text"
-                      {...register("secuNumber")}
-                      className={
-                        errors.secuNumber && isSubmitted
-                          ? inputErrorCls
-                          : inputNormalCls
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Adresse */}
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="address" className={labelCls}>
-                      <Home className="size-4" />
-                      {t("labels.address")}
-                    </label>
-                    <input
-                      id="address"
-                      type="text"
-                      {...register("address")}
-                      className={
-                        errors.address && isSubmitted
-                          ? inputErrorCls
-                          : inputNormalCls
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Contact urgence */}
-                <div className="w-full">
-                  <div className={fieldWrap}>
-                    <label htmlFor="emergencyContact" className={labelCls}>
-                      <PhoneCall className="size-4" />
-                      {t("labels.emergencyContact")}
-                    </label>
-                    <input
-                      id="emergencyContact"
-                      type="text"
-                      {...register("emergencyContact")}
-                      className={
-                        errors.emergencyContact && isSubmitted
-                          ? inputErrorCls
-                          : inputNormalCls
-                      }
-                    />
-                  </div>
-                </div>
-              </>
-            ) : null}
+                  ))}
+                </fieldset>
+              )}
+              {renderFields(accountFields)}
+              <p className="text-sm text-darkBlue/70">{linkedEmployee ? "Le salarié utilise son compte Gusto existant." :
+                employeeAccount ? "L’e-mail de connexion est facultatif. Une invitation est envoyée si vous le renseignez." : "L’invitation est envoyée à l’adresse e-mail renseignée."}</p>
+            </section>
           </div>
-
-          {/* Actions */}
-          <div className="mt-2 flex flex-col mobile:flex-row gap-2">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-60"
-            >
-              {isSaving ? t("buttons.loading") : t("buttons.save")}
+          {employeeAccount && <div hidden={step !== 2}>
+            <section className="grid gap-4 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+              <div>
+                <h2 className="text-lg font-semibold">Emploi et contrat</h2>
+                <p className="mt-1 text-sm text-darkBlue/70">{[watch("firstName"), watch("lastName")].filter(Boolean).join(" ")} · {restaurantContext.restaurantData.name}</p>
+              </div>
+                  {renderFields(employmentFields.slice(0, 3))}
+                  {renderFields(employmentFields.slice(3), "grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]")}
+              <h3 className="border-t border-darkBlue/10 pt-4 text-base font-semibold">Informations personnelles</h3>
+              {renderFields(personalFields)}
+            </section>
+          </div>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={isSaving} onClick={() => step === 2 ? setStep(1) : router.replace(directoryPath)}
+              className="min-h-10 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey">
+              {step === 2 ? "Retour au profil" : t("buttons.cancel")}
             </button>
-
-            <button
-              type="button"
-              onClick={() => router.replace("/dashboard/employees")}
-              disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red bg-red px-4 py-2 text-sm font-medium text-white"
-            >
-              {t("buttons.cancel")}
+            <button type="submit" disabled={isSaving} className="min-h-10 rounded-lg bg-blue px-3 text-sm font-semibold text-white disabled:opacity-60">
+              {isSaving ? t("buttons.loading") : step === 1 && employeeAccount ? "Suivant" : linkedEmployee ? "Rattacher le salarié" : "Créer le compte"}
             </button>
           </div>
         </form>

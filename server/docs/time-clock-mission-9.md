@@ -19,10 +19,47 @@ Le PDF distingue les horaires et les durées pointés et rémunérés. Excel ajo
 ## PIN et tablette
 
 - La création ou le rattachement d’un profil salarié génère dans la même transaction un PIN immédiatement utilisable. Le code est propre à l’établissement et peut commencer par zéro. Les profils comptables sont exclus.
-- Le salarié peut afficher son PIN dans **Paramètres → Code PIN de la Pointeuse** pour le restaurant sélectionné. Les comptes antérieurs dépourvus de PIN peuvent le générer au même endroit. La régénération, après confirmation, révoque la version précédente. Une limite transactionnelle d’une minute par salarié et par établissement protège la régénération.
-- Le serveur utilise un index unique sur le restaurant et l’empreinte HMAC du code. Le code est chiffré avec AES-GCM et une clé hors de MongoDB. Seule la consultation dédiée au salarié authentifié renvoie la valeur sur demande, avec une réponse privée sans cache. Le responsable peut régénérer le code via l’API, qui lui renvoie uniquement le statut.
+- Le salarié peut afficher son PIN dans **Paramètres → Code PIN de la Pointeuse** pour le restaurant sélectionné. Le rattrapage de déploiement attribue les PIN manquants aux comptes antérieurs. La régénération, après confirmation, révoque la version précédente. Une limite transactionnelle d’une minute par salarié et par établissement protège la régénération.
+- Le serveur utilise un index unique sur le restaurant et l’empreinte HMAC du code. Le code est chiffré avec AES-GCM et une clé hors de MongoDB. Seules les consultations dédiées au salarié lui-même et au propriétaire direct du restaurant renvoient la valeur, avec une réponse privée sans cache. Les comptes de support, comptables et responsables salariés ne peuvent pas lire le code d’un autre salarié. Le propriétaire consulte et réinitialise le PIN dans **Compte et accès**. Après confirmation, la réinitialisation renvoie le statut et la fiche relit le code.
+- Le journal `timeclockpinaudits` conserve le restaurant, le salarié, l’auteur, son rôle, la date et l’action pour les lectures par le propriétaire et les réinitialisations réussies. La valeur, son empreinte et son chiffré sont exclus. L’écriture du journal de réinitialisation participe à la même transaction que le changement du code.
 - Le responsable crée un lien d’association à usage unique, valable dix minutes. La tablette n’a besoin que de ce lien lors de l’installation. Elle dispose ensuite de son propre accès, révocable dans **Tablettes**.
 - En ligne, les tentatives sont comptées dans MongoDB pour chaque tablette. La fenêtre de cinq minutes accepte au plus 24 requêtes et huit refus. Un refus de code utilise une réponse générique.
+
+### Rattrapage des comptes existants au déploiement
+
+Exécuter depuis le processus d’administration ou comme étape de déploiement autorisée, à partir du dossier `server`. Le dashboard et le démarrage de l’application ne lancent pas le rattrapage. La commande peut être rejouée après un échec partiel.
+
+1. Injecter `GUSTO_PIN_BACKFILL_MONGO_URI` depuis le gestionnaire de secrets du déploiement, avec le nom de la base dans le chemin de l’URI. Définir le même nom dans `GUSTO_PIN_BACKFILL_DB`. Injecter le `TIME_CLOCK_SECRET` déjà utilisé par l’API et ses tablettes, ou le même `JWT_SECRET` si l’API utilise encore son repli historique. La commande ne charge pas de fichier `.env` et ne reprend aucune URI de l’application.
+2. Pour une exécution administrative, vérifier que la collection `timeclockpins` possède les deux index uniques complets du modèle. Si nécessaire, les créer dans la base explicitement sélectionnée après examen de la simulation. Le mode de déploiement autorisé prépare les index manquants si la simulation signale uniquement leur absence.
+
+   ```javascript
+   db.timeclockpins.createIndexes([
+     { restaurant: 1, employee: 1 },
+     { restaurant: 1, lookup: 1 },
+   ], { unique: true })
+   ```
+
+3. Exécuter la simulation et examiner le bilan. Elle fonctionne également sans option. Le script valide la cohérence des PIN existants avec la clé injectée quand il dispose d’un PIN à vérifier.
+
+   ```sh
+   npm run time-clock:backfill-pins -- --dry-run
+   ```
+
+4. Après validation du bilan et autorisation de l’opération, activer les écritures et confirmer le nom exact de la base. MongoDB doit prendre en charge les transactions. Planifier le passage avant l’ouverture des opérations de rattachement et de retrait du déploiement. Les tablettes existantes peuvent garder leur mode de fonctionnement habituel.
+
+   ```sh
+   npm run time-clock:backfill-pins -- --apply --confirm-db "$GUSTO_PIN_BACKFILL_DB"
+   ```
+
+5. Contrôler `verification.totals.missing` et les erreurs en sortie. Le script revérifie l’inventaire après l’écriture et renvoie un code de sortie non nul si des erreurs ou des attributions manquantes persistent. Les compteurs portent sur les rattachements salarié–restaurant. Un salarié présent dans deux restaurants éligibles compte deux fois.
+
+Seuls les restaurants avec le module Personnel actif et les salariés figurant à la fois dans leur effectif et parmi les rattachements du compte sont éligibles. Le script ajoute uniquement les identifiants manquants, en transactions indépendantes. Les codes existants, les comptes, les droits, les contrats et les sessions de pointage sont conservés. Le rapport contient des compteurs, des raisons et, en cas d’erreur, les identifiants utiles à la reprise. Un PIN lié à un ancien profil est signalé pour examen. Un échec n’empêche pas la reprise des autres attributions. La tablette peut utiliser le nouveau PIN en ligne après attribution et hors ligne après le prochain renouvellement de son annuaire.
+
+### Exécution automatique au futur déploiement de main
+
+Lors du déploiement autorisé, configurer `npm run time-clock:backfill-pins:deploy` dans le champ **Pre-Deploy Command** du service Render de production, depuis son dossier `server`. Le script vérifie `NODE_ENV=production`, la branche fournie par Render (`RENDER_GIT_BRANCH=main`), la correspondance avec la cible MongoDB du serveur (`CONNECTION_STRING`) et la confirmation du nom exact de la base dans `GUSTO_PIN_BACKFILL_DEPLOYMENT_CONFIRM_DB`. Injecter également les variables dédiées de l’étape 1. Cette configuration s’applique au premier déploiement autorisé du code et ne doit pas déclencher un déploiement lors de sa préparation.
+
+Le script enregistre le reçu `time-clock-pin-backfill-v1` après une vérification complète. Les déploiements suivants détectent ce reçu. Si un passage échoue, l’étape renvoie un statut non nul et le prochain passage reprend les attributions restantes. Des exécutions concurrentes partagent les index uniques et le même reçu.
 
 ## Hors ligne et régularisation
 
@@ -46,6 +83,8 @@ Le mode hors ligne nécessite une première association, le chargement de la web
 | POST | `/api/restaurants/:restaurantId/time-clock/register/review` | Responsable, validation groupée par date ou par salarié et période |
 | POST | `/api/restaurants/:restaurantId/time-clock/sessions/:sessionId/notes` | Responsable, ajout d’une note avec la révision du service |
 | GET | `/api/restaurants/:restaurantId/time-clock/me/pin` | Salarié, état du PIN et consultation explicite avec `reveal=true` |
+| GET | `/api/restaurants/:restaurantId/time-clock/employees/:employeeId/pin` | Responsable, état du PIN uniquement et en lecture seule |
+| GET | `/api/restaurants/:restaurantId/time-clock/employees/:employeeId/pin/reveal` | Propriétaire direct, état et PIN existant, lecture tracée et réponse privée sans cache |
 | POST | `/api/restaurants/:restaurantId/time-clock/me/pin/regenerate` | Salarié, génération ou régénération automatique dans le restaurant actif |
 | POST | `/api/restaurants/:restaurantId/time-clock/employees/:employeeId/pin/regenerate` | Responsable, régénération sans divulgation de la valeur |
 | GET, POST | `/api/restaurants/:restaurantId/time-clock/devices` | Responsable, parc et lien d’association |

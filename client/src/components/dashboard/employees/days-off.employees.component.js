@@ -106,6 +106,9 @@ export default function DaysOffEmployeesComponent() {
 
   // 3) Search state + normalisation sans accents
   const [searchTerm, setSearchTerm] = useState("");
+  const linkedEmployeeId = router.query.restaurantId === String(restaurantId) &&
+    typeof router.query.employeeId === "string" ? router.query.employeeId : null;
+  const linkedEmployee = allEmployees.find((employee) => String(employee._id) === linkedEmployeeId);
   const normalize = (str) =>
     str
       .normalize("NFD")
@@ -115,12 +118,13 @@ export default function DaysOffEmployeesComponent() {
 
   // 4) Filtrer les employés
   const employees = useMemo(() => {
-    if (!searchTerm.trim()) return allEmployees;
+    const scope = linkedEmployeeId ? allEmployees.filter((employee) => String(employee._id) === linkedEmployeeId) : allEmployees;
+    if (!searchTerm.trim()) return scope;
     const norm = normalize(searchTerm);
-    return allEmployees.filter((e) =>
+    return scope.filter((e) =>
       normalize(`${e.firstname} ${e.lastname}`).includes(norm),
     );
-  }, [allEmployees, searchTerm]);
+  }, [allEmployees, linkedEmployeeId, searchTerm]);
 
   // 5) Aplatir leurs demandes
   const [requests, setRequests] = useState([]);
@@ -356,7 +360,13 @@ export default function DaysOffEmployeesComponent() {
         )}
 
         {/* ─── Barre de recherche ───────────────────────────────────── */}
-        <div className={`midTablet:w-[380px]`}>
+        {linkedEmployeeId ? (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span>{linkedEmployee ? `${linkedEmployee.firstname} ${linkedEmployee.lastname}` : "Salarié indisponible"}</span>
+            <button type="button" className="min-h-9 font-semibold text-blue underline"
+              onClick={() => router.replace("/dashboard/employees/planning/days-off", undefined, { shallow: true })}>Voir toutes les demandes</button>
+          </div>
+        ) : <div className="midTablet:w-[380px]">
           <div className="relative">
             <input
               type="text"
@@ -381,7 +391,7 @@ export default function DaysOffEmployeesComponent() {
               </button>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* ─── Sections par statut ──────────────────────────────────── */}
         {["pending", "approved", "rejected", "canceled"].map((status) => (
