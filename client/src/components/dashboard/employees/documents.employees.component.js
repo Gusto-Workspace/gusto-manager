@@ -1,234 +1,142 @@
-import { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import EmployeeDocumentsList, {
+  DocumentDialog, documentButton, documentField,
+} from "../_shared/employee-documents.dashboard.component";
+import {
+  categories, documentAccept, documentMetadata, visibilities,
+} from "../_shared/employee-documents.utils.mjs";
 
-// I18N
-import { useTranslation } from "next-i18next";
-import { Loader2, Trash2 } from "lucide-react";
-import EmployeeDocumentRow from "../_shared/employee-document-row.dashboard.component";
+const primary = "min-h-10 rounded-lg bg-blue px-3 text-sm font-semibold text-white disabled:opacity-50";
 
-export default function DocumentsEmployeeComponent(props) {
-  const { t, i18n } = useTranslation("employees");
-  const fileInputRef = useRef(null);
+function MetadataFields({ value, onChange, canShare, disabled }) {
+  return (
+    <fieldset disabled={disabled} className="grid min-w-0 gap-3 midTablet:grid-cols-2">
+      <label className="grid gap-1 text-sm font-medium midTablet:col-span-2">
+        Titre
+        <input value={value.title} onChange={(event) => onChange({ title: event.target.value })}
+          maxLength={30} required className={documentField} />
+      </label>
+      <label className="grid gap-1 text-sm font-medium">
+        Dossier
+        <select value={value.category || "uncategorized"} onChange={(event) => onChange({ category: event.target.value })} className={documentField}>
+          {Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+      </label>
+      {canShare && (
+        <label className="grid gap-1 text-sm font-medium">
+          Visibilité
+          <select value={value.visibility || "internal"} onChange={(event) => onChange({ visibility: event.target.value })} className={documentField}>
+            {Object.entries(visibilities).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+        </label>
+      )}
+    </fieldset>
+  );
+}
 
-  const [titleErrors, setTitleErrors] = useState([]);
+export default function DocumentsEmployeeComponent({
+  docs, baseUrl, currentDocuments, isUploadingDocs, onDocsChange, onSaveDocs,
+  onDocMetadataChange, removeSelectedDoc, onEditDoc, confirmDeleteDoc, canShare = false,
+  loading, error, uploadError, onRetry, employeeName, onCancelUploads,
+}) {
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [category, setCategory] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  // Fonction pour tronquer le nom de fichier
-  const truncate = (name) =>
-    name.length > 20 ? `${name.slice(0, 17)}…` : name;
+  function cancelUploads() {
+    onCancelUploads();
+    setUploadOpen(false);
+  }
 
-  useEffect(() => {
-    if (props.docs.length === 0 && fileInputRef.current) {
-      fileInputRef.current.value = "";
+  async function submitUploads(event) {
+    event.preventDefault();
+    if (isUploadingDocs || !docs.length || docs.some(({ title }) => !title.trim())) return;
+    if (await onSaveDocs()) {
+      setUploadOpen(false);
+      setSuccess(docs.length > 1 ? "Documents ajoutés." : "Document ajouté.");
     }
-    setTitleErrors([]);
-  }, [props.docs]);
+  }
 
-  const isUploading = props.isUploadingDocs;
-  const isDeletingId = props.isDeletingDocId;
-
-  // styles communs
-  const sectionCls =
-    "overflow-hidden rounded-xl border border-darkBlue/10 bg-white";
-  const cardWrap =
-    "rounded-xl bg-white/70 border border-darkBlue/10 px-4 py-3 flex flex-col gap-2";
-  const inputBaseCls =
-    "w-full rounded-lg border bg-white px-3 py-2 text-base outline-none transition placeholder:text-darkBlue/40";
-  const inputNormalCls = `${inputBaseCls} border-darkBlue/20`;
-  const inputErrorCls = `${inputBaseCls} border-red`;
-  const documentLabels = {
-    document: t("documents.document", "Document"),
-    uploadedOn: t("documents.uploadedOn", "Mis en ligne le"),
-    at: t("documents.at", "à"),
-    by: t("documents.by", "Par"),
-    download: t("buttons.download"),
-    delete: t("buttons.delete"),
-  };
-  const locale = i18n.resolvedLanguage?.startsWith("fr") ? "fr-FR" : "en-GB";
-
-  // wrapper pour la modif du titre
-  const handleTitleChange = (index, value) => {
-    const limited = value.slice(0, 30); // max 30 caractères
-
-    props.onDocTitleChange(index, limited);
-    setTitleErrors((prev) => {
-      const next = [...prev];
-      next[index] = !limited.trim();
-      return next;
-    });
-  };
-
-  // handler pour l'enregistrement
-  const handleSaveDocs = () => {
-    const errors = props.docs.map((d) => !d.title || !d.title.trim());
-    setTitleErrors(errors);
-
-    const hasError = errors.some((e) => e);
-    if (hasError) return;
-
-    props.onSaveDocs();
-  };
-
-  const currentDocuments = props.currentDocuments || [];
-  const baseUrl = props.baseUrl;
-
-  async function handleDownloadDocument(doc) {
-    if (!doc?.public_id || !baseUrl) return;
-
+  async function submitEdit(event) {
+    event.preventDefault();
+    if (saving || !editing.title.trim()) return;
+    setSaving(true);
+    setEditError("");
     try {
-      const response = await axios.get(
-        `${baseUrl}/documents/${encodeURIComponent(doc.public_id)}/download`,
-        {
-          responseType: "blob",
-        },
-      );
-
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = doc.filename || doc.title || "document";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Erreur téléchargement document :", error);
+      await onEditDoc(editing.public_id, { ...documentMetadata(editing), revision: editing.revision ?? 0 });
+      setEditing(null);
+      setSuccess("Document modifié.");
+    } catch (failure) {
+      setEditError(failure.response?.data?.message || "Impossible de modifier ce document. Réessayez.");
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <section className={sectionCls}>
-      {/* Header + bouton upload */}
+    <section className="min-w-0 overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
-        <div className="flex min-h-10 items-center">
-          <h2 className="text-lg font-semibold text-darkBlue">
-            {t("labels.documents")}
-          </h2>
-        </div>
-
-        {/* Input caché */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".pdf,.jpg,.jpeg,.png,.webp,.gif"
-          onChange={props.onDocsChange}
-          disabled={isUploading}
-          className="hidden"
-        />
-
-        {/* Boutons pour ouvrir l’input */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="hidden midTablet:inline-flex items-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-40"
-          >
-            {t("buttons.addDocument")}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="midTablet:hidden inline-flex items-center justify-center rounded-lg bg-blue h-9 w-9 text-sm font-medium text-white shadow disabled:opacity-40"
-          >
-            +
-          </button>
-        </div>
+        <h2 className="text-lg font-semibold">Documents</h2>
+        <button type="button" onClick={() => { setSuccess(""); setUploadOpen(true); }}
+          disabled={loading || Boolean(error)}
+          className={`${primary} inline-flex items-center gap-2`}>
+          <Plus size={16} aria-hidden="true" /> Ajouter un document
+        </button>
       </header>
-
-      <div className="flex flex-col gap-4 p-4 midTablet:p-5">
-        {/* Liste des fichiers en attente d’upload avec champ titre */}
-        {props.docs.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h4 className="text-xs font-medium text-darkBlue/70 uppercase tracking-wide">
-              {t("Documents en attente d’enregistrement")}
-            </h4>
-
-          <ul className="grid grid-cols-1 midTablet:grid-cols-2 tablet:grid-cols-3 gap-3">
-            {props.docs.map((d, i) => (
-              <li key={i} className={cardWrap}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-xs text-darkBlue/50">
-                      {t("Fichier")}
-                    </span>
-                    <span className="text-sm font-medium text-darkBlue">
-                      {truncate(d.file.name)}
-                    </span>
-                  </div>
-
-                  {!isUploading && (
-                    <button
-                      type="button"
-                      onClick={() => props.removeSelectedDoc(i)}
-                      className="text-xs text-red hover:underline hover:rotate-12 transition-transform duration-200"
-                    >
-                      <Trash2 width={18} />
-                    </button>
-                  )}
+      {success && <p role="status" className="px-4 pt-4 text-sm text-[#146144] midTablet:px-5">{success}</p>}
+      <EmployeeDocumentsList documents={currentDocuments} endpoint={`${baseUrl}/documents`}
+        category={category} onCategoryChange={setCategory}
+        showVisibility={canShare} loading={loading} error={error} onRetry={onRetry}
+        onDelete={confirmDeleteDoc && ((document) => { setSuccess(""); confirmDeleteDoc(document); })}
+        onEdit={onEditDoc && ((document) => { setSuccess(""); setEditError(""); setEditing({ ...document }); })} />
+      {uploadOpen && (
+        <DocumentDialog title="Ajouter des documents" onClose={cancelUploads} busy={isUploadingDocs}>
+          <form onSubmit={submitUploads} className="grid gap-4">
+            {employeeName && <p className="text-sm text-darkBlue/70">Salarié concerné : <strong>{employeeName}</strong></p>}
+            <label className="grid gap-1 text-sm font-medium">
+              Fichiers
+              <input type="file" multiple accept={documentAccept} onChange={(event) => onDocsChange(event, category)} disabled={isUploadingDocs}
+                className="w-full min-w-0 rounded-lg border border-darkBlue/15 p-2 text-sm file:mr-2 file:rounded-md file:border-0 file:bg-blue/10 file:px-2 file:py-1.5 file:text-blue" />
+              <span className="text-xs font-normal text-darkBlue/70">PDF, JPEG, PNG, WebP ou GIF. Jusqu’à 10 fichiers de 10 Mo chacun.</span>
+            </label>
+            {docs.map((item, index) => (
+              <div key={`${item.file.name}-${index}`} className="grid min-w-0 gap-2 rounded-lg border border-darkBlue/10 p-3">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 break-all font-semibold">{item.file.name}</span>
+                  <button type="button" disabled={isUploadingDocs} onClick={() => removeSelectedDoc(index)} className="text-red">Retirer</button>
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-darkBlue/50 flex items-center gap-1">
-                    {t("Titre du document")}
-                    <span className="text-red text-[10px]">*</span>
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="-"
-                    value={d.title}
-                    maxLength={30}
-                    onChange={(e) => handleTitleChange(i, e.target.value)}
-                    className={titleErrors[i] ? inputErrorCls : inputNormalCls}
-                    disabled={isUploading}
-                  />
-                  <span className="text-[10px] text-darkBlue/40 text-right">
-                    {d.title?.length || 0}/30
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {/* Bouton Enregistrer les nouveaux docs */}
-          <button
-            onClick={handleSaveDocs}
-            disabled={isUploading}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-40"
-          >
-            {isUploading ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="size-4 animate-spin" />
-                <span>En cours…</span>
+                <MetadataFields value={item} onChange={(change) => onDocMetadataChange(index, change)}
+                  canShare={canShare} disabled={isUploadingDocs} />
               </div>
-            ) : (
-              t("buttons.save")
-            )}
-          </button>
-          </div>
-        )}
-
-        {/* Documents déjà uploadés (profil du resto courant) */}
-        {currentDocuments.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {currentDocuments.map((doc) => (
-              <EmployeeDocumentRow
-                key={doc.public_id}
-                document={doc}
-                locale={locale}
-                labels={documentLabels}
-                showUploader={Boolean(props.showUploader)}
-                onDownload={handleDownloadDocument}
-                onDelete={props.confirmDeleteDoc}
-                isDeleting={isDeletingId === doc.public_id}
-              />
             ))}
-          </ul>
-        )}
-      </div>
+            {uploadError && <p role="alert" className="text-sm text-red">{uploadError}</p>}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" className={documentButton} disabled={isUploadingDocs} onClick={cancelUploads}>Annuler</button>
+              <button type="submit" className={primary} disabled={isUploadingDocs || !docs.length || docs.some(({ title }) => !title.trim())}>
+                {isUploadingDocs ? "Dépôt en cours…" : "Enregistrer"}
+              </button>
+            </div>
+          </form>
+        </DocumentDialog>
+      )}
+      {editing && (
+        <DocumentDialog title="Modifier le document" busy={saving} onClose={() => setEditing(null)}>
+          <form onSubmit={submitEdit} className="grid gap-4">
+            <p className="break-all text-sm text-darkBlue/70">{editing.filename}</p>
+            <MetadataFields value={editing} onChange={(change) => setEditing((value) => ({ ...value, ...change }))}
+              canShare={canShare} disabled={saving} />
+            {editError && <p role="alert" className="text-sm text-red">{editError}</p>}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" className={documentButton} disabled={saving} onClick={() => setEditing(null)}>Annuler</button>
+              <button type="submit" className={primary} disabled={saving || !editing.title.trim()}>{saving ? "Enregistrement…" : "Enregistrer"}</button>
+            </div>
+          </form>
+        </DocumentDialog>
+      )}
     </section>
   );
 }

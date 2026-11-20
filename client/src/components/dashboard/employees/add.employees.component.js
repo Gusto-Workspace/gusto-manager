@@ -32,6 +32,10 @@ import {
 
 const initialValues = { accountType: "employee" };
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test((email || "").trim());
+}
+
 export default function AddEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { restaurantContext } = useContext(GlobalContext);
@@ -157,7 +161,7 @@ export default function AddEmployeesComponent() {
     const formData = new FormData();
     formData.append("lastName", data.lastName);
     formData.append("firstName", data.firstName);
-    formData.append("email", data.email || "");
+    formData.append("email", data.email);
     formData.append("phone", data.phone);
     formData.append("accountType", data.accountType || "employee");
     formData.append("post", data.post || "");
@@ -298,7 +302,8 @@ export default function AddEmployeesComponent() {
                           (r) => String(r._id || r) === String(currentRestaurantId),
                         );
 
-                      const disabled = alreadyInCurrent;
+                      const hasValidEmail = isValidEmail(emp.email);
+                      const disabled = alreadyInCurrent || !hasValidEmail;
 
                       return (
                         <li
@@ -315,6 +320,11 @@ export default function AddEmployeesComponent() {
                                   defaultValue: "Email non renseigné",
                                 })}
                             </span>
+                            {!hasValidEmail && !alreadyInCurrent && (
+                              <span className="text-xs text-darkBlue/70">
+                                Renseignez un e-mail valide dans sa fiche avant de rattacher ce salarié.
+                              </span>
+                            )}
                             {Array.isArray(emp.restaurants) &&
                               emp.restaurants.length > 0 && (
                                 <span className="mt-1 text-[11px] text-darkBlue/50">
@@ -333,7 +343,7 @@ export default function AddEmployeesComponent() {
                             onClick={() => handleImportEmployee(emp._id)}
                             disabled={disabled}
                             className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm ${
-                              alreadyInCurrent
+                              disabled
                                 ? "bg-darkBlue/10 text-darkBlue/50 cursor-not-allowed"
                                 : "bg-blue text-white disabled:opacity-60"
                             }`}
@@ -429,7 +439,7 @@ export default function AddEmployeesComponent() {
   const accountFields = [
     { key: "firstName", label: t("labels.firstname"), required: true, readOnly: Boolean(linkedEmployee) },
     { key: "lastName", label: t("labels.lastname"), required: true, readOnly: Boolean(linkedEmployee) },
-    { key: "email", label: t("labels.email"), type: "email", required: !employeeAccount, readOnly: Boolean(linkedEmployee) },
+    { key: "email", label: t("labels.email"), type: "email", required: true, readOnly: Boolean(linkedEmployee) },
     { key: "phone", label: t("labels.phone"), type: "tel", required: true },
   ];
   const employmentFields = [
@@ -451,7 +461,8 @@ export default function AddEmployeesComponent() {
         {fields.map(({ key, label, type, choices, required, readOnly }) => {
           const binding = register(key, {
             required: required ? "Ce champ est requis." : false,
-            validate: type === "email" ? (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Saisissez une adresse e-mail valide." : undefined,
+            setValueAs: type === "email" ? (value) => value.trim() : undefined,
+            validate: type === "email" ? (value) => isValidEmail(value) || "Saisissez une adresse e-mail valide." : undefined,
             min: type === "number" ? { value: 0, message: "Le volume horaire doit être positif." } : undefined,
           });
           const className = `${inputClass} ${errors[key] ? "border-red" : "border-darkBlue/20"} ${readOnly ? "bg-lightGrey text-darkBlue/65" : ""}`;
@@ -464,7 +475,7 @@ export default function AddEmployeesComponent() {
                   {choices.map((choice) => <option key={choice} value={choice}>{contractUnits[choice] || choice}</option>)}
                 </select>
               ) : (
-                <input {...binding} type={type || "text"} readOnly={readOnly}
+                <input {...binding} type={type || "text"} readOnly={readOnly} required={required}
                   {...(type === "number" && { min: 0, step: "any" })}
                   className={className} aria-invalid={Boolean(errors[key])} />
               )}
@@ -511,10 +522,6 @@ export default function AddEmployeesComponent() {
         <form onSubmit={submit} noValidate className="grid gap-4">
           <div hidden={step !== 1}>
             <section className="grid gap-4 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
-              <div>
-                <h2 className="text-lg font-semibold">Profil et accès</h2>
-                <p className="mt-1 text-sm text-darkBlue/70">{restaurantContext.restaurantData.name}</p>
-              </div>
               {linkedEmployee ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-blue/5 p-3 text-sm">
                   <span>Compte à rattacher · <strong>{linkedEmployee.firstname} {linkedEmployee.lastname}</strong></span>
@@ -538,14 +545,14 @@ export default function AddEmployeesComponent() {
               )}
               {renderFields(accountFields)}
               <p className="text-sm text-darkBlue/70">{linkedEmployee ? "Le salarié utilise son compte Gusto existant." :
-                employeeAccount ? "L’e-mail de connexion est facultatif. Une invitation est envoyée si vous le renseignez." : "L’invitation est envoyée à l’adresse e-mail renseignée."}</p>
+                "Le mot de passe temporaire est envoyé à cette adresse lors de la création du compte."}</p>
             </section>
           </div>
           {employeeAccount && <div hidden={step !== 2}>
             <section className="grid gap-4 rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
               <div>
                 <h2 className="text-lg font-semibold">Emploi et contrat</h2>
-                <p className="mt-1 text-sm text-darkBlue/70">{[watch("firstName"), watch("lastName")].filter(Boolean).join(" ")} · {restaurantContext.restaurantData.name}</p>
+                <p className="mt-1 text-sm text-darkBlue/70">{[watch("firstName"), watch("lastName")].filter(Boolean).join(" ")}</p>
               </div>
                   {renderFields(employmentFields.slice(0, 3))}
                   {renderFields(employmentFields.slice(3), "grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]")}

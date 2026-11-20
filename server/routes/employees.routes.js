@@ -76,6 +76,7 @@ const {
   serializeEmployeeDocuments,
   setPrivateDocumentResponseHeaders,
   validateEmployeeDocumentFile,
+  validateEmployeeDocumentMetadata,
   validateEmployeeDocumentUpload,
 } = require("../services/employees/employee-documents.service");
 
@@ -372,6 +373,15 @@ async function getEmployeeDocumentRouteAccess(
   employeeId,
   options = {},
 ) {
+  if (request.user?.role === "employee" &&
+      String(request.user.restaurantId || "") !== String(restaurantId)) {
+    return { error: { status: 403, message: "Forbidden" } };
+  }
+  if (request.query?.scope === "personal" && (
+    request.user?.role !== "employee" || String(request.user.id) !== String(employeeId)
+  )) {
+    return { error: { status: 403, message: "Forbidden" } };
+  }
   if (request.user?.role === "accountant") {
     if (options.managerOnly) {
       return { error: { status: 403, message: "Forbidden" } };
@@ -447,6 +457,12 @@ function accountantCanReadDocument(user, document) {
   return (
     user?.role === "accountant" && document?.uploadedBy?.role === "accountant"
   );
+}
+
+function canReadEmployeeDocument(req, access, document) {
+  if (access.isAccountant) return accountantCanReadDocument(req.user, document);
+  if (access.isManager && req.query?.scope !== "personal") return true;
+  return document.visibility === "employee";
 }
 
 function toValidDate(value) {
@@ -965,10 +981,10 @@ const employeeDocumentUpload = multer({
   limits: {
     fileSize: EMPLOYEE_DOCUMENT_MAX_FILE_SIZE,
     files: EMPLOYEE_DOCUMENT_MAX_FILES,
-    fields: EMPLOYEE_DOCUMENT_MAX_FILES,
-    parts: EMPLOYEE_DOCUMENT_MAX_FILES * 2,
+    fields: EMPLOYEE_DOCUMENT_MAX_FILES + 1,
+    parts: EMPLOYEE_DOCUMENT_MAX_FILES * 2 + 1,
     fieldNameSize: 100,
-    fieldSize: 1024,
+    fieldSize: 4096,
   },
 }).array("documents", EMPLOYEE_DOCUMENT_MAX_FILES);
 const MAX_PLANNING_FILES = 6;
@@ -1032,13 +1048,25 @@ async function destroyEmployeeDocumentAsset(document) {
   });
 }
 
-async function cleanPlanningFileAssets(files) {
+async function cleanEmployeeUploadAssets(files) {
   try {
     await attemptEmployeeAssetDeletions(await enqueueEmployeeAssetDeletions(files));
   } catch (error) {
     // This path rolls back files never attached to a shift, including during a database outage.
-    console.warn("[planning-upload] Could not enqueue upload rollback:", error?.code || "unavailable");
+    console.warn("[employee-assets] Could not enqueue upload rollback:", error?.code || "unavailable");
     await Promise.allSettled(files.map(destroyEmployeeDocumentAsset));
+  }
+}
+
+async function reconcileEmployeeDocumentUpload(employeeId, restaurantId, files) {
+  try {
+    const employee = await EmployeeModel.findById(employeeId).select("restaurantProfiles.restaurant restaurantProfiles.documents.public_id").lean();
+    const stored = findRestaurantProfile(employee, restaurantId)?.documents || [];
+    const attachedIds = new Set(stored.map(({ public_id }) => public_id));
+    await cleanEmployeeUploadAssets(files.filter(({ public_id }) => !attachedIds.has(public_id)));
+  } catch (error) {
+    // If acknowledgement was lost, the uploaded assets might already be attached.
+    console.warn("[employee-assets] Could not confirm upload rollback:", error?.code || "unavailable");
   }
 }
 
@@ -1225,15 +1253,15 @@ router.post(
         !String(firstName || "").trim() ||
         !String(lastName || "").trim() ||
         !String(phone || "").trim() ||
-        (normalizedAccountType === "accountant" && !normalizedEmail)
+        !normalizedEmail
       ) {
         return res.status(400).json({
           message: "Le prénom, le nom, l'e-mail et le téléphone sont requis.",
         });
       }
 
-      if (normalizedEmail && !isValidEmail(normalizedEmail)) {
-        return res.status(400).json({ message: "Invalid email" });
+      if (!isValidEmail(normalizedEmail)) {
+        return res.status(400).json({ message: "Saisissez une adresse e-mail valide." });
       }
       if (normalizedAccountType !== "accountant" && dateOnPost && Number.isNaN(+new Date(dateOnPost))) {
         return res.status(400).json({ message: "La date de prise de poste est invalide." });
@@ -1263,7 +1291,7 @@ router.post(
         if (!existingEmployee || normalizeEmail(existingEmployee.email) !== normalizedEmail) {
           return res.status(404).json({ message: "Compte à rattacher introuvable." });
         }
-      } else if (normalizedEmail) {
+      } else {
         const [employeeDuplicate, ownerDuplicate] = await Promise.all([
           EmployeeModel.findOne({ email: normalizedEmail }),
           OwnerModel.findOne({ email: normalizedEmail }),
@@ -1327,7 +1355,7 @@ router.post(
           accountType: normalizedAccountType,
           lastname: lastName,
           firstname: firstName,
-          email: normalizedEmail || undefined,
+          email: normalizedEmail,
           phone: phone,
           secuNumber:
             normalizedAccountType === "accountant" ? undefined : secuNumber,
@@ -1354,7 +1382,7 @@ router.post(
               snapshot: {
                 firstname: firstName,
                 lastname: lastName,
-                email: normalizedEmail || undefined,
+                email: normalizedEmail,
                 phone,
                 secuNumber:
                   normalizedAccountType === "accountant"
@@ -1381,7 +1409,7 @@ router.post(
         };
 
         const newEmployee = await withClockPinTransaction(async (session) => {
-          if (normalizedEmail && await EmployeeModel.exists({ email: normalizedEmail }).session(session)) return null;
+          if (await EmployeeModel.exists({ email: normalizedEmail }).session(session)) return null;
           const employee = await new EmployeeModel(employeeData).save({ session });
           const roster = await RestaurantModel.updateOne(
             { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
@@ -1680,16 +1708,21 @@ router.post(
   handleEmployeeDocumentUpload,
   async (req, res) => {
     const uploadedAssets = [];
+    let writeStarted = false;
     let metadataPersisted = false;
 
+    const { restaurantId, employeeId } = req.params;
     try {
-      const { restaurantId, employeeId } = req.params;
       setPrivateDocumentResponseHeaders(res);
 
       const documents = validateEmployeeDocumentUpload(
         req.files,
         req.body.titles,
+        req.body.metadata,
       );
+      if (req.user.role === "accountant" && documents.some(({ visibility }) => visibility !== "internal")) {
+        return res.status(403).json({ message: "Seul un responsable RH peut mettre un document à disposition du salarié." });
+      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
@@ -1738,6 +1771,8 @@ router.post(
           format: document.format,
           filename: document.filename,
           title: document.title,
+          category: document.category,
+          visibility: document.visibility,
           mimeType: document.mimeType,
           size: document.size,
           uploadedAt: new Date(),
@@ -1749,44 +1784,55 @@ router.post(
         };
 
         uploadedAssets.push(storedDocument);
-        profile.documents.push({
-          ...storedDocument,
-        });
       }
 
-      await employee.save();
+      const targetProfile = { restaurant: restaurantId, ...(profile._id && { _id: profile._id }) };
+      writeStarted = true;
+      const updated = await EmployeeModel.findOneAndUpdate({
+        _id: employeeId,
+        restaurants: restaurantId,
+        restaurantProfiles: { $elemMatch: targetProfile },
+      }, {
+        $push: { "restaurantProfiles.$[profile].documents": { $each: uploadedAssets } },
+        $inc: { __v: 1 },
+      }, {
+        new: true, runValidators: true,
+        arrayFilters: [{ "profile.restaurant": restaurantId, ...(profile._id && { "profile._id": profile._id }) }],
+      }).lean();
+      if (!updated) {
+        await cleanEmployeeUploadAssets(uploadedAssets);
+        return res.status(404).json({ message: "Le rattachement du salarié a changé." });
+      }
       metadataPersisted = true;
 
+      const stored = findRestaurantProfile(updated, restaurantId)?.documents || [];
       const visibleDocuments =
         req.user?.role === "accountant"
-          ? profile.documents.filter((document) =>
+          ? stored.filter((document) =>
               accountantCanReadDocument(req.user, document),
             )
-          : profile.documents;
+          : stored;
       const responsePayload = {
         documents: serializeEmployeeDocuments(visibleDocuments),
       };
 
       if (req.user?.role !== "accountant") {
         responsePayload.restaurant =
-          await buildDecoratedRestaurant(restaurantId);
+          await buildDecoratedRestaurant(restaurantId).catch(() => undefined);
       }
 
       return res.json(responsePayload);
     } catch (err) {
       if (!metadataPersisted && uploadedAssets.length) {
-        await Promise.allSettled(
-          uploadedAssets.map((document) =>
-            destroyEmployeeDocumentAsset(document),
-          ),
-        );
+        if (writeStarted) await reconcileEmployeeDocumentUpload(employeeId, restaurantId, uploadedAssets);
+        else await cleanEmployeeUploadAssets(uploadedAssets);
       }
 
       if (err instanceof EmployeeDocumentValidationError) {
         return res.status(err.status).json({ message: err.message });
       }
 
-      console.error("Error uploading employee documents:", err?.message || err);
+      console.error("Error uploading employee documents:", err?.http_code || err?.code || "unavailable");
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -1821,18 +1867,13 @@ router.get(
       );
 
       const documents = profile?.documents || [];
-      const visibleDocuments =
-        req.user?.role === "accountant"
-          ? documents.filter((document) =>
-              accountantCanReadDocument(req.user, document),
-            )
-          : documents;
+      const visibleDocuments = documents.filter((document) => canReadEmployeeDocument(req, accessContext, document));
 
       return res.json({
         documents: serializeEmployeeDocuments(visibleDocuments),
       });
     } catch (err) {
-      console.error("Error fetching employee documents:", err);
+      console.error("Error fetching employee documents:", err?.code || "unavailable");
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -1871,10 +1912,8 @@ router.get(
       if (!doc) {
         return res.status(404).json({ message: "Document not found" });
       }
-      if (
-        req.user?.role === "accountant" &&
-        !accountantCanReadDocument(req.user, doc)
-      ) {
+      if (!canReadEmployeeDocument(req, accessContext, doc)) {
+        if (!accessContext.isAccountant) return res.status(404).json({ message: "Document not found" });
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -1901,9 +1940,68 @@ router.get(
     } catch (err) {
       console.error(
         "Error downloading employee document:",
-        err?.message || err,
+        err?.http_code || err?.code || "unavailable",
       );
       return res.status(502).json({ message: "Document storage unavailable" });
+    }
+  },
+);
+
+// UPDATE DOCUMENT METADATA
+router.patch(
+  "/restaurants/:restaurantId/employees/:employeeId/documents/:public_id(*)",
+  async (req, res) => {
+    const { restaurantId, employeeId, public_id } = req.params;
+    setPrivateDocumentResponseHeaders(res);
+    try {
+      const access = await getEmployeeDocumentRouteAccess(req, restaurantId, employeeId, { managerOnly: true });
+      if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+      const metadata = validateEmployeeDocumentMetadata(req.body);
+      const revision = req.body.revision;
+      if (!Number.isSafeInteger(revision) || revision < 0 || revision === Number.MAX_SAFE_INTEGER) {
+        return res.status(400).json({ message: "La version du document est invalide." });
+      }
+      const target = {
+        _id: employeeId,
+        restaurants: restaurantId,
+      };
+      const documentVersion = revision > 0
+        ? { revision }
+        : { $or: [{ revision: 0 }, { revision: { $exists: false } }] };
+      const updated = await EmployeeModel.findOneAndUpdate({
+        ...target,
+        restaurantProfiles: { $elemMatch: {
+          restaurant: restaurantId,
+          documents: { $elemMatch: { public_id, ...documentVersion } },
+        } },
+      }, {
+        $set: {
+          "restaurantProfiles.$[profile].documents.$[doc].title": metadata.title,
+          "restaurantProfiles.$[profile].documents.$[doc].category": metadata.category,
+          "restaurantProfiles.$[profile].documents.$[doc].visibility": metadata.visibility,
+          "restaurantProfiles.$[profile].documents.$[doc].updatedAt": new Date(),
+          "restaurantProfiles.$[profile].documents.$[doc].updatedBy": String(req.user.id),
+        },
+        $inc: { __v: 1, "restaurantProfiles.$[profile].documents.$[doc].revision": 1 },
+      }, {
+        new: true, runValidators: true,
+        arrayFilters: [{ "profile.restaurant": restaurantId }, { "doc.public_id": public_id }],
+      }).lean();
+      if (!updated) {
+        const exists = await EmployeeModel.exists({
+          ...target,
+          restaurantProfiles: { $elemMatch: { restaurant: restaurantId, "documents.public_id": public_id } },
+        });
+        if (!exists) return res.status(404).json({ message: "Document introuvable." });
+        return res.status(409).json({ message: "Ce document a changé. Fermez cette fenêtre puis rouvrez le document." });
+      }
+      return res.json({ documents: serializeEmployeeDocuments(findRestaurantProfile(updated, restaurantId)?.documents) });
+    } catch (error) {
+      if (error instanceof EmployeeDocumentValidationError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      console.error("Error updating employee document:", error?.code || "unavailable");
+      return res.status(500).json({ message: "Impossible de modifier le document." });
     }
   },
 );
@@ -1943,27 +2041,31 @@ router.delete(
         return res.status(404).json({ message: "Document not found" });
       }
 
-      const storageResult = await destroyEmployeeDocumentAsset(document);
-      if (!["ok", "not found"].includes(storageResult?.result)) {
-        return res
-          .status(502)
-          .json({ message: "Document storage unavailable" });
-      }
+      const result = await mongoose.connection.transaction(async (session) => {
+        const updated = await EmployeeModel.findOneAndUpdate({
+          _id: employeeId,
+          restaurants: restaurantId,
+          restaurantProfiles: { $elemMatch: { restaurant: restaurantId, "documents.public_id": public_id } },
+        }, {
+          $pull: { "restaurantProfiles.$[profile].documents": { public_id } },
+          $inc: { __v: 1 },
+        }, { new: true, session, arrayFilters: [{ "profile.restaurant": restaurantId }] }).lean();
+        if (!updated) return null;
+        const jobIds = await enqueueEmployeeAssetDeletions([document], session);
+        return { jobIds, documents: findRestaurantProfile(updated, restaurantId)?.documents };
+      });
+      if (!result) return res.status(404).json({ message: "Document introuvable." });
+      const assetCleanupPending = await attemptEmployeeAssetDeletions(result.jobIds);
 
-      profile.documents = profile.documents.filter(
-        (doc) => doc.public_id !== public_id,
-      );
-
-      await employee.save();
-
-      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
+      const updatedRestaurant = await buildDecoratedRestaurant(restaurantId).catch(() => undefined);
 
       return res.json({
         restaurant: updatedRestaurant,
-        documents: serializeEmployeeDocuments(profile.documents),
+        documents: serializeEmployeeDocuments(result.documents),
+        assetCleanupPending,
       });
     } catch (err) {
-      console.error("Error deleting employee document:", err?.message || err);
+      console.error("Error deleting employee document:", err?.code || "unavailable");
       return res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -2169,13 +2271,13 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
       $inc: { __v: 1 },
     }, { runValidators: true, arrayFilters: [{ "profile.restaurant": restaurant }], session }));
     if (!result.modifiedCount) {
-      await cleanPlanningFileAssets(uploaded);
+      await cleanEmployeeUploadAssets(uploaded);
       return res.status(409).json({ message: "Le shift ou ses pièces jointes ont changé. Actualisez la liste." });
     }
     return sendPlanningFiles(res, [...files, ...uploaded], 201);
   } catch (error) {
     if (error.planningStatus) {
-      await cleanPlanningFileAssets(uploaded);
+      await cleanEmployeeUploadAssets(uploaded);
       return planningFailure(res, error);
     }
     if (error instanceof EmployeeDocumentValidationError) {
@@ -2191,12 +2293,12 @@ router.post(planningFilesPath, authorizePlanningFiles, (req, res, next) => {
         if (uploaded.every((asset) => currentFiles.some(({ _id }) => _id.equals(asset._id)))) {
           return sendPlanningFiles(res, currentFiles, 201);
         }
-        await cleanPlanningFileAssets(uploaded.filter((asset) => !currentFiles.some(({ _id }) => _id.equals(asset._id))));
+        await cleanEmployeeUploadAssets(uploaded.filter((asset) => !currentFiles.some(({ _id }) => _id.equals(asset._id))));
       } catch (readError) {
         console.error("Impossible de vérifier le téléversement:", readError?.message);
       }
     } else {
-      await cleanPlanningFileAssets(uploaded);
+      await cleanEmployeeUploadAssets(uploaded);
     }
     console.error("Erreur téléversement planning:", error?.message);
     return res.status(502).json({ message: "Le téléversement a échoué. Actualisez la liste avant de réessayer." });

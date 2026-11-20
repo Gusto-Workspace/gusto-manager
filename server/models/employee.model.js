@@ -34,6 +34,7 @@ const optionsSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const { EMPLOYEE_DOCUMENT_CATEGORIES, EMPLOYEE_DOCUMENT_VISIBILITIES } = require("../services/employees/employee-documents.service");
 const documentSchema = new mongoose.Schema(
   {
     public_id: { type: String, required: true },
@@ -47,6 +48,11 @@ const documentSchema = new mongoose.Schema(
     format: { type: String, default: "" },
     filename: { type: String, required: true },
     title: { type: String, required: true },
+    category: { type: String, enum: EMPLOYEE_DOCUMENT_CATEGORIES },
+    visibility: { type: String, enum: EMPLOYEE_DOCUMENT_VISIBILITIES },
+    revision: { type: Number, min: 0 },
+    updatedAt: Date,
+    updatedBy: String,
     mimeType: { type: String, default: "application/octet-stream" },
     size: { type: Number, default: 0, min: 0 },
     uploadedAt: { type: Date, default: Date.now },

@@ -100,6 +100,7 @@ export default function ModaleEmployeesComponent(props) {
           )}
         </p>
 
+        {props.deleteError && <p role="alert" className="mt-3 text-sm text-red">{props.deleteError}</p>}
         <div className="mt-6 grid grid-cols-1 gap-2 mobile:grid-cols-2">
           {isDuplicate ? (
             <button

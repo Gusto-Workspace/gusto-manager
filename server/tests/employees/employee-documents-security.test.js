@@ -5,6 +5,8 @@ const { Writable } = require("stream");
 process.env.JWT_SECRET ||= "employee-documents-security-test-secret";
 
 const cloudinary = require("cloudinary").v2;
+const mongoose = require("mongoose");
+const EmployeeAssetDeletion = require("../../models/employee-asset-deletion.model");
 const EmployeeModel = require("../../models/employee.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const authenticateToken = require("../../middleware/authentificate-token");
@@ -44,6 +46,7 @@ const {
   serializeEmployeeDocument,
   setPrivateDocumentResponseHeaders,
   validateEmployeeDocumentFile,
+  validateEmployeeDocumentUpload,
 } = require("../../services/employees/employee-documents.service");
 const {
   decorateEmployeeForRestaurant,
@@ -263,6 +266,9 @@ test("document API serialization never returns a permanent storage URL", () => {
     public_id: "opaque-id",
     filename: "bulletin.pdf",
     title: "Septembre",
+    category: "uncategorized",
+    visibility: "internal",
+    revision: 0,
     uploadedBy: { name: "Jean Dupont" },
   });
   assert.equal("url" in serialized, false);
@@ -397,7 +403,7 @@ test("employee A can access employee A documents", async (t) => {
   });
 
   const access = await getEmployeeDocumentRouteAccess(
-    { user: { id: "employee-a", role: "employee" } },
+    { user: { id: "employee-a", role: "employee", restaurantId: "restaurant-a" } },
     "restaurant-a",
     "employee-a",
   );
@@ -411,7 +417,7 @@ test("employee A cannot access employee B documents in the same restaurant", asy
   });
 
   const access = await getEmployeeDocumentRouteAccess(
-    { user: { id: "employee-a", role: "employee" } },
+    { user: { id: "employee-a", role: "employee", restaurantId: "restaurant-a" } },
     "restaurant-a",
     "employee-b",
   );
@@ -429,7 +435,7 @@ test("employee A cannot access documents in restaurant B", async (t) => {
   });
 
   const access = await getEmployeeDocumentRouteAccess(
-    { user: { id: "employee-a", role: "employee" } },
+    { user: { id: "employee-a", role: "employee", restaurantId: "restaurant-a" } },
     "restaurant-b",
     "employee-b",
   );
@@ -446,7 +452,7 @@ test("restaurant A manager cannot target an employee only linked to restaurant B
   });
 
   const access = await getEmployeeDocumentRouteAccess(
-    { user: { id: "manager-a", role: "employee" } },
+    { user: { id: "manager-a", role: "employee", restaurantId: "restaurant-a" } },
     "restaurant-a",
     "employee-b",
     { managerOnly: true },
@@ -463,7 +469,7 @@ test("an employee without personnel permission cannot upload documents", async (
   });
 
   const access = await getEmployeeDocumentRouteAccess(
-    { user: { id: "manager-a", role: "employee" } },
+    { user: { id: "manager-a", role: "employee", restaurantId: "restaurant-a" } },
     "restaurant-a",
     "employee-a",
     { managerOnly: true },
@@ -593,6 +599,12 @@ test("new uploads use authenticated Cloudinary storage with collision-resistant 
   let uploadOptions;
 
   EmployeeModel.findById = async () => employee;
+  t.mock.method(EmployeeModel, "findOneAndUpdate", (_filter, update) => ({
+    lean: async () => {
+      employee.restaurantProfiles[0].documents.push(...update.$push["restaurantProfiles.$[profile].documents"].$each);
+      return employee;
+    },
+  }));
   RestaurantModel.findById = () => ({
     populate() {
       return this;
@@ -727,7 +739,7 @@ test("delete does not call Cloudinary for a forged document ID", async (t) => {
   assert.equal(destroyCalls, 0);
 });
 
-test("delete removes only the authorized private asset", async (t) => {
+test("delete removes only the authorized document and queues its private asset", async (t) => {
   const employee = employeeAccount("employee-a", "restaurant-a");
   employee.restaurantProfiles[0].documents.push({
     public_id: "restaurant-a/employee-a/private.pdf",
@@ -744,8 +756,20 @@ test("delete removes only the authorized private asset", async (t) => {
   const originalRestaurantFindById = RestaurantModel.findById;
   const originalEmployeeFindById = EmployeeModel.findById;
   const originalEmployeeExists = EmployeeModel.exists;
-  const originalDestroy = cloudinary.uploader.destroy;
-  let destroyed;
+  t.mock.method(mongoose.connection, "transaction", async (work) => work(null));
+  t.mock.method(EmployeeModel, "findOneAndUpdate", (filter, update) => ({
+    lean: async () => {
+      assert.equal(filter.restaurantProfiles.$elemMatch.restaurant, "restaurant-a");
+      const { public_id } = update.$pull["restaurantProfiles.$[profile].documents"];
+      employee.restaurantProfiles[0].documents = employee.restaurantProfiles[0].documents.filter((doc) => doc.public_id !== public_id);
+      return employee;
+    },
+  }));
+  const queue = t.mock.method(EmployeeAssetDeletion, "bulkWrite", async () => ({}));
+  t.mock.method(EmployeeAssetDeletion, "find", () => ({
+    select() { return this; }, sort() { return this; }, limit() { return this; }, lean: async () => [],
+  }));
+  t.mock.method(EmployeeAssetDeletion, "exists", async () => true);
 
   RestaurantModel.findById = () => {
     const query = {
@@ -761,16 +785,11 @@ test("delete removes only the authorized private asset", async (t) => {
   };
   EmployeeModel.findById = async () => employee;
   EmployeeModel.exists = async () => true;
-  cloudinary.uploader.destroy = async (publicId, options) => {
-    destroyed = { publicId, options };
-    return { result: "ok" };
-  };
 
   t.after(() => {
     RestaurantModel.findById = originalRestaurantFindById;
     EmployeeModel.findById = originalEmployeeFindById;
     EmployeeModel.exists = originalEmployeeExists;
-    cloudinary.uploader.destroy = originalDestroy;
   });
 
   const deleteRoute = employeesRouter.stack.find(
@@ -795,11 +814,29 @@ test("delete removes only the authorized private asset", async (t) => {
   );
 
   assert.equal(result.status, 200);
-  assert.equal(destroyed.publicId, "restaurant-a/employee-a/private.pdf");
-  assert.equal(destroyed.options.resource_type, "raw");
-  assert.equal(destroyed.options.type, "authenticated");
+  const [[job]] = queue.mock.calls[0].arguments;
+  const asset = job.updateOne.update.$setOnInsert;
+  assert.equal(asset.public_id, "restaurant-a/employee-a/private.pdf");
+  assert.equal(asset.resource_type, "raw");
+  assert.equal(asset.delivery_type, "authenticated");
+  assert.equal(result.body.assetCleanupPending, true);
   assert.deepEqual(employee.restaurantProfiles[0].documents, []);
   assert.deepEqual(result.body.documents, []);
+});
+
+test("upload metadata must match every file and can never silently publish legacy uploads", () => {
+  const legacy = validateEmployeeDocumentUpload([pdfFile()], "Bulletin");
+  assert.equal(legacy[0].visibility, "internal");
+  assert.equal(legacy[0].category, "uncategorized");
+  const metadata = { title: " Bulletin ", category: "payroll", visibility: "employee" };
+  const [document] = validateEmployeeDocumentUpload([pdfFile()], undefined, JSON.stringify([metadata]));
+  assert.equal(document.title, "Bulletin");
+  assert.equal(document.visibility, "employee");
+  assert.equal(document.category, "payroll");
+  for (const invalid of ["{", "[]", JSON.stringify([{ ...metadata, visibility: "public" }]),
+    JSON.stringify([{ ...metadata, category: "insurance-guessed" }])]) {
+    assert.throws(() => validateEmployeeDocumentUpload([pdfFile()], undefined, invalid), EmployeeDocumentValidationError);
+  }
 });
 
 test("download filenames cannot inject response headers", () => {

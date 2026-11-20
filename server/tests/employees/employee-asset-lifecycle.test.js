@@ -6,6 +6,7 @@ const { test } = require("node:test");
 const mongoose = require("mongoose");
 const cloudinary = require("cloudinary").v2;
 const Brevo = require("sib-api-v3-sdk");
+const axios = require("axios");
 
 const testUri = process.env.GUSTO_HR_TEST_MONGO_URI;
 const leaveNotifications = [];
@@ -189,7 +190,11 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     }
   });
 
-  await t.test("creating and linking a workforce account without email provisions separate PINs and never invites", async () => {
+  await t.test("creation requires email and linking a workforce account provisions a separate PIN without a second invitation", async (st) => {
+    const send = st.mock.fn(async () => ({}));
+    st.mock.method(Brevo, "TransactionalEmailsApi", function MockBrevo() {
+      return { sendTransacEmail: send };
+    });
     const [first, second, foreign] = Array.from({ length: 3 }, () => new ObjectId());
     const owner = { role: "owner", id: new ObjectId() };
     const externalOwner = { role: "owner", id: new ObjectId() };
@@ -201,20 +206,38 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     const create = (restaurant, body, user = owner) => call(employees, "post", path, user,
       { restaurantId: String(restaurant) }, body);
     const form = { firstName: "Ari", lastName: "Fictif", phone: "0600000000", post: "Cuisine", contractType: "CDI" };
-    assert.equal((await create(first, { ...form, accountType: "accountant" })).code, 400);
-    const created = await create(first, form);
+    for (const accountType of ["employee", "accountant"]) {
+      assert.equal((await create(first, { ...form, accountType })).code, 400);
+      assert.equal((await create(first, { ...form, accountType, email: "   " })).code, 400);
+      assert.equal((await create(first, { ...form, accountType, email: "invalid" })).code, 400);
+    }
+    assert.equal(send.mock.callCount(), 0);
+    const account = { ...form, email: `workforce-${first}@example.test` };
+    const created = await create(first, account);
     assert.equal(created.code, 201);
     const employeeId = created.body.employeeId;
     const original = await Employee.collection.findOne({ _id: employeeId });
-    const linked = await create(second, { ...form, existingEmployeeId: String(employeeId), post: "Salle" });
+    const attachment = { ...account, existingEmployeeId: String(employeeId) };
+    const linked = await create(second, { ...attachment, post: "Salle" });
     assert.equal(linked.code, 200);
     assert.deepEqual(linked.body.employeeId, employeeId);
-    assert.equal((await create(second, { ...form, existingEmployeeId: String(employeeId) })).code, 409);
-    assert.equal((await create(foreign, { ...form, existingEmployeeId: String(employeeId) }, externalOwner)).code, 404);
+    assert.equal((await create(second, attachment)).code, 409);
+    assert.equal((await create(foreign, attachment, externalOwner)).code, 404);
     const linkedAccount = await Employee.collection.findOne({ _id: employeeId });
     assert.deepEqual(linkedAccount.restaurantProfiles[0], original.restaurantProfiles[0]);
     assert.equal(linkedAccount.restaurantProfiles[1].snapshot.post, "Salle");
     assert.equal(await TimeClockPin.countDocuments({ employee: employeeId }), 2);
+    assert.equal(send.mock.callCount(), 1);
+    const [invitation] = send.mock.calls[0].arguments;
+    assert.equal(invitation.to[0].email, account.email);
+    assert.match(invitation.htmlContent, /Mot de passe temporaire/);
+
+    const accountant = { ...form, accountType: "accountant", email: `accountant-${first}@example.test` };
+    assert.equal((await create(first, accountant)).code, 201);
+    assert.equal(send.mock.callCount(), 2);
+    const [accountantInvitation] = send.mock.calls[1].arguments;
+    assert.equal(accountantInvitation.to[0].email, accountant.email);
+    assert.match(accountantInvitation.htmlContent, /Mot de passe temporaire/);
   });
 
   await t.test("concurrent creation in one restaurant sends a single mocked invitation", async (st) => {
@@ -256,6 +279,122 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     const current = st.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "ok" }));
     assert.deepEqual((await legacy.request("delete", shiftPath)).body.shifts, []);
     assert.equal(current.mock.callCount(), 0);
+  });
+
+  await t.test("HR document folders, confidentiality and deferred cleanup stay scoped to the profile", async (st) => {
+    const f = await fixture(2);
+    assert.equal((await f.add()).code, 201);
+    const [original, otherProfile] = (await f.read()).restaurantProfiles;
+    const base = `${employeePath}/documents`;
+    const item = `${base}/:public_id(*)`;
+    const download = `${item}/download`;
+    const employee = { role: "employee", id: f.employeeId, restaurantId: f.restaurantIds[0] };
+    const params = (index, public_id) => ({ restaurantId: String(f.restaurantIds[index]), employeeId: String(f.employeeId), public_id });
+    const self = (index, path, public_id, scope = "personal") => call(employees, "get", path, employee, params(index, public_id), undefined, { query: { scope } });
+
+    const storageUpload = st.mock.method(cloudinary.uploader, "upload_stream", (options, callback) => new Writable({
+      write(_chunk, _encoding, done) { done(); },
+      final(done) {
+        assert.equal(options.type, "authenticated");
+        assert.equal(options.resource_type, "raw");
+        callback(null, { public_id: `${options.folder}/${options.public_id}`, resource_type: "raw" });
+        done();
+      },
+    }));
+    const requestDocument = (title, visibility) => {
+      const boundary = "GustoPrivateDocuments";
+      const metadata = JSON.stringify([{ title, category: "contract", visibility }]);
+      const content = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Disposition: form-data; name="documents"; filename="specimen.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.7\n%%EOF\n\r\n--${boundary}--\r\n`);
+      return Object.assign(Readable.from([content]), { headers: {
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+        "content-length": String(content.length),
+      } });
+    };
+    assert.equal(await f.request("get", base).then(({ body }) => body.documents[0].visibility), "internal");
+    const results = await Promise.all([
+      f.request("post", base, 0, undefined, {}, requestDocument("Contrat publié", "employee")),
+      f.request("post", base, 0, undefined, {}, requestDocument("Note interne", "internal")),
+    ]);
+    assert.deepEqual(results.map(({ code }) => code), [200, 200]);
+    const ownerDocuments = (await f.request("get", base)).body.documents;
+    const published = ownerDocuments.find(({ title }) => title === "Contrat publié");
+    const internal = ownerDocuments.find(({ title }) => title === "Note interne");
+    assert.equal(published.category, "contract");
+    assert.equal(ownerDocuments.length, 3);
+    assert.deepEqual((await self(0, base)).body.documents.map(({ title }) => title), ["Contrat publié"]);
+    assert.equal((await self(0, base, undefined, "manager")).body.documents.length, 3);
+    assert.equal((await self(1, base)).code, 403);
+
+    const providerUrl = st.mock.method(cloudinary.utils, "private_download_url", () => "https://storage.example.test/private");
+    const transfer = st.mock.method(axios, "get", async () => ({ data: Readable.from([Buffer.from("%PDF-1.7")]) }));
+    assert.equal((await self(0, download, internal.public_id)).code, 404);
+    assert.equal((await self(0, download, "other-restaurant/unknown.pdf")).code, 404);
+    assert.equal(transfer.mock.callCount(), 0);
+    assert.equal((await self(0, download, published.public_id)).code, 200);
+    assert.equal(providerUrl.mock.calls[0].arguments[2].type, "authenticated");
+    assert.equal(transfer.mock.callCount(), 1);
+
+    const metadata = { title: "Contrat modifié", category: "supporting", visibility: "internal", revision: published.revision };
+    assert.equal((await f.request("patch", item, 0, { ...metadata, category: "invalid" }, { public_id: published.public_id })).code, 400);
+    assert.equal((await f.request("patch", item, 0, metadata, { public_id: published.public_id })).code, 200);
+    const obsolete = { ...metadata, visibility: "employee" };
+    assert.equal((await f.request("patch", item, 0, obsolete, { public_id: published.public_id })).code, 409);
+    assert.equal((await self(0, download, published.public_id)).code, 404);
+    assert.deepEqual((await self(0, base)).body.documents, []);
+
+    await Employee.collection.updateOne({ _id: f.employeeId }, { $set: { "restaurantProfiles.0.options.employees": false } });
+    const deniedEdit = await call(employees, "patch", item, employee, params(0, published.public_id), metadata);
+    assert.equal(deniedEdit.code, 403);
+    const deniedDelete = await call(employees, "delete", item, employee, params(0, published.public_id));
+    assert.equal(deniedDelete.code, 403);
+    const updated = await f.read();
+    const savedDocument = updated.restaurantProfiles[0].documents.find(({ public_id }) => public_id === published.public_id);
+    assert.equal(savedDocument.updatedBy, String(f.owner.id));
+    assert.equal(savedDocument.category, "supporting");
+    assert.deepEqual(updated.restaurantProfiles[0].planningFiles, original.planningFiles);
+    assert.deepEqual(updated.restaurantProfiles[0].shifts, original.shifts);
+    assert.deepEqual(updated.restaurantProfiles[1], otherProfile);
+
+    const queueFailure = st.mock.method(EmployeeAssetDeletion, "bulkWrite", async () => { throw new Error("Fictitious MongoDB failure"); });
+    assert.equal((await f.request("delete", item, 0, undefined, { public_id: published.public_id })).code, 500);
+    queueFailure.mock.restore();
+    assert.equal((await f.request("get", base)).body.documents.some(({ public_id }) => public_id === published.public_id), true);
+    const destroy = st.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "unconfirmed" }));
+    const removed = await f.request("delete", item, 0, undefined, { public_id: published.public_id });
+    assert.equal(removed.code, 200);
+    assert.equal(removed.body.assetCleanupPending, true);
+    assert.equal(removed.body.documents.length, 2);
+    assert.ok(await EmployeeAssetDeletion.exists({ public_id: published.public_id }));
+    destroy.mock.mockImplementation(async () => ({ result: "ok" }));
+    const queued = await EmployeeAssetDeletion.findOne({ public_id: published.public_id }).lean();
+    await retryEmployeeAssetDeletions({ ids: [queued._id], now: new Date(Date.now() + 10 * 60_000) });
+    assert.equal(await EmployeeAssetDeletion.exists({ public_id: published.public_id }), null);
+
+    const persistFailure = st.mock.method(Employee, "findOneAndUpdate", () => ({
+      lean: async () => { throw new Error("Fictitious persistence failure"); },
+    }));
+    assert.equal((await f.request("post", base, 0, undefined, {}, requestDocument("Échec", "internal"))).code, 500);
+    persistFailure.mock.restore();
+    assert.equal((await f.request("get", base)).body.documents.length, 2);
+    assert.equal(destroy.mock.callCount(), 3);
+
+    storageUpload.mock.mockImplementation((_options, callback) => new Writable({
+      write(_chunk, _encoding, done) { done(); },
+      final(done) { callback(new Error("Fictitious storage failure")); done(); },
+    }));
+    assert.equal((await f.request("post", base, 0, undefined, {}, requestDocument("Échec transfert", "internal"))).code, 500);
+    assert.equal((await f.request("get", base)).body.documents.length, 2);
+
+    const accountantId = new ObjectId();
+    const accountant = { role: "accountant", id: accountantId, restaurantId: f.restaurantIds[0] };
+    await Employee.collection.insertOne({ _id: accountantId, accountType: "accountant",
+      restaurants: [f.restaurantIds[0]], restaurantProfiles: [{ restaurant: f.restaurantIds[0] }] });
+    await Restaurant.updateOne({ _id: f.restaurantIds[0] }, { $addToSet: { employees: accountantId } });
+    assert.deepEqual((await call(employees, "get", base, accountant, params(0))).body.documents, []);
+    assert.equal((await call(employees, "post", base, accountant, params(0), undefined, requestDocument("Accès refusé", "employee"))).code, 403);
+    assert.equal((await call(employees, "patch", item, accountant, params(0, internal.public_id), metadata)).code, 403);
+    assert.equal((await call(employees, "delete", item, accountant, params(0, internal.public_id))).code, 403);
+    assert.equal((await call(employees, "get", base, accountant, params(1))).code, 403);
   });
 
   await t.test("leave requests retain history, isolate restaurants, and require exact confirmation before replacing shifts", async () => {

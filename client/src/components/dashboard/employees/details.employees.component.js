@@ -11,6 +11,7 @@ import AccessRightsEmployeesComponent from "./access-rights.employees.component"
 import DataEmployeesComponent from "./data.employees.component";
 import EmployeePin from "./employee-pin.employees.component";
 import { applyRosterResponse, directoryPath, employeeDirectoryEntry, employeeProfile } from "./employee-directory.utils.mjs";
+import { buildEmployeeDocumentsForm, documentLimit, documentSizeLimit } from "../_shared/employee-documents.utils.mjs";
 
 const tabs = [
   { id: "personal", label: "Informations personnelles", Icon: UserRound },
@@ -21,55 +22,72 @@ const tabs = [
 ];
 const action = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey";
 
-function EmployeeDocuments({ baseUrl }) {
+function EmployeeDocuments({ baseUrl, employeeName }) {
   const [docs, setDocs] = useState([]);
   const [stored, setStored] = useState(null);
-  const [duplicate, setDuplicate] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoadError("");
     axios.get(`${baseUrl}/documents`, { signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setStored(data.documents || []); })
-      .catch(() => { if (!controller.signal.aborted) setError("Impossible de charger les documents."); });
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setStored(null);
+          setLoadError("Impossible de charger les documents.");
+        }
+      });
     return () => controller.abort();
-  }, [baseUrl]);
+  }, [baseUrl, attempt]);
 
-  function selectDocuments(event) {
-    const names = new Set([...docs.map(({ file }) => file.name), ...(stored || []).map(({ filename }) => filename)]);
-    const selected = [];
-    for (const file of event.target.files) {
-      if (names.has(file.name)) {
-        setDuplicate(true);
-        continue;
-      }
-      names.add(file.name);
-      selected.push({ file, title: "" });
-    }
-    setDocs((current) => [...current, ...selected]);
+  function selectDocuments(event, category) {
+    const files = Array.from(event.target.files);
     event.target.value = "";
+    if (!files.length) return;
+    if (files.length + docs.length > documentLimit || files.some((file) => !file.size || file.size > documentSizeLimit)) {
+      setUploadError("Choisissez au maximum 10 fichiers non vides, de 10 Mo chacun.");
+      return;
+    }
+    setUploadError("");
+    setDocs((current) => [...current, ...files.map((file) => ({
+      file, title: file.name.replace(/\.[^.]+$/, "").slice(0, 30), category: category || "uncategorized", visibility: "internal",
+    }))]);
   }
 
   async function uploadDocuments() {
     if (uploading || !docs.length) return;
     setUploading(true);
-    setError("");
-    const form = new FormData();
-    docs.forEach(({ file, title }) => {
-      form.append("documents", file);
-      form.append("titles", title);
-    });
+    setUploadError("");
+    setNotice("");
     try {
-      const { data } = await axios.post(`${baseUrl}/documents`, form);
+      const { data } = await axios.post(`${baseUrl}/documents`, buildEmployeeDocumentsForm(docs));
       setStored(data.documents || []);
       setDocs([]);
+      return true;
     } catch (failure) {
-      setError(failure.response?.data?.message || "Impossible d’ajouter les documents.");
+      setUploadError(failure.response?.data?.message || "Impossible d’ajouter les documents. Réessayez.");
+      return false;
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function editDocument(id, metadata) {
+    try {
+      const { data } = await axios.patch(`${baseUrl}/documents/${encodeURIComponent(id)}`, metadata);
+      setStored(data.documents || []);
+      setNotice("");
+    } catch (failure) {
+      if (failure.response?.status === 409) setAttempt((value) => value + 1);
+      throw failure;
     }
   }
 
@@ -81,6 +99,7 @@ function EmployeeDocuments({ baseUrl }) {
       const { data } = await axios.delete(`${baseUrl}/documents/${encodeURIComponent(toDelete.public_id)}`);
       setStored(data.documents || []);
       setToDelete(null);
+      setNotice("Document supprimé du dossier.");
     } catch (failure) {
       setError(failure.response?.data?.message || "Impossible de retirer le document.");
     } finally {
@@ -90,31 +109,33 @@ function EmployeeDocuments({ baseUrl }) {
 
   return (
     <div className="grid gap-3">
-      {error && <p role="alert" className="rounded-lg bg-white p-3 text-sm text-red">{error}</p>}
-      {stored === null && !error && <p role="status" className="text-sm text-darkBlue/70">Chargement des documents…</p>}
-      {stored !== null && <>
-        <DocumentsEmployeeComponent
-          docs={docs}
-          baseUrl={baseUrl}
-          currentDocuments={stored}
-          isUploadingDocs={uploading}
-          isDeletingDocId={deleting ? toDelete?.public_id : null}
-          onDocsChange={selectDocuments}
-          onSaveDocs={uploadDocuments}
-          confirmDeleteDoc={setToDelete}
-          removeSelectedDoc={(index) => setDocs((current) => current.filter((_, item) => item !== index))}
-          onDocTitleChange={(index, title) => setDocs((current) => current.map((doc, item) => item === index ? { ...doc, title } : doc))}
-          showUploader
-        />
-        {!stored.length && !docs.length && <p className="text-sm text-darkBlue/70">Aucun document enregistré pour ce restaurant.</p>}
-      </>}
-      {duplicate && <ModaleEmployeesComponent type="duplicate" onCloseDuplicate={() => setDuplicate(false)} />}
+      {notice && <p role="status" className="rounded-lg bg-white p-3 text-sm text-[#146144]">{notice}</p>}
+      <DocumentsEmployeeComponent
+        docs={docs}
+        baseUrl={baseUrl}
+        employeeName={employeeName}
+        currentDocuments={stored || []}
+        loading={stored === null && !loadError}
+        error={loadError}
+        uploadError={uploadError}
+        onCancelUploads={() => { setDocs([]); setUploadError(""); }}
+        onRetry={() => setAttempt((value) => value + 1)}
+        isUploadingDocs={uploading}
+        onDocsChange={selectDocuments}
+        onSaveDocs={uploadDocuments}
+        onEditDoc={editDocument}
+        confirmDeleteDoc={(document) => { setNotice(""); setError(""); setToDelete(document); }}
+        removeSelectedDoc={(index) => setDocs((current) => current.filter((_, item) => item !== index))}
+        onDocMetadataChange={(index, changes) => setDocs((current) => current.map((doc, item) => item === index ? { ...doc, ...changes } : doc))}
+        canShare
+      />
       {toDelete && (
         <ModaleEmployeesComponent
           docToDelete={toDelete}
           setDocToDelete={setToDelete}
           onDeleteDoc={deleteDocument}
           isDeletingDocId={deleting ? toDelete.public_id : null}
+          deleteError={error}
         />
       )}
     </div>
@@ -147,15 +168,11 @@ export default function DetailsEmployeesComponent({ employeeId }) {
   const restaurantId = restaurant._id;
   const router = useRouter();
   const tabsId = useId();
-  const [visitedDocuments, setVisitedDocuments] = useState(false);
   const employee = [...(restaurant.employees || []), ...(restaurant.accountants || [])].find((item) => String(item._id) === String(employeeId));
   const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
   const visibleTabs = employee?.accountType === "accountant" ? tabs.slice(0, 1) : tabs;
   const selected = visibleTabs.find(({ id }) => id === router.query.tab)?.id || "personal";
 
-  useEffect(() => {
-    if (selected === "documents") setVisitedDocuments(true);
-  }, [selected]);
 
   const returnToDirectory = () => router.push(directoryPath);
 
@@ -229,7 +246,7 @@ export default function DetailsEmployeesComponent({ employeeId }) {
             )}
           </div>
         </div>
-        <div {...panel("documents")}>{(selected === "documents" || visitedDocuments) && <EmployeeDocuments baseUrl={baseUrl} />}</div>
+        <div {...panel("documents")}>{selected === "documents" && <EmployeeDocuments key={baseUrl} baseUrl={baseUrl} employeeName={entry.name} />}</div>
         <div {...panel("activity")}>
           <EmployeeActivity employeeId={employeeId} restaurantId={restaurantId} leaveRequests={employee.leaveRequests ?? profile?.leaveRequests} />
         </div>
