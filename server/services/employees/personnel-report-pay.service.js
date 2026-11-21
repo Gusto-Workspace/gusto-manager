@@ -160,7 +160,8 @@ function countMealCriteria(date, shifts, payroll, criteria) {
   }).length;
 }
 
-function calculateReportMeals({ days, filters, rules, taken, openingHours, start, end, workById, absenceMeals = new Map() }) {
+function calculateReportMeals({ days, filters, rules, taken, openingHours, start, end, workById,
+  absenceMeals = new Map(), requiresValidatedWork = () => false }) {
   const calculation = new Map();
   const monthly = new Map();
   const validatedShifts = new Set(days.flatMap((day) => day.sessions
@@ -182,7 +183,8 @@ function calculateReportMeals({ days, filters, rules, taken, openingHours, start
     if ((start && day.date < start) || (end && day.date > end)) continue;
     const month = day.date.slice(0, 7);
     const rule = rules.find(({ date }) => date <= month)?.values;
-    const shifts = day.shifts.filter((shift) => !shift.absence && !shift.absenceValidated && !validatedShifts.has(shift.id));
+    const shifts = requiresValidatedWork(day.date) ? []
+      : day.shifts.filter((shift) => !shift.absence && !shift.absenceValidated && !validatedShifts.has(shift.id));
     const payroll = payrollByStart.get(day.date) || [];
     if (!rule?.mode) {
       if (shifts.length || payroll.length || day.sessions.length || taken.has(day.date)) unknownRules = true;

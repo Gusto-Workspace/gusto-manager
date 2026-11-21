@@ -6,7 +6,7 @@ const DATE_FORMAT = 3;
 const DECIMAL_FORMAT = 4;
 const TIME_FORMAT = 5;
 const MAX_DETAIL_ROWS = 40_000;
-const LIMIT = "Limites : les cellules vides indiquent une donnée indisponible ou non applicable. Les heures rémunérées reprennent la Pointeuse, y compris les corrections non validées.";
+const LIMIT = "Les cellules vides indiquent une donnée indisponible ou non applicable. Avec la source Pointages validés, seuls les services validés figurent dans les heures travaillées retenues. Le total hebdomadaire est laissé vide si la semaine reste à valider.";
 
 function numberCell(value, style) {
   return Number.isFinite(value) ? { type: "Number", value, style } : null;
@@ -252,10 +252,8 @@ function buildDetails(report) {
     };
     const mealsByDate = new Map((item.detailMeals || item.mealDays || []).filter((meal) => meal.due || meal.taken != null).map((meal) => [meal.date, meal]));
     for (const day of item.days || []) {
-      const worked = day.effective ?? (day.payroll.some((entry) => entry.validated)
-        ? day.payroll.filter((entry) => entry.validated && !entry.absent)
-        : day.shifts.filter((shift) => !shift.absenceValidated).map((shift) => ({ id: shift.id,
-          timings: { startAt: shift.start, endAt: shift.end, breakMinutes: shift.breakMinutes, workedMinutes: shift.plannedMinutes } })));
+      const worked = day.effective ?? day.shifts.filter((shift) => !shift.absenceValidated).map((shift) => ({ id: shift.id,
+        timings: { startAt: shift.start, endAt: shift.end, breakMinutes: shift.breakMinutes, workedMinutes: shift.plannedMinutes } }));
       worked.forEach(({ id, timings, note }, index) => {
         const session = day.sessions.find((entry) => entry.id === id);
         const shift = day.shifts.find((entry) => entry.id === (session?.shiftId || id));

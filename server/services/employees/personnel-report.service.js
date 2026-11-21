@@ -78,7 +78,8 @@ function absenceColumn(type) {
 function reportGroups(weeks, rules, absenceTypes, activeOvertime, counters, annual, to) {
   const appliedOvertime = overtimeColumns(activeOvertime);
   const hasOvertime = activeOvertime.some((rule) => rule.enabled);
-  const usesRetainedServices = activeOvertime.some(({ planningAttribution }) => planningAttribution);
+  const usesRetainedServices = activeOvertime.some(({ planningAttribution, enabled, source }) =>
+    planningAttribution || (enabled && source === "validated"));
   return [
     { id: "contract", label: "Données Contractuelles", summary: column("contractType", "Type de contrat"), columns: [
       column("payrollCode", "Matricule de paie"), column("contractType", "Type de Contrat"), column("post", "Intitulé du poste"),
@@ -98,7 +99,7 @@ function reportGroups(weeks, rules, absenceTypes, activeOvertime, counters, annu
       ...(counters ? [column("counterStart", "Compteur début de période", "minutes")] : []),
       ...weeks.map((week) => ({ ...sumColumn(week.key, week.label), week, decimal: true,
         weekLabel: "Heures retenues, absences comprises",
-        hint: week.to <= to ? "Heures planifiées nettes, relevés historiques admissibles et absences prises en compte du lundi au dimanche"
+        hint: week.to <= to ? "Heures retenues selon la source configurée et absences prises en compte du lundi au dimanche"
           : "Étends la période jusqu’au dimanche pour afficher le total de cette semaine" })),
       ...(counters ? [column("counterEnd", "Compteur fin de période", "minutes", { edit: "hoursEntry" }),
         column("counterChanges", "Modifications du compteur", "minutes", { edit: "hoursEntry" }),
@@ -397,9 +398,13 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
   const calculationWeeks = listWeeks(ledgerStart(filters, inputs), ledgerEnd(filters, inputs));
   const overtimeBounds = getRangeBounds(calculationWeeks[0].from, calculationWeeks.at(-1).to);
   const weekByDate = new Map();
+  const validatedWeeks = new Set();
   for (const week of weeks) {
+    const rule = overtime.find(({ date }) => date <= week.from)?.values;
+    if (rule?.enabled && rule.source === "validated") validatedWeeks.add(week.key);
     for (let date = week.from; date <= week.to; date = addDaysToDateKey(date, 1)) weekByDate.set(date, week.key);
   }
+  const requiresValidatedWork = (date) => validatedWeeks.has(weekByDate.get(date));
   const publication = new Map(planningDays.map(({ date, publishedEmployees }) => [date, new Set((publishedEmployees || []).map(String))]));
   const sources = new Map(employees.map((employee) => [String(employee._id), {
     employee,
@@ -469,7 +474,7 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       date >= from.slice(0, 7) && date <= to.slice(0, 7)));
     const { values: meals, mealDays } = calculateReportMeals({
       days: days.map(reportDay), filters, rules, taken, openingHours: restaurant.opening_hours,
-      start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals,
+      start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals, requiresValidatedWork,
     });
     Object.assign(values, meals);
     const weeklyHours = {};
@@ -530,11 +535,16 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     const { weekBalances, ...counter } = ledger;
     Object.assign(values, counter, calculateAnnual(activeAnnual, overtimeResult.weekData, to, asOf));
     const effectiveDays = new Map(overtimeResult.weekData.flatMap((week) => week.complete ? week.days.map((day) => [day.date, day]) : []));
-    const actualWork = days.map((day) => {
+    const retainedServices = (day) => {
       const effectiveDay = effectiveDays.get(day.date);
-      if (effectiveDay) return effectiveDay.items.map((item) => item.timings);
+      if (effectiveDay) return effectiveDay.items;
       const validated = day.payroll.filter((item) => item.validated);
-      if (validated.length) return validated.filter((item) => !item.absent).map((item) => item.timings);
+      if (validated.length || requiresValidatedWork(day.date)) return validated.filter((item) => !item.absent);
+      return undefined;
+    };
+    const actualWork = days.map((day) => {
+      const retained = retainedServices(day);
+      if (retained) return retained.map((item) => item.timings);
       return day.shifts.filter((shift) => !shift.absence && !shift.absenceValidated)
         .map((shift) => ({ workedMinutes: shift.plannedMinutes, breakMinutes: shift.breakMinutes }));
     });
@@ -555,13 +565,16 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
         const timedSickness = worked?.days.reduce((sum, day) => sum + day.timedSickness, 0) ?? 0;
         const rule = overtime.find(({ date }) => date <= week.from)?.values;
         const { target, credited } = weeklyPlanningCoverage(week, fullWeekAbsences, workedDates, rule, contractDates, leaveCredits);
-        if (fullWeekPlanned.has(week.key) || credited || history || timedSickness) {
+        const strictlyValidated = validatedWeeks.has(week.key);
+        const validatedTotal = strictlyValidated && worked?.complete
+          ? worked.days.reduce((sum, day) => sum + day.worked + day.credited, 0) : null;
+        if (fullWeekPlanned.has(week.key) || credited || history || timedSickness || validatedTotal > 0) {
           Object.assign(weeklyHours[week.key] ??= {}, {
             plannedWeek,
             contractWeek: target,
             paidAbsences: weeklyAbsencePayers(week, fullWeekAbsences, absenceRules, amendments, baseWeekly, overtime, leaveCredits),
             plannedWeekCredit: credited,
-            retainedWeek: plannedWeek + history + credited + timedSickness,
+            retainedWeek: strictlyValidated ? validatedTotal : plannedWeek + history + credited + timedSickness,
             ...(history && { historicalWeek: history }),
             ...(timedSickness && { timedSicknessWeek: timedSickness }),
             ...(historicalWeekOverlaps.has(week.key) && { historicalOverlap: true }),
@@ -589,13 +602,13 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     const detailMeals = schedule && calculateReportMeals({
       days: registerDays.filter(({ date }) => date >= detailStart && date <= detailEnd).map(reportDay),
       filters: { from: detailStart, to: detailEnd }, rules, taken, openingHours: restaurant.opening_hours,
-      start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals: schedule.absenceMeals,
+      start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals: schedule.absenceMeals, requiresValidatedWork,
     }).mealDays;
     return { employee, former, provisional, values, weeklyHours, absencesByType, mealDays, leaveBalance, leaveStatus,
       ...(detail && { establishment: employment.primaryEstablishment, tardiness,
         days: detailDays.map((day) => ({ ...day, shifts: day.shifts.filter((shift) => !shift.absence),
           premium: overtimeResult.daily.get(day.date),
-          effective: effectiveDays.get(day.date)?.items,
+          effective: retainedServices(day),
           volume: effectiveContract(amendments, baseWeekly, day.date) || null })),
         absences: absenceDetails, scheduleAbsences: schedule?.detail || absenceDetails,
         ...(detailMeals && { detailMeals }), amendments: amendments.filter(({ date }) => date >= from && date <= to)

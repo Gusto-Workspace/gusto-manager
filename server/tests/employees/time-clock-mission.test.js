@@ -15,6 +15,7 @@ const Owner = require("../../models/owner.model");
 const Session = require("../../models/time-clock-session.model");
 const Absence = require("../../models/time-clock-absence.model");
 const router = require("../../routes/time-clock.routes");
+const { parseXlsxSheets } = require("../../services/dish-card-import.service");
 const { buildRegisterRows, buildRegisterHistory } = require("../../services/employees/time-clock-register.service");
 const { payrollDays } = require("../../services/employees/time-clock-payroll.service");
 const { getRangeBounds, toLocalDateKey } = require("../../services/employees/time-clock.service");
@@ -315,6 +316,205 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
     const next = (error) => { if (error) throw error; return handlers[index++].handle(request, response, next); };
     await next();
     return result;
+  }
+  async function checkRetainedHours(scenario) {
+    const restaurantId = new ObjectId();
+    const reportPath = "/restaurants/:restaurantId/employees/reports";
+    const authorization = auth(owner, "owner", restaurantId);
+    const request = (method, path, options) => call(method, path, { restaurantId, authorization, ...options });
+    const settings = reportPath + "/inputs/:kind/:date";
+    const revision = (session) => ({ expectedRevision: session.__v, expectedUpdatedAt: session.updatedAt.toISOString() });
+    const signature = { strokes: [{ points: [{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }] }] };
+    const stamp = (d, time) => `${d}T${time}:00+01:00`;
+    const localTime = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+    const minutesOfDay = (value) => {
+      const [hours, minutes] = localTime.format(new Date(value)).split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+    const day = "2026-11-05";
+    const punches = (date, start, end, pause) => [
+      ["clock_in", stamp(date, start)],
+      ...(pause ? [["break_start", stamp(date, pause[0])], ["break_end", stamp(date, pause[1])]] : []),
+      ...(end ? [["clock_out", stamp(date, end)]] : []),
+    ];
+    const service = (date, start = stamp(date, "09:00"), end = stamp(date, "17:00"), breakMinutes = 30) => ({
+      date, start: new Date(start), end: new Date(end), breakMinutes,
+    });
+    const single = (name, start, end, paid, extra = {}) => ({ name, shifts: [service(day)],
+      events: start ? punches(day, start, end, extra.pause) : [], paid,
+      retainedIn: end ? stamp(day, "09:00") : null, retainedOut: end ? stamp(day, end) : null, ...extra });
+    const workWeek = (name, hours, weekly, premiums) => ({ name, weekly, premiums,
+      paid: hours * 5 * 60, shifts: Array.from({ length: 5 }, (_, i) => {
+        const date = `2026-11-0${2 + i}`;
+        return service(date, stamp(date, "09:00"), stamp(date, i === 0 ? `${8 + hours}:47` : `${9 + hours}:00`), 0);
+      }) });
+    const special = (name, start, end, paid, premiums) => ({ name, paid, premiums, retainedIn: start, retainedOut: end,
+      shifts: [service(start.slice(0, 10), start, end, 0)], events: [["clock_in", start], ["clock_out", end]] });
+    const cases = [
+      single("Normal", "09:00", "17:00", 480, { shifts: [service(day, undefined, undefined, 0)] }),
+      single("Avance", "08:43", "17:00", 480),
+      single("Retard", "09:13", "17:00", 480, { late: 13 }),
+      single("Sortie anticipée", "09:00", "16:47", 467),
+      single("Sortie tardive", "09:00", "17:13", 493),
+      single("Pause mesurée", "09:00", "17:00", 463, { pause: ["12:04", "12:21"], paidBreak: 17 }),
+      single("Pause non badgée", "09:00", "17:00", 480),
+      single("Pause nulle", "09:00", "17:00", 480, { pause: ["12:04", "12:04"] }),
+      single("Sortie manquante", "09:00", null, null),
+      single("Sans badge", null, null, null),
+      single("Correction", "08:52", "17:13", 453, { manual: true, paidBreak: 20, retainedOut: stamp(day, "16:53") }),
+      single("Validation de journée", "09:01", "17:01", 481, { bulk: true }),
+      workWeek("Heures supplémentaires", 8, 35, { extra10: 240, extra20: 60, extra50: 0 }),
+      workWeek("Temps partiel", 5, 20, { complement10: 120, complement25: 180 }),
+      special("Nuit", "2026-11-06T20:00:00+01:00", "2026-11-06T23:43:00+01:00", 223, { night0: 103 }),
+      special("Dimanche", "2026-11-08T10:00:00+01:00", "2026-11-08T13:07:00+01:00", 187, { sunday50: 187 }),
+      special("Férié", "2026-11-11T10:00:00+01:00", "2026-11-11T13:11:00+01:00", 191, { holidays: 191 }),
+      special("Minuit samedi–dimanche", "2026-11-07T22:00:00+01:00", "2026-11-08T01:17:00+01:00", 197, { night0: 197, sunday50: 77 }),
+      special("Changement d’heure", "2026-10-24T23:00:00+02:00", "2026-10-25T04:00:00+01:00", 360, { night0: 360, sunday50: 300 }),
+    ].map((example) => ({ ...example, employeeId: new ObjectId() }));
+
+    await Restaurant.collection.insertOne({ _id: restaurantId, owner_id: owner, name: "Mission 16 fictive",
+      options: { employees: true }, employees: cases.map(({ employeeId }) => employeeId) });
+    await Employee.collection.insertMany(cases.map(({ name, employeeId, shifts, weekly }) => ({
+      ...member(employeeId, name, [restaurantId]), restaurantProfiles: [{ _id: new ObjectId(), restaurant: restaurantId,
+        shifts: shifts.map(({ start, end, breakMinutes }) => ({ _id: new ObjectId(), title: "Service fictif", start, end, breakMinutes })),
+        snapshot: { dateOnPost: new Date("2026-01-01T08:00:00Z") },
+        employment: { contractualUnit: "week", contractualValue: weekly || 35, contractType: "CDI" } }],
+    })));
+
+    const configure = async (kind, values, date = "2026-10-19") => {
+      const saved = await request("put", settings, { kind, date, body: { revision: 0, values } });
+      assert.equal(saved.status, 200, JSON.stringify(saved.data));
+      const { data } = await request("get", settings, { kind, date });
+      assert.equal(data.revision, 1);
+      for (const [key, value] of Object.entries(values)) assert.deepEqual(data.values[key], value);
+    };
+    const clockRule = { enabled: true, earlyIn: "planned", lateIn: "planned", earlyOut: "clocked", lateOut: "clocked",
+      roundMinutes: 0, pause: "clocked" };
+    await configure("clockRules", clockRule);
+    await configure("overtime", { enabled: true, source: "validated", ordinary: 35, firstEnd: 39, secondEnd: 43,
+      firstRate: 10, secondRate: 20, lastRate: 50, complementBand: 10, complementFirstRate: 10, complementLastRate: 25,
+      workdays: 5, creditedAbsences: [], nightStart: "22:00", nightEnd: "07:00", nightRate: 0, sundayRate: 50,
+      holidayRate: null, countHolidays: true });
+    await configure("rules", { mode: "combined", basis: "days", quantity: 2 }, "2026-10");
+
+    for (const example of cases) await scenario.test(example.name, async () => {
+      const { shifts, paid, pause, premiums = {}, paidBreak = 0 } = example;
+      const employeeId = String(example.employeeId);
+      const from = shifts[0].date;
+      const last = shifts.at(-1);
+      const to = example.weekly || paid === null ? "2026-11-08" : toLocalDateKey(last.end);
+      const filters = { from, to, employeeId };
+      const rawBreak = pause ? Math.round((Date.parse(stamp(from, pause[1])) - Date.parse(stamp(from, pause[0]))) / 60000) : 0;
+      const sessions = [];
+      for (const shift of shifts) {
+        const rawEnd = example.weekly && shift === shifts[0] ? new Date(+shift.end + 13 * 60_000) : shift.end;
+        const events = example.events ?? [["clock_in", shift.start.toISOString()], ["clock_out", rawEnd.toISOString()]];
+        let sessionId;
+        for (const [action, occurredAt] of events) {
+          const response = await request("post", base + "/punch", { body: {
+            employeeId, businessDate: shift.date, occurredAt, action, signature, clientMutationId: randomUUID(), source: "kiosk",
+          } });
+          assert.equal(response.status, action === "clock_in" ? 201 : 200, JSON.stringify(response.data));
+          sessionId = response.data.sessionId;
+        }
+        if (!sessionId) continue;
+        let stored = await Session.findById(sessionId).lean();
+        assert.deepEqual(stored.events.map(({ type, at }) => [type, at.toISOString()]),
+          events.map(([type, at]) => [type, new Date(at).toISOString()]));
+        assert.equal(stored.clockRule.revision, 1);
+        for (const [key, value] of Object.entries(clockRule)) assert.equal(stored.clockRule[key], value);
+        if (example.manual) {
+          const prior = await request("put", base + "/sessions/:sessionId/review", { sessionId, body: { ...revision(stored), validated: true } });
+          assert.equal(prior.status, 200);
+          stored = await Session.findById(sessionId).lean();
+          const corrected = await request("put", base + "/sessions/:sessionId/payroll", { sessionId,
+            body: { ...revision(stored), clockInAt: example.retainedIn, clockOutAt: example.retainedOut,
+              breaks: [{ startAt: stamp(from, "12:00"), endAt: stamp(from, "12:20") }], reason: "Motif fictif" } });
+          assert.deepEqual(corrected.data, { changed: true, manual: true, reopened: true });
+          const amended = await Session.findById(sessionId).lean();
+          assert.deepEqual(amended.events, stored.events);
+          assert.equal(amended.automaticPayroll.clockOutAt.toISOString(), new Date(events.at(-1)[1]).toISOString());
+          const reopened = await request("get", reportPath, { query: filters });
+          assert.equal(reopened.data.rows[0].values.paid, paid);
+          assert.equal(reopened.data.rows[0].values.referenceWorked, 0);
+          assert.equal(reopened.data.rows[0].values.mealsDue, 0);
+          const pendingExport = await request("post", reportPath + "/export/excel", { body: filters });
+          const pendingDetail = parseXlsxSheets(pendingExport.data)[2];
+          assert.equal(pendingDetail.rows.length, 1);
+          stored = amended;
+        }
+        if (!example.bulk) {
+          const result = await request("put", base + "/sessions/:sessionId/review", { sessionId,
+            body: { ...revision(stored), validated: true } });
+          assert.equal(result.status, paid === null ? 409 : 200);
+        }
+        sessions.push(stored);
+      }
+      if (example.bulk || paid === null) {
+        const result = await request("post", base + "/register/review", { body: filters });
+        assert.equal(result.status, 200);
+        assert.equal(result.data.validatedCount, example.bulk ? 1 : 0);
+      }
+      const register = await request("get", base + "/register", { query: filters });
+      assert.equal(register.status, 200);
+      const { days } = register.data.rows[0];
+      assert.equal(days.flatMap((d) => d.shifts).filter(({ reportedAbsent }) => reportedAbsent).length, 0);
+      const entries = days.flatMap((d) => d.payroll);
+      const vouchers = entries.map(({ timings }) => timings);
+      assert.equal(entries.length > 0, paid !== null);
+      assert.ok(entries.every((entry) => entry.validated));
+      if (paid !== null) {
+        const iso = (value) => new Date(value).toISOString();
+        assert.equal(iso(entries[0].clockInAt), iso(example.retainedIn ?? shifts[0].start));
+        assert.equal(iso(entries.at(-1).clockOutAt), iso(example.retainedOut ?? last.end));
+        assert.equal(vouchers.reduce((sum, line) => sum + line.workedMinutes, 0), paid);
+        assert.equal(vouchers.reduce((sum, line) => sum + line.breakMinutes, 0), paidBreak);
+      }
+      assert.equal(sessions.flatMap((session) => session.breaks).length, pause ? 1 : 0);
+      const report = await request("get", reportPath, { query: filters });
+      assert.equal(report.status, 200);
+      const { values, weeklyHours } = report.data.rows[0];
+      assert.equal(values.paid ?? null, paid);
+      assert.equal(values.paidBreak ?? null, paid === null ? null : paidBreak);
+      assert.equal(values.referenceWorked, paid ?? 0);
+      assert.equal(values.mealsDue, paid === null ? 0 : 2 * shifts.length);
+      if (example.weekly || paid === null) assert.equal(weeklyHours["2026-W45"].retainedWeek, paid);
+      if (sessions.length) assert.equal(values.clockBreak, rawBreak);
+      if (example.late) assert.equal(values.late, example.late);
+      for (const [key, value] of Object.entries(premiums)) assert.equal(values[key], value, key);
+
+      const excel = await request("post", reportPath + "/export/excel", { body: filters });
+      assert.equal(excel.status, 200);
+      const [summary, employeeSheet, detail] = parseXlsxSheets(excel.data, { storedValuesOnly: true });
+      assert.equal(detail.name, "Détails");
+      const [labels, ...lines] = detail.rows;
+      const rows = lines.filter((line) => line[labels.indexOf("Travail / Absence")] === "Travail");
+      const total = (label) => rows.reduce((sum, line) => sum + Math.round((line[labels.indexOf(label)] || 0) * 60), 0);
+      const summaryValue = (label) => {
+        const index = summary.rows[2].findIndex((column) => typeof column === "string" && column.startsWith(label));
+        assert.ok(index >= 0, label);
+        return summary.rows[3][index];
+      };
+      assert.equal(rows.length, entries.length);
+      for (const [index, line] of rows.entries()) {
+        const time = (label) => Math.round(line[labels.indexOf(label)] * 1440);
+        assert.equal(time("Début"), minutesOfDay(vouchers[index].startAt));
+        assert.equal(time("Fin"), minutesOfDay(vouchers[index].endAt));
+      }
+      assert.equal(total("Heures Travaillées (h)"), paid ?? 0);
+      assert.equal(total("Pause (h)"), paidBreak);
+      assert.equal(Math.round(summaryValue("Heures travaillées retenues (h)") * 60), paid ?? 0);
+      assert.equal(summaryValue("Repas Dûs"), paid === null ? 0 : 2 * shifts.length);
+      if (example.weekly || paid === null) {
+        const week = employeeSheet.rows.find(([title]) => title?.startsWith("Semaine 45 ·"));
+        if (paid === null) assert.ok(week[11] == null || week[11] === "");
+        else assert.equal(Math.round(week[11] * 60), paid);
+      }
+      const premiumLabels = { extra10: "Dont Heures Supp. Exceptionnelles 10%", extra20: "Dont Heures Supp. Exceptionnelles 20%",
+        extra50: "Dont Heures Supp. Exceptionnelles 50%", complement10: "Dont Heures Comp. 10%", complement25: "Dont Heures Comp. 25%",
+        night0: "Heures de nuit 0%", sunday50: "Heures du dimanche 50%", holidays: "Heures Jour Férié (h)" };
+      for (const [key, value] of Object.entries(premiums)) assert.equal(Math.round(summaryValue(premiumLabels[key]) * 60), value, key);
+    });
   }
   await t.test("RH report and Excel enforce the active restaurant and reuse the same totals", async () => {
     const reportPath = "/restaurants/:restaurantId/employees/reports";
@@ -1013,4 +1213,5 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   const identifyPin = (pin) => call("post", deviceBase + "/identify", { restaurantId: other, authorization: tabletAuth, body: { pin } });
   assert.equal((await identifyPin(migratedPin)).status, 401);
   assert.equal((await identifyPin(resetPin)).data.kiosk.employee.id, String(outside));
+  await t.test("native punches, retained hours, RH report and Excel agree for a fictitious restaurant", checkRetainedHours);
 });
