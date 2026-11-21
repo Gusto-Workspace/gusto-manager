@@ -3,7 +3,6 @@ import { format, getISOWeek } from "date-fns";
 import { useTranslation } from "next-i18next";
 import { enGB, fr } from "date-fns/locale";
 import {
-  ArrowLeft,
   CalendarCheck,
   CalendarDays,
   Check,
@@ -33,8 +32,10 @@ import {
   planningDateKey,
   PLANNING_GROUPS,
   PLANNING_VIEWS,
+  weeklyPlanningDifference,
 } from "./planning-grid.utils.mjs";
 import { getShiftMealMeta } from "./planning-meals.utils";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import { eventsInCell } from "./planning-actions.utils.mjs";
 import {
   CellSelection, cellInteractionProps, DragPreview, DropChoices,
@@ -73,6 +74,7 @@ export function PlanningToolbar({
   publicationStatus,
   onLockPeriod,
   hasPeriodLock,
+  counterControl,
 }) {
   const { t, i18n } = useTranslation("employees");
   const label = (key) => t(`planning:grid.${key}`);
@@ -89,21 +91,9 @@ export function PlanningToolbar({
   const partialLabel = partlyPublished ? t("planning:publication.partial") : undefined;
 
   return (
-    <header className={styles.toolbar}>
-      <div className={styles.brandRow}>
-        <div className={styles.titleGroup}>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={onBack}
-            aria-label={t("titles.main")}
-            title={t("titles.main")}
-          >
-            <ArrowLeft aria-hidden="true" size={17} />
-          </button>
-          <h2>{t("titles.planning")}</h2>
-        </div>
-        <div className={styles.actions}>
+    <>
+      <CatalogHeaderDashboardComponent title={t("titles.planning")} onBack={onBack} backLabel={t("titles.main")}
+        actionsClassName={styles.actions} actions={<>
           <button
             type="button"
             className={styles.control}
@@ -129,9 +119,8 @@ export function PlanningToolbar({
               {publishLabel}
             </button>
           )}
-        </div>
-      </div>
-
+        </>} />
+      <div className={styles.toolbar}>
       <div className={styles.navigationRow}>
         <div className={styles.periodControls}>
           {onLockPeriod && <button type="button" className={styles.iconButton} onClick={onLockPeriod}
@@ -223,7 +212,7 @@ export function PlanningToolbar({
             onChange={(event) => onQuery(event.target.value)}
           />
         </label>
-        <select
+        <div className={styles.employeeControls}><select
           className={styles.employeeFilter}
           value={employeeId ?? ""}
           aria-label={label("employeeFilter")}
@@ -235,7 +224,7 @@ export function PlanningToolbar({
               {employee.name}
             </option>
           ))}
-        </select>
+        </select>{counterControl}</div>
         {(query || employeeId) && (
           <button
             type="button"
@@ -248,7 +237,8 @@ export function PlanningToolbar({
           </button>
         )}
       </div>
-    </header>
+      </div>
+    </>
   );
 }
 
@@ -339,7 +329,7 @@ function ShiftCard({
         <UtensilsCrossed className={styles.meal} size={12} aria-hidden="true" />
       )}
     </button>
-    {interactive && <ShiftMenuTrigger shift={event} {...{ menuState, cell }} busy={commands.busy}
+    {interactive && mode !== "month" && <ShiftMenuTrigger shift={event} {...{ menuState, cell }} busy={commands.busy}
       label={`${commands.label("menu")} · ${description}`} />}
   </div>;
 }
@@ -475,6 +465,8 @@ export function PlanningGrid({
   group,
   lockedByDate,
   onLockDay,
+  counters,
+  targets,
 }) {
   const { t, i18n } = useTranslation("employees");
   const locale = i18n.language?.startsWith("en") ? enGB : fr;
@@ -637,6 +629,11 @@ export function PlanningGrid({
                       EMPLOYEE_COLORS.length
                   ];
                 const employment = employee.employment;
+                const target = targets?.[String(employee._id)];
+                const difference = view === PLANNING_VIEWS.WEEK && group === PLANNING_GROUPS.EMPLOYEES
+                  ? target ? target.minutes == null ? null : rowMinutes - target.minutes
+                    : weeklyPlanningDifference(employment, rowMinutes) : null;
+                const counter = counters?.[String(employee._id)];
                 const hasContractHours =
                   employment.contractualValue > 0 &&
                   ["week", "month"].includes(employment.contractualUnit);
@@ -653,16 +650,15 @@ export function PlanningGrid({
                         </span>
                         <div>
                           <strong>{employee.name}</strong>
-                          <small>
-                            {[
-                              employee.post,
-                              employment.contractType,
-                              hasContractHours &&
-                                `${employment.contractualValue} ${label(employment.contractualUnit === "week" ? "weeklyHours" : "monthlyHours")}`,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </small>
+                          {(target?.weeklyHours || hasContractHours) ? <small>
+                            {target?.weeklyHours ?? employment.contractualValue} {label(target?.weeklyHours || employment.contractualUnit === "week" ? "weeklyHours" : "monthlyHours")}
+                          </small> : null}
+                          {Number.isFinite(counter?.balance) && <span className={styles.hoursCounter}>
+                            {t("planning:counters.balance")} {counter.balance < 0 ? "−" : counter.balance > 0 ? "+" : ""}{formatPlanningDuration(Math.abs(counter.balance))}
+                          </span>}
+                          {Number.isFinite(counter?.annualRemaining) && <span className={styles.hoursCounter}>
+                            {t("planning:counters.annual")} {counter.annualRemaining < 0 ? "−" : ""}{formatPlanningDuration(Math.abs(counter.annualRemaining))}
+                          </span>}
                         </div>
                       </div>
                     </th>
@@ -724,6 +720,14 @@ export function PlanningGrid({
                     )}
                     <td className={styles.total}>
                       {formatPlanningDuration(rowMinutes)}
+                      {difference !== null && difference !== 0 && (
+                        <span className={`${styles.contractDifference} ${difference > 0 ? styles.contractOver : styles.contractUnder}`}
+                          title={label(difference > 0 ? "contractOver" : "contractUnder")}>
+                          <span aria-hidden="true">{difference > 0 ? "+" : "−"} </span>
+                          <span className="sr-only">{label(difference > 0 ? "contractOver" : "contractUnder")} </span>
+                          {formatPlanningDuration(Math.abs(difference))}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

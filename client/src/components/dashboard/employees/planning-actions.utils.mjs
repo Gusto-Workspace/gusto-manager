@@ -19,6 +19,42 @@ export function shiftSource(event) {
   };
 }
 
+export function visiblePlanningEmployees(employees, hiddenShifts) {
+  if (!hiddenShifts.size) return employees;
+  return employees.map((employee) => ({
+    ...employee,
+    shifts: employee.shifts.filter(({ _id }) => !hiddenShifts.has(String(_id))),
+  }));
+}
+
+export async function deletePlanningShift(event, hiddenShifts, { send, onChange, onDeleted, onError }) {
+  const entry = shiftSource(event);
+  const id = String(entry.shiftId);
+  if (hiddenShifts.has(id)) return;
+  // Keep the original in the roster until the server accepts the deletion.
+  hiddenShifts.add(id);
+  onChange(new Set(hiddenShifts));
+  try {
+    await send(entry);
+  } catch (error) {
+    hiddenShifts.delete(id);
+    onChange(new Set(hiddenShifts));
+    onError(error);
+    return;
+  }
+  // A late roster response may still contain the shift. Keep it hidden in this view.
+  onDeleted(entry);
+}
+
+export function reconcilePlanningShift(employee, shiftId, previousShift, serverShifts) {
+  const matches = ({ _id }) => String(_id) === String(shiftId);
+  if (!previousShift || employee.shifts?.find(matches) !== previousShift) return employee;
+  const currentShift = serverShifts.find(matches);
+  return { ...employee, shifts: employee.shifts.flatMap((shift) =>
+    matches(shift) ? (currentShift ? [currentShift] : []) : [shift],
+  ) };
+}
+
 export function dropEntry(event, { employeeId, date }) {
   return { ...shiftSource(event), targetEmployeeId: employeeId, date };
 }

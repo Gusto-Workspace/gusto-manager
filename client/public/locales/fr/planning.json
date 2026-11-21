@@ -1,4 +1,12 @@
 {
+  "counters": {
+    "toggle": "Compteurs",
+    "loading": "Chargement des compteurs…",
+    "error": "Impossible de charger les compteurs.",
+    "empty": "Aucun solde d’heures ni reste annuel disponible pour les salariés affichés sur cette période.",
+    "balance": "Solde",
+    "annual": "Reste annuel"
+  },
   "publication": {
     "publish": "Publier",
     "title": "Publier le planning",
@@ -40,6 +48,7 @@
     "loadFailed": "Impossible de charger l’état de publication."
   },
   "actions": {
+    "deleteFailed": "La suppression du créneau n’a pas été enregistrée.",
     "menu": "Actions du shift",
     "duplicate": "Dupliquer vers plusieurs cellules",
     "selectCell": "Sélectionner la journée",
@@ -96,6 +105,8 @@
     "carryOver": "Le total inclut {{duration}} de shifts commencés avant la période.",
     "noEmployees": "Aucun salarié pour ces filtres.",
     "weeklyHours": "h/sem.",
+    "contractOver": "Heures planifiées en surplus cette semaine",
+    "contractUnder": "Heures restant à planifier cette semaine",
     "monthlyHours": "h/mois",
     "shift": "Travail",
     "leave": "Congés",
@@ -121,12 +132,30 @@
     "family_event": "Congé pour événement familial",
     "child_sick_leave": "Congé pour enfant malade",
     "training": "Formation",
+    "apprenticeship": "École - CFA",
     "public_holiday": "Jour férié",
     "compensatory_rest": "Repos compensateur",
     "rtt": "RTT",
     "other": "Autre absence"
   },
   "editor": {
+    "shiftTemplates": "Modèles de shifts",
+    "templatesLoading": "Chargement des modèles…",
+    "templatesEmpty": "Aucun modèle dans cet établissement.",
+    "templateChoose": "Modèle enregistré",
+    "templatePlaceholder": "Choisir un modèle",
+    "templateName": "Nom du nouveau modèle",
+    "templateSave": "Enregistrer comme modèle",
+    "templateApply": "Préremplir le shift",
+    "templateDelete": "Supprimer le modèle",
+    "templateDeleteConfirm": "Supprimer le modèle « {{name}} » ?",
+    "templateSaved": "Modèle enregistré.",
+    "templateApplied": "Modèle appliqué au formulaire. Vérifiez le shift avant de l’enregistrer.",
+    "templateDeleted": "Modèle supprimé.",
+    "templatesLoadError": "Impossible de charger les modèles.",
+    "templateDuplicate": "Un modèle porte déjà ce nom dans cet établissement.",
+    "templateSaveError": "Impossible d’enregistrer le modèle. Vérifiez les horaires et les détails.",
+    "templateDeleteError": "Impossible de supprimer le modèle.",
     "newShiftsFor": "Ajouter des shifts pour {{name}}",
     "shiftNumber": "Shift {{number}}",
     "removeShift": "Retirer le shift {{number}}",

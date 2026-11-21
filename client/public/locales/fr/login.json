@@ -20,7 +20,8 @@
       "selectRestaurant": "Sélectionnez un restaurant"
     },
     "errors": {
-      "incorrect": "Identifants non reconnus, merci de vérifier vos informations",
+      "incorrect": "Identifiants non reconnus, merci de vérifier vos informations",
+      "tooManyAttempts": "Trop de tentatives. Réessayez dans quelques minutes.",
       "server": "Erreur interne, connexion impossible. Essayez plus tard ou contactez le service client",
       "passwords": "Les mots de passe ne correspondent pas",
       "invalid": "Code incorrect ou expiré",

@@ -6,6 +6,7 @@ const cloudinary = require("cloudinary").v2;
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const PlanningAction = require("../../models/planning-action.model");
+const PlanningShiftTemplate = require("../../models/planning-shift-template.model");
 const EmployeeAssetDeletion = require("../../models/employee-asset-deletion.model");
 const { PlanningDay, PlanningPublication } = require("../../models/planning-period.model");
 const Notification = require("../../models/notification.model");
@@ -30,9 +31,9 @@ const router = require("../../routes/employees.routes");
 const notificationRouter = require("../../routes/notifications.routes");
 const { applyPlanningAction } = require("../../services/employees/planning-actions.service");
 
-test("planning templates have no routes and cannot be applied as planning actions", async () => {
+test("templates prefill the shift editor and cannot write through grouped actions", async () => {
   assert.ok(router.stack.some(({ route }) => route?.path === `${root}/actions` && route.methods.post));
-  assert.ok(!router.stack.some(({ route }) => route?.path.startsWith(`${root}/templates`)));
+  assert.ok(router.stack.some(({ route }) => route?.path === `${root}/templates` && route.methods.post));
   await assert.rejects(
     applyPlanningAction(new ObjectId(), new Set(), { operation: "apply-template", requestId: randomUUID() }),
     { planningStatus: 400 },
@@ -58,8 +59,8 @@ async function fixture() {
     filename: "fixture.pdf", format: "pdf", size: 1024, resource_type: "raw", delivery_type: "authenticated",
   };
   await Restaurant.collection.insertMany([
-    { _id: restaurant, owner_id: owner.id, employees: [a, b, c], name: "A" },
-    { _id: other, owner_id: owner.id, employees: [outsider, a], name: "B" },
+    { _id: restaurant, owner_id: owner.id, employees: [a, b, c], name: "A", options: { employees: true } },
+    { _id: other, owner_id: owner.id, employees: [outsider, a], name: "B", options: { employees: true } },
   ]);
   await Employee.collection.insertMany([
     {
@@ -84,6 +85,7 @@ async function fixture() {
       status(status) { result.status = status; return this; },
       json(data) { result.data = data; return this; },
       end() { return this; },
+      set(name, value) { (result.headers ??= {})[name] = value; return this; },
       setHeader() {},
     };
     let index = 0;
@@ -113,11 +115,53 @@ test("planning interactions on an isolated MongoDB replica set", {
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
   await PlanningAction.init();
+  await PlanningShiftTemplate.init();
   await EmployeeAssetDeletion.init();
   await PlanningDay.init();
   await PlanningPublication.init();
   await Notification.init();
   t.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "ok" }));
+
+  await t.test("shift templates stay private to the active restaurant and use normal shift writes", async () => {
+    const f = await fixture();
+    const path = `${root}/templates`;
+    const supervisor = { role: "employee", id: f.a, restaurantId: f.restaurant };
+    const member = { role: "employee", id: f.b, restaurantId: f.restaurant };
+    const draft = { name: "Fermeture", title: "Fin de service", position: "Bar", notes: "Fermer la terrasse",
+      startTime: "18:00", endTime: "00:30", endDayOffset: 1, breakMinutes: 20 };
+    assert.equal((await f.call("post", path, draft, { user: member })).status, 403);
+    assert.equal((await f.call("get", path, null, { user: supervisor, restaurant: f.other })).status, 403);
+    assert.equal((await f.call("post", path, { ...draft, endDayOffset: 0 }, { user: supervisor })).status, 400);
+    assert.equal((await f.call("post", path, { ...draft, title: "Congés" }, { user: supervisor })).status, 400);
+    const created = await f.call("post", path, { ...draft, employeeId: String(f.a), files: [f.file] }, { user: supervisor });
+    assert.equal(created.status, 201);
+    const template = created.data.template;
+    assert.deepEqual(template, { ...draft, _id: template._id });
+    assert.equal((await f.call("post", path, { ...draft, name: " FERMETURE " })).status, 409);
+    assert.deepEqual((await f.call("get", path, null, { restaurant: f.other })).data.templates, []);
+    assert.equal((await f.call("get", path, null, { user: member })).status, 403);
+    const listed = await f.call("get", path, null, { user: supervisor });
+    assert.deepEqual(listed.data.templates, [template]);
+    assert.equal(listed.headers["Cache-Control"], "private, no-store");
+    const params = { employeeId: String(f.b) };
+    const shiftPath = "/restaurants/:restaurantId/employees/:employeeId/shifts";
+    const shift = { title: template.title, position: template.position, breakMinutes: template.breakMinutes,
+      start: "2026-11-18T17:00:00Z", end: "2026-11-18T23:30:00Z" };
+    const range = { from: "2026-11-19", to: "2026-11-19" };
+    assert.equal((await f.call("put", `${root}/lock`, { ...range, locked: true })).status, 200);
+    assert.equal((await f.call("post", shiftPath, shift, { params, user: supervisor })).status, 423);
+    assert.equal((await f.call("put", `${root}/lock`, { ...range, locked: false })).status, 200);
+    assert.equal((await f.call("post", shiftPath, shift, { params, user: supervisor })).status, 201);
+    const createdShift = (await f.profile(f.b)).shifts[0];
+    assert.equal(createdShift.requiresPlanningPublication, true);
+    assert.equal((await f.call("post", shiftPath, shift, { params, user: supervisor })).status, 409);
+    const deletion = { params: { templateId: String(template._id) } };
+    assert.equal((await f.call("delete", `${path}/:templateId`, null, { ...deletion, restaurant: f.other })).status, 404);
+    assert.equal((await f.call("delete", `${path}/:templateId`, null, { ...deletion, user: member })).status, 403);
+    assert.equal((await f.call("delete", `${path}/:templateId`, null, { ...deletion, user: supervisor })).status, 204);
+    assert.deepEqual((await f.call("get", path, null)).data.templates, []);
+    assert.equal((await f.profile(f.b)).shifts.length, 1);
+  });
 
   await t.test("publication keeps legacy shifts visible and releases only selected employees and Paris dates", async (st) => {
     const f = await fixture();
@@ -147,6 +191,9 @@ test("planning interactions on an isolated MongoDB replica set", {
     const me = (await f.call("get", "/employees/me", null, { user })).data;
     assert.deepEqual(me.employee.shifts, []);
     assert.deepEqual(me.currentProfile.shifts, []);
+    const colleague = me.restaurant.employees.find((item) => String(item._id) === String(f.a));
+    assert.equal(colleague.restaurantProfiles, undefined);
+    assert.equal(colleague.shifts, undefined);
     assert.equal((await f.call("get", base, null, { user, params: { employeeId: String(f.a) } })).status, 403);
     const manager = { role: "employee", id: f.a, restaurantId: f.restaurant };
     assert.equal((await f.call("get", base, null, { user: manager, params })).data.shifts.length, 1);

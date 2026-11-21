@@ -5,6 +5,7 @@ import { useTranslation } from "next-i18next";
 import ExportRangeModalComponent from "./export-range-modal.component";
 import { PlanningGrid, PlanningToolbar } from "./planning-grid.employees.component";
 import { PlanningCommands, usePlanningCommands } from "./planning-commands.employees.component";
+import { visiblePlanningEmployees } from "./planning-actions.utils.mjs";
 import {
   PlanningLockDialog, PlanningPublicationDialog, usePlanningPeriodState,
 } from "./planning-publication.employees.component";
@@ -12,6 +13,7 @@ import axios from "axios";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 import { X } from "lucide-react";
 import ShiftEditor, { shiftEditorTitle, useShiftEditorLabels } from "./shift-editor.employees.component";
+import PlanningShiftTemplates from "./planning-shift-templates.employees.component";
 import {
   findDraftConflict,
   defaultShiftRepeat,
@@ -28,8 +30,9 @@ import {
 import {
   buildPlanningGrid, getPlanningEmployees, getPlanningPeriod, isLeaveShiftRecord, publicationRanges,
   movePlanningDate, normalizePlanningText, parisPlanningDateKey, parsePlanningDate,
-  plannedShiftMinutes, planningDateKey, restorePlanningConsultation, PLANNING_TIME_ZONE, PLANNING_VIEWS,
+  plannedShiftMinutes, planningDateKey, restorePlanningConsultation, PLANNING_GROUPS, PLANNING_TIME_ZONE, PLANNING_VIEWS,
 } from "./planning-grid.utils.mjs";
+import styles from "./planning-grid.module.scss";
 
 const CONSULTATION_KEY = "gusto:employees:planning";
 const formatConflictDateTime = (value) => {
@@ -139,7 +142,7 @@ export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
   const { label: editorLabel } = useShiftEditorLabels();
   const { restaurantContext } = useContext(GlobalContext);
-  const { restaurantData, setRestaurantData, userConnected, planningStateRevision } = restaurantContext;
+  const { restaurantData, setRestaurantData, userConnected, planningRevision, planningStateRevision } = restaurantContext;
   const router = useRouter();
 
   // 🔥 FIX iOS : désactive le hack global uniquement sur cette page
@@ -199,8 +202,14 @@ export default function PlanningEmployeesComponent() {
   const [publicationOpen, setPublicationOpen] = useState(false);
   const [lockRange, setLockRange] = useState(null);
   const [periodRevision, setPeriodRevision] = useState(0);
+  const refreshPeriod = () => setPeriodRevision((previous) => previous + 1);
+  const [showCounters, setShowCounters] = useState(false);
+  const [planningCounters, setPlanningCounters] = useState(null);
+  const [planningTargets, setPlanningTargets] = useState(null);
 
-  const [draft, setDraft] = useState(null);
+  const initialDraft = useRef(null);
+  const [editorDraft, setDraft] = useState(null);
+  const draft = editorDraft?.restaurantId === restaurantId ? editorDraft : null;
   const [extra, setExtra] = useState([]);
   const [repeat, setRepeat] = useState(defaultShiftRepeat);
   const [fileBusy, setFileBusy] = useState(false);
@@ -334,18 +343,6 @@ export default function PlanningEmployeesComponent() {
     };
   }, [restaurantId, roster, setRestaurantData]);
 
-  const filteredEmployees = useMemo(() => {
-    const query = normalizePlanningText(searchTerm);
-    return allEmployees.filter((employee) =>
-      (!selectedEmployeeId || String(employee._id) === selectedEmployeeId) &&
-      [employee.name, employee.post, ...employee.shifts.map((shift) => shift.position)]
-        .some((value) => normalizePlanningText(value ?? "").includes(query)),
-    );
-  }, [allEmployees, searchTerm, selectedEmployeeId]);
-
-  const employeeColors = useMemo(() => new Map(allEmployees.map((employee, index) => [String(employee._id), index])), [allEmployees]);
-  const noPost = t("planning:grid.noPost");
-  const grid = useMemo(() => buildPlanningGrid(filteredEmployees, period, group, noPost), [filteredEmployees, period, group, noPost]);
   const currentEmployee = roster?.find(({ _id }) => String(_id) === String(userConnected?.id));
   const currentProfile = currentEmployee?.restaurantProfiles?.find(
     ({ restaurant }) => String(restaurant?._id ?? restaurant) === String(restaurantId),
@@ -353,8 +350,19 @@ export default function PlanningEmployeesComponent() {
   const commands = usePlanningCommands({
     enabled: Boolean(restaurantId && (userConnected?.role === "owner" ||
       (userConnected?.role === "employee" && currentProfile?.options?.employees === true))),
-    restaurantId, employees: allEmployees, setRestaurantData,
+    restaurantId, employees: allEmployees, setRestaurantData, onShiftDeleted: refreshPeriod,
   });
+  const filteredEmployees = useMemo(() => {
+    const query = normalizePlanningText(searchTerm);
+    return visiblePlanningEmployees(allEmployees, commands.hiddenShifts).filter((employee) =>
+      (!selectedEmployeeId || String(employee._id) === selectedEmployeeId) &&
+      [employee.name, employee.post, ...employee.shifts.map((shift) => shift.position)]
+        .some((value) => normalizePlanningText(value ?? "").includes(query)),
+    );
+  }, [allEmployees, commands.hiddenShifts, searchTerm, selectedEmployeeId]);
+  const employeeColors = useMemo(() => new Map(allEmployees.map((employee, index) => [String(employee._id), index])), [allEmployees]);
+  const noPost = t("planning:grid.noPost");
+  const grid = useMemo(() => buildPlanningGrid(filteredEmployees, period, group, noPost), [filteredEmployees, period, group, noPost]);
   const exportDateRange = {
     from: planningDateKey(period.start),
     to: planningDateKey(period.days.at(-1)),
@@ -362,27 +370,42 @@ export default function PlanningEmployeesComponent() {
   const revision = `${periodRevision}:${planningStateRevision}`;
   const { data: publicationState } = usePlanningPeriodState(commands.enabled ? restaurantId : null, exportDateRange, revision);
   const lockedByDate = new Map((publicationState?.days || []).map(({ date, locked }) => [date, locked]));
-  const refreshPeriod = () => setPeriodRevision((previous) => previous + 1);
   useEffect(() => {
     setPublicationOpen(false);
     setLockRange(null);
+    setDraft(null);
+    setExtra([]);
+    setRepeat(defaultShiftRepeat);
+    setFileBusy(false);
+    setConfirmingDelete(false);
+    setShiftConflict(null);
+    batchRequests.current.clear();
   }, [restaurantId]);
 
   function openShiftForm(employeeId, slot, position) {
     if (commands.busy) return;
     setSubmitError("");
     const post = position ?? allEmployees.find((employee) => String(employee._id) === String(employeeId))?.post ?? "";
-    setDraft(makeShiftDraft({ employeeId, slot, position: post }));
+    initialDraft.current = { ...makeShiftDraft({ employeeId, slot, position: post }), restaurantId };
+    setDraft(initialDraft.current);
   }
 
   function handleSelectEvent(event) {
     setSubmitError("");
-    setDraft(makeShiftDraft({ event }));
+    initialDraft.current = { ...makeShiftDraft({ event }), restaurantId };
+    setDraft(initialDraft.current);
   }
 
   function changeShiftDraft(patch) {
     setSubmitError("");
     setDraft((previous) => previous && { ...previous, ...patch });
+  }
+
+  function dismissEditor() {
+    if (fileBusy || shiftOperationPending.current) return;
+    const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft.current) || extra.length > 0 ||
+      JSON.stringify(repeat) !== JSON.stringify(defaultShiftRepeat);
+    if (!dirty || window.confirm("Abandonner les modifications du créneau ?")) closeEditor();
   }
 
   function closeEditor() {
@@ -501,8 +524,44 @@ export default function PlanningEmployeesComponent() {
     }
   }
 
+  const showCounterControl = commands.enabled && view === PLANNING_VIEWS.WEEK && group === PLANNING_GROUPS.EMPLOYEES;
+  const counterRequestKey = `${restaurantId}:${exportDateRange.from}:${exportDateRange.to}`;
+  const visibleCounters = planningCounters?.key === counterRequestKey ? planningCounters : null;
+  useEffect(() => {
+    if (!showCounterControl || !restaurantId) return undefined;
+    const controller = new AbortController();
+    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/reports/planning-targets`, {
+      ...getAuthConfig(), signal: controller.signal, params: { from: exportDateRange.from },
+    }).then(({ data }) => {
+      if (!controller.signal.aborted) setPlanningTargets({ key: counterRequestKey, targets: data.targets });
+    }).catch(() => {
+      if (!controller.signal.aborted) setPlanningTargets(null);
+    });
+    return () => controller.abort();
+  }, [showCounterControl, restaurantId, exportDateRange.from, counterRequestKey, roster]);
+  useEffect(() => {
+    if (!showCounterControl || !showCounters || !restaurantId) return undefined;
+    const controller = new AbortController();
+    setPlanningCounters(null);
+    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/reports`, {
+      ...getAuthConfig(), signal: controller.signal, params: { from: exportDateRange.from, to: exportDateRange.to },
+    }).then(({ data }) => {
+      if (!controller.signal.aborted) setPlanningCounters({ key: counterRequestKey, rows: Object.fromEntries(data.rows
+        .map(({ employee, values }) => [employee.id, { balance: values.counterEnd, annualRemaining: values.annualRemaining }])) });
+    }).catch(() => {
+      if (!controller.signal.aborted) setPlanningCounters({ key: counterRequestKey, error: true });
+    });
+    return () => controller.abort();
+  }, [showCounterControl, showCounters, restaurantId, exportDateRange.from, exportDateRange.to, counterRequestKey, periodRevision, planningRevision, planningStateRevision]);
+
+  const counterRows = showCounterControl && showCounters ? visibleCounters?.rows : undefined;
+  const hasVisibleCounter = counterRows && filteredEmployees.some(({ _id }) => {
+    const counter = counterRows[String(_id)];
+    return Number.isFinite(counter?.balance) || Number.isFinite(counter?.annualRemaining);
+  });
+
   return (
-    <section className="flex flex-col gap-2 min-w-0">
+    <section className="flex min-w-0 flex-col gap-3">
       <PlanningToolbar
         {...{ date, period, view, group, employees: allEmployees }}
         query={searchTerm}
@@ -522,11 +581,18 @@ export default function PlanningEmployeesComponent() {
         publicationStatus={publicationState?.status}
         onLockPeriod={publicationState ? () => setLockRange(exportDateRange) : undefined}
         hasPeriodLock={publicationState?.days.some(({ locked }) => locked)}
+        counterControl={showCounterControl && <button type="button" aria-pressed={showCounters}
+          onClick={() => setShowCounters((value) => !value)} className={styles.control}>{t("planning:counters.toggle")}</button>}
       />
+      {showCounterControl && showCounters && !visibleCounters && <p className="px-2 text-sm text-darkBlue/75" role="status">{t("planning:counters.loading")}</p>}
+      {showCounterControl && showCounters && visibleCounters?.error && <p className="px-2 text-sm text-red" role="alert">{t("planning:counters.error")}</p>}
+      {counterRows && !hasVisibleCounter && <p className="rounded-lg border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/75" role="status">{t("planning:counters.empty")}</p>}
       <PlanningCommands {...{ commands }} employees={allEmployees} Dialog={PlanningDialog} />
       <PlanningGrid
         {...{ view, period, employeeColors, openingHours, commands, group }}
         data={grid}
+        targets={planningTargets?.key === counterRequestKey ? planningTargets.targets : undefined}
+        counters={counterRows}
         lockedByDate={lockedByDate}
         onLockDay={publicationState ? (date) => setLockRange({ from: date, to: date }) : undefined}
         onDay={(day) => updateConsultation({ date: day, view: PLANNING_VIEWS.DAY })}
@@ -539,7 +605,7 @@ export default function PlanningEmployeesComponent() {
           wide
           behind={Boolean(shiftConflict || confirmingDelete)}
           label={shiftEditorTitle(editorLabel, draft, editorEmployee, !draft.isLeave && extra.length > 0)}
-          onClose={shiftOperation || fileBusy ? undefined : closeEditor}
+          onClose={shiftOperation || fileBusy ? undefined : dismissEditor}
         >
           <ShiftEditor
             draft={draft}
@@ -548,6 +614,8 @@ export default function PlanningEmployeesComponent() {
             conflict={draftConflict}
             overtime={contractualOvertimeWarning}
             openingHours={openingHours}
+            templateTools={commands.enabled && !draft.isLeave && <PlanningShiftTemplates key={restaurantId}
+              restaurantId={restaurantId} draft={draft} range={draftRange} onChange={changeShiftDraft} />}
             {...{ posts, collection, extra, repeat, batch, fileBusy }}
             onFileBusy={setFileBusy}
             onExtraChange={(key, patch) => {
@@ -577,7 +645,7 @@ export default function PlanningEmployeesComponent() {
             submitError={submitError}
             saving={Boolean(shiftOperation)}
             onChange={changeShiftDraft}
-            onClose={closeEditor}
+            onClose={dismissEditor}
             onSave={handleSaveShift}
             onDelete={() => {
               setDeleteError("");

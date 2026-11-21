@@ -6,7 +6,7 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   runtimeCaching: [
     {
-      urlPattern: ({ url }) => /^\/api\/restaurants\/[^/]+\/employees\/[^/]+\/documents(?:\/|$)/.test(url.pathname),
+      urlPattern: ({ url }) => /^\/api\/(?:(?:employees|accountants)\/me(?:\/|$)|restaurants\/[^/]+\/employees(?:\/|$)|(?:owner\/restaurants|events)\/[^/]+\/?$)/.test(url.pathname),
       method: "GET",
       handler: "NetworkOnly",
     },

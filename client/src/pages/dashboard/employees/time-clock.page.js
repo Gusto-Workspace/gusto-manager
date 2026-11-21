@@ -20,7 +20,7 @@ export default function TimeClockPage() {
       <Head><title>Pointeuse | Gusto Manager</title></Head>
       <div className="flex">
         <Nav />
-        <main className="min-h-screen min-w-0 flex-1 bg-lightGrey p-2 text-darkBlue tablet:ml-[88px] tablet:px-4">
+        <main className="tablet:ml-[88px] bg-lightGrey text-darkBlue min-w-0 flex-1 p-3 mobile:p-6 flex flex-col gap-6 min-h-screen">
           <Settings
             dataLoading={context.dataLoading}
             setDataLoading={context.setDataLoading}

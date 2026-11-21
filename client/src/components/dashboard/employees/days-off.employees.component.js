@@ -2,10 +2,11 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useContext, useEffect, useState } from "react";
 import axios from "axios";
-import { ArrowLeft, CalendarDays, ChevronRight, Search } from "lucide-react";
+import { CalendarDays, ChevronRight, Search } from "lucide-react";
 import { useTranslation } from "next-i18next";
 import frenchPlanning from "../../../../public/locales/fr/planning.json";
 import { GlobalContext } from "@/contexts/global.context";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import { ClockDialog } from "../time-clock/register-controls.time-clock.component";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 import { employeeDirectoryEntry, employeeProfile, directoryPath } from "./employee-directory.utils.mjs";
@@ -377,13 +378,12 @@ export default function DaysOffEmployeesComponent() {
 
   return (
     <section className="grid min-w-0 gap-4">
-      <Link href={planningPath} className="inline-flex w-fit items-center gap-2 rounded py-1 text-sm font-semibold hover:text-blue">
-        <ArrowLeft size={16} aria-hidden="true" /> Retour au planning
-      </Link>
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Congés et absences</h1>
-        <button type="button" className={primary} onClick={() => setDialog({ kind: "form", mode: "absence" })}><CalendarDays size={16} aria-hidden="true" /> Enregistrer une absence</button>
-      </header>
+      <CatalogHeaderDashboardComponent title="Congés et absences" backLabel="Retour au planning"
+        onBack={() => router.push(planningPath)} actionsClassName="self-center"
+        actions={<button type="button" className={primary} onClick={() => setDialog({ kind: "form", mode: "absence" })}>
+          <CalendarDays size={16} aria-hidden="true" /> Enregistrer une absence
+        </button>}
+      />
       {notice && <p role="status" className="rounded-lg bg-[#e1f3e9] px-3 py-2 text-sm text-[#146144]">{notice}</p>}
       <nav aria-label="Vues des congés" className="flex gap-3 border-b border-darkBlue/10">
         {[["requests", "Demandes de congés"], ["planned", "Absences au planning"]].map(([key, label]) =>

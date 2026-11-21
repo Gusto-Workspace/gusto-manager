@@ -25,6 +25,7 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
     { key: "post", label: t("labels.post"), value: value("post"), required: true },
     { key: "dateOnPost", label: t("labels.dateOnPost"), value: date ? String(date).slice(0, 10) : "", type: "date" },
     { key: "contractType", label: "Type de contrat", value: employment.contractType ?? "", options: contractTypes },
+    { key: "payrollCode", label: "Matricule de paie", value: employment.payrollCode ?? "", maxLength: 64 },
     { key: "contractualValue", label: "Volume horaire", value: employment.contractualUnit || employment.contractualValue ? employment.contractualValue ?? "" : "", type: "number" },
     { key: "contractualUnit", label: "Unité", value: employment.contractualUnit ?? "", options: Object.keys(contractUnits) },
   ] : [
@@ -80,7 +81,7 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
           </select>
         ) : (
           <input {...binding} type={field.type || "text"} aria-invalid={Boolean(errors[field.key])} disabled={isSubmitting}
-            {...(field.type === "number" && { min: 0, step: "any" })} className={input} />
+            maxLength={field.maxLength} {...(field.type === "number" && { min: 0, step: "any" })} className={input} />
         )}
         {errors[field.key] && <span role="alert" className="text-xs text-red">{errors[field.key].message}</span>}
       </label>
@@ -99,9 +100,9 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
         <form onSubmit={handleSubmit(save)} noValidate className="grid gap-4 p-4 midTablet:p-5">
           <div className="grid gap-4 midTablet:grid-cols-2">
             {isEmployment ? <>
-              {fields.slice(0, 3).map(renderField)}
+              {fields.slice(0, 4).map(renderField)}
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-2">
-                {fields.slice(3).map(renderField)}
+                {fields.slice(4).map(renderField)}
               </div>
             </> : fields.map(renderField)}
           </div>
@@ -122,7 +123,6 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
             </div>
           ))}
           {isEmployment && [
-            ["Matricule", employment.payrollCode],
             ["Établissement principal", employment.primaryEstablishment],
           ].filter(([, field]) => field).map(([label, field]) => (
             <div className="border-b border-darkBlue/10 pb-3" key={label}>

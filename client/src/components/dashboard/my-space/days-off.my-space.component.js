@@ -10,6 +10,12 @@ import { getAuthConfig } from "../time-clock/time-clock.utils";
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey disabled:opacity-50";
 const primary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-darkBlue px-3 text-sm font-semibold text-white disabled:opacity-50";
 const categoryLabel = (key) => frenchPlanning.absenceTypes[key] || "Non précisé";
+const statusClasses = {
+  pending: "bg-[#fff0d9] text-[#805016]",
+  approved: "bg-[#e2f4ec] text-[#205e44]",
+  rejected: "bg-[#fce9e6] text-[#943d34]",
+  canceled: "bg-lightGrey text-darkBlue/75",
+};
 
 export default function DaysOffMySpaceComponent({ employeeId, restaurantId }) {
   const root = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests`;
@@ -80,7 +86,12 @@ export default function DaysOffMySpaceComponent({ employeeId, restaurantId }) {
           const recentDecision = [...(request.history || [])].reverse().find(({ action }) => action === "decision");
           return <li key={request._id} className="flex flex-wrap items-start justify-between gap-3 p-4">
             <div className="min-w-0 text-sm">
-              <p className="font-semibold">{categoryLabel(request.absenceType)} · {leaveStatuses[request.status] || "—"}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">{categoryLabel(request.absenceType)}</p>
+                {leaveStatuses[request.status] && <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusClasses[request.status] || statusClasses.canceled}`}>
+                  {leaveStatuses[request.status]}
+                </span>}
+              </div>
               <p className="mt-1 text-darkBlue/75">{leavePeriod(request)} · {leaveDuration(request)}</p>
               {request.note && <p className="mt-1 whitespace-pre-wrap break-words">{request.note}</p>}
               {recentDecision && <p className="mt-1 whitespace-pre-wrap break-words text-darkBlue/75">

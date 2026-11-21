@@ -73,6 +73,13 @@ export default function ExportRangeModalComponent({
     });
   }
 
+  useEffect(() => {
+    if (!open || loading) return;
+    function escape(event) { if (event.key === "Escape") onClose?.(); }
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [open, loading, onClose]);
+
   if (!open) return null;
 
   return (

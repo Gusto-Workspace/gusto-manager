@@ -27,6 +27,11 @@ function createResponse() {
   return {
     statusCode: 200,
     body: null,
+    headers: {},
+    set(name, value) {
+      this.headers[name] = value;
+      return this;
+    },
     status(value) {
       this.statusCode = value;
       return this;

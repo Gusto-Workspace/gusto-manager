@@ -12,6 +12,7 @@ import {
   planningDateKey,
   publicationRanges,
   restorePlanningConsultation,
+  weeklyPlanningDifference,
 } from "../src/components/dashboard/employees/planning-grid.utils.mjs";
 import { getShiftMealMeta } from "../src/components/dashboard/employees/planning-meals.utils.js";
 
@@ -326,4 +327,12 @@ test("Paris boundaries and default slots remain correct when viewed from another
   } finally {
     process.env.TZ = originalTimeZone;
   }
+});
+test("weekly contract difference uses net planned hours and a weekly contract", () => {
+  const employment = { contractualUnit: "week", contractualValue: 35 };
+  assert.equal(weeklyPlanningDifference(employment, 37 * 60), 120);
+  assert.equal(weeklyPlanningDifference(employment, 28 * 60 + 30), -390);
+  assert.equal(weeklyPlanningDifference(employment, 35 * 60), 0);
+  assert.equal(weeklyPlanningDifference({ contractualUnit: "month", contractualValue: 151.67 }, 0), null);
+  assert.equal(weeklyPlanningDifference(undefined, 0), null);
 });

@@ -1,8 +1,9 @@
 import Link from "next/link";
+import useDialogBackdrop from "../_shared/use-dialog-backdrop";
 import Image from "next/image";
 import { useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { CalendarDays, ChevronRight, Clock3, Plus, Search, Trash2, UsersRound } from "lucide-react";
+import { CalendarDays, ChevronRight, ClipboardList, Clock3, Plus, Search, Trash2, UsersRound } from "lucide-react";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { GlobalContext } from "@/contexts/global.context";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
@@ -40,6 +41,7 @@ export default function ListEmployeesComponent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const removalDialog = useRef(null);
+  const backdrop = useDialogBackdrop(() => { if (!busy) setSelected(null); });
 
   useEffect(() => {
     const dialog = removalDialog.current;
@@ -109,6 +111,10 @@ export default function ListEmployeesComponent() {
               <Link href={`${directoryPath}/planning`} className={secondaryHeaderAction}>
                 <span className={`${headerIcon} bg-violet text-white`}><CalendarDays size={16} aria-hidden="true" /></span>
                 Planning
+              </Link>
+              <Link href={`${directoryPath}/reports`} className={secondaryHeaderAction}>
+                <span className={`${headerIcon} bg-blue/15 text-blue`}><ClipboardList size={16} aria-hidden="true" /></span>
+                Rapport
               </Link>
               <Link href={`${directoryPath}/add`} className={`${headerAction} border-blue bg-white text-blue shadow-sm`}>
                 <span className={`${headerIcon} bg-blue/15`}><Plus size={16} aria-hidden="true" /></span>
@@ -192,13 +198,7 @@ export default function ListEmployeesComponent() {
       <dialog ref={removalDialog}
         aria-labelledby="employee-remove-title"
         aria-describedby="employee-remove-description"
-        onClick={(event) => {
-          if (event.target === event.currentTarget && !busy) setSelected(null);
-        }}
-        onCancel={(event) => {
-          event.preventDefault();
-          if (!busy) setSelected(null);
-        }}
+        {...backdrop}
         className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-5 text-darkBlue shadow-lg backdrop:bg-darkBlue/35"
       >
         {selected && <div className="grid gap-4">

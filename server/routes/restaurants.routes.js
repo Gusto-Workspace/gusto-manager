@@ -150,6 +150,7 @@ router.post(
 
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   try {
     const { id } = req.params;
     const reservationsScope = req.query?.scope === "reservations";

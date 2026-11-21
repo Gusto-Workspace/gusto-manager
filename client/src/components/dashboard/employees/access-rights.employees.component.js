@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { useTranslation } from "next-i18next";
 
 const modules = {
@@ -24,6 +25,12 @@ export default function AccessRightsEmployeesComponent({ options = {}, onSave, h
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const dirty = Object.keys(changes).length > 0;
+
+  useEffect(() => {
+    if (!saved) return;
+    const timeout = setTimeout(() => setSaved(false), 2500);
+    return () => clearTimeout(timeout);
+  }, [saved]);
 
   function toggle(key, checked) {
     setSaved(false);
@@ -55,6 +62,9 @@ export default function AccessRightsEmployeesComponent({ options = {}, onSave, h
       <header className="-mx-4 -mt-4 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:-mx-5 midTablet:-mt-5 midTablet:px-5">
         <h2 className="flex min-h-10 items-center text-lg font-semibold">Compte et accès</h2>
         {!hasEmail && <p className="text-sm text-darkBlue/70">Ce compte n’a pas d’e-mail de connexion.</p>}
+        <span role="status" aria-live="polite">
+          {saved && <span className="grid size-7 place-items-center rounded-full bg-[#147349] text-white"><Check size={18} aria-hidden="true" /><span className="sr-only">Accès enregistrés.</span></span>}
+        </span>
       </header>
       <fieldset className="grid gap-x-6 gap-y-1 midTablet:grid-cols-2 [&>label:last-of-type]:border-b-0 midTablet:[&>label:nth-last-of-type(2):nth-of-type(odd)]:border-b-0" disabled={saving}>
         <legend className="mb-2 text-sm font-semibold">Modules autorisés pour ce restaurant</legend>
@@ -67,7 +77,7 @@ export default function AccessRightsEmployeesComponent({ options = {}, onSave, h
         ))}
       </fieldset>
       {error && <p role="alert" className="text-sm text-red">{error}</p>}
-      {saved && <p role="status" className="text-sm text-[#146144]">Accès enregistrés.</p>}
+
       {dirty && (
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" disabled={saving} onClick={() => { setChanges({}); setError(""); }} className="min-h-10 rounded-lg border border-darkBlue/15 px-3 text-sm font-semibold">{t("buttons.cancel")}</button>

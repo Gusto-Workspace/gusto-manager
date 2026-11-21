@@ -6,10 +6,15 @@ const {
   toLocalDateKey,
 } = require("./time-clock.service");
 
+function hasRecordedBreak(breaks) {
+  return breaks?.some(({ startAt, endAt }) => startAt && endAt && new Date(endAt) > new Date(startAt)) ?? false;
+}
+
 function payrollSchedule(session, override = session.payroll) {
   if (session.status !== "closed" || !session.clockOutAt ||
       +new Date(session.clockOutAt) < +new Date(session.clockInAt) ||
       (session.breaks || []).some((item) => !item.endAt)) return null;
+  override = override || session.automaticPayroll;
   const { clockInAt, clockOutAt, breaks = [] } = override || session;
   const usePlannedPause = !override || override.usePlannedPause === true;
   const planned = Number(session.plannedBreakMinutes);
@@ -18,7 +23,7 @@ function payrollSchedule(session, override = session.payroll) {
     clockOutAt,
     absent: Boolean(override?.absent),
     usePlannedPause,
-    plannedBreakMinutes: usePlannedPause && !session.breaks?.length && !breaks.length && Number.isFinite(planned)
+    plannedBreakMinutes: usePlannedPause && !hasRecordedBreak(session.breaks) && !hasRecordedBreak(breaks) && Number.isFinite(planned)
       ? Math.max(0, Math.round(planned)) : 0,
     pauseMinutesByDay: (override?.pauseMinutesByDay || []).map(({ date, minutes }) => ({ date, minutes })),
     breaks: breaks.map(({ startAt, endAt }) => ({
@@ -49,6 +54,35 @@ function payrollDayShares(schedule) {
   });
 }
 
+function suggestedPayroll(session, rule) {
+  if (!rule?.enabled || !session.clockOutAt) return null;
+  if ((!session.plannedStart && [rule.earlyIn, rule.lateIn].includes("planned")) ||
+      (!session.plannedEnd && [rule.earlyOut, rule.lateOut].includes("planned"))) return null;
+  function boundary(raw, planned, early, late) {
+    const measured = +new Date(raw);
+    if (planned && (measured < +new Date(planned) ? early : late) === "planned") return new Date(planned);
+    const step = rule.roundMinutes * 60_000;
+    return step ? new Date(Math.round(measured / step) * step) : new Date(raw);
+  }
+  const clockInAt = boundary(session.clockInAt, session.plannedStart, rule.earlyIn, rule.lateIn);
+  const clockOutAt = boundary(session.clockOutAt, session.plannedEnd, rule.earlyOut, rule.lateOut);
+  if (clockOutAt <= clockInAt) return null;
+  const breaks = (session.breaks || []).map(({ startAt, endAt }) => ({
+    startAt: new Date(Math.max(+clockInAt, +new Date(startAt))), endAt: new Date(Math.min(+clockOutAt, +new Date(endAt))),
+  })).filter((item) => item.endAt > item.startAt);
+  const actual = breaks.reduce((sum, item) => sum + diffMinutes(item.startAt, item.endAt), 0);
+  const planned = session.plannedBreakMinutes || 0;
+  const minimum = rule.pause === "plannedMinimum" || (rule.pause === "plannedFallback" && !hasRecordedBreak(session.breaks)) ? planned : 0;
+  const schedule = { clockInAt, clockOutAt, breaks, pauseMinutesByDay: [], usePlannedPause: false };
+  let remaining = Math.max(0, minimum - actual);
+  for (const day of payrollDayShares(schedule)) {
+    const extra = Math.min(remaining, day.grossMinutes - day.breakMinutes);
+    if (extra > 0) schedule.pauseMinutesByDay.push({ date: day.date, minutes: day.breakMinutes + extra });
+    remaining -= extra;
+  }
+  return schedule;
+}
+
 function auditPayrollPauses(schedule) {
   if (!schedule.plannedBreakMinutes) return schedule.pauseMinutesByDay;
   const manuallySetDates = new Set(schedule.pauseMinutesByDay.map(({ date }) => date));
@@ -71,6 +105,7 @@ function payrollDays(sessions, from, to) {
         updatedAt: session.updatedAt || null,
         revision: session.__v ?? 0,
         manual: Boolean(session.payroll),
+        ...(needsClockRuleReview(session) && { requiresCorrection: true }),
         validated: session.reviews?.at(-1)?.type === "validated",
         timings: day,
       });
@@ -81,14 +116,19 @@ function payrollDays(sessions, from, to) {
   return result;
 }
 
+function needsClockRuleReview(session) {
+  return Boolean(session.clockRule?.enabled && !session.automaticPayroll && !session.payroll);
+}
+
 function buildPayrollOverlapQuery(from, to) {
   const { start, endExclusive } = getRangeBounds(from, to);
   return {
     $or: [
       buildOverlapQuery(from, to),
+      { "automaticPayroll.clockInAt": { $lt: endExclusive }, "automaticPayroll.clockOutAt": { $gt: start } },
       { "payroll.clockInAt": { $lt: endExclusive }, "payroll.clockOutAt": { $gt: start } },
     ],
   };
 }
 
-module.exports = { payrollSchedule, payrollDayShares, payrollDays, auditPayrollPauses, buildPayrollOverlapQuery };
+module.exports = { needsClockRuleReview, suggestedPayroll, payrollSchedule, payrollDayShares, payrollDays, auditPayrollPauses, buildPayrollOverlapQuery };

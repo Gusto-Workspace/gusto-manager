@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import Link from "next/link";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import { ArrowLeft, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, History, List, Tablet, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, History, List, Tablet, Users } from "lucide-react";
+import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import calendarStyles from "./register-calendar.module.scss";
 import { ClockCorrectionForm, ClockDialog, ClockPlanningHeading, ClockServiceFilter, control, primary, secondary } from "./register-controls.time-clock.component";
 import ClockManagement from "./register-management.time-clock.component";
@@ -166,6 +166,7 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
   const [version, setVersion] = useState(0);
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [dialogDirty, setDialogDirty] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
   const root = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock`;
@@ -245,7 +246,15 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
     setDialog(null);
   }
 
+  function canDismiss() {
+    return !busy && (!dialogDirty || window.confirm("Abandonner la saisie en cours ?"));
+  }
+  function dismissEditor() {
+    if (canDismiss()) setDialog(null);
+  }
+
   function openDialog(next) {
+    setDialogDirty(false);
     setDialogError("");
     setDialog(next);
   }
@@ -360,18 +369,11 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
 
   return (
     <section className="flex w-full min-w-0 flex-col gap-4">
-      <Link href="/dashboard/employees" className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-blue hover:underline">
-        <ArrowLeft size={17} /> Gestion du personnel
-      </Link>
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-darkBlue text-white"><Clock3 size={24} /></span>
-          <h1 className="text-2xl font-bold">Pointeuse</h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <CatalogHeaderDashboardComponent title="Pointeuse" onBack={() => router.push("/dashboard/employees")}
+        backLabel="Retour à la gestion du personnel" actionsClassName="self-center gap-2" actions={<>
           <ClockExport restaurantId={restaurantId} root={root} employees={restaurantEmployees} />
           <button className={secondary} onClick={() => openDialog({ type: "management" })}><Tablet size={18} /> Tablettes</button>
-        </div>
-      </header>
+        </>} />
       <nav aria-label="Vues de la Pointeuse" className="flex gap-1 border-b border-darkBlue/10">
         {tabs.map(({ id, label, Icon }) => <button key={id} onClick={() => changeView(id)} aria-current={id === view ? "page" : undefined}
           className={`-mb-px flex min-h-12 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-5 ${id === view ? "border-blue text-blue" : "border-transparent text-darkBlue/65 hover:text-darkBlue"}`}>
@@ -454,12 +456,12 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
           <ArrowLeft size={16} aria-hidden="true" /> Retour au service
         </button>
       </ClockDialog>}
-      {dialog?.type === "edit" && <ClockDialog title={`Corriger le pointage · ${name(dialog.person)}`} onClose={() => { if (!busy) setDialog(null); }}>
-        <ClockCorrectionForm session={dialog.session} busy={busy} onCancel={() => setDialog(null)}
+      {dialog?.type === "edit" && <ClockDialog title={`Corriger le pointage · ${name(dialog.person)}`} onClose={dismissEditor}>
+        <ClockCorrectionForm session={dialog.session} busy={busy} onDirty={setDialogDirty} onCancel={dismissEditor}
           onSave={(values) => save(`sessions/${dialog.session.id}`, "patch", { ...values, anchorDate: dialog.day.date }, "Correction enregistrée.")} />
         {dialogError && <p role="alert" className="mt-3 text-sm text-red">{dialogError}</p>}
       </ClockDialog>}
-      {dialog?.type === "note" && <ClockDialog title={`Note · ${name(dialog.person)}`} onClose={() => { if (!busy) setDialog(null); }}>
+      {dialog?.type === "note" && <ClockDialog title={`Note · ${name(dialog.person)}`} onClose={dismissEditor}>
         {dialog.note && <>
           <p className="text-sm text-darkBlue/70">
             {{ planning: "Note du Planning", correction: "Motif de correction", note: "Note" }[dialog.note.source]}
@@ -469,12 +471,12 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
         </>}
         <form onSubmit={saveNote} className={`grid gap-3 ${dialog.note ? "mt-5 border-t border-darkBlue/10 pt-4" : ""}`}>
           <label className="grid gap-1 text-sm font-semibold">Ajouter une note
-            <textarea name="note" rows="3" required maxLength={2000} className={control} />
+            <textarea name="note" onChange={event => setDialogDirty(Boolean(event.target.value))} rows="3" required maxLength={2000} className={control} />
           </label>
           {dialogError && <p role="alert" className="text-sm text-red">{dialogError}</p>}
           <div className="flex flex-wrap justify-end gap-2">
             {dialog.paid?.manual && <button type="button" className={`${secondary} mr-auto`} disabled={busy}
-              onClick={() => resetPayroll(dialog.person, dialog.paid)}>Revenir au calcul automatique</button>}
+              onClick={() => { if (canDismiss()) resetPayroll(dialog.person, dialog.paid); }}>Revenir au calcul automatique</button>}
             <button type="submit" className={primary} disabled={busy}>Enregistrer la note</button>
           </div>
         </form>
@@ -485,16 +487,16 @@ export default function TimeClockRegister({ restaurantId, employees: restaurantE
           {dialog.anomalies.map((label, index) => <li key={index}>{label}</li>)}
         </ul>
       </ClockDialog>}
-      {dialog?.type === "confirm-payroll" && <ClockDialog title={`${dialog.label} · ${name(dialog.person)}`} onClose={() => { if (!busy) setDialog(null); }}>
+      {dialog?.type === "confirm-payroll" && <ClockDialog title={`${dialog.label} · ${name(dialog.person)}`} onClose={dismissEditor}>
         <form onSubmit={saveInline} className="grid gap-4">
           {(dialog.session?.validated || dialog.session?.review || dialog.shift?.absenceValidated) &&
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Ce service est validé. La correction le remettra à valider.</p>}
           <label className="grid gap-1 text-sm font-semibold">Motif
-            <textarea name="reason" rows="3" required maxLength={2000} className={control} />
+            <textarea name="reason" onChange={event => setDialogDirty(Boolean(event.target.value))} rows="3" required maxLength={2000} className={control} />
           </label>
           {dialogError && <p role="alert" className="text-sm text-red">{dialogError}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className={secondary} disabled={busy} onClick={() => setDialog(null)}>Annuler</button>
+            <button type="button" className={secondary} disabled={busy} onClick={dismissEditor}>Annuler</button>
             <button type="submit" className={primary} disabled={busy}>Confirmer</button>
           </div>
         </form>

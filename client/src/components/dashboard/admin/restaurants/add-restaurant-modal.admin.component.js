@@ -16,6 +16,7 @@ import FormInputComponent from "@/components/_shared/inputs/form-input.component
 import { VisibleSvg } from "@/components/_shared/_svgs/visible.svg";
 import { NoVisibleSvg } from "@/components/_shared/_svgs/no-visible.svg";
 import ImportDishCardAdminComponent from "./import-dish-card.admin.component";
+import ImportSkelloAdminComponent from "./import-skello.admin.component";
 import CallSenseOnboarding from "./callsense-onboarding.admin.component";
 
 // ICONS (lucide)
@@ -595,6 +596,10 @@ export default function AddRestaurantModal(props) {
                 onImported={props.handleEditRestaurant}
               />
             ) : null}
+
+            {initialIsEdit && props.restaurant?.options?.employees === true && (
+              <ImportSkelloAdminComponent restaurantId={initialRestaurantId} disabled={loading || cardImportLoading} />
+            )}
 
             {/* CARD: Stripe */}
             <div className="rounded-2xl bg-white/70 border border-darkBlue/10 p-4">

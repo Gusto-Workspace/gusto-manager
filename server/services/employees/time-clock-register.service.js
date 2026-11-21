@@ -95,7 +95,7 @@ function assignPlannedServices(sessions, shifts, attendance, now = new Date()) {
     const [shift] = scheduled.splice(best, 1);
     const override = attendance.get(shiftAttendanceKey(session.employee, shift._id, date))?.mealCount;
     return {
-      ...session, registerShiftId: String(shift._id),
+      ...session, registerShiftId: String(shift._id), plannedStart: shift.start, plannedEnd: shift.end,
       plannedBreakMinutes: shift.breakMinutes ?? 0,
       mealCountOverride: session.mealCountOverride ?? override,
     };

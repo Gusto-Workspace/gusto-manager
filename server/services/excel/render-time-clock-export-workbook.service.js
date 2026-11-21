@@ -4,6 +4,7 @@ function safeArr(value) {
 
 function escapeXml(value) {
   return String(value ?? "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -951,7 +952,7 @@ function buildSummaryRows(reports = [], bounds, generatedAt = new Date()) {
       toIntegerCell(range.totalMealCount || 0),
       toIntegerCell(activeDays),
       safeArr(range.anomalies).join(", "),
-      toNumberCell(minutesToHours(range.totalPayrollMinutes || 0)),
+      range.requiresCorrection ? "" : toNumberCell(minutesToHours(range.totalPayrollMinutes || 0)),
     ];
   });
 }
@@ -1094,18 +1095,18 @@ function buildDetailRows(
 function buildPayrollRows(reports) {
   return reports.flatMap(({ employee, range, profile }) => safeArr(range?.days).flatMap((day) => {
     const identity = [employee?.firstname || "", employee?.lastname || "", profile?.employment?.payrollCode || "", formatDateKey(day.date)];
-    const paid = safeArr(day.payroll).map(({ id, timings, manual, absent }) => {
+    const paid = safeArr(day.payroll).map(({ id, timings, manual, absent, requiresCorrection }) => {
       const actual = safeArr(day.sessions).find((session) => session.id === id)?.dayTotals;
       return [
         ...identity,
         formatTime(actual?.startAt, "Europe/Paris"),
         formatTime(actual?.endAt, "Europe/Paris"),
         actual ? toNumberCell(minutesToHours(actual.workedMinutes)) : "",
-        formatTime(timings.startAt, "Europe/Paris"),
-        formatTime(timings.endAt, "Europe/Paris"),
-        toNumberCell(minutesToHours(timings.breakMinutes)),
-        toNumberCell(minutesToHours(timings.workedMinutes)),
-        absent ? "Absence constatée" : manual ? "Corrigé" : "Automatique",
+        requiresCorrection ? "" : formatTime(timings.startAt, "Europe/Paris"),
+        requiresCorrection ? "" : formatTime(timings.endAt, "Europe/Paris"),
+        requiresCorrection ? "" : toNumberCell(minutesToHours(timings.breakMinutes)),
+        requiresCorrection ? "" : toNumberCell(minutesToHours(timings.workedMinutes)),
+        requiresCorrection ? "À corriger" : absent ? "Absence constatée" : manual ? "Corrigé" : "Automatique",
       ];
     });
     const absences = safeArr(day.reportedAbsences).map((shift) => [
@@ -1460,7 +1461,8 @@ function renderColumnsXml(columnWidths = []) {
 function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
   const normalized = normalizeCell(cell);
   const ref = `${columnNumberToLetters(columnIndex)}${rowIndex}`;
-  const styleAttr = styleIndex > 0 ? ` s="${styleIndex}"` : "";
+  const selectedStyle = cell?.style ?? styleIndex;
+  const styleAttr = selectedStyle > 0 ? ` s="${selectedStyle}"` : "";
 
   if (normalized.type === "Number") {
     return `<c r="${ref}"${styleAttr}><v>${escapeXml(normalized.value)}</v></c>`;
@@ -1469,8 +1471,9 @@ function renderCellXml(cell, rowIndex, columnIndex, styleIndex = 0) {
   return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t xml:space="preserve">${escapeXml(normalized.value)}</t></is></c>`;
 }
 
-function renderRowXml(cells = [], rowIndex, styleIndex = 0) {
-  const rowStyleAttrs = styleIndex === 1 ? ' ht="24" customHeight="1"' : "";
+function renderRowXml(cells = [], rowIndex, styleIndex = 0, height) {
+  const rowHeight = height ?? (styleIndex === 1 ? 24 : null);
+  const rowStyleAttrs = rowHeight ? ` ht="${rowHeight}" customHeight="1"` : "";
 
   if (!Array.isArray(cells) || !cells.length) {
     return `<row r="${rowIndex}"${rowStyleAttrs}/>`;
@@ -1573,6 +1576,7 @@ function buildRootRelsXml() {
 function buildStylesXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts>
   <fonts count="3">
     <font><sz val="11"/><name val="Calibri"/></font>
     <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
@@ -1596,12 +1600,15 @@ function buildStylesXml() {
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="3">
+  <cellXfs count="6">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="center" vertical="center" wrapText="1"/>
     </xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="20" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -1795,6 +1802,10 @@ function buildWorkbookBuffer({
     generatedAt,
   });
 
+  return packageWorkbook(sheets, renderWorksheetXml, generatedAt);
+}
+
+function packageWorkbook(sheets, renderSheet, generatedAt = new Date()) {
   const entries = [
     {
       name: "[Content_Types].xml",
@@ -1826,7 +1837,7 @@ function buildWorkbookBuffer({
     },
     ...sheets.map((sheet, index) => ({
       name: `xl/worksheets/sheet${index + 1}.xml`,
-      data: renderWorksheetXml(sheet),
+      data: renderSheet(sheet),
     })),
   ];
 
@@ -1835,4 +1846,10 @@ function buildWorkbookBuffer({
 
 module.exports = {
   buildWorkbookBuffer,
+  packageWorkbook,
+  renderColumnsXml,
+  renderRowXml,
+  columnNumberToLetters,
+  escapeXml,
+  isFrenchPublicHoliday,
 };

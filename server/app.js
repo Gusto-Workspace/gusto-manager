@@ -100,6 +100,7 @@ app.use(apiRoutes, restrictAccountantAccess);
 // ADMIN
 const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");
 const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
+const skelloImportRoutes = require("./routes/admin/skello-import.routes");
 const ownersAdminRoutes = require("./routes/admin/owners.routes");
 const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
 const documentsAdminRoutes = require("./routes/admin/documents.routes");
@@ -107,6 +108,7 @@ const smsRemindersAdminRoutes = require("./routes/admin/sms-reminders.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
+app.use(apiRoutes, skelloImportRoutes);
 app.use(apiRoutes, ownersAdminRoutes);
 app.use(apiRoutes, subscriptionsAdminRoutes);
 app.use(apiRoutes, documentsAdminRoutes);

@@ -1,9 +1,14 @@
 .toolbar,
-.scroll {
+.scroll,
+.actions {
   --ink: #182841;
   --muted: #536179;
   --line: #dce3ef;
   --accent: #3c4e9a;
+}
+
+.toolbar,
+.scroll {
   color: var(--ink);
   background: #fff;
   border: 1px solid var(--line);
@@ -11,14 +16,11 @@
 }
 
 .toolbar {
-  padding: 8px 12px;
+  padding: 10px 12px;
 }
 
-.brandRow,
 .navigationRow,
 .filterRow,
-.titleGroup,
-.actions,
 .periodControls {
   display: flex;
   align-items: center;
@@ -27,25 +29,22 @@
   min-width: 0;
 }
 
-.brandRow,
 .navigationRow {
   justify-content: space-between;
 }
-.brandRow {
-  padding-bottom: 7px;
+.actions {
+  align-items: center;
+  align-self: center;
+  gap: 8px;
 }
-.navigationRow,
+.actions .control {
+  min-height: 40px;
+  font-size: 0.875rem;
+}
 .filterRow {
-  padding-top: 7px;
+  padding-top: 8px;
   border-top: 1px solid #edf0f7;
-}
-.filterRow {
-  margin-top: 7px;
-}
-.titleGroup h2 {
-  font-size: 19px;
-  font-weight: 720;
-  line-height: 1.2;
+  margin-top: 8px;
 }
 .periodTitle {
   padding: 0 4px;
@@ -100,6 +99,17 @@
 }
 .employeeFilter {
   max-width: 224px;
+  min-width: 0;
+}
+.employeeControls {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+}
+.control[aria-pressed="true"] {
+  background: #e9edff;
+  border-color: #9faee3;
+  color: #303f87;
 }
 .search {
   justify-content: flex-start;
@@ -151,6 +161,7 @@
   --total-width: 92px;
   --header-height: 46px;
   max-height: max(280px, calc(100dvh - 246px));
+  position: relative;
   overflow: auto;
   scrollbar-color: #aebad0 #f3f5fa;
   overscroll-behavior: contain;
@@ -232,6 +243,24 @@
 }
 .table tbody .total {
   vertical-align: middle;
+}
+
+.contractDifference {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.contractUnder { color: #2359ae; }
+.contractOver { color: #b3263d; }
+.hoursCounter {
+  display: block;
+  margin-top: 3px;
+  color: #815120;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 .table .today {
   background-color: #eef4ff;
@@ -887,6 +916,7 @@
 .leaveSwatch {
   background: #a56822;
 }
+.actions button:focus-visible,
 .toolbar button:focus-visible,
 .toolbar :is(select, input[type="date"]):focus-visible,
 .scroll :is(button, a):focus-visible,
@@ -899,9 +929,7 @@
   .toolbar {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
-  }
-  .brandRow {
-    grid-column: 1 / -1;
+    gap: 8px;
   }
   .navigationRow {
     justify-content: flex-start;
@@ -909,6 +937,8 @@
   }
   .filterRow {
     margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
     justify-content: flex-end;
   }
 }
@@ -946,27 +976,13 @@
 }
 
 @media (max-width: 599px) {
-  .brandRow,
-  .titleGroup,
-  .actions {
-    flex-wrap: nowrap;
-  }
-  .titleGroup h2 {
-    font-size: 16px;
-  }
   .actions .control {
-    width: 37px;
-    min-height: 37px;
-    padding: 0;
-    font-size: 0;
+    font-size: 0.75rem;
   }
-  .navigationRow {
-    display: grid;
-    grid-template-columns: 34px 34px max-content minmax(0, 1fr);
+  .navigationRow,
+  .periodControls,
+  .filterRow {
     gap: 5px;
-  }
-  .periodControls {
-    display: contents;
   }
   .periodTitle {
     min-width: 0;
@@ -975,38 +991,15 @@
     font-size: 12px;
   }
   .toolbar .dateInput {
-    grid-column: 1 / 4;
-    grid-row: 2;
-    width: 100%;
     padding-inline: 5px;
-  }
-  .navigationRow .segmented {
-    grid-column: 4;
-    grid-row: 2;
-    justify-self: end;
   }
   .segmented button {
     padding-inline: 7px;
   }
-  .filterRow {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 5px;
-  }
-  .filterRow .segmented {
-    grid-column: 1;
-    grid-row: 1;
+  .employeeControls {
+    flex: 1 1 auto;
   }
   .employeeFilter {
-    grid-column: 2 / -1;
-    grid-row: 1;
-    width: 100%;
-  }
-  .search {
-    grid-column: 1 / 3;
-    grid-row: 2;
-  }
-  .search input {
-    width: 100%;
+    flex: 1;
   }
 }

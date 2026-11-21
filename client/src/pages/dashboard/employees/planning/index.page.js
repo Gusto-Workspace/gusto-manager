@@ -48,7 +48,7 @@ export default function PlanningEmployeePage() {
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[88px] bg-lightGrey text-darkBlue flex-1 px-2 py-2 tablet:px-4 flex flex-col gap-2 min-h-screen min-w-0">
+          <main className="tablet:ml-[88px] bg-lightGrey text-darkBlue min-w-0 flex-1 p-3 mobile:p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -69,7 +69,7 @@ export default function PlanningEmployeePage() {
             ) : (
               <PlanningEmployeesComponent key={restaurant._id} />
             )}
-          </div>
+          </main>
         </div>
       </div>
     </>

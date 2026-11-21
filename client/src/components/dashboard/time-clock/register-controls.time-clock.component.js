@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import useDialogBackdrop from "../_shared/use-dialog-backdrop";
 import { X } from "lucide-react";
 
 export const control = "min-h-10 min-w-0 rounded-xl border border-darkBlue/15 bg-white px-3 py-2 text-sm text-darkBlue focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
@@ -35,28 +36,17 @@ export function ClockPlanningHeading({ title, category, onChange }) {
 
 export function ClockDialog({ title, onClose, children }) {
   const dialog = useRef(null);
-  const pointerStartedOutside = useRef(false);
+  const backdrop = useDialogBackdrop(onClose);
   useEffect(() => {
     const element = dialog.current;
     element.showModal();
     return () => element.close();
   }, []);
 
-  function isOutside(event) {
-    if (event.target !== event.currentTarget) return false;
-    const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect();
-    return event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom;
-  }
 
   return (
     <dialog ref={dialog} aria-label={title}
-      onPointerDown={(event) => { pointerStartedOutside.current = isOutside(event); }}
-      onClick={(event) => {
-        const dismiss = pointerStartedOutside.current && isOutside(event);
-        pointerStartedOutside.current = false;
-        if (dismiss) onClose();
-      }}
-      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      {...backdrop}
       className="max-h-[90dvh] w-[min(94vw,44rem)] overflow-y-auto rounded-3xl bg-white p-0 text-darkBlue shadow-xl backdrop:bg-darkBlue/45">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-darkBlue/10 bg-white px-5 py-4 sm:px-6">
         <h2 className="text-xl font-bold">{title}</h2>
@@ -80,13 +70,20 @@ function editValue(value, original) {
   return original && value === wallValue(original) ? original : value;
 }
 
-export function ClockCorrectionForm({ session, onSave, onCancel, busy }) {
+export function ClockCorrectionForm({ session, onSave, onCancel, onDirty, busy }) {
   const [start, setStart] = useState(wallValue(session.clockInAt));
   const [end, setEnd] = useState(wallValue(session.clockOutAt || new Date()));
   const [reason, setReason] = useState("");
   const [breaks, setBreaks] = useState(() => session.breaks.map((item) => ({
     id: item.id, original: item, start: wallValue(item.startAt), end: wallValue(item.endAt),
   })));
+
+  const initial = useRef({ start, end });
+  useEffect(() => {
+    onDirty?.(start !== initial.current.start || end !== initial.current.end || Boolean(reason) ||
+      breaks.length !== session.breaks.length ||
+      breaks.some(item => !item.original || item.start !== wallValue(item.original.startAt) || item.end !== wallValue(item.original.endAt)));
+  }, [start, end, reason, breaks, session.breaks.length, onDirty]);
 
   function submit(event) {
     event.preventDefault();

@@ -119,6 +119,13 @@ export default function AddEmployeesComponent() {
     }
   }
 
+  useEffect(() => {
+    if (!showImportModal) return;
+    function escape(event) { if (event.key === "Escape") setShowImportModal(false); }
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [showImportModal]);
+
   function handleCloseImportModal() {
     setShowImportModal(false);
   }
@@ -504,7 +511,7 @@ export default function AddEmployeesComponent() {
     <>
       {importModal}
       {createEmployeeErrorModal}
-      <section className="grid min-w-0 gap-5 border-t border-darkBlue/10 pt-4">
+      <section className="grid min-w-0 gap-5">
         <CatalogHeaderDashboardComponent
           icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
           title={t("employees:titles.main")}

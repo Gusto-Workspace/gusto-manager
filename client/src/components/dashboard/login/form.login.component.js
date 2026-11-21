@@ -215,11 +215,9 @@ export default function FormLoginComponent() {
       restaurantContext.setIsAuth(true);
       router.replace(redirectTo || "/dashboard");
     } catch (error) {
-      if (error.response?.data?.message) {
-        setErrorMessage(error.response.data.message);
-      } else {
-        setErrorMessage("errors.server");
-      }
+      const status = error.response?.status;
+      const messages = { 401: "errors.incorrect", 429: "errors.tooManyAttempts" };
+      setErrorMessage(messages[status] || "errors.server");
     } finally {
       setLoading(false);
     }

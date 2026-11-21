@@ -25,6 +25,54 @@ const {
   sealPin, validDevicePublicKeys, verifyPunchProof, wrapDevicePinKey,
 } = require("../../services/employees/time-clock-device.service");
 
+test("les règles datées conservent le brut et ventilent la paie selon le restaurant", () => {
+  const { suggestedPayroll, payrollSchedule, payrollDayShares, needsClockRuleReview } = require("../../services/employees/time-clock-payroll.service");
+  const session = { status: "closed", clockInAt: "2027-03-01T07:09:00Z", clockOutAt: "2027-03-01T10:45:00Z",
+    plannedStart: "2027-03-01T07:00:00Z", plannedEnd: "2027-03-01T10:30:00Z", plannedBreakMinutes: 15, breaks: [] };
+  const rule = { enabled: true, earlyIn: "planned", lateIn: "planned", earlyOut: "clocked", lateOut: "clocked",
+    roundMinutes: 0, pause: "plannedFallback" };
+  function total(s, r) {
+    return payrollDayShares(payrollSchedule({ ...s, automaticPayroll: suggestedPayroll(s, r) }))
+      .reduce((sum, day) => sum + day.workedMinutes, 0);
+  }
+  assert.equal(total(session, rule), 210);
+  assert.equal(session.clockInAt, "2027-03-01T07:09:00Z");
+  const actual = { ...session, breaks: [{ startAt: "2027-03-01T08:00:00Z", endAt: "2027-03-01T08:06:00Z" }] };
+  assert.equal(total(actual, rule), 219);
+  assert.equal(total(actual, { ...rule, pause: "plannedMinimum" }), 210);
+  assert.equal(total(session, { ...rule, lateIn: "clocked", roundMinutes: 5, pause: "clocked" }), 215);
+  assert.equal(total(session, { ...rule, lateOut: "planned" }), 195);
+  assert.equal(suggestedPayroll({ ...session, plannedStart: null }, rule), null);
+  assert.ok(needsClockRuleReview({ ...session, clockRule: rule }));
+  assert.equal(needsClockRuleReview({ ...session, clockRule: rule, payroll: session }), false);
+  assert.equal(suggestedPayroll(session, { enabled: false }), null);
+  const overnight = { ...session, clockInAt: "2027-04-04T20:55:00Z", clockOutAt: "2027-04-04T22:17:00Z",
+    plannedStart: "2027-04-04T21:00:00Z", plannedEnd: "2027-04-04T22:00:00Z" };
+  const schedule = suggestedPayroll(overnight, { ...rule, roundMinutes: 5 });
+  assert.deepEqual(payrollDayShares(schedule).map(d => d.workedMinutes), [45, 15]);
+});
+
+test("une pause de durée nulle n’écarte pas la pause prévue en mode de remplacement", () => {
+  const { suggestedPayroll, payrollSchedule, payrollDayShares } = require("../../services/employees/time-clock-payroll.service");
+  const at = "2027-03-03T12:00:00Z";
+  const session = { status: "closed", clockInAt: "2027-03-03T08:00:00Z", clockOutAt: at,
+    plannedBreakMinutes: 25, breaks: [{ startAt: at, endAt: at }] };
+  const rule = { enabled: true, earlyIn: "clocked", lateIn: "clocked", earlyOut: "clocked", lateOut: "clocked",
+    roundMinutes: 0, pause: "plannedFallback" };
+  const paid = (input, override) => payrollDayShares(payrollSchedule(input, override))[0];
+  assert.equal(paid(session).workedMinutes, 215);
+  assert.equal(paid(session, suggestedPayroll(session, rule)).workedMinutes, 215);
+  assert.equal(paid(session, suggestedPayroll(session, { ...rule, pause: "clocked" })).workedMinutes, 240);
+  assert.equal(session.breaks.length, 1);
+  assert.equal(session.breaks[0].endAt, at);
+
+  const measured = { ...session, breaks: [{ startAt: "2027-03-03T10:00:00Z", endAt: "2027-03-03T10:08:00Z" }] };
+  assert.equal(paid(measured).breakMinutes, 8);
+  assert.equal(paid(measured, suggestedPayroll(measured, rule)).breakMinutes, 8);
+  const shortened = { ...measured, plannedEnd: new Date("2027-03-03T09:30:00Z") };
+  assert.equal(paid(shortened, suggestedPayroll(shortened, { ...rule, lateOut: "planned" })).breakMinutes, 0);
+});
+
 function tabletKeys() {
   const signing = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const wrapping = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -250,9 +298,10 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   const base = "/restaurants/:restaurantId/time-clock";
   const deviceBase = "/time-clock/device";
   async function call(method, path, { body, query = {}, authorization = manager, restaurantId = restaurant, ...ids } = {}) {
-    const handlers = router.stack.find((layer) => layer.route?.path === path && layer.route.methods[method]).route.stack;
+    const handlers = router.stack.find((layer) => layer.route?.path === path && layer.route.methods[method]).route.stack
+      .filter((layer) => !layer.method || layer.method === method);
     const result = { status: 200, headers: {} };
-    const request = { body, query, params: { restaurantId: String(restaurantId), ...ids }, headers: { authorization },
+    const request = { method: method.toUpperCase(), body, query, params: { restaurantId: String(restaurantId), ...ids }, headers: { authorization },
       get(name) { return this.headers[name.toLowerCase()]; } };
     const response = {
       status(value) { result.status = value; return this; },
@@ -267,6 +316,124 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
     await next();
     return result;
   }
+  await t.test("RH report and Excel enforce the active restaurant and reuse the same totals", async () => {
+    const reportPath = "/restaurants/:restaurantId/employees/reports";
+    const filters = { from: "2025-01-01", to: "2025-01-31" };
+    await Employee.collection.updateOne(
+      { _id: alice, "restaurantProfiles.restaurant": restaurant },
+      { $set: { "restaurantProfiles.$.options.employees": true, "restaurantProfiles.$.employment.payrollCode": "0003" } },
+    );
+    await Session.collection.insertMany([
+      { restaurant, employee: alice, clockInAt: new Date("2025-01-10T07:00:00Z"), clockOutAt: new Date("2025-01-10T11:00:00Z"),
+        status: "closed", breaks: [], reviews: [{ type: "validated", at: new Date("2025-01-10T11:30:00Z") }],
+        employeeSnapshot: { firstname: "Alice", lastname: "Fictif" } },
+      { restaurant: other, employee: alice, clockInAt: new Date("2025-01-11T07:00:00Z"), clockOutAt: new Date("2025-01-11T09:00:00Z"),
+        status: "closed", breaks: [], employeeSnapshot: { firstname: "Alice", lastname: "Fictif" } },
+    ]);
+    try {
+      const { data, status, headers } = await call("get", reportPath, { query: filters });
+      assert.equal(status, 200);
+      assert.equal(headers["Cache-Control"], "private, no-store");
+      assert.equal(data.rows.length, 2);
+      assert.equal(data.totals.paid, 240);
+      assert.ok(data.rows.some((row) => row.values.payrollCode === "0003"));
+      assert.equal((await call("get", reportPath, { query: filters, authorization: auth(alice, "employee") })).status, 200);
+      assert.equal((await call("get", reportPath, { query: filters, authorization: auth(bob, "employee") })).status, 403);
+      assert.equal((await call("get", reportPath, { query: filters, authorization: auth(accountant, "accountant") })).status, 403);
+      assert.equal((await call("get", reportPath, { query: filters, authorization: "" })).status, 403);
+      assert.equal((await call("get", reportPath, { query: filters, restaurantId: other })).status, 403);
+      assert.equal((await call("get", reportPath, { query: { ...filters, from: [] } })).status, 400);
+      const scoped = await call("get", reportPath, { query: { ...filters, employeeId: String(outside) } });
+      assert.deepEqual(scoped.data.rows, []);
+      const otherSite = await call("get", reportPath, { query: filters, restaurantId: other, authorization: auth(owner, "owner", other) });
+      assert.equal(otherSite.data.totals.paid, 120);
+      const excel = await call("post", reportPath + "/export/excel", { body: { ...filters, employeeId: String(alice) } });
+      assert.equal(excel.status, 200);
+      assert.match(excel.headers["Content-Disposition"], /rapport-rh-restaurant-fictif-2025-01-01-au-2025-01-31/);
+      assert.ok(excel.data.includes(Buffer.from('<v>4</v>')));
+      assert.ok(excel.data.includes(Buffer.from('0003')));
+      assert.equal((await call("post", reportPath + "/export/excel", { body: filters, authorization: auth(accountant, "accountant") })).status, 403);
+    } finally {
+      await Session.collection.deleteMany({ clockInAt: { $lt: new Date("2025-02-01T00:00:00Z") } });
+      await Employee.collection.updateOne({ _id: alice, "restaurantProfiles.restaurant": restaurant },
+        { $unset: { "restaurantProfiles.$.options.employees": "", "restaurantProfiles.$.employment.payrollCode": "" } });
+    }
+  });
+  await t.test("RH input revisions, employee membership and restaurant meal rules are enforced", async () => {
+    const reportPath = "/restaurants/:restaurantId/employees/reports";
+    const rulesPath = reportPath + "/inputs/rules/:date";
+    const settingsPath = reportPath + "/inputs/:kind/:date";
+    const inputPath = reportPath + "/inputs/:employeeId/:kind/:date";
+    const ids = { employeeId: String(alice), kind: "variables", date: "2025-03" };
+    const rulesOptions = { date: "2025-03", body: { revision: 0, values: { mode: "indemnities", basis: "days", quantity: 2 } } };
+    assert.equal((await call("put", rulesPath, { ...rulesOptions, authorization: auth(accountant, "accountant") })).status, 403);
+    assert.equal((await call("put", rulesPath, rulesOptions)).status, 200);
+    assert.equal((await call("get", rulesPath, { date: "2025-04" })).data.values.quantity, 2);
+    assert.equal((await call("get", rulesPath, { date: "2025-02" })).data.revision, 0);
+    const leaveSettings = {
+      kind: "leaveRules", date: "-", body: { revision: 0, values: {
+        startMonth: "2025-03", referenceMonth: 6, unit: "businessDays", excludeHolidays: true, preserveCarry: true,
+        assimilated: ["paid_leave"],
+      } },
+    };
+    assert.equal((await call("put", settingsPath, { ...leaveSettings, authorization: auth(accountant, "accountant") })).status, 403);
+    assert.equal((await call("put", settingsPath, leaveSettings)).status, 200);
+    assert.equal((await call("get", settingsPath, leaveSettings)).data.values.referenceMonth, 6);
+    assert.equal((await call("get", settingsPath, { kind: "overtime", date: "2025-03-04" })).status, 400);
+    assert.equal((await call("put", settingsPath, { kind: "overtime", date: "2025-03-03",
+      body: { revision: 0, values: { enabled: false } } })).status, 200);
+    assert.equal((await call("get", settingsPath, { kind: "overtime", date: "2025-03-10" })).data.values.enabled, false);
+    const movement = { employeeId: String(alice), kind: "hoursEntry", date: "2025-03-04" };
+    const saveMovement = (revision, hours) => call("put", inputPath, { ...movement, body: { revision, values: { operation: "adjust", hours } } });
+    assert.equal((await saveMovement(0, 2)).status, 200);
+    assert.equal((await saveMovement(0, 2)).status, 409);
+    assert.equal((await saveMovement(1, -0.5)).status, 200);
+    assert.deepEqual((await call("get", inputPath, movement)).data.values.entries.map(({ hours }) => hours), [2, -0.5]);
+    assert.equal((await call("put", inputPath, { employeeId: String(alice), kind: "amendment", date: "2025-03-03",
+      body: { revision: 0, values: { weeklyHours: 39 } } })).status, 200);
+    const targetsPath = reportPath + "/planning-targets";
+    const targets = await call("get", targetsPath, { query: { from: "2025-03-03" } });
+    assert.equal(targets.data.targets[String(alice)].minutes, 39 * 60);
+    assert.equal((await call("get", targetsPath, { query: { from: "2025-03-03" }, restaurantId: other })).status, 403);
+    assert.equal((await call("get", inputPath, { ...ids, employeeId: String(outside) })).status, 404);
+    assert.equal((await call("get", inputPath, { ...ids, employeeId: String(accountant) })).status, 404);
+    assert.equal((await call("get", inputPath, { ...ids, authorization: auth(alice, "employee") })).status, 403);
+    const candidates = await Promise.all([12.5, 35].map((bonus) => call("put", inputPath, {
+      ...ids, body: { revision: 0, values: { bonus } },
+    })));
+    assert.deepEqual(candidates.map(({ status }) => status).sort(), [200, 409]);
+    const savedBonus = candidates.find(({ status }) => status === 200).data.values.bonus;
+    const read = await call("get", inputPath, ids);
+    assert.equal(read.data.revision, 1);
+    assert.equal(read.headers["Cache-Control"], "private, no-store");
+    assert.equal((await call("get", inputPath, { ...ids, restaurantId: other })).status, 403);
+    assert.deepEqual((await call("get", inputPath, { ...ids, restaurantId: other,
+      authorization: auth(owner, "owner", other) })).data.values, {});
+    const query = { from: "2025-03-01", to: "2025-03-31", employeeId: String(alice) };
+    const report = await call("get", reportPath, { query });
+    assert.equal(report.data.rows[0].values.bonus, savedBonus);
+    assert.equal((await call("put", inputPath, { ...ids, body: { revision: 1, values: { advance: 20 } } })).status, 400);
+    assert.equal((await call("put", inputPath, { ...ids, body: { revision: 1, values: {} } })).status, 200);
+    assert.equal((await call("get", reportPath, { query })).data.rows[0].values.bonus, undefined);
+  });
+  await t.test("une paie non déterminée bloque les validations et sort sans montant dans les exports", async () => {
+    const day = "2025-02-11";
+    const updatedAt = new Date();
+    const { insertedId } = await Session.collection.insertOne({ restaurant, employee: bob, status: "closed",
+      businessDate: day, clockInAt: new Date(day + "T08:03:00Z"), clockOutAt: new Date(day + "T11:45:00Z"),
+      breaks: [], reviews: [], updatedAt, __v: 0, clockRule: { enabled: true, earlyIn: "planned" } });
+    try {
+      const sessionId = String(insertedId);
+      assert.equal((await call("put", base + "/sessions/:sessionId/review", { sessionId,
+        body: { validated: true, expectedUpdatedAt: updatedAt.toISOString(), expectedRevision: 0 } })).status, 409);
+      assert.equal((await call("post", base + "/register/review", { body: { from: day, to: day, employeeId: String(bob) } })).status, 409);
+      const body = { from: day, to: day, employeeIds: [String(bob)] };
+      const pdf = await call("post", base + "/export/pdf", { body });
+      assert.match(readPdfText(pdf.data), /Heures rémunérées nettes: À vérifier/);
+      const excel = await call("post", base + "/export/excel", { body });
+      assert.match(excel.data.toString(), /À corriger/);
+    } finally { await Session.collection.deleteOne({ _id: insertedId }); }
+  });
   const pinPath = base + "/me/pin";
   const reveal = (employee, restaurantId = restaurant) => call("get", pinPath, {
     authorization: auth(employee, "employee", restaurantId), query: { reveal: "true" }, restaurantId,
@@ -364,6 +531,13 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   assert.equal(online.data.kiosk.employee.id, String(alice));
   const offline = vault.data.entries.find((entry) => entry.kiosk.employee.id === String(alice));
   const punch = (payload, restaurantId = restaurant) => call("post", base + "/punch", { body: payload, authorization, restaurantId });
+  const retainedRule = { enabled: true, earlyIn: "clocked", lateIn: "clocked", earlyOut: "clocked", lateOut: "clocked", roundMinutes: 0, pause: "clocked" };
+  const clockSettings = "/restaurants/:restaurantId/employees/reports/inputs/:kind/:date";
+  const ruleDate = toLocalDateKey(new Date(Date.now() - 86400000));
+  const settings = { kind: "clockRules", date: ruleDate };
+  assert.equal((await call("put", clockSettings, { ...settings, body: { revision: 0, values: retainedRule } })).status, 200);
+  assert.deepEqual((await call("get", clockSettings, { ...settings, date: toLocalDateKey(new Date()) })).data.values, retainedRule);
+  assert.deepEqual((await call("get", clockSettings, { ...settings, restaurantId: other, authorization: auth(owner, "owner", other) })).data.values, {});
   const anchor = Date.now() - 45_000;
   const actions = ["clock_in", "break_start", "break_end", "clock_out"].map((action, index) =>
     signedPunch(restaurant, keys.signing.privateKey, String(alice), offline.grant, action, new Date(anchor + index * 10_000)));
@@ -373,8 +547,12 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   assert.ok(duplicate.some((response) => response.status === 201));
   assert.ok(duplicate.every((response) => [200, 201, 503].includes(response.status)));
   assert.equal((await punch(actions[0])).data.idempotentReplay, true);
+  assert.equal((await call("put", clockSettings, { ...settings, body: { revision: 1, values: { enabled: false } } })).status, 200);
   for (const action of actions.slice(1)) assert.equal((await punch(action)).status, 200);
   const stored = await Session.findOne({ restaurant, employee: alice }).lean();
+  assert.equal(stored.clockRule.revision, 1);
+  assert.equal(stored.automaticPayroll.clockInAt.getTime(), stored.clockInAt.getTime());
+  assert.equal(stored.automaticPayroll.breaks.length, 1);
   assert.equal(stored.events.length, 4);
   assert.equal(stored.breaks.length, 1);
   assert.equal(stored.status, "closed");
@@ -463,6 +641,7 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   const pdf = await call("post", base + "/export/pdf", { body: exportBody, authorization: accountantAuth });
   const excel = await call("post", base + "/export/excel", { body: exportBody, authorization: accountantAuth });
   assert.equal(pdf.status, 200);
+  assert.match(pdf.data.toString("latin1"), /\/MediaBox \[0 0 841\.89\d* 595\.28\d*\]/);
   assert.equal(excel.status, 200);
   assert.match(readPdfText(pdf.data), /Heures rémunérées nettes: 0h51/);
   assert.match(readPdfText(pdf.data), /Horaires pointés/);

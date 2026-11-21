@@ -204,7 +204,7 @@ function drawTable(doc, headers, rows, columnWidths) {
     doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const widths =
     Array.isArray(columnWidths) && columnWidths.length === headers.length
-      ? columnWidths
+      ? columnWidths.map((weight) => availableWidth * weight / columnWidths.reduce((sum, item) => sum + item, 0))
       : Array(headers.length).fill(availableWidth / headers.length);
   const headerHeight = 22;
   const rowPadding = 5;
@@ -320,6 +320,7 @@ async function buildTimeClockExportPdf({
 }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
+      layout: "landscape",
       size: "A4",
       margin: 42,
     });
@@ -417,7 +418,7 @@ async function buildTimeClockExportPdf({
         summaryBoxY + 46,
       )
       .text(
-        `Heures rémunérées nettes: ${formatMinutes(globalPayroll)}`,
+        `Heures rémunérées nettes: ${employees.some(({ range }) => range?.requiresCorrection) ? "À vérifier" : formatMinutes(globalPayroll)}`,
         summaryBoxX + 14,
         summaryBoxY + 62,
       )
@@ -478,7 +479,7 @@ async function buildTimeClockExportPdf({
           doc.y,
         )
         .text(
-          `Heures rémunérées nettes: ${formatMinutes(range.totalPayrollMinutes)}`,
+          `Heures rémunérées nettes: ${range.requiresCorrection ? "À vérifier" : formatMinutes(range.totalPayrollMinutes)}`,
           doc.page.margins.left,
         )
         .text(
@@ -533,7 +534,8 @@ async function buildTimeClockExportPdf({
             suffix: `(${formatMinutes(session?.dayTotals?.workedMinutes || 0)})`,
           };
         });
-        const paidLines = (day.payroll || []).map(({ timings, manual, absent }) => {
+        const paidLines = (day.payroll || []).map(({ timings, manual, absent, requiresCorrection }) => {
+          if (requiresCorrection) return "À corriger avant validation";
           if (absent) return "Absence constatée (0h00)";
           const start = exportTime.format(new Date(timings.startAt));
           const end = exportTime.format(new Date(timings.endAt));

@@ -309,6 +309,7 @@ export default function ShiftEditor({
   conflict,
   overtime,
   openingHours,
+  templateTools,
   posts,
   collection,
   extra,
@@ -444,6 +445,7 @@ export default function ShiftEditor({
             id={`${id}-panel`}
             aria-labelledby={`${id}-tab-${draft.isLeave ? 1 : 0}`}
           >
+            {templateTools}
             {draft.isLeave && (
               <section className={styles.section}>
                 <fieldset className={styles.durationOptions}>

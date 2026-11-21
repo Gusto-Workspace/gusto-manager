@@ -1,4 +1,12 @@
 {
+  "counters": {
+    "toggle": "Counters",
+    "loading": "Loading counters…",
+    "error": "Unable to load counters.",
+    "empty": "No hours balance or annual hours remaining is available for the employees shown in this period.",
+    "balance": "Balance",
+    "annual": "Annual remaining"
+  },
   "publication": {
     "publish": "Publish",
     "title": "Publish the schedule",
@@ -40,6 +48,7 @@
     "loadFailed": "Unable to load publication status."
   },
   "actions": {
+    "deleteFailed": "The shift deletion was not saved.",
     "menu": "Shift actions",
     "duplicate": "Copy to multiple cells",
     "selectCell": "Select the day",
@@ -97,6 +106,8 @@
     "carryOver": "The total includes {{duration}} from shifts starting before the period.",
     "noEmployees": "No employees match these filters.",
     "weeklyHours": "h/week",
+    "contractOver": "Hours scheduled above the weekly contract",
+    "contractUnder": "Hours left to schedule this week",
     "monthlyHours": "h/month",
     "shift": "Work",
     "leave": "Leave",
@@ -122,12 +133,30 @@
     "family_event": "Family event leave",
     "child_sick_leave": "Sick child leave",
     "training": "Training",
+    "apprenticeship": "Apprenticeship training centre",
     "public_holiday": "Public holiday",
     "compensatory_rest": "Compensatory rest",
     "rtt": "Working time reduction (RTT)",
     "other": "Other absence"
   },
   "editor": {
+    "shiftTemplates": "Shift templates",
+    "templatesLoading": "Loading templates…",
+    "templatesEmpty": "This location has no templates yet.",
+    "templateChoose": "Saved template",
+    "templatePlaceholder": "Choose a template",
+    "templateName": "New template name",
+    "templateSave": "Save as template",
+    "templateApply": "Use in shift form",
+    "templateDelete": "Delete template",
+    "templateDeleteConfirm": "Delete the template ‘{{name}}’?",
+    "templateSaved": "Template saved.",
+    "templateApplied": "Template applied to the form. Review the shift before saving.",
+    "templateDeleted": "Template deleted.",
+    "templatesLoadError": "Could not load templates.",
+    "templateDuplicate": "A template with this name already exists at this location.",
+    "templateSaveError": "Could not save the template. Check the shift times and details.",
+    "templateDeleteError": "Could not delete the template.",
     "newShiftsFor": "Add shifts for {{name}}",
     "shiftNumber": "Shift {{number}}",
     "removeShift": "Remove shift {{number}}",

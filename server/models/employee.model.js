@@ -209,6 +209,7 @@ const restaurantProfileSchema = new mongoose.Schema(
 );
 
 const employeeSchema = new mongoose.Schema({
+  historicalImport: { type: mongoose.Schema.Types.ObjectId, select: false },
   // Les anciennes fiches sans valeur restent des salariés classiques.
   accountType: {
     type: String,

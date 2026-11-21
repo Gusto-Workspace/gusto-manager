@@ -85,22 +85,20 @@ function redactPlanningShifts(payload, own) {
     const publicShift = shift.toObject ? shift.toObject() : { ...shift };
     return publicShift;
   });
-  const employee = payload.employee && {
+  const employee = payload.employee && (own ? {
     ...payload.employee,
-    leaveRequests: own ? payload.employee.leaveRequests : [],
     shifts: redact(payload.employee.shifts),
     restaurantProfiles: payload.employee.restaurantProfiles?.map((profile) => ({
       ...profile,
-      leaveRequests: own ? profile.leaveRequests : [],
       shifts: redact(profile.shifts),
     })),
-  };
+  } : Object.fromEntries(["_id", "firstname", "lastname", "post", "profilePicture"].map((key) => [key, payload.employee[key]])));
   return { ...payload, employee, shifts: redact(payload.shifts) };
 }
 
 async function canManagePlanningEvents(user, restaurantId) {
   if (user.role === "owner") return true; // The connection already passed the restaurant ownership check.
-  const restaurant = await RestaurantModel.findOne({ _id: restaurantId, employees: user.id }).select("_id").lean();
+  const restaurant = await RestaurantModel.findOne({ _id: restaurantId, employees: user.id, "options.employees": true }).select("_id").lean();
   return Boolean(restaurant && await EmployeeModel.exists({
     _id: user.id,
     restaurants: restaurantId,
@@ -144,6 +142,7 @@ async function canAccessRestaurantEvents(user, restaurantId) {
   }
 
   if (user?.role === "employee") {
+    if (String(user.restaurantId || "") !== String(restaurantId)) return false;
     return Boolean(
       await EmployeeModel.exists({
         _id: user.id,
@@ -203,7 +202,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
     // headers SSE
     res.set({
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-store",
       Connection: "keep-alive",
       "Access-Control-Allow-Origin": allowOrigin,
     });

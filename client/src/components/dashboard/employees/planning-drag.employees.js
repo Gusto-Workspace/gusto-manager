@@ -177,7 +177,11 @@ export function ShiftContextMenu({ state, commands }) {
     <div role="menu" aria-label={commands.label("menu")} ref={list} onKeyDown={navigate} className={styles.shiftMenu}
       style={{ left: menu.left, top: menu.top }}>
       <button type="button" tabIndex={-1} role="menuitem" className={styles.commandDanger}
-        onClick={() => { close(); commands.open({ type: "delete", events: [menu.event] }); }}>
+        onClick={() => {
+          close();
+          if (menu.event.isLeave) commands.open({ type: "delete", events: [menu.event] });
+          else commands.removeShift(menu.event);
+        }}>
         <Trash2 size={15} aria-hidden="true" />{commands.label("delete")}
       </button>
     </div>, document.body,

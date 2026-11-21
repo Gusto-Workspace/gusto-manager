@@ -61,12 +61,20 @@ test("multipart upload preserves file ordering with one metadata entry per file"
   ]);
 });
 
-test("the service worker purges old HR document cache entries without removing planning data", async () => {
-  const requests = [
+test("the service worker purges old private HR responses and preserves unrelated cache entries", async () => {
+  const privateRequests = [
     { url: "https://api.example.test/api/restaurants/one/employees/a/documents?scope=personal" },
     { url: "https://api.example.test/api/restaurants/one/employees/a/documents/private%2Ffile.pdf/download" },
     { url: "https://api.example.test/api/restaurants/one/employees/a/shifts" },
+    { url: "https://api.example.test/api/restaurants/one/employees/planning/templates" },
+    { url: "https://api.example.test/api/employees/me" },
+    { url: "https://api.example.test/api/accountants/me" },
+    { url: "https://api.example.test/api/owner/restaurants/one?scope=reservations" },
+    { url: "https://api.example.test/api/events/one" },
+    { url: "https://api.example.test/api/restaurants/one/callsense/calls" },
+    { url: "https://api.example.test/api/time-clock/device" },
   ];
+  const requests = [...privateRequests, { url: "https://api.example.test/api/restaurants/one/menus" }];
   const deleted = [];
   let activate;
   const worker = readFileSync(new URL("../worker/index.js", import.meta.url), "utf8");
@@ -81,5 +89,5 @@ test("the service worker purges old HR document cache entries without removing p
   let cleanup;
   activate({ waitUntil: (promise) => { cleanup = promise; } });
   await cleanup;
-  assert.deepEqual(deleted, requests.slice(0, 2));
+  assert.deepEqual(deleted, privateRequests);
 });

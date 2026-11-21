@@ -17,6 +17,8 @@ import {
   normalizeShiftTime,
   savePlanningShift,
   savePlanningShiftBatch,
+  shiftTemplateDraftPatch,
+  shiftTemplateFromDraft,
   SHIFT_TIME_OPTIONS,
   updatePlanningEmployee,
   validateShiftDraft,
@@ -26,6 +28,24 @@ process.env.TZ = "Europe/Paris";
 const date = parsePlanningDate("2026-11-18");
 const newDraft = () =>
   makeShiftDraft({ employeeId: "employee-a", slot: getPlanningSlot(date) });
+
+test("a shift template reuses Paris wall times without copying the employee, shift ID or date", () => {
+  const original = { ...newDraft(), shiftId: "source", title: "Fermeture", position: "Bar", notes: "Fermer la terrasse",
+    date: "2026-11-18", startTime: "18:00", endTime: "00:30", breakMinutes: "20" };
+  const template = shiftTemplateFromDraft("Soir", original, getShiftDraftRange(original));
+  assert.deepEqual(template, { name: "Soir", title: "Fermeture", position: "Bar", notes: "Fermer la terrasse",
+    startTime: "18:00", endTime: "00:30", endDayOffset: 1, breakMinutes: 20 });
+  const target = { ...newDraft(), employeeId: "employee-b", date: "2027-06-03" };
+  const prepared = { ...target, ...shiftTemplateDraftPatch(template, target.date) };
+  const range = getShiftDraftRange(prepared);
+  assert.equal(prepared.employeeId, "employee-b");
+  assert.equal(prepared.shiftId, null);
+  assert.equal(range.start.toISOString(), "2027-06-03T16:00:00.000Z");
+  assert.equal(range.end.toISOString(), "2027-06-03T22:30:00.000Z");
+  const gap = { ...target, date: "2027-03-28" };
+  assert.equal(getShiftDraftRange({ ...gap, ...shiftTemplateDraftPatch({ ...template,
+    startTime: "02:30", endTime: "04:00", endDayOffset: 0 }, gap.date) }).error, "invalidLocalTime");
+});
 
 test("cell slots preserve employee, date and time", () => {
   const slot = getPlanningSlot(date, 23 * 60 + 45);

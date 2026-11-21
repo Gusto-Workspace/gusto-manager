@@ -158,6 +158,13 @@ export function formatPlanningDuration(minutes) {
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}`;
 }
 
+export function weeklyPlanningDifference(employment, minutes) {
+  const hours = Number(employment?.contractualValue);
+  return employment?.contractualUnit === "week" && Number.isFinite(hours) && hours > 0
+    ? minutes - Math.round(hours * 60)
+    : null;
+}
+
 export function plannedShiftMinutes(start, end, breakMinutes = 0) {
   return Math.max(0, Math.round((end - start) / MINUTE) - breakMinutes);
 }

@@ -59,6 +59,7 @@ router.post("/admin/login", async (req, res) => {
 // ----------------- CONNEXION OWNER + EMPLOYEE -----------------
 
 router.post("/user/login", limitLogin, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const email = String(req.body?.email || "")
     .trim()
     .toLowerCase();
@@ -95,10 +96,10 @@ router.post("/user/login", limitLogin, async (req, res) => {
     }
 
     // EMPLOYEE
-    const employee = await EmployeeModel.findOne({ email }).select(
+    const employee = await EmployeeModel.findOne({ email, historicalImport: { $exists: false } }).select(
       "+password +sessionVersion",
     );
-    if (!employee) {
+    if (!employee?.password) {
       return res.status(401).json({ message: "errors.incorrect" });
     }
 
@@ -129,23 +130,15 @@ router.post("/user/login", limitLogin, async (req, res) => {
       { expiresIn: "7d" },
     );
 
-    const plainEmployee = employee.toObject();
-    delete plainEmployee.password;
-    delete plainEmployee.sessionVersion;
-    plainEmployee.restaurants = restaurants;
-
-    const accountPayload =
-      accountRole === "accountant"
-        ? {
-            _id: employee._id,
-            accountType: "accountant",
-            firstname: employee.firstname,
-            lastname: employee.lastname,
-            email: employee.email,
-            phone: employee.phone,
-            restaurants,
-          }
-        : plainEmployee;
+    const accountPayload = {
+      _id: employee._id,
+      accountType: accountRole,
+      firstname: employee.firstname,
+      lastname: employee.lastname,
+      email: employee.email,
+      phone: employee.phone,
+      restaurants,
+    };
 
     return res.json({
       token,
@@ -169,6 +162,7 @@ function findRestaurantProfile(employee, restaurantId) {
 }
 
 router.post("/user/select-restaurant", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const { token, restaurantId } = req.body;
 
   try {
@@ -264,7 +258,7 @@ async function findUserByEmail(email) {
   const normalized = normalizeEmail(email);
   const [owner, employee] = await Promise.all([
     OwnerModel.findOne({ email: normalized }).select("+sessionVersion"),
-    EmployeeModel.findOne({ email: normalized }).select("+sessionVersion"),
+    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false } }).select("+sessionVersion"),
   ]);
   return owner || employee || null;
 }

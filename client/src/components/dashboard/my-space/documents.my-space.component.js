@@ -41,7 +41,7 @@ export default function DocumentsMySpaceComponent({ employeeId, restaurantId }) 
     <section className="min-w-0 overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
       <header className="flex min-h-16 items-center gap-2 border-b border-darkBlue/10 px-4 py-3 midTablet:px-5">
         <DocumentSvg width={26} height={26} fillColor="#131E3690" />
-        <h1 className="text-lg font-semibold">{t("titles.second")}</h1>
+        <h2 className="text-lg font-semibold">{t("titles.second")}</h2>
       </header>
       {endpoint ? <PersonalDocuments key={endpoint} endpoint={endpoint} /> :
         <p className="px-4 py-6 text-sm text-darkBlue/70">Sélectionnez un restaurant pour consulter vos documents.</p>}

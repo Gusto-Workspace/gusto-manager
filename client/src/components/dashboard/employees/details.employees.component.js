@@ -10,6 +10,7 @@ import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
 import EmployeePin from "./employee-pin.employees.component";
+import PersonnelReportInputDialog, { personnelReportInputsUrl } from "./personnel-report-input.employees.component";
 import { applyRosterResponse, directoryPath, employeeDirectoryEntry, employeeProfile } from "./employee-directory.utils.mjs";
 import { buildEmployeeDocumentsForm, documentLimit, documentSizeLimit } from "../_shared/employee-documents.utils.mjs";
 
@@ -21,6 +22,32 @@ const tabs = [
   { id: "activity", label: "Planning et absences", Icon: CalendarDays },
 ];
 const action = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey";
+
+function EmployeePayroll({ restaurantId, employeeId, employeeName }) {
+  const [kind, setKind] = useState(null);
+  const [saved, setSaved] = useState(false);
+  function open(input) {
+    setSaved(false);
+    setKind(input);
+  }
+  return (
+    <section className="overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
+      <header className="flex min-h-16 items-center border-b border-darkBlue/10 px-4 midTablet:px-5">
+        <h2 className="text-lg font-semibold">Données de paie</h2>
+      </header>
+      <div className="flex flex-wrap items-center gap-2 p-4 midTablet:p-5">
+        <button type="button" className={action} onClick={() => open("contract")}>Rémunération et contrat</button>
+        <button type="button" className={action} onClick={() => open("amendment")}>Avenant horaire</button>
+        <button type="button" className={action} onClick={() => open("hoursEntry")}>Mouvement du compteur</button>
+        <button type="button" className={action} onClick={() => open("annual")}>Annualisation</button>
+        <button type="button" className={action} onClick={() => open("leave")}>Solde d’ouverture des congés</button>
+        {saved && <span role="status" className="text-sm text-[#146144]">Données enregistrées.</span>}
+      </div>
+      {kind && <PersonnelReportInputDialog kind={kind} baseUrl={personnelReportInputsUrl(restaurantId, employeeId)}
+        employeeName={employeeName} onClose={() => setKind(null)} onSaved={() => { setKind(null); setSaved(true); }} />}
+    </section>
+  );
+}
 
 function EmployeeDocuments({ baseUrl, employeeName }) {
   const [docs, setDocs] = useState([]);
@@ -237,7 +264,11 @@ export default function DetailsEmployeesComponent({ employeeId }) {
 
       <div {...panel("personal")}><DataEmployeesComponent section="personal" employee={employee} profile={profile} onSave={save} /></div>
       {workforce && <>
-        <div {...panel("employment")}><DataEmployeesComponent section="employment" employee={employee} profile={profile} onSave={save} /></div>
+        <div {...panel("employment")}><div className="grid gap-4">
+          <DataEmployeesComponent section="employment" employee={employee} profile={profile} onSave={save} />
+          {selected === "employment" && viewer?.superAdmin !== true &&
+            <EmployeePayroll restaurantId={restaurantId} employeeId={employeeId} employeeName={entry.name} />}
+        </div></div>
         <div {...panel("access")}>
           <div className="grid gap-4">
             <AccessRightsEmployeesComponent options={profile?.options} onSave={save} hasEmail={Boolean(entry.email)} />

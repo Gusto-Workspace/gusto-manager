@@ -9,6 +9,8 @@ const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
 const TimeClockSessionModel = require("../models/time-clock-session.model");
 const TimeClockAbsence = require("../models/time-clock-absence.model");
+const { PlanningDay } = require("../models/planning-period.model");
+const PersonnelReportInput = require("../models/personnel-report-input.model");
 const OwnerModel = require("../models/owner.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
 const {
@@ -25,6 +27,8 @@ const {
   shiftMealCount,
 } = require("../services/employees/time-clock-register.service");
 const {
+  needsClockRuleReview,
+  suggestedPayroll,
   payrollSchedule,
   payrollDayShares,
   auditPayrollPauses,
@@ -37,6 +41,10 @@ const {
 const {
   buildWorkbookBuffer,
 } = require("../services/excel/render-time-clock-export-workbook.service");
+const { buildPersonnelReport, validateReportFilters, listWeeks } = require("../services/employees/personnel-report.service");
+const { validInputDate, validateValues, restaurantInputKinds, indexReportInputs } = require("../services/employees/personnel-report-pay.service");
+const { ledgerStart, effectiveContract, planningContractTarget } = require("../services/employees/personnel-report-ledgers.service");
+const { buildPersonnelReportWorkbook } = require("../services/excel/render-personnel-report-workbook.service");
 
 const {
   ACTIONS,
@@ -332,6 +340,186 @@ async function loadRegisterSessions(selection, from, to, fields = "") {
   return [[...sessionMap.values()], [...attendance, ...extraAttendance]];
 }
 
+async function requirePersonnelReportAccess(req, res, next) {
+  try {
+    const { restaurantId } = req.params;
+    res.set("Cache-Control", "private, no-store");
+    if (!isValidObjectId(restaurantId)) return res.status(400).json({ message: "Restaurant invalide." });
+    if (String(req.user?.restaurantId || "") !== restaurantId) {
+      return res.status(403).json({ message: "Sélectionnez ce restaurant pour consulter son rapport." });
+    }
+    const access = await getAccessContext(req, restaurantId);
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    if (!access.isManager || access.restaurant.options?.employees !== true) {
+      return res.status(403).json({ message: "Vous n’avez pas accès aux rapports RH." });
+    }
+    req.personnelReportRestaurant = access.restaurant;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function sendPersonnelReport(req, res, excel) {
+  const { restaurantId } = req.params;
+  const filters = validateReportFilters(excel ? req.body || {} : req.query, isValidObjectId);
+  if (!filters) return res.status(400).json({ message: "Période ou filtres invalides. Choisissez une période de 92 jours maximum." });
+
+  const restaurant = req.personnelReportRestaurant;
+  const { from, to } = filters;
+  const weeks = listWeeks(from, to);
+  const [employees, planningDays, inputs] = await Promise.all([
+    EmployeeModel.find(workforceRoster(restaurantId, restaurant))
+      .select("firstname lastname post dateOnPost +historicalImport restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.snapshot.post restaurantProfiles.snapshot.dateOnPost restaurantProfiles.employment restaurantProfiles.shifts restaurantProfiles.leaveRequests").lean(),
+    PlanningDay.find({ restaurant: restaurantId, date: { $gte: from, $lte: to } }).select("date publishedEmployees").lean(),
+    PersonnelReportInput.find({ restaurant: restaurantId, $or: [
+      { kind: "contract" },
+      { kind: "rules", date: { $lte: to.slice(0, 7) } },
+      { kind: "overtime", date: { $lte: weeks.at(-1).from } },
+      { kind: { $in: ["leaveRules", "hoursRules", "absenceRules"] }, date: "-" },
+      { kind: { $in: ["amendment", "hoursEntry", "annual"] }, date: { $lte: weeks.at(-1).to } },
+      { kind: "variables", date: { $gte: from.slice(0, 7), $lte: to.slice(0, 7) } },
+      { kind: "meals", date: { $gte: from, $lte: to } },
+      { kind: "historicalWork", date: { $gte: weeks[0].from, $lte: weeks.at(-1).to } },
+      { kind: "historicalLate", date: { $gte: from, $lte: to } },
+      { kind: "leave", date: { $lte: to } },
+    ] }).select("kind profile date values").lean(),
+  ]);
+  const firstDate = ledgerStart(filters, inputs);
+  const firstLedgerWeek = listWeeks(firstDate, firstDate)[0];
+  const selection = { restaurant: restaurantId, ...(filters.employeeId && { employee: filters.employeeId }) };
+  const [sessions, attendance] = await loadRegisterSessions(selection, firstLedgerWeek.from, weeks.at(-1).to,
+    "-events.signature -breaks.startSignature -breaks.endSignature -mutationKeys");
+  const report = buildPersonnelReport({ restaurant, restaurantId, employees, sessions, attendance, planningDays, filters, inputs, detail: excel });
+  if (!excel) return res.json({ ...report, today: toLocalDateKey(new Date()), canConfigure: req.user.role === "owner" });
+
+  const workbook = buildPersonnelReportWorkbook(report);
+  res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.set("Content-Disposition", `attachment; filename="rapport-rh-${toFilenamePart(report.restaurant)}-${from}-au-${to}.xlsx"`);
+  return res.send(workbook);
+}
+
+function personnelReportHandler(excel) {
+  return async (req, res, next) => {
+    try {
+      return await sendPersonnelReport(req, res, excel);
+    } catch (error) {
+      if (error.reportLimit) return res.status(422).json({ message: "Le rapport est trop volumineux. Réduisez la période ou filtrez par salarié." });
+      return next(error);
+    }
+  };
+}
+
+const reportPath = "/restaurants/:restaurantId/employees/reports";
+router.get(reportPath, authenticateToken, requirePersonnelReportAccess, personnelReportHandler(false));
+router.post(`${reportPath}/export/excel`, authenticateToken, requirePersonnelReportAccess, personnelReportHandler(true));
+router.get(`${reportPath}/planning-targets`, authenticateToken, requirePersonnelReportAccess, async (req, res, next) => {
+  try {
+    const { restaurantId } = req.params;
+    const { from } = req.query;
+    if (!validInputDate("overtime", from)) return res.status(400).json({ message: "Indiquez le lundi de la semaine." });
+    const to = addDaysToDateKey(from, 6);
+    const [staff, inputs] = await Promise.all([
+      EmployeeModel.find(workforceRoster(restaurantId, req.personnelReportRestaurant))
+        .select("dateOnPost restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.snapshot.dateOnPost restaurantProfiles.employment").lean(),
+      PersonnelReportInput.find({ restaurant: restaurantId, $or: [
+        { kind: "contract" }, { kind: "overtime", date: { $lte: from } }, { kind: "amendment", date: { $lte: to } },
+      ] }).select("kind profile date values").lean(),
+    ]);
+    const { profiles, overtime } = indexReportInputs(inputs);
+    const rule = overtime[0]?.values;
+    const weekdays = [...(rule?.weekdays || Array.from({ length: rule?.workdays || 5 }, (_, index) => index + 1))].sort((a, b) => a - b);
+    const targets = {};
+    for (const employee of staff) {
+      const member = findRestaurantProfile(employee, restaurantId);
+      const info = profiles.get(String(member?._id));
+      const employment = member?.employment;
+      const base = employment?.contractualUnit === "week" ? employment.contractualValue : 0;
+      const amendments = info?.amendment || [];
+      const scoped = member?.snapshot?.dateOnPost;
+      const start = scoped === undefined ? employee.dateOnPost : scoped;
+      targets[String(employee._id)] = {
+        minutes: planningContractTarget({ from, base, start: start ? toLocalDateKey(start) : null,
+          end: info?.contract?.contractEnd, amendments, weekdays }),
+        weeklyHours: effectiveContract(amendments, base, to) || null,
+      };
+    }
+    return res.json({ targets });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+async function reportInputHandler(req, res, next) {
+  try {
+    const { restaurantId, employeeId, kind = "rules", date } = req.params;
+    const restaurantInput = restaurantInputKinds.includes(kind);
+    if (!validInputDate(kind, date) || Boolean(employeeId) === restaurantInput) {
+      return res.status(400).json({ message: "Donnée du rapport invalide." });
+    }
+    let profile;
+    if (employeeId) {
+      if (!isValidObjectId(employeeId)) return res.status(400).json({ message: "Salarié invalide." });
+      const employee = await EmployeeModel.findOne({
+        ...workforceRoster(restaurantId, req.personnelReportRestaurant),
+        _id: { $eq: employeeId, $in: req.personnelReportRestaurant.employees || [] },
+      }).select("dateOnPost restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.snapshot.dateOnPost").lean();
+      const restaurantProfile = findRestaurantProfile(employee, restaurantId);
+      profile = restaurantProfile?._id;
+      if (!profile) return res.status(404).json({ message: "Salarié introuvable dans ce restaurant." });
+      if (req.method === "PUT" && kind === "contract") {
+        const scopedStart = restaurantProfile.snapshot?.dateOnPost;
+        const startValue = scopedStart === undefined ? employee.dateOnPost : scopedStart;
+        const start = startValue ? toLocalDateKey(startValue) : null;
+        const end = req.body?.values?.contractEnd;
+        if (typeof end === "string" && start && end < start) {
+          return res.status(400).json({ message: "La fin du contrat doit suivre sa date de début." });
+        }
+      }
+    } else if (req.user.role !== "owner") {
+      return res.status(403).json({ message: "Seul le propriétaire peut modifier les paramètres du rapport." });
+    }
+    const id = `${restaurantId}:${profile || "restaurant"}:${kind}:${date}`;
+    if (req.method === "GET") {
+      const item = await PersonnelReportInput.findById(id).select("values revision").lean();
+      if (item) return res.json({ values: item.values, revision: item.revision });
+      const previous = ["rules", "overtime", "clockRules"].includes(kind) && await PersonnelReportInput.findOne({ restaurant: restaurantId, kind, date: { $lt: date } })
+        .sort({ date: -1 }).select("values").lean();
+      return res.json({ values: previous?.values || {}, revision: 0 });
+    }
+    const values = validateValues(kind, req.body?.values, date);
+    const revision = req.body?.revision;
+    if (!values || !Number.isSafeInteger(revision) || revision < 0 ||
+        (kind === "meals" && date > toLocalDateKey(new Date()))) {
+      return res.status(400).json({ message: "Vérifiez les valeurs et la date saisies." });
+    }
+    const update = {
+      $setOnInsert: { restaurant: restaurantId, employee: employeeId, profile, kind, date },
+      $set: { updatedBy: String(req.user.id), ...(kind === "hoursEntry" ? {} : { values }) },
+      $inc: { revision: 1 },
+      ...(kind === "hoursEntry" && { $push: { "values.entries": { ...values, at: new Date() } } }),
+    };
+    const saved = await PersonnelReportInput.findOneAndUpdate({ _id: id, revision }, update,
+      { upsert: revision === 0, new: true, setDefaultsOnInsert: false }).select("values revision").lean();
+    if (!saved) return res.status(409).json({ message: "Ces données ont changé. Rechargez-les avant d’enregistrer." });
+    if (employeeId && !await EmployeeModel.exists({
+      _id: employeeId, restaurants: restaurantId,
+      restaurantProfiles: { $elemMatch: { _id: profile, restaurant: restaurantId } },
+    })) {
+      await PersonnelReportInput.deleteOne({ _id: id });
+      return res.status(409).json({ message: "Le rattachement du salarié a changé." });
+    }
+    return res.json({ values: saved.values, revision: saved.revision });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: "Ces données ont changé. Rechargez-les avant d’enregistrer." });
+    return next(error);
+  }
+}
+
+for (const path of [`${reportPath}/inputs/rules/:date`, `${reportPath}/inputs/:kind/:date`, `${reportPath}/inputs/:employeeId/:kind/:date`]) {
+  router.route(path).all(authenticateToken, requirePersonnelReportAccess).get(reportInputHandler).put(reportInputHandler);
+}
+
 async function buildEmployeeExportReports({
   restaurantId,
   from,
@@ -403,6 +591,7 @@ async function buildEmployeeExportReports({
         day.reportedAbsences = absencesByDate.get(day.date) || [];
         day.totalPayrollMinutes = day.payroll.reduce((total, service) => total + service.timings.workedMinutes, 0);
       });
+      summary.range.requiresCorrection = summary.range.days.some((day) => day.payroll.some((item) => item.requiresCorrection));
       summary.range.totalPayrollMinutes = summary.range.days.reduce((total, day) => total + day.totalPayrollMinutes, 0);
 
       return {
@@ -807,7 +996,10 @@ router.post(
           ? businessDate
           : toLocalDateKey(now);
 
+        const rule = await PersonnelReportInput.findOne({ restaurant: restaurantId, kind: "clockRules", date: { $lte: toLocalDateKey(now) } })
+          .sort({ date: -1 }).select("values date revision").lean();
         session = new TimeClockSessionModel({
+          ...(rule?.values?.enabled && { clockRule: { ...rule.values, effectiveDate: rule.date, revision: rule.revision } }),
           restaurant: restaurantId,
           employee: employeeId,
           employeeSnapshot: getEmployeeSnapshot(employee, restaurantId),
@@ -897,6 +1089,7 @@ router.post(
           session.clockOutAt = now;
           session.status = "closed";
           session.activeSlot = undefined;
+          await updateAutomaticPayroll(session, restaurantId, now);
         }
 
         session.events.push(
@@ -1174,10 +1367,16 @@ router.post(
         for (const session of sessions) {
           if (session.reviews.at(-1)?.type === "validated") continue;
           const sessionDate = session.businessDate || toLocalDateKey(session.clockInAt);
+          const paid = session.payroll || session.automaticPayroll;
           const inRange = (sessionDate >= from && sessionDate <= to) ||
             (session.clockInAt < bounds.endExclusive && session.clockOutAt > bounds.start) ||
-            (session.payroll?.clockInAt < bounds.endExclusive && session.payroll?.clockOutAt > bounds.start);
+            (paid && paid.clockInAt < bounds.endExclusive && paid.clockOutAt > bounds.start);
           if (!inRange) continue;
+          if (needsClockRuleReview(session)) {
+            const err = new Error("Un service nécessite une correction des heures rémunérées avant validation.");
+            err.status = 409;
+            throw err;
+          }
           session.reviews.push({ ...actor, type: "validated" });
           await session.save({ session: transaction });
           count += 1;
@@ -1194,6 +1393,7 @@ router.post(
       });
       return res.json({ validatedCount });
     } catch (error) {
+      if (error.status === 409) return res.status(409).json({ message: error.message });
       if (error.name === "VersionError") return res.status(409).json({ message: "Les services ont changé. Actualisez les données." });
       return next(error);
     }
@@ -1241,6 +1441,7 @@ router.put(
           (expectedRevision !== undefined && expectedRevision !== (session.__v ?? 0))) {
         return res.status(409).json({ message: "Ce pointage est incomplet ou a changé. Actualisez les données." });
       }
+      if (validated && needsClockRuleReview(session)) return res.status(409).json({ message: "Corrigez les heures rémunérées du service avant validation." });
       session.reviews.push({ type: validated ? "validated" : "reopened", at: new Date(), actorId: req.user.id, actorRole: req.user.role });
       await session.save();
       return res.json({ validated });
@@ -1369,6 +1570,7 @@ router.patch(
         breaks: serializeAdjustmentBreaks(nextBreaks),
       });
 
+      await updateAutomaticPayroll(session, restaurantId, new Date());
       syncSessionTotals(session, new Date());
       await session.save();
 
@@ -1491,6 +1693,12 @@ router.put(
   requireClockManager,
   savePlannedAttendance,
 );
+
+async function updateAutomaticPayroll(session, restaurantId, now) {
+  if (!session.clockRule?.enabled) return;
+  const assigned = await getSessionWithPlannedService(session, restaurantId, now);
+  session.automaticPayroll = suggestedPayroll(assigned, session.clockRule) || undefined;
+}
 
 async function getSessionWithPlannedService(session, restaurantId, now) {
   const date = toLocalDateKey(session.clockInAt);

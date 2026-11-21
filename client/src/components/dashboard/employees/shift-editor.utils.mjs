@@ -108,6 +108,24 @@ export function getShiftDraftRange(draft) {
   };
 }
 
+export function shiftTemplateFromDraft(name, draft, range) {
+  return {
+    name, title: draft.title, position: draft.position, notes: draft.notes,
+    startTime: timeKey(range.start), endTime: timeKey(range.end),
+    endDayOffset: (civilDay(range.endDate) - civilDay(draft.date)) / DAY,
+    breakMinutes: Number(draft.breakMinutes),
+  };
+}
+
+export function shiftTemplateDraftPatch(template, date) {
+  const { title, position, notes, startTime, endTime, endDayOffset, breakMinutes } = template;
+  return {
+    title, position, notes, startTime, endTime, breakMinutes: String(breakMinutes),
+    endDate: endDayOffset ? civilKey(civilDay(date) + endDayOffset * DAY) : "",
+    originalStart: null, originalEnd: null,
+  };
+}
+
 export function findDraftConflict(shifts, shiftId, range) {
   if (range.error) return null;
   const shift = (shifts || []).find(

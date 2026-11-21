@@ -14,6 +14,7 @@ const ABSENCE_TYPES = Object.freeze([
   "family_event",
   "child_sick_leave",
   "training",
+  "apprenticeship",
   "public_holiday",
   "compensatory_rest",
   "rtt",

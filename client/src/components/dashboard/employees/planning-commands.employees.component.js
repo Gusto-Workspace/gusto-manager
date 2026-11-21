@@ -5,12 +5,13 @@ import { Trash2, X } from "lucide-react";
 import english from "../../../../public/locales/en/planning.json";
 import french from "../../../../public/locales/fr/planning.json";
 import {
-  cellShiftEntries, copyDestinations, MAX_PLANNING_ACTION_SHIFTS, shiftSource, stepDate,
+  cellShiftEntries, copyDestinations, deletePlanningShift, MAX_PLANNING_ACTION_SHIFTS, reconcilePlanningShift, shiftSource, stepDate,
 } from "./planning-actions.utils.mjs";
+import { updatePlanningEmployee } from "./shift-editor.utils.mjs";
 import { parisPlanningDateKey } from "./planning-grid.utils.mjs";
 import styles from "./planning-grid.module.scss";
 
-export function usePlanningCommands({ enabled, restaurantId, employees, setRestaurantData }) {
+export function usePlanningCommands({ enabled, restaurantId, employees, setRestaurantData, onShiftDeleted }) {
   const { t, i18n } = useTranslation("planning");
   const actions = i18n.language?.startsWith("en") ? english.actions : french.actions;
   const label = (key, options) => t(`actions.${key}`, { defaultValue: actions[key], ...options });
@@ -20,6 +21,9 @@ export function usePlanningCommands({ enabled, restaurantId, employees, setResta
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(null);
   const pending = useRef(false);
+  const hiddenIds = useRef(new Set());
+  const [hiddenShifts, setHiddenShifts] = useState(() => new Set());
+  const [deleteErrors, setDeleteErrors] = useState([]);
   const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning`;
 
   useEffect(() => {
@@ -96,9 +100,45 @@ export function usePlanningCommands({ enabled, restaurantId, employees, setResta
     else if (cells.length) execute({ operation: "copy", entries: cellShiftEntries(events, origin, cells) });
   }
 
+  function removeShift(event) {
+    if (!enabled || pending.current || event.isLeave) return;
+    const employeeId = String(event.resourceId);
+    const previousShift = employees.find(({ _id }) => String(_id) === employeeId)?.shifts
+      .find(({ _id }) => String(_id) === String(event.id));
+    setSelection((current) => current?.events.some(({ id }) => id === event.id) ? null : current);
+    void deletePlanningShift(event, hiddenIds.current, {
+      onChange: setHiddenShifts,
+      send: (entry) => axios.post(`${endpoint}/actions`, {
+        operation: "delete", requestId: globalThis.crypto.randomUUID(), entries: [entry],
+      }),
+      onDeleted: ({ employeeId, shiftId }) => {
+        setRestaurantData((previous) => updatePlanningEmployee(previous, restaurantId, employeeId, (employee) =>
+          Array.isArray(employee.shifts) ? { ...employee, shifts: employee.shifts.filter(({ _id }) => String(_id) !== String(shiftId)) } : employee,
+        ));
+        onShiftDeleted();
+      },
+      onError: (failure) => {
+        setDeleteErrors((previous) => [...previous, {
+          id: event.id,
+          message: [event.title, failure.response?.data?.message || label("failed")].filter(Boolean).join(" · "),
+        }]);
+        if (failure.response?.status === 409 && previousShift) {
+          const shiftsUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`;
+          axios.get(shiftsUrl).then(({ data }) => {
+            if (!Array.isArray(data?.shifts)) return;
+            setRestaurantData((previous) => updatePlanningEmployee(previous, restaurantId, employeeId, (employee) =>
+              reconcilePlanningShift(employee, event.id, previousShift, data.shifts),
+            ));
+          }).catch(() => {}); // Keep the local rollback and its error when the refresh is unavailable.
+        }
+      },
+    });
+  }
+
   return {
     enabled, label, selection, selectCell, busy, dialog, open, error, retry,
-    execute, duplicate,
+    execute, duplicate, removeShift, hiddenShifts, deleteErrors,
+    dismissDeleteErrors: () => setDeleteErrors([]),
   };
 }
 
@@ -151,6 +191,12 @@ export function PlanningCommands({ commands, employees, Dialog }) {
   const close = () => commands.open(null);
   const retryButton = retry && <button type="button" disabled={busy} onClick={() => commands.execute(retry)}>{label("retry")}</button>;
   return <>
+    {commands.deleteErrors.length > 0 && <div className={styles.commandError} role="alert">
+      <div><strong>{label("deleteFailed")}</strong>
+        {commands.deleteErrors.map(({ id, message }, index) => <p key={`${id}:${index}`}>{message}</p>)}
+      </div>
+      <button type="button" onClick={commands.dismissDeleteErrors} aria-label={label("close")}><X size={16} aria-hidden="true" /></button>
+    </div>}
     {!dialog && error && <div className={styles.commandError} role="alert">{error}{retryButton}</div>}
     {dialog && <Dialog key={dialog.type} label={label(labels[dialog.type])} onClose={busy ? undefined : close}>
       <header className={styles.commandHeading}>

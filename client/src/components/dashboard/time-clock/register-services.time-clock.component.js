@@ -154,7 +154,7 @@ function ServiceRow({ person, day, former, employeeView, service, busy, onDay, o
     </td>
     <td className={`${cell} whitespace-nowrap`}>{paid ? <>
       <span className="font-semibold tabular-nums">{formatMinutes(paid.timings.workedMinutes)}</span>
-      <p className="mt-0.5 text-xs text-darkBlue/65">{paid.manual ? "Corrigée" : "Automatique"}</p>
+      <p className="mt-0.5 text-xs text-darkBlue/65">{paid.requiresCorrection ? "À corriger avant validation" : paid.manual ? "Corrigée" : "Automatique"}</p>
     </> : initial.absent ? "0 min" : emptyValue}</td>
     <td className={cell}>{anomalyText ? <div className="flex items-center justify-center gap-1 whitespace-nowrap text-xs font-semibold text-amber-900">
       <span>{clippedAnomalies ? `${anomalyText.slice(0, anomalyPreviewLength).trimEnd()}…` : anomalyText}</span>

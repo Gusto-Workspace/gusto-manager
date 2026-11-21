@@ -29,7 +29,7 @@ export default function EmployeesDaysOffPage() {
         <div className="flex">
           <NavComponent />
 
-          <main className="min-h-screen min-w-0 flex-1 bg-lightGrey p-3 text-darkBlue mobile:p-6 tablet:ml-[88px]">
+          <main className="tablet:ml-[88px] bg-lightGrey text-darkBlue min-w-0 flex-1 p-3 mobile:p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -38,7 +38,6 @@ export default function EmployeesDaysOffPage() {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <div className="mt-5 border-t border-darkBlue/10 pt-4">
             {!restaurantContext.dataLoading &&
             canManagePersonnel(restaurantContext.restaurantData, restaurantContext.userConnected) ? (
               <DaysOffEmployeesComponent key={restaurantContext.restaurantData._id} />
@@ -47,7 +46,6 @@ export default function EmployeesDaysOffPage() {
                 dataLoading={restaurantContext.dataLoading}
               />
             )}
-            </div>
           </main>
         </div>
       </div>

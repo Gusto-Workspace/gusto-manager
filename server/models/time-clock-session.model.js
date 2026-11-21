@@ -189,6 +189,8 @@ const timeClockSessionSchema = new mongoose.Schema(
     breaks: { type: [breakSchema], default: [] },
     events: { type: [eventSchema], default: [] },
     adjustments: { type: [adjustmentSchema], default: [] },
+    automaticPayroll: { type: payrollSchema, default: undefined },
+    clockRule: { type: mongoose.Schema.Types.Mixed, default: undefined },
     payroll: { type: payrollSchema, default: undefined },
     payrollAdjustments: { type: [adjustmentSchema], default: undefined },
     reviews: { type: [reviewSchema], default: [] },

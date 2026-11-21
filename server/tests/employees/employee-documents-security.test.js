@@ -444,7 +444,7 @@ test("employee A cannot access documents in restaurant B", async (t) => {
 
 test("restaurant A manager cannot target an employee only linked to restaurant B", async (t) => {
   mockDocumentAccessModels(t, {
-    restaurant: accessRestaurant(),
+    restaurant: accessRestaurant({ options: { employees: true } }),
     currentEmployee: employeeAccount("manager-a", "restaurant-a", {
       employees: true,
     }),
@@ -458,6 +458,20 @@ test("restaurant A manager cannot target an employee only linked to restaurant B
     { managerOnly: true },
   );
   assert.equal(access.error.status, 404);
+});
+
+test("a manager cannot use personnel access after the restaurant option is disabled", async (t) => {
+  mockDocumentAccessModels(t, {
+    restaurant: accessRestaurant({ options: { employees: false } }),
+    currentEmployee: employeeAccount("manager-a", "restaurant-a", { employees: true }),
+  });
+  const access = await getEmployeeDocumentRouteAccess(
+    { user: { id: "manager-a", role: "employee", restaurantId: "restaurant-a" } },
+    "restaurant-a",
+    "employee-a",
+    { managerOnly: true },
+  );
+  assert.equal(access.error.status, 403);
 });
 
 test("an employee without personnel permission cannot upload documents", async (t) => {

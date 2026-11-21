@@ -21,6 +21,7 @@ const {
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
+const PersonnelReportInput = require("../models/personnel-report-input.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
 const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const RestaurantModel = require("../models/restaurant.model");
@@ -43,11 +44,14 @@ const {
 const {
   decorateEmployeeForRestaurant,
   decorateRestaurantEmployees,
+  publicEmployeeDirectoryEntry,
 } = require("../services/employees/employee-serialization.service");
 const {
   resolvePlanningAbsence,
 } = require("../services/employees/planning-absence.service");
 const { applyPlanningAction } = require("../services/employees/planning-actions.service");
+const PlanningShiftTemplate = require("../models/planning-shift-template.model");
+const { prepareShiftTemplate, templateNameKey } = require("../services/employees/planning-shift-template.service");
 const { readLeaveRequest, canTransitionLeave } = require("../services/employees/leave-request.service");
 const {
   periodDates, planningFence, assertPlanningUnlocked, withPlanningWrite, visiblePlanningShifts,
@@ -249,6 +253,9 @@ async function getEmployeesAccessContext(request, restaurantId) {
   }
 
   if (request.user?.role === "employee") {
+    if (String(request.user.restaurantId || "") !== String(restaurantId)) {
+      return { error: { status: 403, message: "Forbidden" } };
+    }
     const currentEmployee = await EmployeeModel.findById(request.user.id);
     const isListedByRestaurant = (restaurant.employees || []).some(
       (employee) =>
@@ -269,7 +276,7 @@ async function getEmployeesAccessContext(request, restaurantId) {
     }
     return {
       restaurant,
-      isManager: profile?.options?.employees === true,
+      isManager: restaurant.options?.employees === true && profile?.options?.employees === true,
       currentEmployee,
     };
   }
@@ -1555,6 +1562,7 @@ router.patch(
         contractType,
         contractualValue,
         contractualUnit,
+        payrollCode,
       } = req.body;
 
       const accessContext = await getEmployeeRouteAccess(
@@ -1576,6 +1584,9 @@ router.patch(
       }
       const normalizedEmail = normalizeEmail(email);
       const employeeIsAccountant = isAccountant(employee);
+      if (!employeeIsAccountant && payrollCode !== undefined && (typeof payrollCode !== "string" || payrollCode.length > 64)) {
+        return res.status(400).json({ message: "Saisissez un matricule de paie de 64 caractères maximum." });
+      }
       if (email !== undefined && ((normalizedEmail && !isValidEmail(normalizedEmail)) ||
           (employeeIsAccountant && !normalizedEmail))) {
         return res.status(400).json({ message: "Saisissez une adresse e-mail valide." });
@@ -1681,6 +1692,9 @@ router.patch(
       if (!employeeIsAccountant && contractualUnit !== undefined) {
         profile.employment.contractualUnit =
           normalizeContractualUnit(contractualUnit);
+      }
+      if (!employeeIsAccountant && payrollCode !== undefined) {
+        profile.employment.payrollCode = payrollCode.trim();
       }
 
       await savePlanningEmployee(employee);
@@ -2127,6 +2141,8 @@ router.delete(
           { _id: restaurantId }, { $pull: { employees: employeeId } }, { session },
         );
         await TimeClockPin.deleteOne({ restaurant: restaurantId, employee: employeeId }, { session });
+        await PersonnelReportInput.deleteMany(keepAccount
+          ? { employee: employeeId, restaurant: restaurantId } : { employee: employeeId }, { session });
         return enqueueEmployeeAssetDeletions(assets, session);
       });
       if (!jobIds) return res.status(404).json({ message: "Employee not found" });
@@ -2178,6 +2194,38 @@ function planningManager(handler) {
 }
 
 const planningActionsPath = "/restaurants/:restaurantId/employees/planning";
+
+const shiftTemplatePath = `${planningActionsPath}/templates`;
+const shiftTemplateFields = "name title position startTime endTime endDayOffset breakMinutes notes";
+
+router.get(shiftTemplatePath, planningManager(async (_req, res, restaurant) => {
+  res.set("Cache-Control", "private, no-store");
+  const templates = await PlanningShiftTemplate.find({ restaurant }).select(shiftTemplateFields).sort({ name: 1 }).lean();
+  return res.json({ templates });
+}));
+
+router.post(shiftTemplatePath, planningManager(async (req, res, restaurant) => {
+  res.set("Cache-Control", "private, no-store");
+  const template = prepareShiftTemplate(req.body, normalizePlanningTitleKey);
+  if (!template) return res.status(400).json({ message: "Le nom, les horaires ou les détails du modèle sont invalides." });
+  try {
+    await PlanningShiftTemplate.init();
+    const { _id } = await PlanningShiftTemplate.create({ restaurant, nameKey: templateNameKey(template.name), ...template });
+    return res.status(201).json({ template: { _id, ...template } });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: "Un modèle porte déjà ce nom dans cet établissement." });
+    throw error;
+  }
+}));
+
+router.delete(`${shiftTemplatePath}/:templateId`, planningManager(async (req, res, restaurant) => {
+  res.set("Cache-Control", "private, no-store");
+  const _id = toObjectIdOrNull(req.params.templateId);
+  if (!_id) return res.status(400).json({ message: "Identifiant de modèle invalide." });
+  const { deletedCount } = await PlanningShiftTemplate.deleteOne({ _id, restaurant });
+  if (!deletedCount) return res.status(404).json({ message: "Modèle introuvable dans cet établissement." });
+  return res.status(204).end();
+}));
 
 router.post(`${planningActionsPath}/actions`, planningManager(async (req, res, restaurant, roster) => {
   const { updates, jobIds, replayed } = await applyPlanningAction(restaurant, roster, req.body, isLeaveShift);
@@ -3653,6 +3701,7 @@ router.delete(
 // ---------- EMPLOYEE ME / UPDATE DATA / PASSWORD ----------
 
 router.get("/accountants/me", authenticateToken, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   try {
     if (req.user?.role !== "accountant") {
       return res.status(403).json({ message: "Forbidden" });
@@ -3724,6 +3773,7 @@ router.get("/accountants/me", authenticateToken, async (req, res) => {
 
 router.get("/employees/me", authenticateToken, async (req, res) => {
   try {
+    res.set("Cache-Control", "private, no-store");
     if (req.user.role !== "employee") {
       return res.status(403).json({ message: "Forbidden" });
     }
@@ -3787,7 +3837,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
         )
         .lean();
 
-      const canManageEmployees = currentProfile?.options?.employees === true;
+      const canManageEmployees = restaurant.options?.employees === true && currentProfile?.options?.employees === true;
 
       decoratedRestaurant = decorateRestaurantEmployees(
         restaurant,
@@ -3803,6 +3853,10 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
       const visible = await visiblePlanningShifts(restaurant._id, emp._id, decoratedEmployee.shifts);
       decoratedEmployee.shifts = visible;
       if (currentProfile) currentProfile.shifts = visible;
+      if (!canManageEmployees) {
+        decoratedRestaurant.employees = decoratedRestaurant.employees.map((employee) =>
+          String(employee._id) === String(emp._id) ? decoratedEmployee : publicEmployeeDirectoryEntry(employee));
+      }
     }
 
     return res.json({
