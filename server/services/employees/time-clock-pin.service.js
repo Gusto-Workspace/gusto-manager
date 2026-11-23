@@ -27,6 +27,18 @@ function workforceRoster(restaurantId, restaurant) {
   };
 }
 
+function workforceHistoryRoster(restaurantId, restaurant, from, employeeIds) {
+  const archivedAt = from ? { $gte: from } : { $type: "date" };
+  return {
+    ...(employeeIds?.length && { _id: { $in: employeeIds } }),
+    ...workforceAccountFilter(),
+    $and: [{ $or: [
+      { _id: { $in: restaurant.employees || [] }, restaurants: restaurantId },
+      { restaurantProfiles: { $elemMatch: { restaurant: restaurantId, archivedAt } } },
+    ] }],
+  };
+}
+
 function isClockPinCollision(error) {
   return error.code === 11000 && Boolean(error.keyPattern?.lookup || error.keyPattern?.employee);
 }
@@ -121,6 +133,6 @@ async function rotateClockPin({ restaurant, changedBy, actorRole, findMember }) 
 }
 
 module.exports = {
-  activeProfileId, credentialIsCurrent, workforceAccountFilter, workforceRoster,
+  activeProfileId, credentialIsCurrent, workforceAccountFilter, workforceRoster, workforceHistoryRoster,
   clockPinWriteProblem, PIN_COUNT, provisionInitialClockPin, provisionMissingClockPin, rotateClockPin, withClockPinTransaction,
 };

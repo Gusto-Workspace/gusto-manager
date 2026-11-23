@@ -110,9 +110,10 @@ router.post("/user/login", limitLogin, async (req, res) => {
 
     // Tous les restaurants où il est employé
     const restaurants = await RestaurantModel.find(
-      { employees: employee._id },
+      { _id: { $in: employee.restaurants }, employees: employee._id },
       "name _id options",
     ).lean();
+    if (!restaurants.length) return res.status(401).json({ message: "errors.incorrect" });
 
     const accountRole =
       employee.accountType === "accountant" ? "accountant" : "employee";
@@ -258,7 +259,7 @@ async function findUserByEmail(email) {
   const normalized = normalizeEmail(email);
   const [owner, employee] = await Promise.all([
     OwnerModel.findOne({ email: normalized }).select("+sessionVersion"),
-    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false } }).select("+sessionVersion"),
+    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false }, "restaurants.0": { $exists: true } }).select("+sessionVersion"),
   ]);
   return owner || employee || null;
 }

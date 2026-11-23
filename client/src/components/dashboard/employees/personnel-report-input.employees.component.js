@@ -5,9 +5,12 @@ import { X } from "lucide-react";
 import { parisPlanningDateKey } from "./planning-grid.utils.mjs";
 import { formatReportValue } from "./personnel-report.utils.mjs";
 import frenchPlanning from "../../../../public/locales/fr/planning.json";
+import { hrRuleHelp } from "./hr-rule-help.mjs";
 
-const control = "min-h-10 rounded-lg border border-darkBlue/20 bg-white px-3 text-sm";
+const control = "min-h-10 w-full min-w-0 rounded-lg border border-darkBlue/20 bg-white px-3 text-sm";
 const action = `${control} font-semibold hover:bg-lightGrey disabled:opacity-50`;
+const tab = "min-h-10 rounded-lg border border-darkBlue/20 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-lightGrey disabled:opacity-50";
+const closeButton = "grid size-10 shrink-0 place-items-center rounded-lg border border-darkBlue/20 bg-white hover:bg-lightGrey disabled:opacity-50";
 const modeOptions = { combined: "Avantages en nature et indemnités", indemnities: "Indemnités uniquement", tickets: "Titres-restaurant", basket: "Prime panier" };
 const basisOptions = { service: "Plages de repas de Gusto", criteria: "Critères d’horaires et de durée", days: "Jours travaillés", monthly: "Nombre fixe par mois" };
 const criterionFields = [
@@ -18,11 +21,11 @@ const clockSources = { planned: "Horaire prévu", clocked: "Horaire pointé" };
 const clockDefaults = { enabled: false, earlyIn: "clocked", lateIn: "clocked", earlyOut: "clocked",
   lateOut: "clocked", roundMinutes: 0, pause: "plannedFallback" };
 const fieldsByKind = {
-  clockRules: [["enabled", "Appliquer aux prochains services pointés", "checkbox"],
-    ["earlyIn", "Arrivée en avance", clockSources], ["lateIn", "Arrivée en retard", clockSources],
-    ["earlyOut", "Départ anticipé", clockSources], ["lateOut", "Départ tardif", clockSources],
-    ["roundMinutes", "Arrondi des heures pointées", { 0: "Aucun", 5: "5 minutes", 10: "10 minutes", 15: "15 minutes", 30: "30 minutes" }],
-    ["pause", "Pause déduite", { clocked: "Pause réellement pointée", plannedFallback: "Pause prévue si aucune pause pointée",
+  clockRules: [["enabled", "Activer ces règles pour les prochains pointages", "checkbox"],
+    ["earlyIn", "En cas d’arrivée en avance", clockSources], ["lateIn", "En cas d’arrivée en retard", clockSources],
+    ["earlyOut", "En cas de départ en avance", clockSources], ["lateOut", "En cas de départ plus tard", clockSources],
+    ["roundMinutes", "Arrondir les heures pointées", { 0: "Aucun", 5: "5 minutes", 10: "10 minutes", 15: "15 minutes", 30: "30 minutes" }],
+    ["pause", "Pause à déduire", { clocked: "Pause pointée uniquement", plannedFallback: "Pause prévue si aucune pause pointée",
       plannedMinimum: "Au moins la pause prévue" }]],
   contract: [
     ["contractEnd", "Date de fin de contrat", "date"], ["archiveNote", "Note d’archivage", "text"],
@@ -49,7 +52,7 @@ const fieldsByKind = {
     ["hours", "Nombre d’heures", "number"], ["title", "Motif du mouvement", "text"],
   ],
   hoursRules: [
-    ["start", "Premier lundi de suivi du compteur", "date"], ["enhanced", "Appliquer les majorations au compteur", "checkbox"],
+    ["start", "Premier lundi de suivi du compteur", "date"], ["enhanced", "Ajouter les majorations au solde d’heures", "checkbox"],
   ],
   absenceRules: [],
   leave: [
@@ -73,8 +76,8 @@ const payrollHelp = {
   leave: "Reprenez les soldes de congés existants, par exemple lors du passage à Gusto. Le solde saisi à la date choisie sert de point de départ au suivi.",
 };
 const settingsTabs = ["rules", "overtime", "hoursRules", "absenceRules", "leaveRules", "clockRules"];
-const fixedKinds = ["contract", "leaveRules", "hoursRules", "absenceRules"];
-const payerOptions = { employer: "Employeur", thirdParty: "Tiers", unpaid: "Non indemnisée" };
+const fixedKinds = ["contract"];
+const payerOptions = { employer: "Employeur", thirdParty: "Autre organisme (tiers)", unpaid: "Non indemnisée" };
 const hourMovements = { adjust: "Ajustement", reset: "Solde fixé", paid: "Heures payées",
   recover: "Repos compensateur crédité", consumeRecovery: "Repos compensateur déduit" };
 const absenceNames = { ...frenchPlanning.absenceTypes, unspecified: "Non précisée", reported: "Absence de pointage validée" };
@@ -92,8 +95,8 @@ const leaveDefaults = {
     "adoption_leave", "family_event", "training", "apprenticeship", "public_holiday", "compensatory_rest", "rtt"],
 };
 const overtimeFields = [
-  ["source", "Source des heures", { hybrid: "Planning, remplacé par les pointages validés", validated: "Pointages validés uniquement", planning: "Planning uniquement" }],
-  ["planningAttribution", "Rattachement des services de nuit", { shiftStart: "Au jour de début du service" }],
+  ["source", "Heures à prendre en compte", { hybrid: "Planning, puis pointages validés", validated: "Pointages validés uniquement", planning: "Planning uniquement" }],
+  ["planningAttribution", "Jour retenu si le service passe minuit", { shiftStart: "Jour de début du service" }],
   ["workdays", "Jours de travail pris en compte par semaine", { 5: "5 jours", 6: "6 jours", 7: "7 jours" }],
   ["ordinary", "Seuil temps plein (h/semaine)", "number"], ["firstEnd", "Fin de la première tranche (h)", "number"],
   ["firstRate", "Majoration première tranche (%)", "number"], ["secondEnd", "Fin de la deuxième tranche (h)", "number"],
@@ -102,19 +105,44 @@ const overtimeFields = [
   ["complementFirstRate", "Majoration complémentaire de la première tranche (%)", "number"],
   ["complementLastRate", "Majoration au-delà de la tranche complémentaire (%)", "number"],
   ["nightStart", "Début de nuit", "time"], ["nightEnd", "Fin de nuit", "time"],
-  ["nightRate", "Majoration de nuit (%)", "number"], ["sundayRate", "Majoration du dimanche (%)", "number"],
-  ["holidayRate", "Majoration des jours fériés (%)", "number"],
-  ["structuralMonthly", "Mensualiser les heures supplémentaires structurelles pour un mois complet", "checkbox"],
-  ["plannedNightGross", "Compter le créneau de nuit avant déduction des pauses planifiées sans horaire", "checkbox"],
+  ["nightRate", "Taux des heures de nuit (%)", "number"], ["sundayRate", "Taux des heures du dimanche (%)", "number"],
+  ["holidayRate", "Taux des heures des jours fériés (%)", "number"],
+  ["structuralMonthly", "Calculer une moyenne mensuelle des heures supplémentaires prévues au contrat", "checkbox"],
+  ["plannedNightGross", "Compter toute la plage de nuit si la pause prévue n’a pas d’horaire", "checkbox"],
   ["countHolidays", "Afficher les heures fériées même sans taux renseigné", "checkbox"],
 ];
 const leaveRuleFields = [
-  ["startMonth", "Premier mois d’acquisition dans Gusto", "month"],
-  ["referenceMonth", "Début de la période annuelle", monthOptions],
-  ["unit", "Décompte des jours", { businessDays: "Jours ouvrables · 6 jours", workdays: "Jours ouvrés · 5 jours" }],
-  ["excludeHolidays", "Exclure les jours fériés chômés du calendrier national", "checkbox"],
-  ["preserveCarry", "Reporter les reliquats antérieurs à N−1", "checkbox"],
+  ["startMonth", "Premier mois d’acquisition", "month"],
+  ["referenceMonth", "Mois de début de la période annuelle", monthOptions],
+  ["unit", "Jours décomptés par semaine", { businessDays: "6 jours ouvrables", workdays: "5 jours ouvrés" }],
+  ["excludeHolidays", "Exclure les jours fériés nationaux du décompte", "checkbox"],
+  ["preserveCarry", "Conserver les jours acquis avant l’année précédente", "checkbox"],
 ];
+const settingsGroups = {
+  rules: [
+    ["Indemnisation des repas", ["mode"]],
+    ["Repas dus", ["basis", "quantity"]],
+    ["Montant", ["amount"]],
+  ],
+  overtime: [
+    ["Heures prises en compte", ["enabled", "source", "planningAttribution", "workdays", "paidLeaveDays"]],
+    ["Heures supplémentaires (temps plein)", ["ordinary", "firstEnd", "firstRate", "secondEnd", "secondRate", "lastRate", "structuralMonthly"]],
+    ["Heures complémentaires (temps partiel)", ["complementBand", "complementFirstRate", "complementLastRate"]],
+    ["Nuit, dimanche et jours fériés", ["nightStart", "nightEnd", "nightRate", "plannedNightGross", "sundayRate", "holidayRate", "countHolidays"]],
+  ],
+  hoursRules: [["Début du suivi et solde", ["start", "enhanced"]]],
+  leaveRules: [
+    ["Acquisition des congés payés", ["startMonth", "referenceMonth"]],
+    ["Décompte et report des congés", ["unit", "excludeHolidays", "preserveCarry"]],
+  ],
+  clockRules: [
+    ["Activation", ["enabled"]],
+    ["Arrivée", ["earlyIn", "lateIn"]],
+    ["Départ", ["earlyOut", "lateOut"]],
+    ["Arrondis", ["roundMinutes"]],
+    ["Pause", ["pause"]],
+  ],
+};
 const optionalRates = ["nightRate", "sundayRate", "holidayRate"];
 const weekLabels = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -130,8 +158,11 @@ export function personnelReportInputsUrl(restaurantId, employeeId) {
   return employeeId ? `${base}/${employeeId}` : base;
 }
 
-function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty }) {
+export function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty, proposal, onPropose, readOnly }) {
   const [draft, setDraft] = useState({});
+  const fieldHelpId = useId();
+  const [reason, setReason] = useState("");
+  const proposing = Boolean(onPropose);
   const initialDraft = useRef(null);
   useEffect(() => {
     onDirty(initialDraft.current !== null && JSON.stringify(initialDraft.current) !== JSON.stringify(draft));
@@ -143,6 +174,12 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
   const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
+    if (proposing) {
+      initialDraft.current = proposal || {};
+      setDraft(initialDraft.current);
+      setRevision(0);
+      return undefined;
+    }
     const controller = new AbortController();
     axios.get(url, { signal: controller.signal }).then(({ data }) => {
       if (controller.signal.aborted) return;
@@ -156,17 +193,17 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
       if (!controller.signal.aborted) setError(failure.response?.data?.message || "Impossible de charger ces données.");
     });
     return () => controller.abort();
-  }, [url, attempt, kind, date]);
+  }, [url, attempt, kind, date, proposal, proposing]);
 
   const fields = kind === "rules" ? [
-    ["mode", "Prise en charge", modeOptions],
-    ...(draft.mode && draft.mode !== "basket" ? [["basis", "Calcul des repas dus", basisOptions]] : []),
+    ["mode", "Mode d’indemnisation", modeOptions],
+    ...(draft.mode && draft.mode !== "basket" ? [["basis", "Comment compter les repas dus ?", basisOptions]] : []),
     ...(draft.mode && draft.mode !== "basket" && ["days", "monthly"].includes(draft.basis)
       ? [["quantity", draft.basis === "days" ? "Repas par jour travaillé" : "Repas par mois", "number"]] : []),
     ...(draft.mode === "basket" ? [["amount", "Montant mensuel (€)", "number"]] :
       draft.mode === "combined" ? [["amount", "Valeur d’un repas pris (€)", "number"]] : []),
   ] : kind === "overtime" ? [["enabled", "Activer le calcul hebdomadaire des majorations", "checkbox"],
-    ["paidLeaveDays", "Base de valorisation des congés payés en heures", { 5: "5 jours", 6: "6 jours" }],
+    ["paidLeaveDays", "Base de calcul des congés en heures", { 5: "5 jours", 6: "6 jours" }],
     ...(draft.enabled ? overtimeFields.filter(([key]) => key !== "planningAttribution" || draft.source === "planning") : [])]
     : kind === "leaveRules" ? leaveRuleFields : fieldsByKind[kind];
   const usesCriteria = kind === "rules" && draft.mode && draft.mode !== "basket" && draft.basis === "criteria";
@@ -177,9 +214,9 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
 
   async function save(event) {
     event.preventDefault();
-    if (saving || revision === null || conflict) return;
+    if (readOnly || saving || revision === null || conflict) return;
     if (requiredWeekdays && weekdays.length !== requiredWeekdays && (kind !== "leaveRules" || draft.startMonth)) {
-      setError(`Sélectionne ${requiredWeekdays} jours dans la semaine.`);
+      setError(`Sélectionnez ${requiredWeekdays} jours dans la semaine.`);
       return;
     }
     const moveNext = event.nativeEvent.submitter?.value === "next";
@@ -197,7 +234,7 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
       if (requiredWeekdays) values.weekdays = weekdays;
       if (kind === "absenceRules") {
         values.categories = Object.fromEntries(Object.entries(draft.categories || {}).map(([key, row]) =>
-          [key, { payer: row.payer || null, meal: Number(row.meal || 0) }]));
+          [key, { payer: row.payer || null, meal: row.meal == null || row.meal === "" ? null : Number(row.meal) }]));
       }
       if (usesCriteria) {
         values.criteria = criteria.map((criterion) => Object.fromEntries(criterionFields.map(([key, , type]) => {
@@ -205,8 +242,11 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
           return [key, value === "" || value == null ? null : type === "number" ? Number(value) : value];
         })));
       }
-      const { data } = await axios.put(url, { revision, values });
-      setRevision(data.revision);
+      if (onPropose) await onPropose(values, reason.trim());
+      else {
+        const { data } = await axios.put(url, { revision, values });
+        setRevision(data.revision);
+      }
       initialDraft.current = draft;
       onDirty(false);
       setSaved(true);
@@ -220,21 +260,73 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
     }
   }
 
-  const disabled = revision === null || saving || conflict;
+  const disabled = readOnly || revision === null || saving || conflict;
+  const help = hrRuleHelp[kind];
+  const pendingChanges = initialDraft.current && JSON.stringify(initialDraft.current) !== JSON.stringify(draft);
+  const fieldGroups = settingsGroups[kind]?.map(([title, keys]) => [title, fields.filter(([key]) => keys.includes(key))])
+    .filter(([, items]) => items.length) ?? [[null, fields]];
+
+  function renderFields(items) {
+    return items.map(([key, label, type]) => {
+      const clockActivation = kind === "clockRules" && key === "enabled" && !proposing;
+      return <div key={key} className={type === "checkbox" ? "col-span-full min-w-0" : "min-w-0"}>
+        <label className={`text-sm font-medium ${type === "checkbox" ? "flex items-start gap-2" : "grid gap-1"}`}>
+          {label}
+          {type === "checkbox" ? (
+            <input aria-describedby={clockActivation ? `${fieldHelpId}-activation` : undefined}
+              type="checkbox" className="order-first mt-0.5 size-4 shrink-0" disabled={disabled} checked={Boolean(draft[key])}
+              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />
+          ) : typeof type === "object" ? (
+            <select className={control} disabled={disabled} value={draft[key] ?? ""}
+              required={!["mode", "paidLeaveDays", "planningAttribution"].includes(key)} onChange={(event) => setDraft((current) => ({
+                ...current, ...(["workdays", "unit"].includes(key) && { weekdays: null }), [key]: event.target.value }))}>
+              <option value="">{key === "mode" ? "Non configuré" : key === "paidLeaveDays" ? "Réglage du planning"
+                : key === "planningAttribution" ? "Répartir sur les deux jours" : "Sélectionner"}</option>
+              {Object.entries(type).map(([value, option]) => <option key={value} value={value}>{option}</option>)}
+            </select>
+          ) : (
+            <input className={control} type={type} disabled={disabled} value={draft[key] ?? ""}
+              required={["quantity", "hours"].includes(key) || (key === "amount" && draft.mode === "basket") ||
+                (kind === "overtime" && type === "number" && !optionalRates.includes(key))}
+              min={type === "number" && !["advance", "currentBalance", "leaveAvailable"].includes(key) &&
+                !(key === "hours" && ["adjust", "reset"].includes(draft.operation)) ? 0 : undefined}
+              max={key === "advance" ? 0 : undefined}
+              step={type === "number" ? ["quantity", "taken"].includes(key) ? 1 : "0.01" : undefined}
+              maxLength={type === "text" ? 300 : undefined}
+              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} />
+          )}
+        </label>
+        {clockActivation ? <>
+          <div id={`${fieldHelpId}-activation`} className="mt-2 space-y-1 text-sm text-darkBlue/75">
+            <p>{help.enabled}</p>
+            {!draft.enabled && <p>{help.disabled}</p>}
+          </div>
+          {revision !== null && <div role="status" className="mt-3 space-y-1 rounded-lg bg-blue/5 px-3 py-2 text-sm">
+            <p className="font-medium">{revision > 0
+              ? `Version enregistrée : règles ${initialDraft.current?.enabled ? "activées" : "désactivées"} pour la date choisie.`
+              : "Aucune version enregistrée à la date choisie. Les valeurs affichées servent de point de départ."}</p>
+            {pendingChanges && <p>Modifications à enregistrer. La version enregistrée reste inchangée.</p>}
+          </div>}
+        </> : help?.[key] && <details className="mt-1 text-xs text-darkBlue/70">
+          <summary className="w-fit cursor-pointer font-medium text-blue" aria-label={`Aide · ${label}`}>Aide</summary>
+          <p className="mt-1">{help[key]}</p>
+        </details>}
+      </div>;
+    });
+  }
+
   return (
-    <form onSubmit={save} className="grid gap-4">
+    <form onSubmit={save} className="grid min-w-0 gap-4">
       {revision === null && !error && <p role="status" className="text-sm">Chargement…</p>}
       {kind === "meals" && <p className="text-sm text-darkBlue/70">
         {meal?.due != null && meal.basis !== "monthly" && `Repas dus ce jour : ${meal.due}. `}
-        Saisis 0 si aucun repas n’a été pris.
+        Saisissez 0 si aucun repas n’a été pris.
       </p>}
       {kind === "variables" && <p className="text-sm text-darkBlue/70">Saisis les avances avec un signe moins.</p>}
       {kind === "overtime" && draft.enabled && <p className="text-sm text-darkBlue/70">
-        Les seuils affichés au départ suivent une semaine HCR sans modulation. Laisse les taux de nuit, dimanche et jours fériés vides s’ils ne s’appliquent pas.
+        Vérifiez que les seuils et les taux correspondent aux règles de l’établissement.
       </p>}
-      {kind === "leaveRules" && <p className="text-sm text-darkBlue/70">Les salariés déjà en poste démarrent à partir d’un solde d’ouverture saisi dans leur fiche.</p>}
-      {kind === "leave" && <p className="text-sm text-darkBlue/70">Renseigne les soldes N et N−1 arrêtés à cette date. Saisis 0 lorsqu’un solde est nul.</p>}
-      {kind === "hoursRules" && <p className="text-sm text-darkBlue/70">Le compteur cumule les écarts à partir de ce lundi. Saisis un solde d’ouverture avec l’action « Fixer le solde » au dimanche précédent.</p>}
+      {kind === "leave" && <p className="text-sm text-darkBlue/70">Renseignez les soldes de la période en cours (N) et de la précédente (N−1) à cette date. Saisissez 0 pour un solde nul.</p>}
       {kind === "annual" && <p className="text-sm text-darkBlue/70">Renseigne l’objectif applicable au salarié pour ce cycle de douze mois, avec sa reprise d’heures si le suivi commence en cours de cycle.</p>}
       {kind === "hoursEntry" && draft.entries?.length > 0 && <ul className="grid gap-1 rounded-lg bg-lightGrey p-3 text-sm">
         {draft.entries.map((entry, index) => <li key={`${entry.at || ""}:${index}`}>
@@ -245,57 +337,42 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
         <p className="text-sm text-darkBlue/70">Les plages de repas de Gusto s’appliquent aux services planifiés ou aux horaires rémunérés après validation.</p>}
       {kind === "rules" && (draft.basis === "monthly" || draft.mode === "basket") &&
         <p className="text-sm text-darkBlue/70">Le forfait s’affiche sur les mois complets couverts par le contrat.</p>}
-      <div className="grid gap-3 midTablet:grid-cols-2">
-        {fields.map(([key, label, type]) => (
-          <label key={key} className={`text-sm font-medium ${type === "checkbox" ? "col-span-full flex items-center gap-2" : "grid gap-1"}`}>
-            {label}
-            {type === "checkbox" ? (
-              <input type="checkbox" className="order-first size-4 shrink-0" disabled={disabled} checked={Boolean(draft[key])}
-                onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />
-            ) : typeof type === "object" ? (
-              <select className={control} disabled={disabled} value={draft[key] ?? ""}
-                required={!["mode", "paidLeaveDays", "planningAttribution"].includes(key)} onChange={(event) => setDraft((current) => ({ ...current,
-                  ...(["workdays", "unit"].includes(key) && { weekdays: null }), [key]: event.target.value }))}>
-                <option value="">{key === "mode" ? "Non configuré" : key === "paidLeaveDays" ? "Règle actuelle du planning"
-                  : key === "planningAttribution" ? "À chaque jour civil travaillé" : "Sélectionner"}</option>
-                {Object.entries(type).map(([value, option]) => <option key={value} value={value}>{option}</option>)}
-              </select>
-            ) : (
-              <input className={control} type={type} disabled={disabled} value={draft[key] ?? ""}
-                required={["quantity", "hours"].includes(key) || (key === "amount" && draft.mode === "basket") ||
-                  (kind === "overtime" && type === "number" && !optionalRates.includes(key))}
-                min={type === "number" && !["advance", "currentBalance", "leaveAvailable"].includes(key) &&
-                  !(key === "hours" && ["adjust", "reset"].includes(draft.operation)) ? 0 : undefined}
-                max={key === "advance" ? 0 : undefined}
-                step={type === "number" ? ["quantity", "taken"].includes(key) ? 1 : "0.01" : undefined}
-                maxLength={type === "text" ? 300 : undefined}
-                onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} />
-            )}
-          </label>
-        ))}
-      </div>
-      {kind === "absenceRules" && <div className="grid gap-2">
+      {fieldGroups.map(([title, items]) => title ? (
+        <fieldset key={title} className="min-w-0 rounded-xl border border-darkBlue/10 p-3">
+          <legend className="px-1 text-sm font-semibold">{title}</legend>
+          <div className="grid gap-3 midTablet:grid-cols-2">{renderFields(items)}</div>
+        </fieldset>
+      ) : items.length > 0 && <div key="fields" className="grid gap-3 midTablet:grid-cols-2">{renderFields(items)}</div>)}
+      {kind === "absenceRules" && <fieldset className="grid min-w-0 gap-2 rounded-xl border border-darkBlue/10 p-3">
+        <legend className="px-1 text-sm font-semibold">Indemnisation et repas par motif</legend>
+        <details className="text-sm text-darkBlue/70">
+          <summary className="w-fit cursor-pointer text-blue">Aide sur l’indemnisation et les repas</summary>
+          <p className="mt-1">{help.categories}</p>
+        </details>
         {Object.entries(absenceNames).filter(([type]) => type !== "weekly_rest").map(([type, name]) => {
           const row = draft.categories?.[type] || {};
           function change(field, value) {
             setDraft((current) => ({ ...current, categories: { ...current.categories, [type]: { ...row, [field]: value } } }));
           }
-          return <div key={type} className="grid items-center gap-2 border-b border-darkBlue/10 pb-2 midTablet:grid-cols-3">
+          return <div key={type} className="grid min-w-0 items-center gap-2 border-b border-darkBlue/10 py-2 midTablet:grid-cols-3">
             <span className="text-sm font-medium">{name}</span>
-            <select className={control} aria-label={`Indemnisation · ${name}`} disabled={disabled}
+            <label className="grid gap-1 text-sm">Qui indemnise ?
+            <select className={control} aria-label={`Qui indemnise ? · ${name}`} disabled={disabled}
               value={row.payer || ""} onChange={(event) => change("payer", event.target.value)}>
-              <option value="">Non renseignée</option>
+              <option value="">Non renseigné</option>
               {Object.entries(payerOptions).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
-            <label className="grid gap-1 text-sm">Repas indemnisés
+            </label>
+            <label className="grid gap-1 text-sm">Repas maintenus par jour
               <input type="number" className={control} min={0} max={10} step={1} disabled={disabled}
-                aria-label={`Repas indemnisés · ${name}`} value={row.meal ?? 0} onChange={(event) => change("meal", event.target.value)} />
+                aria-label={`Repas maintenus par jour · ${name}`} value={row.meal ?? ""} onChange={(event) => change("meal", event.target.value)} />
             </label>
           </div>;
         })}
-      </div>}
+      </fieldset>}
       {requiredWeekdays > 0 && <fieldset className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-darkBlue/15 p-3">
         <legend className="px-1 text-sm font-semibold">{kind === "overtime" ? "Jours pouvant recevoir un crédit d’absence" : "Jours décomptés dans la semaine"}</legend>
+        <p className="w-full text-xs text-darkBlue/70">{help.weekdays}</p>
         {weekLabels.map((label, index) => <label key={label} className="flex items-center gap-1.5 text-sm">
           <input type="checkbox" disabled={disabled} checked={weekdays.includes(index + 1)} onChange={(event) => {
             const checked = event.target.checked;
@@ -307,6 +384,7 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
         <summary className="cursor-pointer text-sm font-semibold">
           {kind === "overtime" ? "Absences comptées dans le seuil hebdomadaire" : "Absences ouvrant droit à l’acquisition"}
         </summary>
+        <p className="mt-2 text-xs text-darkBlue/70">{help[absenceField]}</p>
         <div className="mt-3 grid gap-2 midTablet:grid-cols-2">
           {Object.entries(frenchPlanning.absenceTypes).filter(([type]) => !["weekly_rest", "unspecified"].includes(type) &&
             (kind === "overtime" || type !== "sick_leave")).map(([type, label]) => <label key={type} className="flex items-center gap-2 text-sm">
@@ -345,13 +423,18 @@ function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, onDirty
           onClick={() => setDraft((current) => ({ ...current, criteria: [...criteria, {}] }))}>Ajouter un critère</button>}
       </fieldset>}
       {error && <p className="text-sm text-red" role="alert">{error}</p>}
-      {saved && <p className="text-sm text-[#146144]" role="status">Paramètres enregistrés.</p>}
+      {saved && <p className="text-sm text-[#146144]" role="status">
+        {proposing ? "Proposition mise à jour dans l’aperçu." : "Paramètres enregistrés."}
+      </p>}
+      {onPropose && <label className="grid gap-1 text-sm font-medium">Justification de la validation
+        <textarea className={control} value={reason} required maxLength={500} onChange={(event) => setReason(event.target.value)} />
+      </label>}
       <div className="flex flex-wrap justify-end gap-2">
         {(conflict || (revision === null && error)) && <button type="button" className={action}
           onClick={() => { setError(""); setRevision(null); setConflict(false); setAttempt((count) => count + 1); }}>Recharger</button>}
         {nextMeal && <button type="submit" value="next" className={action} disabled={disabled}>Enregistrer et passer au jour suivant</button>}
         <button type="submit" className="min-h-10 rounded-lg bg-blue px-3 text-sm font-semibold text-white disabled:opacity-50" disabled={disabled}>
-          {saving ? "Enregistrement…" : "Enregistrer"}
+          {saving ? "Enregistrement…" : onPropose ? "Valider la proposition pour l’aperçu" : "Enregistrer"}
         </button>
       </div>
     </form>
@@ -366,7 +449,8 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
   const today = parisPlanningDateKey(new Date());
   const settings = initialKind === "settings";
   const [kind, setKind] = useState(settings ? "rules" : initialKind);
-  const monthInput = kind === "rules" || kind === "variables";
+  const monthInput = kind === "rules" || kind === "variables" || kind === "leaveRules";
+  const newDated = ["absenceRules", "hoursRules", "leaveRules"].includes(kind);
   const fixed = fixedKinds.includes(kind);
   const [date, setDate] = useState(initialDate || (fixed ? "-" : monthInput ? today.slice(0, 7) : today));
   const [busy, setBusy] = useState(false);
@@ -387,30 +471,33 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
   const meal = editableDays.find((entry) => entry.date === date);
   const valid = fixed || (kind === "meals" ? Boolean(meal) :
     (monthInput ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(date)) &&
-    (kind !== "overtime" || date === weekMonday(date));
+    (!["overtime", "hoursRules"].includes(kind) || date === weekMonday(date));
+  const inputDate = kind === "leaveRules" ? `${date}-01` : date;
   const nextMeal = editableDays.find((entry) => entry.date > date && entry.taken == null && (entry.due || entry.works))?.date;
   return (
     <dialog ref={ref} aria-labelledby={titleId} aria-describedby={payrollHelp[kind] ? helpId : undefined}
       {...backdrop}
-      className="m-auto max-h-[85dvh] w-[calc(100%-2rem)] max-w-2xl rounded-2xl bg-white p-0 text-darkBlue shadow-xl backdrop:bg-darkBlue/45">
-      <header className="flex items-start justify-between gap-3 border-b border-darkBlue/10 p-4 midTablet:p-5">
-        <div>
+      className="m-auto max-h-[85dvh] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-2xl bg-white p-0 text-darkBlue shadow-xl backdrop:bg-darkBlue/45">
+      <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-darkBlue/10 bg-white p-4 midTablet:p-5">
+        <div className="min-w-0">
           <h2 id={titleId} className="text-lg font-semibold">{settings ? "Paramètres du rapport RH" : titles[kind]}</h2>
           {employeeName && <p className="text-sm text-darkBlue/70">{employeeName}</p>}
           {payrollHelp[kind] && <p id={helpId} className="mt-2 max-w-prose text-sm leading-relaxed text-darkBlue/75">{payrollHelp[kind]}</p>}
         </div>
-        <button type="button" className={action} disabled={busy} onClick={requestClose} aria-label="Fermer"><X size={16} /></button>
+        <button type="button" className={closeButton} disabled={busy} onClick={requestClose} aria-label="Fermer"><X size={18} aria-hidden="true" /></button>
       </header>
       <div className="grid gap-4 p-4 midTablet:p-5">
         {settings && <nav aria-label="Paramètres du rapport RH" className="flex flex-wrap gap-2 border-b border-darkBlue/10 pb-3">
-          {settingsTabs.map((item) => <button key={item} type="button" className={`${action} ${kind === item ? "border-blue text-blue" : ""}`}
+          {settingsTabs.map((item) => <button key={item} type="button" className={`${tab} ${kind === item ? "border-blue text-blue" : ""}`}
             aria-pressed={kind === item} disabled={busy} onClick={() => {
               if (item === kind || !canLeave()) return;
               setDirty(false);
               setKind(item);
-              setDate(fixedKinds.includes(item) ? "-" : item === "clockRules" ? today : item === "overtime" ? weekMonday(from || today) : (from || today).slice(0, 7));
+              setDate(fixedKinds.includes(item) ? "-" : ["clockRules", "absenceRules"].includes(item) ? today :
+                ["overtime", "hoursRules"].includes(item) ? weekMonday(from || today) : (from || today).slice(0, 7));
             }}>{titles[item]}</button>)}
         </nav>}
+        {settings && <p className="text-sm text-darkBlue/75">{hrRuleHelp[kind]?.intro}</p>}
         {kind === "meals" ? (
           <label className="grid gap-1 text-sm font-medium">Jour du repas
             <select className={control} disabled={busy} value={meal ? date : ""} onChange={(event) => { if (canLeave()) { setDirty(false); setDate(event.target.value); } }}>
@@ -421,16 +508,19 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
             </select>
           </label>
         ) : !fixed && (
-          <label className="grid gap-1 text-sm font-medium">{kind === "rules" ? "Applicable à partir du mois de" :
-            kind === "overtime" ? "Applicable à partir du lundi" : kind === "clockRules" ? "Applicable aux services à partir du" : monthInput ? "Mois de paie" :
+          <label className={`grid min-w-0 gap-1 text-sm font-medium ${settings ? "rounded-xl bg-darkBlue/5 p-3" : ""}`}>{["rules", "leaveRules"].includes(kind) ? "Mois de prise d’effet" :
+            ["overtime", "hoursRules"].includes(kind) ? "Date d’effet (lundi)" : ["clockRules", "absenceRules"].includes(kind) ? "Date d’effet" : monthInput ? "Mois de paie" :
               kind === "amendment" ? "Date d’effet" : kind === "annual" ? "Début du cycle annuel" : kind === "hoursEntry" ? "Date du mouvement" : "Solde au"}
-            <input className={control} disabled={busy} type={monthInput ? "month" : "date"} value={date}
+            <input className={`${control} ${settings ? "max-w-64" : ""}`} disabled={busy} type={monthInput ? "month" : "date"} value={date}
               min={kind === "variables" ? from.slice(0, 7) : undefined} max={kind === "variables" ? to.slice(0, 7) : undefined}
               onChange={(event) => { if (canLeave()) { setDirty(false); setDate(event.target.value); } }} />
+            {hrRuleHelp[kind]?.date && <span className="text-xs font-normal text-darkBlue/70">{hrRuleHelp[kind].date}</span>}
           </label>
         )}
-        {kind === "overtime" && date && date !== weekMonday(date) && <p role="status" className="text-sm text-darkBlue/70">Choisis le lundi de la première semaine concernée.</p>}
-        {valid && <InputFields key={`${kind}:${date}`} url={`${baseUrl}/${kind}/${date}`} kind={kind} date={date} meal={meal} nextMeal={nextMeal} onBusy={setBusy} onDirty={setDirty}
+        {["overtime", "hoursRules"].includes(kind) && date && date !== weekMonday(date) && <p role="status" className="text-sm text-darkBlue/70">Choisissez le lundi de la première semaine concernée.</p>}
+        {valid && newDated && inputDate <= today && <p className="text-sm text-darkBlue/70">Consultation uniquement. Choisissez une date future pour enregistrer une modification.</p>}
+        {valid && <InputFields key={`${kind}:${date}`} url={`${baseUrl}/${kind}/${inputDate}`} kind={kind} date={inputDate} meal={meal} nextMeal={nextMeal}
+          readOnly={newDated && inputDate <= today} onBusy={setBusy} onDirty={setDirty}
           onSaved={(nextDate) => {
             if (nextDate) setDate(nextDate);
             onSaved({ keepOpen: settings || Boolean(nextDate) });

@@ -297,6 +297,51 @@ test("a weekly counter carries earlier work and a dated opening, with recorded p
     [120, -180, 30, -30, 60]);
 });
 
+test("dated counter rules preserve closed weeks and apply premiums prospectively", () => {
+  const employee = profileEmployee([
+    ...workWeek("2026-11-02", [8, 8, 8, 7, 7]), ...workWeek("2026-11-09", [8, 8, 8, 7, 7]),
+  ], [], { contractualUnit: "week", contractualValue: 35 });
+  const old = [input("overtime", "2026-11-02", overtimeRules),
+    input("hoursRules", "-", { start: "2026-11-02", enhanced: false }),
+    input("hoursEntry", "2026-11-01", { operation: "reset", hours: 5 })];
+  const current = [...old, input("hoursRules", "2026-11-09", { start: "2026-11-02", enhanced: true })];
+  const closed = (inputs) => Object.fromEntries(Object.entries(entries(buildPersonnelReportWorkbook(
+    report({ employee, from: "2026-11-02", to: "2026-11-08", inputs })))).filter(([name]) => name.startsWith("xl/worksheets/")));
+  assert.deepEqual(closed(current), closed(old));
+  const { values } = report({ employee, from: "2026-11-09", to: "2026-11-15", inputs: current }).rows[0];
+  assert.deepEqual([values.counterStart, values["2026-W46"], values.counterEnd], [480, 198, 678]);
+});
+
+test("a dated absence rule affects meals and splits a multi-day absence by its actual payer", () => {
+  const leave = { ...paidLeave("two-days", "2026-11-09"), end: date("2026-11-10T23:59:59") };
+  const employee = profileEmployee([], [leave], { contractualUnit: "week", contractualValue: 35 });
+  const inputs = [input("rules", "2026-11", { mode: "combined", basis: "days", quantity: 1 }),
+    input("absenceRules", "-", { categories: { paid_leave: { payer: "employer", meal: 1 } } }),
+    input("absenceRules", "2026-11-10", { categories: { paid_leave: { payer: "thirdParty", meal: 2 } } })];
+  const row = report({ employee, inputs }).rows[0];
+  assert.equal(row.values.mealsDue, 3);
+  assert.equal(row.values["absence:paid_leave"], 1);
+  assert.deepEqual(row.absences.map(({ payer, payrollMinutes, days }) => [payer, payrollMinutes, days]),
+    [["employer", 420, 1], ["thirdParty", 420, 1]]);
+});
+
+test("dated leave rules carry accrued days and require a new opening when the unit changes", () => {
+  const employee = profileEmployee([], [paidLeave("november", "2026-11-03"), paidLeave("december", "2026-12-01")]);
+  employee.restaurantProfiles[0].snapshot.dateOnPost = date("2026-11-01");
+  const rule = { startMonth: "2026-11", referenceMonth: 6, unit: "businessDays", excludeHolidays: false, preserveCarry: true, assimilated: ["paid_leave"] };
+  const old = input("leaveRules", "-", rule);
+  const next = input("leaveRules", "2026-12-01", { ...rule, excludeHolidays: true });
+  const closed = (inputs) => report({ employee, from: "2026-11-01", to: "2026-11-30", inputs }).rows[0].leaveBalance;
+  assert.deepEqual(closed([old, next]), closed([old]));
+  const after = (extra) => report({ employee, from: "2026-12-01", to: "2026-12-31", asOf: "2026-12-31", inputs: [old, ...extra] }).rows[0];
+  assert.deepEqual([after([next]).leaveBalance.currentAcquired, after([next]).leaveBalance.currentUsed], [5, 2]);
+  const differentUnit = { ...next, values: { ...rule, unit: "workdays" } };
+  assert.equal(after([differentUnit]).leaveStatus, "needsOpening");
+  const opening = input("leave", "2026-11-30", { previousBalance: 0, currentBalance: 2 });
+  assert.equal(after([differentUnit, opening]).leaveStatus, "automatic");
+  assert.equal(after([differentUnit, opening]).leaveBalance.currentBalance, 3.08);
+});
+
 test("annual closing deducts weekly excess already paid and includes hours carried at initialization", () => {
   const employee = profileEmployee(workWeek("2026-10-26", [9, 9, 9, 9, 11]), [], { contractualUnit: "week", contractualValue: 35 });
   employee.restaurantProfiles[0].snapshot.dateOnPost = date("2025-11-02");

@@ -14,6 +14,7 @@ const Restaurant = require("../../models/restaurant.model");
 const Owner = require("../../models/owner.model");
 const Session = require("../../models/time-clock-session.model");
 const Absence = require("../../models/time-clock-absence.model");
+const PersonnelReportInput = require("../../models/personnel-report-input.model");
 const router = require("../../routes/time-clock.routes");
 const { parseXlsxSheets } = require("../../services/dish-card-import.service");
 const { buildRegisterRows, buildRegisterHistory } = require("../../services/employees/time-clock-register.service");
@@ -74,6 +75,30 @@ test("une pause de durée nulle n’écarte pas la pause prévue en mode de remp
   assert.equal(paid(shortened, suggestedPayroll(shortened, { ...rule, lateOut: "planned" })).breakMinutes, 0);
 });
 
+test("la pause prévue de 30 minutes ne remplace que les pauses absentes ou nulles", () => {
+  const { suggestedPayroll, payrollDayShares } = require("../../services/employees/time-clock-payroll.service");
+  const startAt = "2027-03-03T12:00:00Z";
+  const session = {
+    status: "closed", clockInAt: "2027-03-03T08:00:00Z", clockOutAt: "2027-03-03T16:00:00Z",
+  };
+  const rule = {
+    enabled: true, earlyIn: "clocked", lateIn: "clocked", earlyOut: "clocked", lateOut: "clocked",
+    roundMinutes: 0, pause: "plannedFallback",
+  };
+  const cases = [
+    { planned: 30, breaks: [{ startAt, endAt: "2027-03-03T12:17:00Z" }], expected: 17 },
+    { planned: 30, breaks: [], expected: 30 },
+    { planned: 30, breaks: [{ startAt, endAt: startAt }], expected: 30 },
+    { planned: 0, breaks: [], expected: 0 },
+  ];
+  for (const { planned, breaks, expected } of cases) {
+    const schedule = suggestedPayroll({ ...session, plannedBreakMinutes: planned, breaks }, rule);
+    const [day] = payrollDayShares(schedule);
+    assert.equal(day.breakMinutes, expected);
+    assert.equal(day.workedMinutes, 480 - expected);
+  }
+});
+
 function tabletKeys() {
   const signing = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const wrapping = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -83,6 +108,24 @@ function tabletKeys() {
     wrappingKey: wrapping.publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
   };
 }
+
+test("les horaires rémunérés chevauchants respectent la nuit, les pauses et les bornes contiguës", () => {
+  const { payrollConflicts } = require("../../services/employees/time-clock-payroll.service");
+  const shift = (_id, clockInAt, clockOutAt, options = {}) =>
+    ({ _id, employee: "staff", restaurant: "bistro", status: "closed", clockInAt, clockOutAt, ...options });
+  const night = shift("night", "2026-11-10T22:00:00+01:00", "2026-11-11T02:00:00+01:00");
+  const adjacent = shift("adjacent", night.clockOutAt, "2026-11-11T04:00:00+01:00");
+  const early = { ...adjacent, clockInAt: "2026-11-11T01:30:00+01:00" };
+  assert.equal(payrollConflicts([night, adjacent]).size, 0);
+  assert.deepEqual([...payrollConflicts([night, early]).keys()].sort(), ["adjacent", "night"]);
+  assert.equal(payrollConflicts([night, early], "2026-11-10", "2026-11-10").size, 0);
+  assert.equal(payrollConflicts([night, { ...early, restaurant: "other" }]).size, 0);
+  assert.equal(payrollConflicts([night, { ...early, employee: "other" }]).size, 0);
+  const knownBreak = { ...night, breaks: [{ startAt: early.clockInAt, endAt: night.clockOutAt }] };
+  assert.equal(payrollConflicts([knownBreak, early]).size, 0);
+  const override = { ...knownBreak, payroll: { ...knownBreak, pauseMinutesByDay: [{ date: "2026-11-11", minutes: 0 }] } };
+  assert.equal(payrollConflicts([override, early]).size, 2);
+});
 
 function signedPunch(restaurant, privateKey, employeeId, grant, action, occurredAt) {
   const payload = {
@@ -1214,4 +1257,99 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   assert.equal((await identifyPin(migratedPin)).status, 401);
   assert.equal((await identifyPin(resetPin)).data.kiosk.employee.id, String(outside));
   await t.test("native punches, retained hours, RH report and Excel agree for a fictitious restaurant", checkRetainedHours);
+
+  await t.test("les services chevauchants bloquent la paie et les écritures concurrentes sans modifier le brut", async () => {
+    const restaurantId = new ObjectId();
+    const employeeId = new ObjectId();
+    const day = "2026-11-10";
+    const monday = "2026-11-09";
+    const stamp = (hour) => `${day}T${hour}:00+01:00`;
+    const filters = { from: day, to: day, employeeId: String(employeeId) };
+    const request = (method, path, options) => call(method, path, {
+      restaurantId, authorization: auth(owner, "owner", restaurantId), ...options,
+    });
+    const employee = member(employeeId, "Chevauchement fictif", [restaurantId]);
+    Object.assign(employee.restaurantProfiles[0], {
+      snapshot: { dateOnPost: new Date("2026-11-09T08:00:00Z") },
+      employment: { contractualUnit: "week", contractualValue: 35, contractType: "CDI" },
+    });
+    await Restaurant.collection.insertOne({ _id: restaurantId, owner_id: owner, name: "Chevauchement fictif",
+      employees: [employeeId], options: { employees: true } });
+    await Employee.collection.insertOne(employee);
+    const reportPath = "/restaurants/:restaurantId/employees/reports";
+    await PersonnelReportInput.collection.insertMany([
+      { _id: `${restaurantId}:overtime`, restaurant: restaurantId, kind: "overtime", date: monday,
+        values: { enabled: true, source: "validated", ordinary: 35, firstEnd: 39, secondEnd: 43,
+          firstRate: 10, secondRate: 20, lastRate: 50, complementBand: 10, complementFirstRate: 10,
+          complementLastRate: 25, workdays: 5, creditedAbsences: [], nightRate: 10, nightStart: "22:00",
+          nightEnd: "07:00", sundayRate: null, holidayRate: null } },
+      { _id: `${restaurantId}:hoursRules`, restaurant: restaurantId, kind: "hoursRules", date: monday,
+        values: { start: monday, enhanced: true } },
+    ]);
+    const signature = { strokes: [{ points: [{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }] }] };
+    const badge = (action, hour) => request("post", base + "/punch", { body: {
+      employeeId: String(employeeId), businessDate: day, action, occurredAt: stamp(hour), signature,
+    } });
+    assert.equal((await badge("clock_in", "08:00")).status, 201);
+    const first = await badge("clock_out", "10:00");
+    assert.equal(first.status, 200);
+    assert.equal((await badge("clock_in", "09:00")).status, 409);
+    assert.equal((await badge("clock_in", "10:30")).status, 201);
+    const second = await badge("clock_out", "12:00");
+    assert.equal(second.status, 200);
+    const ids = [first.data.sessionId, second.data.sessionId];
+    const rows = () => Promise.all(ids.map((id) => Session.findById(id).lean()));
+    const editPay = (id, row, changes) => request("put", base + "/sessions/:sessionId/payroll", {
+      sessionId: id, body: { ...revisionOf(row), reason: "Contrôle fictif", ...changes },
+    });
+    const reviewPay = (id, row, validated) => request("put", base + "/sessions/:sessionId/review", {
+      sessionId: id, body: { ...revisionOf(row), validated },
+    });
+    const before = await rows();
+    const rejected = await editPay(ids[0], before[0], { clockOutAt: stamp("11:00") });
+    assert.equal(rejected.status, 409);
+    assert.match(rejected.data.message, /chevauchent/);
+    assert.deepEqual(await rows(), before);
+    const competing = await Promise.all([
+      editPay(ids[0], before[0], { clockOutAt: stamp("10:20") }),
+      editPay(ids[1], before[1], { clockInAt: stamp("10:10") }),
+    ]);
+    assert.deepEqual(competing.map(({ status }) => status).sort(), [200, 409]);
+    const after = await rows();
+    const nextStart = (after[1].payroll || after[1]).clockInAt.toISOString();
+    assert.equal((await editPay(ids[0], after[0], { clockOutAt: nextStart })).status, 200);
+    const touching = await rows();
+    assert.deepEqual(touching.map(({ events }) => events), before.map(({ events }) => events));
+    assert.equal(touching[0].payrollAdjustments.at(-1).reason, "Contrôle fictif");
+    assert.deepEqual((await Promise.all(touching.map((row, i) => reviewPay(ids[i], row, true))))
+      .map(({ status }) => status), [200, 200]);
+
+    // An already validated legacy pair is detected on reads without rewriting either session.
+    await Session.collection.updateOne({ _id: before[0]._id },
+      { $set: { "payroll.clockOutAt": new Date(stamp("11:00")) } });
+    await Session.collection.updateOne({ _id: before[1]._id }, { $unset: { payroll: "" } });
+    const legacy = await rows();
+    assert.deepEqual((await Promise.all(legacy.map((row, i) => reviewPay(ids[i], row, true))))
+      .map(({ status }) => status), [409, 409]);
+    assert.equal((await request("post", base + "/register/review", { body: filters })).status, 409);
+    const register = await request("get", base + "/register", { query: filters });
+    assert.equal(register.data.rows[0].days[0].payroll.filter(({ payrollOverlap }) => payrollOverlap).length, 2);
+    const result = await request("get", reportPath, { query: filters });
+    assert.equal(result.data.payrollIssues[0].kind, "payrollOverlap");
+    for (const field of ["paid", "referenceWorked", "extra10", "night10", "counterEnd"]) {
+      assert.equal(result.data.rows[0].values[field], null, field);
+    }
+    assert.equal((await request("post", reportPath + "/export/excel", { body: filters })).status, 409);
+    for (const format of ["pdf", "excel"]) {
+      assert.equal((await request("post", base + "/export/" + format, { body: { ...filters, employeeIds: [String(employeeId)] } })).status, 409);
+    }
+    assert.deepEqual(await rows(), legacy);
+    const reopened = await reviewPay(ids[0], legacy[0], false);
+    assert.equal(reopened.status, 200);
+    const [reopenedRow] = await rows();
+    assert.equal((await editPay(ids[0], reopenedRow, { clockOutAt: stamp("10:30") })).status, 200);
+    const [resolved] = await rows();
+    assert.equal((await reviewPay(ids[0], resolved, true)).status, 200);
+    assert.equal((await request("post", reportPath + "/export/excel", { body: filters })).status, 200);
+  });
 });

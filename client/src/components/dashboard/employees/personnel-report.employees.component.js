@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import axios from "axios";
-import { BriefcaseBusiness, CalendarDays, CalendarOff, ChevronDown, ChevronLeft, ChevronRight, Clock3, Download, Pencil, Search, TrendingUp, Wallet, X } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, CalendarOff, ChevronDown, ChevronLeft, ChevronRight, Clock3, Download, FileSpreadsheet, Pencil, Search, TrendingUp, Wallet, X } from "lucide-react";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import { directoryPath } from "./employee-directory.utils.mjs";
 import { formatReportValue, formatReportWeek, isReportPeriod, moveReportPeriod, reportMonth, reportPeriodLabel, visibleReportColumns } from "./personnel-report.utils.mjs";
 import PersonnelReportInputDialog, { personnelReportInputsUrl } from "./personnel-report-input.employees.component";
+import HrQuestionnaire from "./hr-questionnaire.employees.component";
 
 const control = "inline-flex min-h-10 min-w-0 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm text-darkBlue";
 const button = `${control} justify-center font-semibold hover:bg-lightGrey disabled:opacity-50`;
@@ -23,6 +24,7 @@ const groupStyle = {
   compensation: { Icon: Wallet, header: "border-[#398c93] bg-[#e1f2f4] text-[#27656d]", subheader: "bg-[#f0f9fa]" },
   leave: { Icon: CalendarDays, header: "border-[#658c59] bg-[#e8f2e6] text-[#3f6634]", subheader: "bg-[#f4f8f2]" },
   annual: { Icon: TrendingUp, header: "border-[#4b74cd] bg-[#e3edff] text-[#244b95]", subheader: "bg-[#f0f5ff]" },
+  skello: { Icon: FileSpreadsheet, header: "border-[#398c93] bg-[#e1f2f4] text-[#27656d]", subheader: "bg-[#f0f9fa]" },
 };
 const leaveStatusLabels = {
   needsOpening: "Solde d’ouverture requis",
@@ -141,7 +143,8 @@ function WeekCell({ column, hours, employee, onOpen }) {
 }
 
 function ReportTable({ report, open, toggle, onEdit }) {
-  const groups = report.groups.map((group) => ({ ...group, visible: visibleReportColumns(group, open[group.id]) }));
+  const groups = report.groups.map((group) => ({ ...group, visible: visibleReportColumns(group, open[group.id]),
+    style: groupStyle[group.id] || groupStyle.time }));
   const [hoursDetail, setHoursDetail] = useState(null);
   return (
     <>
@@ -153,7 +156,7 @@ function ReportTable({ report, open, toggle, onEdit }) {
           <tr className="font-semibold">
             <th rowSpan={2} scope="col" className={`${identityCell} top-0 z-30 min-w-[9rem] border-b border-b-[#dbe5f4] bg-white font-semibold text-[#244b95] midTablet:min-w-[12rem]`}>Salarié</th>
             {groups.map((group) => {
-              const { Icon, header } = groupStyle[group.id];
+              const { Icon, header } = group.style;
               return (
                 <th key={group.id} colSpan={group.visible.length} scope="colgroup"
                   className={`sticky top-0 z-20 h-12 border-t-2 border-r text-left ${header}`}>
@@ -169,7 +172,7 @@ function ReportTable({ report, open, toggle, onEdit }) {
           <tr>
             {groups.flatMap((group) => group.visible.map((column) => (
               <th key={`${group.id}:${column.key}`} scope="col" title={column.hint || (column.unavailable ? "Indicateur non disponible dans Gusto" : undefined)}
-                className={`${metricCell} sticky top-12 z-10 max-w-[10rem] border-b border-[#dbe5f4] py-2 text-xs font-semibold text-darkBlue/80 ${groupStyle[group.id].subheader}`}>
+                className={`${metricCell} sticky top-12 z-10 max-w-[10rem] border-b border-[#dbe5f4] py-2 text-xs font-semibold text-darkBlue/80 ${group.style.subheader}`}>
                 {column.label}{column.unavailable && <sup className="ml-0.5" aria-hidden="true">*</sup>}
                 {column.week && <span className="mt-0.5 block whitespace-nowrap text-[10px] font-normal text-darkBlue/65">{formatReportWeek(column.week)}</span>}
                 {column.weekLabel && <span className="mt-0.5 block text-[10px] font-normal text-darkBlue/70">{column.weekLabel}</span>}
@@ -282,6 +285,8 @@ export default function PersonnelReport({ restaurantId }) {
   const requestKey = JSON.stringify([from, to, querySearch, employeeId, post, retry]);
   const current = request?.key === requestKey ? request : null;
   const report = current?.report;
+  const payrollIssues = report?.payrollIssues || [];
+  const payrollOverlap = payrollIssues.some(({ kind }) => kind === "payrollOverlap");
   const options = request?.options || [];
   const posts = [...new Set(options.map((item) => item.post).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
 
@@ -321,7 +326,7 @@ export default function PersonnelReport({ restaurantId }) {
   }
 
   async function exportExcel() {
-    if (!report || exporting || search.trim() !== querySearch) return;
+    if (!report || payrollIssues.length || exporting || search.trim() !== querySearch) return;
     const controller = new AbortController();
     exportRequest.current = controller;
     setExporting(true);
@@ -365,7 +370,7 @@ export default function PersonnelReport({ restaurantId }) {
                 exportMenu.current?.firstElementChild?.focus();
               }
             }}>
-            <button type="button" aria-expanded={exportOpen} disabled={!report?.rows.length || exporting || search.trim() !== querySearch}
+            <button type="button" aria-expanded={exportOpen} disabled={!report?.rows.length || payrollIssues.length > 0 || exporting || search.trim() !== querySearch}
               className={button} onClick={() => setExportOpen((value) => !value)}>
               <Download size={16} aria-hidden="true" />{exporting ? "Export en cours…" : "Options d’export"}<ChevronDown size={14} aria-hidden="true" />
             </button>
@@ -378,6 +383,13 @@ export default function PersonnelReport({ restaurantId }) {
           </div>
         }
       />
+      {request?.report?.canConfigure && <HrQuestionnaire restaurantId={restaurantId} onApplied={() => setRetry((value) => value + 1)} />}
+      {payrollIssues.length > 0 && <aside role="status" className="rounded-xl border border-darkBlue/15 bg-white p-3 text-sm">
+        <p className="font-semibold">{payrollOverlap ? "Export de paie en attente de correction" : "Paramètre à confirmer"}</p>
+        <p>{payrollOverlap ? "Traitez les points ci-dessous avant d’exporter cette période en Excel."
+          : "Complétez les réglages ci-dessous pour exporter cette période en Excel."}</p>
+        <ul className="list-disc pl-5">{payrollIssues.map(({ kind, message }) => <li key={kind}>{message}</li>)}</ul>
+      </aside>}
       <div className="grid min-w-0 gap-3 rounded-xl border border-darkBlue/10 bg-white p-3 midTablet:p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-wrap items-center gap-2">

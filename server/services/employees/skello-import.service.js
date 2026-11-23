@@ -52,7 +52,7 @@ async function getTarget(restaurantId, session) {
 }
 
 function selectOverlap(restaurant, period, fingerprint) {
-  return { restaurant, status: "complete", from: { $lte: period.to }, to: { $gte: period.from },
+  return { restaurant, mode: { $exists: false }, status: "complete", from: { $lte: period.to }, to: { $gte: period.from },
     fingerprint: { $ne: fingerprint } };
 }
 
@@ -153,7 +153,7 @@ async function readManifest(restaurant, batch, session) {
 
 async function listSkelloImports(restaurantId) {
   const target = await getTarget(restaurantId);
-  const batches = await SkelloImport.find({ restaurant: restaurantId }).sort({ createdAt: -1 }).limit(30).lean();
+  const batches = await SkelloImport.find({ restaurant: restaurantId, mode: { $exists: false } }).sort({ createdAt: -1 }).limit(30).lean();
   return { target, batches: batches.map(serializeBatch) };
 }
 
@@ -219,7 +219,7 @@ async function restoreSkelloHistoricalLateness({ restaurantId, batchId, actor, b
   if (!mongoose.isObjectIdOrHexString(batchId) || !Buffer.isBuffer(buffer) || !buffer.length || !actor) {
     throw new SkelloImportError("Le lot, le classeur d’origine et l’opérateur sont requis.", 400);
   }
-  const filter = { _id: batchId, restaurant: restaurantId, fingerprint: sha256(buffer), source: "skello", status: "complete" };
+  const filter = { _id: batchId, restaurant: restaurantId, fingerprint: sha256(buffer), mode: { $exists: false }, source: "skello", status: "complete" };
   const original = await SkelloImport.findOne(filter).select("scope").lean();
   if (!original) throw new SkelloImportError("Le classeur ne correspond pas au lot de cet établissement.", 409);
   const { people, preview } = analyzeSkelloWorkbook(buffer, original.scope);
@@ -272,7 +272,7 @@ async function removeSkelloImport({ restaurantId, actor, batchId, confirmed }) {
     throw new SkelloImportError("Confirmez le retrait du lot choisi.", 400);
   }
   return mongoose.connection.transaction(async (session) => {
-    const batch = await SkelloImport.findOne({ _id: batchId, restaurant: restaurantId }).select("+manifest").session(session);
+    const batch = await SkelloImport.findOne({ _id: batchId, restaurant: restaurantId, mode: { $exists: false } }).select("+manifest").session(session);
     if (!batch) throw new SkelloImportError("Lot introuvable.", 404);
     if (batch.status === "removed") return serializeBatch(batch);
     if (batch.status !== "complete") throw new SkelloImportError("Le lot ne contient aucune donnée à retirer.", 409);

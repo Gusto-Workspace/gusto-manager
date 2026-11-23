@@ -19,6 +19,7 @@ const authRouter = require("../../routes/auth.routes");
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const Owner = require("../../models/owner.model");
+const Admin = require("../../models/admin.model");
 const Session = require("../../models/time-clock-session.model");
 const Notification = require("../../models/notification.model");
 const PersonnelInput = require("../../models/personnel-report-input.model");
@@ -32,31 +33,56 @@ const work = (date, start, end, name = "Source Démo", code = "-") => [
   end.includes("T") ? makeExcelDate(end) : makeExcelDate(`${date}T${end}`), 0.5, "Note confidentielle", 1, 1,
 ];
 
-function fixture({ change = "", homonym = false } = {}) {
+function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026-10-31", history = false } = {}) {
   const sheet = (name, rows) => ({ name, rows });
+  const first = DateTime.fromISO(from);
+  const last = DateTime.fromISO(to);
+  const services = [
+    ["2026-10-01", "08:00", "12:00", 3.5, 3.25, 0],
+    ["2026-10-31", change === "conflit horaire" ? "22:00" : "23:00", "2026-11-01T02:00", 2.5, 2.75, 2],
+    ["2026-11-01", "10:00", "14:00", 3.5, 3.75, 3.5],
+    ["2026-11-02", "08:00", "12:00", 3.5, 3.5, 0],
+  ].filter(([date]) => date >= first.startOf("week").toISODate() && date <= last.endOf("week").toISODate());
+  const absence = (date, label, start, end) => ["Prénom confidentiel", "Source Démo", "TEST-01", "CDI", 35, "heures",
+    "Site source", DateTime.fromISO(date).weekNumber, makeExcelDate(date), "absence", label, "Site source",
+    start ? makeExcelDate(`${date}T${start}`) : "toute la journée", end ? makeExcelDate(`${date}T${end}`) : null];
+  const absences = [absence("2026-10-02", "Congé payé"), absence("2026-11-01", "Arrêt maladie", "16:00", "18:00"),
+    absence("2026-11-03", "Congé payé")].filter((row) => row[8] >= makeExcelDate(first.startOf("week").toISODate()) &&
+      row[8] <= makeExcelDate(last.endOf("week").toISODate()));
   const sheets = [
-    sheet("01-10 - 31-10", [
+    sheet(`${first.toFormat("dd-MM")} - ${last.toFormat("dd-MM")}`, [
       ["Nom", "Prénom", "Matricule de paie", "Type de Contrat", "Volume Horaire Hebdomadaire (h)*", "Intitulé Poste",
-        "Date de début de contrat", "Salaire Mensuel Brut (€)", "Note d’archivage", "Heures Travaillées (h)"],
-      ["Source Démo", "Prénom confidentiel", homonym ? "TEST-01" : "-", "CDI", 35, "Cuisinier", "01/09/26", 1800, change, 6.5],
+        "Date de début de contrat", "Salaire Mensuel Brut (€)", "Note d’archivage", "Heures Travaillées (h)",
+        "Heures rémunérées (h)", "Heures du dimanche 50% (h)"],
+      ["Source Démo", "Prénom confidentiel", homonym ? "TEST-01" : "-", "CDI", 35, "Cuisinier", "01/09/26", 1800, change,
+        history ? (from === "2026-10-01" ? 6 : from === "2026-11-01" ? 7 : 9.5) : 6.5,
+        history ? (from === "2026-10-01" ? 6 : from === "2026-11-01" ? 7.25 : 10) : null,
+        history ? (from === "2026-10-01" ? 2 : from === "2026-11-01" ? 3.5 : 5.5) : null],
       ...(homonym ? [["Source Démo", "Prénom confidentiel", "TEST-02", "CDI", 35]] : []),
     ]),
     sheet("Fiche employés", [
       [null, null, null, null, null, null, "Détail Planning", "Détail Planning", "Détail Planning"],
       [null, "Poste", null, null, null, null, "Début", "Fin", "Pause (h)", "Retard (h)"],
-      ["Total Période (01/10/2026-31/10/2026)"],
-      ["Mercredi 30 septembre", "Cuisinier", null, null, null, null, "18h00", "01h00", 0.5],
-      ["Jeudi 1 octobre", "Cuisinier", null, null, null, null, "19h00", "02h00", 0.5, 0.42],
+      [`Total Période (${first.toFormat("dd/MM/yyyy")}-${last.toFormat("dd/MM/yyyy")})`],
+      ...(history ? services.map(([date, start, end]) => [DateTime.fromISO(date).setLocale("fr").toFormat("cccc d LLLL"),
+        "Cuisinier", null, null, null, null, start, end.slice(-5), 0.5]) : [
+        ["Mercredi 30 septembre", "Cuisinier", null, null, null, null, "18h00", "01h00", 0.5],
+        ["Jeudi 1 octobre", "Cuisinier", null, null, null, null, "19h00", "02h00", 0.5, 0.42],
+      ]),
     ]),
     sheet("Détails", [
       ["Prénom", "Nom", "Matricule de paie", "Type de contrat", "Temps contractuel", "Heures / jours", "Etablissement principal",
         "N° semaine", "Date", "Travail / Absence", "Nom du poste / type d’absence", "Shift / absence effectué à", "Début", "Fin",
-        "Pause (h)", "Note", "Repas Dûs", "Avantages Nature", "Retard (h)"],
+        "Pause (h)", "Note", "Repas Dûs", "Avantages Nature", "Retard (h)", "Heures Travaillées (h)",
+        "Heures rémunérées (h)", "Heures du dimanche 50% (h)", "Pause rémunérée (h)"],
+      ...(history ? [...services.map(([date, start, end, worked, paid, sunday]) =>
+        [...work(date, start, end, undefined, "TEST-01"), date === "2026-10-01" ? 0.25 : 0, worked, paid, sunday, 0.5]), ...absences] : [
       work("2026-09-30", "18:00", "2026-10-01T01:00", undefined, homonym ? "TEST-01" : "-"),
       [...work("2026-10-01", "19:00", "2026-10-02T02:00"), 0.42],
       ["Prénom confidentiel", "Source Démo", homonym ? "TEST-01" : "-", "CDI", 35, "heures", "Site source", 40,
         makeExcelDate("2026-10-02"), "absence", "Repos hebdomadaire", "Site source", "toute la journée"],
       work("2026-11-01", "08:00", "12:00", undefined, homonym ? "TEST-01" : "-"),
+      ]),
     ]),
     sheet("Absences Employés", [
       ["Nom", "Prénom", "Matricule de paie", "Type absence", "Date de début", "Date de fin", "Nb heures", "Nb jours"],
@@ -125,6 +151,7 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   });
   await Promise.all([SkelloImport.init(), PersonnelInput.init(), Employee.init()]);
   const [restaurant, other, owner, existing, admin] = Array.from({ length: 5 }, () => new mongoose.Types.ObjectId());
+  await Admin.collection.insertOne({ _id: admin, role: "admin" });
   await Owner.collection.insertOne({ _id: owner, firstname: "Responsable fictif", restaurants: [restaurant] });
   await Restaurant.collection.insertMany([
     { _id: restaurant, owner_id: owner, name: "Recette Skello", options: { employees: true }, employees: [existing] },
@@ -142,8 +169,10 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
       ...options, headers: { ...(options.headers || {}), ...(role && { Authorization: `Bearer ${token}` }) },
     });
   }
-  const path = `/admin/restaurants/${restaurant}/skello-imports`;
-  const otherPath = `/admin/restaurants/${other}/skello-imports`;
+  const realPath = `/admin/restaurants/${restaurant}/skello-imports`;
+  const otherRealPath = `/admin/restaurants/${other}/skello-imports`;
+  const path = `${realPath}/recette`;
+  const otherPath = `${otherRealPath}/recette`;
   const file = fixture();
   const send = (where, token, buffer = file) => {
     const data = new FormData();
@@ -241,4 +270,160 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   assert.equal(await PersonnelInput.countDocuments(), 0);
   assert.equal(await Employee.exists({ _id: existing }) != null, true);
   assert.equal((await Restaurant.findById(restaurant).lean()).employees.length, 1);
+
+  await t.test("production admits an explicitly confirmed workforce plan and keeps payroll and tenant data intact", async () => {
+    process.env.NODE_ENV = "production";
+    assert.equal((await request(realPath)).status, 200);
+    await Admin.updateOne({ _id: admin }, { $set: { role: "seller" } });
+    assert.equal((await request(realPath)).status, 403);
+    await Admin.updateOne({ _id: admin }, { $set: { role: "admin" } });
+    assert.equal((await request(realPath, {}, "owner")).status, 403);
+    assert.equal((await request(path)).status, 403);
+    const rosterProfile = new mongoose.Types.ObjectId();
+    await Employee.updateOne({ _id: existing }, { $set: { restaurantProfiles: [{
+      _id: rosterProfile, restaurant, employment: { payrollCode: "TEST-01", contractType: "CDD", contractualValue: 28 },
+    }] } });
+    const realFile = fixture({ homonym: true, history: true });
+    const plan = [{ order: 1, destination: String(existing) }, { order: 2, destination: "create" }];
+    function sendReal(where, { choices, token, confirmed, buffer = realFile } = {}) {
+      const data = new FormData();
+      data.set("file", new Blob([buffer]), "rapport.xlsx");
+      data.set("scope", "weeks");
+      if (choices) data.set("choices", JSON.stringify(choices));
+      if (token) data.set("token", token);
+      if (confirmed) data.set("confirmed", "true");
+      return request(where, { method: "POST", body: data });
+    }
+    const preview = await (await sendReal(`${realPath}/preview`)).json();
+    assert.equal(preview.rows[0].candidates[0].id, String(existing));
+    assert.equal(preview.rows[0].canCreate, false);
+    assert.equal(preview.rows[1].canCreate, true);
+    assert.equal(preview.token, null);
+    assert.equal(await Employee.countDocuments(), 1);
+
+    const incorrect = await (await sendReal(`${realPath}/preview`, { choices: [
+      { order: 1, destination: String(new mongoose.Types.ObjectId()) }, plan[1],
+    ] })).json();
+    assert.ok(incorrect.rows[0].error);
+    assert.equal(incorrect.token, null);
+    const reviewed = await (await sendReal(`${realPath}/preview`, { choices: plan })).json();
+    assert.ok(reviewed.token);
+    const apply = { choices: plan, token: reviewed.token, confirmed: true };
+    assert.equal((await sendReal(realPath, { ...apply, confirmed: false })).status, 400);
+    assert.equal((await sendReal(otherRealPath, apply)).status, 409);
+    assert.equal((await sendReal(realPath, { ...apply, buffer: fixture({ homonym: true, change: "fichier différent" }) })).status, 409);
+    assert.equal((await sendReal(realPath, { ...apply, choices: [plan[0], { order: 2, destination: "skip" }] })).status, 409);
+    await Employee.updateOne({ _id: existing }, { $set: { firstname: "Modifié" } });
+    assert.equal((await sendReal(realPath, apply)).status, 409);
+    const checkedAgain = await (await sendReal(`${realPath}/preview`, { choices: plan })).json();
+    const requests = await Promise.all([sendReal(realPath, { ...apply, token: checkedAgain.token }), sendReal(realPath, { ...apply, token: checkedAgain.token })]);
+    assert.deepEqual(requests.map(({ status }) => status), [200, 200]);
+    const results = await Promise.all(requests.map((response) => response.json()));
+    assert.deepEqual(results.map(({ alreadyImported }) => alreadyImported).sort(), [false, true]);
+    assert.deepEqual(results[0].batch.summary.counts, { created: 1, linked: 1, skipped: 0 });
+    assert.doesNotMatch(JSON.stringify(results), /Prénom confidentiel|Source Démo|Site source/);
+    const created = await Employee.findOne({ _id: { $ne: existing } })
+      .select("+password +restaurantProfiles.skelloPayrollCode").lean();
+    assert.equal(created.firstname, "Prénom confidentiel");
+    assert.equal(created.email, undefined);
+    assert.equal(created.password, undefined);
+    assert.equal(created.restaurantProfiles[0].skelloPayrollCode, "test-02");
+    assert.equal(created.restaurantProfiles[0].employment.payrollCode, "TEST-02");
+    const current = await Employee.findById(existing).select("+restaurantProfiles.skelloPayrollCode").lean();
+    assert.equal(String(current.restaurantProfiles[0]._id), String(rosterProfile));
+    assert.equal(current.restaurantProfiles[0].skelloPayrollCode, "test-01");
+    assert.equal(current.restaurantProfiles[0].employment.contractualValue, 28);
+    assert.equal(await Session.countDocuments(), 0);
+    assert.equal(await TimeClockPin.countDocuments(), 0);
+    assert.ok(await PersonnelInput.countDocuments({ kind: "historicalWork", source: "skello" }) > 0);
+    assert.equal(await SkelloImport.countDocuments({ mode: "workforce" }), 1);
+    assert.equal((await Restaurant.findById(other).lean()).employees.length, 0);
+    const november = fixture({ homonym: true, history: true, from: "2026-11-01", to: "2026-11-30" });
+    const newReport = await (await sendReal(`${realPath}/preview`, { buffer: november })).json();
+    assert.deepEqual(preview.period, { from: "2026-09-28", to: "2026-11-01" });
+    assert.deepEqual(newReport.period, { from: "2026-10-26", to: "2026-12-06" });
+    assert.equal(newReport.rows[1].canCreate, false);
+    assert.equal(newReport.rows[1].candidates[0].id, String(created._id));
+    const nextPlan = [plan[0], { order: 2, destination: String(created._id) }];
+    const next = await (await sendReal(`${realPath}/preview`, { buffer: november, choices: nextPlan })).json();
+    assert.ok(next.token);
+    const nextApply = { buffer: november, choices: nextPlan, token: next.token, confirmed: true };
+    const balance = await PersonnelInput.create({ _id: `${restaurant}:${rosterProfile}:leave:2026-10-01`, restaurant,
+      employee: existing, profile: rosterProfile, kind: "leave", date: "2026-10-01", revision: 1,
+      updatedBy: String(owner), values: { leaveAvailable: 9 } });
+    const inputsBeforeFailure = await PersonnelInput.countDocuments();
+    const writeBatch = SkelloImport.create;
+    SkelloImport.create = async () => { throw new Error("synthetic workforce batch failure"); };
+    try {
+      assert.equal((await sendReal(realPath, nextApply)).status, 503);
+    } finally {
+      SkelloImport.create = writeBatch;
+    }
+    assert.equal((await Employee.collection.findOne({ _id: existing })).__v, current.__v);
+    assert.equal((await Employee.collection.findOne({ _id: created._id })).__v, created.__v);
+    assert.equal(await PersonnelInput.countDocuments(), inputsBeforeFailure);
+    assert.equal(await SkelloImport.countDocuments({ mode: "workforce" }), 1);
+    const second = await sendReal(realPath, nextApply);
+    assert.equal(second.status, 200);
+    const secondSummary = (await second.json()).batch.summary;
+    assert.deepEqual(secondSummary.counts, { created: 0, linked: 2, skipped: 0 });
+    assert.ok(secondSummary.history.duplicateHistory >= 3);
+    const replay = await sendReal(realPath, { ...apply, token: checkedAgain.token });
+    assert.equal(replay.status, 200);
+    assert.equal((await replay.json()).alreadyImported, true);
+    assert.equal((await (await sendReal(`${realPath}/preview`)).json()).alreadyImported, true);
+    assert.equal(await Employee.countDocuments(), 2);
+    assert.equal((await Restaurant.findById(restaurant).lean()).employees.length, 2);
+    assert.equal(await Session.countDocuments(), 0);
+    assert.deepEqual((await PersonnelInput.findById(balance._id).lean()).values, { leaveAvailable: 9 });
+    const preserved = await Employee.findById(existing).lean();
+    assert.deepEqual(preserved.restaurantProfiles[0].employment, current.restaurantProfiles[0].employment);
+    assert.deepEqual(preserved.restaurantProfiles[0].shifts, current.restaurantProfiles[0].shifts);
+    const overlapping = fixture({ homonym: true, history: true, from: "2026-10-26", to: "2026-11-08" });
+    const overlapPreview = await (await sendReal(`${realPath}/preview`, { buffer: overlapping, choices: nextPlan })).json();
+    assert.equal(overlapPreview.rows[0].history.counts.shifts, 0);
+    assert.equal(overlapPreview.rows[0].history.counts.absences, 0);
+    assert.equal(overlapPreview.rows[0].history.counts.duplicateHistory, 5);
+    assert.equal((await sendReal(realPath, { buffer: overlapping, choices: nextPlan, token: overlapPreview.token, confirmed: true })).status, 200);
+    const conflicting = fixture({ homonym: true, history: true, change: "conflit horaire" });
+    const conflict = await (await sendReal(`${realPath}/preview`, { buffer: conflicting, choices: nextPlan })).json();
+    assert.equal(conflict.token, null);
+    assert.ok(conflict.rows[0].history.conflicts.some(({ date }) => date === "2026-10-31"));
+    const kept = [{ ...nextPlan[0], keepExisting: true }, nextPlan[1]];
+    const reviewedConflict = await (await sendReal(`${realPath}/preview`, { buffer: conflicting, choices: kept })).json();
+    assert.ok(reviewedConflict.token);
+    assert.equal((await sendReal(realPath, { buffer: conflicting, choices: kept, token: reviewedConflict.token, confirmed: true })).status, 200);
+    const timeline = await (await request(realPath)).json();
+    assert.equal(timeline.batches.length, 4);
+    assert.ok(timeline.batches.every(({ actor }) => actor === String(admin)));
+
+    async function checkReport(from, to, minutes, paid, sunday, absences) {
+      const filters = { from, to, employeeId: String(existing) };
+      const report = await (await request(`${root}/employees/reports?${new URLSearchParams(filters)}`, {}, "owner")).json();
+      const { values } = report.rows[0];
+      assert.equal(values.planned, minutes);
+      assert.equal(values.paid, paid);
+      assert.equal(values.referenceWorked, minutes);
+      assert.equal(values.worked, undefined);
+      assert.equal(values["skello:premium:sunday:50"], sunday);
+      assert.equal(values.absenceCount, absences);
+      assert.equal(values.mealsDue, 2);
+      assert.equal(values.leaveAvailable, 2);
+      const file = await request(`${root}/employees/reports/export/excel`, json(filters), "owner");
+      assert.equal(file.status, 200);
+      const sheets = parseXlsxSheets(Buffer.from(await file.arrayBuffer()), { storedValuesOnly: true });
+      assert.equal(sheets.length, 5);
+      assert.ok(sheets[0].rows.some((row) => row.includes("Heures rémunérées · Skello")));
+      assert.ok(sheets[1].rows.some((row) => row.includes("Service historique (Skello)") || row.includes("Service historique (Skello) · Retard historique (Skello)")));
+      const details = sheets[2].rows.filter((row) => row[9] === "Travail");
+      assert.equal(details.length, 2);
+      assert.equal(details.reduce((total, row) => total + row[32], 0) * 60, paid);
+      assert.ok(sheets[3].rows.some((row) => row.includes("Historique Skello")));
+      assert.equal(sheets[4].rows[1][9], 2);
+      return report.rows[0];
+    }
+    await checkReport("2026-10-01", "2026-10-31", 360, 360, 120, 1);
+    const nov = await checkReport("2026-11-01", "2026-11-30", 420, 435, 210, 2);
+    assert.equal(nov.weeklyHours["2026-W44"].historicalWeek, 360);
+  });
 });

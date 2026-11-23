@@ -3,7 +3,8 @@
     "toggle": "Counters",
     "loading": "Loading counters…",
     "error": "Unable to load counters.",
-    "empty": "No hours balance or annual hours remaining is available for the employees shown in this period.",
+    "help": "A positive balance is above the tracked target, and a negative balance is below it. Annual remaining shows the hours still to work in the cycle.",
+    "unavailable": "Calculation pending",
     "balance": "Balance",
     "annual": "Annual remaining"
   },

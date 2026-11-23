@@ -142,7 +142,7 @@ export default function ClockEmployees({ active, root, restaurantId, roster: res
   const current = result?.requestKey === requestKey ? result : null;
   const directory = result?.roster || initialRoster;
   const former = current?.row?.former ? current.row.employee : null;
-  const roster = former ? sortStaff([...directory, former]) : directory;
+  const roster = former && !directory.some(({ id }) => id === former.id) ? sortStaff([...directory, former]) : directory;
   const person = roster.find((item) => item.id === employeeId);
   const week = useMemo(() => employeeWeek(current?.row?.days), [current]);
 

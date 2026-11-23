@@ -5,6 +5,7 @@ const { payrollDayShares } = require("./time-clock-payroll.service");
 const { validateOvertimeRules } = require("./personnel-report-overtime.service");
 const { validateLeaveRules } = require("./personnel-report-counters.service");
 const { validateLedgerInput } = require("./personnel-report-ledgers.service");
+const { versionedCollectiveKinds, ruleVersions } = require("./personnel-report-rule-dates.service");
 
 const ZONE = "Europe/Paris";
 const modes = ["combined", "indemnities", "tickets", "basket"];
@@ -19,6 +20,13 @@ const clockTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 function validInputDate(kind, date) {
   if (typeof date !== "string" || !Object.hasOwn(reportInputScopes, kind)) return false;
+  if (versionedCollectiveKinds.includes(kind)) {
+    if (date === "-") return true;
+    if (!isValidDateKey(date)) return false;
+    if (kind === "hoursRules") return DateTime.fromISO(date, { zone: ZONE }).weekday === 1;
+    if (kind === "leaveRules") return date.endsWith("-01");
+    return true;
+  }
   if (reportInputScopes[kind] === "fixed") return date === "-";
   if (reportInputScopes[kind] === "month") return /^\d{4}-\d{2}$/.test(date) && isValidDateKey(`${date}-01`);
   if (reportInputScopes[kind] === "week") return isValidDateKey(date) && DateTime.fromISO(date, { zone: ZONE }).weekday === 1;
@@ -92,9 +100,6 @@ function validateValues(kind, values, date) {
 function indexReportInputs(inputs) {
   const rules = [];
   const overtime = [];
-  let leaveRules;
-  let hoursRules;
-  let absenceRules;
   const profiles = new Map();
   for (const item of inputs) {
     if (item.kind === "rules") {
@@ -105,26 +110,18 @@ function indexReportInputs(inputs) {
       overtime.push(item);
       continue;
     }
-    if (item.kind === "leaveRules") {
-      leaveRules = item.values;
-      continue;
-    }
-    if (item.kind === "hoursRules") {
-      hoursRules = item.values;
-      continue;
-    }
-    if (item.kind === "absenceRules") {
-      absenceRules = item.values;
-      continue;
-    }
+    if (versionedCollectiveKinds.includes(item.kind)) continue;
     const key = String(item.profile);
-    if (!profiles.has(key)) profiles.set(key, { contract: {}, variables: [], meals: new Map(), leave: new Map(),
+    if (!profiles.has(key)) profiles.set(key, { contract: {}, variables: [], meals: new Map(), leave: new Map(), skelloLeave: new Set(),
       amendment: [], hoursEntry: [], annual: [], historicalWork: [], historicalLate: [] });
     const profile = profiles.get(key);
     if (item.kind === "contract") profile.contract = item.values;
     if (item.kind === "variables") profile.variables.push(item);
     if (item.kind === "meals") profile.meals.set(item.date, item.values.taken);
-    if (item.kind === "leave") profile.leave.set(item.date, item.values);
+    if (item.kind === "leave") {
+      profile.leave.set(item.date, item.values);
+      if (item.source === "skello") profile.skelloLeave.add(item.date);
+    }
     if (["amendment", "hoursEntry", "annual", "historicalWork", "historicalLate"].includes(item.kind)) profile[item.kind].push(item);
   }
   const descending = (first, second) => second.date.localeCompare(first.date);
@@ -132,7 +129,8 @@ function indexReportInputs(inputs) {
     profile.amendment.sort(descending);
     profile.annual.sort(descending);
   }
-  return { profiles, rules: rules.sort(descending), overtime: overtime.sort(descending), leaveRules, hoursRules, absenceRules };
+  return { profiles, rules: rules.sort(descending), overtime: overtime.sort(descending),
+    ...Object.fromEntries(versionedCollectiveKinds.map((kind) => [kind, ruleVersions(inputs, kind)])) };
 }
 
 function updateMonthlyVariables(values, records) {
@@ -168,7 +166,7 @@ function calculateReportMeals({ days, filters, rules, taken, openingHours, start
     .filter((session) => session.shiftId && session.review)
     .map(({ shiftId }) => shiftId)));
   const payrollByStart = new Map();
-  const uniquePayroll = new Map(days.flatMap((day) => day.payroll.filter((item) => item.validated && !item.absent)
+  const uniquePayroll = new Map(days.flatMap((day) => day.payroll.filter((item) => item.validated && !item.absent && !item.payrollOverlap)
     .map((item) => [item.id, item])));
   for (const item of uniquePayroll.values()) {
     const date = toLocalDateKey(item.clockInAt);

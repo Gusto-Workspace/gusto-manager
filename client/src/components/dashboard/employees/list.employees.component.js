@@ -3,10 +3,11 @@ import useDialogBackdrop from "../_shared/use-dialog-backdrop";
 import Image from "next/image";
 import { useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { CalendarDays, ChevronRight, ClipboardList, Clock3, Plus, Search, Trash2, UsersRound } from "lucide-react";
+import { Archive, CalendarDays, ChevronRight, ClipboardList, Clock3, Plus, Search, UsersRound } from "lucide-react";
 import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { GlobalContext } from "@/contexts/global.context";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
+import { EmployeeErasure, RetainedEmployeeDocuments } from "./erasure.employees.component";
 import {
   applyRosterResponse, directoryPath, employeeDirectoryEntry, filterDirectory, normalizePersonnelSearch,
 } from "./employee-directory.utils.mjs";
@@ -31,11 +32,91 @@ export function EmployeeAvatar({ entry, large = false }) {
   );
 }
 
+function ArchivedEmployees({ restaurantId, rosterSize, canReactivate, canErase, updateRestaurant }) {
+  const [open, setOpen] = useState(false);
+  const [employees, setEmployees] = useState(null);
+  const [historical, setHistorical] = useState([]);
+  const [erasing, setErasing] = useState(null);
+  const [retained, setRetained] = useState(null);
+  const [refresh, setRefresh] = useState(0);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/archived`;
+  useEffect(() => {
+    if (!open) return undefined;
+    const controller = new AbortController();
+    setError("");
+    axios.get(endpoint, { signal: controller.signal })
+      .then(({ data }) => {
+        setEmployees(data.employees);
+        setHistorical(data.historical || []);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError(failure.response?.data?.message || "Impossible de charger les archives.");
+      });
+    return () => controller.abort();
+  }, [endpoint, open, rosterSize, refresh]);
+
+  async function reactivate(id) {
+    setBusy(id);
+    setError("");
+    try {
+      const { data } = await axios.post(`${endpoint}/${id}/reactivate`);
+      updateRestaurant((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
+      setEmployees((previous) => previous.filter((employee) => employee.id !== id));
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible de réactiver ce membre.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <details className="rounded-xl border border-darkBlue/10 bg-white p-4" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer font-semibold">Membres archivés</summary>
+      {open && <div className="mt-3 text-sm">
+        {error && <p role="alert" className="text-red">{error}</p>}
+        {!employees && !error && <p role="status">Chargement des archives…</p>}
+        {employees?.length === 0 && <p>Aucun membre archivé dans cet établissement.</p>}
+        {employees?.length > 0 && <ul className="divide-y divide-darkBlue/10">
+          {employees.map(({ id, firstname, lastname, archivedAt }) => (
+            <li key={id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span>{firstname} {lastname} · {new Date(archivedAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}</span>
+              {canReactivate && <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={Boolean(busy)} className={action}
+                  aria-label={`Réactiver ${firstname} ${lastname}`} onClick={() => reactivate(id)}>
+                  {busy === id ? "Réactivation…" : "Réactiver"}
+                </button>
+                {canErase && <button type="button" disabled={Boolean(busy)} className={`${action} text-red`}
+                  onClick={() => setErasing({ id, firstname, lastname })}>Supprimer le profil opérationnel</button>}
+              </div>}
+            </li>
+          ))}
+        </ul>}
+        {canReactivate && employees?.length > 0 && <p className="mt-2 text-darkBlue/70">La réactivation restaure le rattachement. Les droits du membre doivent être attribués à nouveau.</p>}
+        {historical.length > 0 && <details className="mt-4 border-t border-darkBlue/10 pt-3">
+          <summary className="cursor-pointer font-semibold">Archives RH sécurisées</summary>
+          <ul className="mt-2 grid gap-2">
+            {historical.map(({ id, firstname, lastname, retainedDocuments }) => <li key={id} className="flex flex-wrap items-center justify-between gap-2">
+              <span>{firstname} {lastname}</span>
+              {retainedDocuments > 0 && <button type="button" className={action} onClick={() => setRetained(id)}>Justificatifs conservés ({retainedDocuments})</button>}
+            </li>)}
+          </ul>
+        </details>}
+      </div>}
+      {erasing && <EmployeeErasure endpoint={`${endpoint}/${erasing.id}/erasure`} member={erasing}
+        onErased={() => setRefresh((value) => value + 1)} onClose={() => setErasing(null)} />}
+      {retained && <RetainedEmployeeDocuments endpoint={`${endpoint.replace(/\/archived$/, "")}/${retained}/documents`}
+        onClose={() => setRetained(null)} />}
+    </details>
+  );
+}
+
 export default function ListEmployeesComponent() {
   const { restaurantContext } = useContext(GlobalContext);
-  const { restaurantData: restaurant, setRestaurantData } = restaurantContext;
+  const { restaurantData: restaurant, setRestaurantData, userConnected } = restaurantContext;
   const restaurantId = restaurant._id;
-  const storageKey = `gusto:employee-directory:${restaurantContext.userConnected.id}:${restaurantId}`;
+  const storageKey = `gusto:employee-directory:${userConnected.id}:${restaurantId}`;
   const [filters, setFilters] = useState(emptyFilters);
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -89,7 +170,7 @@ export default function ListEmployeesComponent() {
       setRestaurantData((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
       setSelected(null);
     } catch (failure) {
-      setError(failure.response?.data?.message || "Impossible de retirer ce membre.");
+      setError(failure.response?.data?.message || "Impossible d’archiver ce membre.");
     } finally {
       setBusy(false);
     }
@@ -178,8 +259,8 @@ export default function ListEmployeesComponent() {
                       <td className={cell}>
                         <div className="inline-flex items-center gap-1">
                           <Link href={href} aria-label={`Ouvrir la fiche de ${entry.name}`} className={rowAction}><ChevronRight size={17} aria-hidden="true" /></Link>
-                          <button type="button" aria-label={`Retirer ${entry.name} du restaurant`} className={`${rowAction} text-red`}
-                            onClick={() => { setError(""); setSelected(entry); }}><Trash2 size={15} aria-hidden="true" /></button>
+                          <button type="button" aria-label={`Archiver ${entry.name} dans ce restaurant`} className={rowAction}
+                            onClick={() => { setError(""); setSelected(entry); }}><Archive size={15} aria-hidden="true" /></button>
                         </div>
                       </td>
                     </tr>
@@ -195,6 +276,10 @@ export default function ListEmployeesComponent() {
         )}
       </div>
 
+      <ArchivedEmployees key={restaurantId} restaurantId={restaurantId} rosterSize={entries.length}
+        canReactivate={userConnected.role === "owner"} canErase={userConnected.role === "owner" && userConnected.superAdmin !== true}
+        updateRestaurant={setRestaurantData} />
+
       <dialog ref={removalDialog}
         aria-labelledby="employee-remove-title"
         aria-describedby="employee-remove-description"
@@ -202,13 +287,13 @@ export default function ListEmployeesComponent() {
         className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-5 text-darkBlue shadow-lg backdrop:bg-darkBlue/35"
       >
         {selected && <div className="grid gap-4">
-          <h2 id="employee-remove-title" className="text-balance text-center font-semibold">Retirer {selected.name} de {restaurant.name} ?</h2>
-          <p id="employee-remove-description" className="text-balance text-center text-sm text-darkBlue/70">Ce retrait supprime les données RH de ce restaurant pour ce membre.</p>
+          <h2 id="employee-remove-title" className="text-balance text-center font-semibold">Archiver {selected.name} dans {restaurant.name} ?</h2>
+          <p id="employee-remove-description" className="text-balance text-center text-sm text-darkBlue/70">L’accès à cet établissement et le PIN de Pointeuse sont révoqués. Les données RH restent disponibles pour l’historique.</p>
           {error && <p role="alert" className="text-sm text-red">{error}</p>}
           <div className="flex flex-wrap justify-center gap-2">
             <button type="button" disabled={busy} className={action} onClick={() => setSelected(null)}>Annuler</button>
             <button type="button" disabled={busy} className="min-h-10 rounded-lg bg-red px-3 text-sm font-semibold text-white disabled:opacity-60" onClick={removeEmployee}>
-              {busy ? "Retrait en cours…" : "Retirer du restaurant"}
+              {busy ? "Archivage en cours…" : "Archiver"}
             </button>
           </div>
         </div>}

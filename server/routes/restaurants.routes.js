@@ -546,6 +546,10 @@ router.post(
           .status(409)
           .json({ message: "Employee already in this restaurant" });
       }
+      const existingProfile = findRestaurantProfile(employee, restaurantId);
+      if (existingProfile?.archivedAt) {
+        return res.status(409).json({ message: "Réactivez ce membre depuis les archives de cet établissement." });
+      }
       const canLink = await RestaurantModel.exists({
         _id: { $in: employee.restaurants },
         owner_id: req.user.id,
@@ -553,7 +557,6 @@ router.post(
       });
       if (!canLink) return res.status(404).json({ message: "Compte à rattacher introuvable." });
 
-      const existingProfile = findRestaurantProfile(employee, restaurantId);
       const profile = existingProfile || {
         ...createRestaurantProfile(employee, restaurantId),
         _id: new mongoose.Types.ObjectId(),

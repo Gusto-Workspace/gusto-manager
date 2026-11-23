@@ -1,4 +1,5 @@
 const { i18n } = require("./next-i18next.config");
+const defaultRuntimeCaching = require("next-pwa/cache");
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
@@ -6,21 +7,12 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   runtimeCaching: [
     {
-      urlPattern: ({ url }) => /^\/api\/(?:(?:employees|accountants)\/me(?:\/|$)|restaurants\/[^/]+\/employees(?:\/|$)|(?:owner\/restaurants|events)\/[^/]+\/?$)/.test(url.pathname),
+      urlPattern: ({ url }) => url.pathname === "/api" || url.pathname.startsWith("/api/"),
       method: "GET",
       handler: "NetworkOnly",
+      options: { fetchOptions: { cache: "no-store" } },
     },
-    {
-      urlPattern: ({ url }) => /^\/api\/(?:restaurants\/[^/]+\/)?time-clock(?:\/|$)/.test(url.pathname),
-      method: "GET",
-      handler: "NetworkOnly",
-    },
-    {
-      urlPattern: ({ url }) => /^\/api\/restaurants\/[^/]+\/callsense(?:\/|$)/.test(url.pathname),
-      method: "GET",
-      handler: "NetworkOnly",
-    },
-    ...require("next-pwa/cache"),
+    ...defaultRuntimeCaching.filter(({ options }) => options?.cacheName !== "apis"),
   ],
 });
 

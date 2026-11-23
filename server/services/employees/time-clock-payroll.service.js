@@ -90,8 +90,59 @@ function auditPayrollPauses(schedule) {
     .map(({ date, breakMinutes }) => ({ date, minutes: breakMinutes }));
 }
 
+const payrollOverlapMessage = "Des horaires rémunérés se chevauchent pour un même salarié. Corrigez les services concernés dans la Pointeuse.";
+
+function paidIntervals(schedule, day) {
+  const start = +new Date(day.startAt);
+  const end = +new Date(day.endAt);
+  const breaks = schedule.breaks.map(({ startAt, endAt }) => [
+    Math.max(start, +new Date(startAt)), Math.min(end, +new Date(endAt)),
+  ]).filter(([from, to]) => from < to).sort(([left], [right]) => left - right);
+  // A pause entered only as a number of minutes does not locate unpaid time.
+  if (breaks.reduce((total, [from, to]) => total + diffMinutes(from, to), 0) > day.breakMinutes) return [[start, end]];
+  const intervals = [];
+  let current = start;
+  for (const [from, to] of breaks) {
+    if (current < from) intervals.push([current, from]);
+    current = Math.max(current, to);
+  }
+  if (current < end) intervals.push([current, end]);
+  return intervals;
+}
+
+function payrollConflicts(sessions, from, to) {
+  const byEmployeeDay = new Map();
+  const conflicts = new Map();
+  for (const session of sessions) {
+    const schedule = payrollSchedule(session);
+    if (!schedule || schedule.absent) continue;
+    for (const day of payrollDayShares(schedule)) {
+      if (!day.workedMinutes || day.date < from || day.date > to) continue;
+      const key = `${session.restaurant}:${session.employee}:${day.date}`;
+      if (!byEmployeeDay.has(key)) byEmployeeDay.set(key, []);
+      for (const [start, end] of paidIntervals(schedule, day)) {
+        byEmployeeDay.get(key).push({ id: String(session._id), date: day.date, start, end });
+      }
+    }
+  }
+  for (const intervals of byEmployeeDay.values()) {
+    let longest = null;
+    for (const item of intervals.sort((left, right) => left.start - right.start)) {
+      if (longest && longest.end > item.start) {
+        for (const interval of [longest, item]) {
+          if (!conflicts.has(interval.id)) conflicts.set(interval.id, new Set());
+          conflicts.get(interval.id).add(interval.date);
+        }
+      }
+      if (!longest || item.end > longest.end) longest = item;
+    }
+  }
+  return conflicts;
+}
+
 function payrollDays(sessions, from, to) {
   const result = new Map();
+  const conflicts = payrollConflicts(sessions, from, to);
   for (const session of sessions) {
     const schedule = payrollSchedule(session);
     if (!schedule) continue;
@@ -106,6 +157,7 @@ function payrollDays(sessions, from, to) {
         revision: session.__v ?? 0,
         manual: Boolean(session.payroll),
         ...(needsClockRuleReview(session) && { requiresCorrection: true }),
+        ...(conflicts.get(String(session._id))?.has(day.date) && { requiresCorrection: true, payrollOverlap: true }),
         validated: session.reviews?.at(-1)?.type === "validated",
         timings: day,
       });
@@ -131,4 +183,5 @@ function buildPayrollOverlapQuery(from, to) {
   };
 }
 
-module.exports = { needsClockRuleReview, suggestedPayroll, payrollSchedule, payrollDayShares, payrollDays, auditPayrollPauses, buildPayrollOverlapQuery };
+module.exports = { needsClockRuleReview, suggestedPayroll, payrollSchedule, payrollDayShares, payrollDays,
+  auditPayrollPauses, buildPayrollOverlapQuery, payrollConflicts, payrollOverlapMessage };

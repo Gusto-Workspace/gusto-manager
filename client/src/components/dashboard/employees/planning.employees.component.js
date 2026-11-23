@@ -524,11 +524,13 @@ export default function PlanningEmployeesComponent() {
     }
   }
 
-  const showCounterControl = commands.enabled && view === PLANNING_VIEWS.WEEK && group === PLANNING_GROUPS.EMPLOYEES;
+  const weekByEmployee = commands.enabled && view === PLANNING_VIEWS.WEEK && group === PLANNING_GROUPS.EMPLOYEES;
   const counterRequestKey = `${restaurantId}:${exportDateRange.from}:${exportDateRange.to}`;
   const visibleCounters = planningCounters?.key === counterRequestKey ? planningCounters : null;
+  const currentTargets = planningTargets?.key === counterRequestKey ? planningTargets.targets : undefined;
+  const showCounterControl = weekByEmployee && filteredEmployees.some(({ _id }) => currentTargets?.[String(_id)]?.hasCounter === true);
   useEffect(() => {
-    if (!showCounterControl || !restaurantId) return undefined;
+    if (!weekByEmployee || !restaurantId) return undefined;
     const controller = new AbortController();
     axios.get(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/reports/planning-targets`, {
       ...getAuthConfig(), signal: controller.signal, params: { from: exportDateRange.from },
@@ -538,7 +540,7 @@ export default function PlanningEmployeesComponent() {
       if (!controller.signal.aborted) setPlanningTargets(null);
     });
     return () => controller.abort();
-  }, [showCounterControl, restaurantId, exportDateRange.from, counterRequestKey, roster]);
+  }, [weekByEmployee, restaurantId, exportDateRange.from, counterRequestKey, roster, periodRevision, planningStateRevision]);
   useEffect(() => {
     if (!showCounterControl || !showCounters || !restaurantId) return undefined;
     const controller = new AbortController();
@@ -555,10 +557,6 @@ export default function PlanningEmployeesComponent() {
   }, [showCounterControl, showCounters, restaurantId, exportDateRange.from, exportDateRange.to, counterRequestKey, periodRevision, planningRevision, planningStateRevision]);
 
   const counterRows = showCounterControl && showCounters ? visibleCounters?.rows : undefined;
-  const hasVisibleCounter = counterRows && filteredEmployees.some(({ _id }) => {
-    const counter = counterRows[String(_id)];
-    return Number.isFinite(counter?.balance) || Number.isFinite(counter?.annualRemaining);
-  });
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
@@ -586,12 +584,12 @@ export default function PlanningEmployeesComponent() {
       />
       {showCounterControl && showCounters && !visibleCounters && <p className="px-2 text-sm text-darkBlue/75" role="status">{t("planning:counters.loading")}</p>}
       {showCounterControl && showCounters && visibleCounters?.error && <p className="px-2 text-sm text-red" role="alert">{t("planning:counters.error")}</p>}
-      {counterRows && !hasVisibleCounter && <p className="rounded-lg border border-darkBlue/10 bg-white px-3 py-2 text-sm text-darkBlue/75" role="status">{t("planning:counters.empty")}</p>}
+      {counterRows && <p className="px-2 text-sm text-darkBlue/75">{t("planning:counters.help")}</p>}
       <PlanningCommands {...{ commands }} employees={allEmployees} Dialog={PlanningDialog} />
       <PlanningGrid
         {...{ view, period, employeeColors, openingHours, commands, group }}
         data={grid}
-        targets={planningTargets?.key === counterRequestKey ? planningTargets.targets : undefined}
+        targets={currentTargets}
         counters={counterRows}
         lockedByDate={lockedByDate}
         onLockDay={publicationState ? (date) => setLockRange({ from: date, to: date }) : undefined}

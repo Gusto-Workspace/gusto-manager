@@ -14,6 +14,7 @@ const { ObjectId } = mongoose.Types;
 const employeePath = "/restaurants/:restaurantId/employees/:employeeId";
 const shiftPath = `${employeePath}/shifts/:shiftId`;
 const filesPath = `${shiftPath}/files`;
+const retention = { retentionUntil: "2099-12-31", retentionReason: "Justification RH fictive pour le test" };
 
 process.env.STRIPE_API_SECRET_KEY ||= "sk_test_isolated_hr_lifecycle";
 process.env.JWT_SECRET ||= "isolated-hr-lifecycle-fixture";
@@ -35,25 +36,50 @@ require("../../models/menu.model");
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const EmployeeAssetDeletion = require("../../models/employee-asset-deletion.model");
+const PersonnelInput = require("../../models/personnel-report-input.model");
+const TimeClockSession = require("../../models/time-clock-session.model");
 const { TimeClockPin } = require("../../models/time-clock-device.model");
 const { PlanningDay } = require("../../models/planning-period.model");
 const { retryEmployeeAssetDeletions } = require("../../services/employees/employee-asset-deletion.service");
 const employees = require("../../routes/employees.routes");
 const restaurants = require("../../routes/restaurants.routes");
+const timeClock = require("../../routes/time-clock.routes");
+const { sealPin } = require("../../services/employees/time-clock-device.service");
+const { validateValues } = require("../../services/employees/personnel-report-pay.service");
+const { isAccountSessionValid } = require("../../services/shared/account-session.service");
 
 function call(router, method, path, user, params, body, request = {}) {
   const route = router.stack.find((layer) => layer.route?.path === path && layer.route.methods[method]).route;
-  const req = Object.assign(request, { user, params, body, headers: request.headers || {} });
+  const req = Object.assign(request, { method: method.toUpperCase(), user, params, body, headers: request.headers || {} });
   const res = new Writable({ write(_chunk, _encoding, done) { done(); } });
   res.code = 200;
   res.status = (code) => { res.code = code; return res; };
-  res.json = (result) => { res.body = result; return res.end(); };
+  res.json = res.send = (result) => { res.body = result; return res.end(); };
+  res.set = () => res;
   res.setHeader = () => {};
   const finished = once(res, "finish");
   const handlers = route.stack.filter(({ handle }) => handle.name !== "authenticateToken");
   let index = 0;
-  const next = () => handlers[index++].handle(req, res, next);
+  const next = (error) => error ? res.status(error.status || 500).end() : handlers[index++].handle(req, res, next);
   return Promise.resolve(next()).then(() => finished).then(() => res);
+}
+
+function workbookSheets(buffer) {
+  const sheets = [];
+  for (let offset = 0; buffer.readUInt32LE(offset) === 0x04034b50;) {
+    const size = buffer.readUInt32LE(offset + 18);
+    const nameEnd = offset + 30 + buffer.readUInt16LE(offset + 26);
+    const name = buffer.toString("utf8", offset + 30, nameEnd);
+    const start = nameEnd + buffer.readUInt16LE(offset + 28);
+    offset = start + size;
+    if (name.startsWith("xl/worksheets/")) {
+      const sheet = buffer.toString("utf8", start, offset);
+      // Auto-width depends on the displayed name, and exporter timestamps are not payroll data.
+      sheets.push(sheet.replace(/<cols>[\s\S]*?<\/cols>/g, "")
+        .replace(/(Généré le<\/t><\/is><\/c><c[^>]*><is><t[^>]*>)[^<]+/g, "$1[date de génération]"));
+    }
+  }
+  return sheets;
 }
 
 function uploadRequest() {
@@ -548,23 +574,317 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.ok(await EmployeeAssetDeletion.exists({ public_id: leaveProfile.planningFiles[0].public_id }));
   });
 
-  await t.test("detaching and deleting an account queue scoped cleanup even after the employee record is gone", async (st) => {
+  await t.test("archiving keeps closed payroll, private assets and other memberships; reactivation keeps the same profile", async (st) => {
     const f = await fixture(2);
     assert.equal((await f.add()).code, 201);
     assert.equal((await f.add(1)).code, 201);
+    const restaurant = f.restaurantIds[0];
+    const date = "2021-11-21";
+    const start = new Date(`${date}T08:00:00+01:00`);
+    const end = new Date(`${date}T12:00:00+01:00`);
+    const leave = new ObjectId();
+    const optionalPiece = `private-docs/${restaurant}/optional.pdf`;
+    await Employee.collection.updateOne({ _id: f.employeeId }, { $set: {
+      secuNumber: "ID-FICTIF",
+      profilePicture: { public_id: `fake-photo/${f.employeeId}`, url: "https://example.invalid/photo" },
+      "restaurantProfiles.0.snapshot.dateOnPost": new Date("2021-10-01"),
+      "restaurantProfiles.0.snapshot.email": f.email,
+      "restaurantProfiles.0.employment.contractualUnit": "week",
+      "restaurantProfiles.0.employment.contractualValue": 35,
+      "restaurantProfiles.0.shifts.0.start": start,
+      "restaurantProfiles.0.shifts.0.end": end,
+      "restaurantProfiles.0.leaveRequests": [{
+        _id: leave, start: new Date(`${date}T13:00:00+01:00`), end: new Date(`${date}T17:00:00+01:00`),
+        type: "custom", absenceType: "paid_leave", status: "approved",
+        history: [{ action: "decision", to: "approved", at: start }],
+      }],
+    }, $push: { "restaurantProfiles.0.documents": {
+      public_id: optionalPiece, filename: "optionnel.pdf", title: "Pièce optionnelle", resource_type: "raw", delivery_type: "authenticated",
+    } } });
     const [first, other] = (await f.read()).restaurantProfiles;
-    const assets = st.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "unavailable" }));
-    assert.equal((await f.request("delete", employeePath)).body.assetCleanupPending, true);
+    const pin = await TimeClockPin.create({
+      restaurant, employee: f.employeeId, ...sealPin({ restaurant, employee: f.employeeId, pin: "1234", profile: String(first._id), changedBy: String(f.owner.id) }),
+    });
+    const otherPin = await TimeClockPin.create({
+      restaurant: f.restaurantIds[1], employee: f.employeeId, ...sealPin({ restaurant: f.restaurantIds[1], employee: f.employeeId,
+        pin: "1234", profile: String(other._id), changedBy: String(f.owner.id) }),
+    });
+    const inputId = `${restaurant}:${first._id}:amendment:${date}`;
+    await PersonnelInput.create({ _id: inputId, restaurant, employee: f.employeeId, profile: first._id, kind: "amendment",
+      date, values: { weeklyHours: 37 }, revision: 1, updatedBy: String(f.owner.id) });
+    const collective = { restaurant, revision: 1, updatedBy: String(f.owner.id) };
+    await PersonnelInput.create([
+      { ...collective, _id: `${restaurant}:test-overtime`, date: "2021-11-15", kind: "overtime",
+        values: validateValues("overtime", { enabled: true, source: "hybrid", ordinary: 35, firstEnd: 39, secondEnd: 43,
+          firstRate: 10, secondRate: 20, lastRate: 50, complementBand: 10, complementFirstRate: 10, complementLastRate: 25,
+          workdays: 5, creditedAbsences: [], nightRate: null, sundayRate: 50, holidayRate: null }) },
+      { ...collective, _id: `${restaurant}:test-meals`, date: "2021-11", kind: "rules",
+        values: { mode: "combined", basis: "days", quantity: 1 } },
+      { ...collective, _id: `${restaurant}:test-leave`, date, kind: "leave", employee: f.employeeId, profile: first._id,
+        values: { previousBalance: 1, currentBalance: 2, leaveAvailable: 3 } },
+    ]);
+    await PlanningDay.create({ _id: `${restaurant}:${date}`, restaurant, date, lockedAt: new Date() });
+    const session = await TimeClockSession.create({ employee: f.employeeId, restaurant, businessDate: date,
+      status: "closed", clockInAt: start, clockOutAt: end,
+      reviews: [{ type: "validated", actorRole: "owner", actorId: f.owner.id, at: end }] });
+    const assets = st.mock.method(cloudinary.uploader, "destroy", async () => ({ result: "ok" }));
+    const range = { from: date, to: date };
+    const scopedOwner = { ...f.owner, restaurantId: String(restaurant) };
+    const params = { restaurantId: String(restaurant), employeeId: String(f.employeeId) };
+    const reportPath = "/restaurants/:restaurantId/employees/reports";
+    const clockPath = "/restaurants/:restaurantId/time-clock";
+    const planningPath = "/restaurants/:restaurantId/employees/planning";
+    const archivePath = "/restaurants/:restaurantId/employees/archived";
+    const erasePath = `${archivePath}/:employeeId/erasure`;
+    assert.equal((await f.request("get", erasePath)).code, 409);
+    assert.equal((await call(employees, "get", erasePath, { role: "employee", id: f.employeeId }, params)).code, 403);
+    assert.equal((await call(employees, "get", erasePath, { role: "owner", id: new ObjectId() }, params)).code, 403);
+    function readClock(method, path, body, query) {
+      return call(timeClock, method, path, scopedOwner, params, body, { query });
+    }
+    async function historicalData() {
+      const report = await readClock("get", reportPath, null, range);
+      assert.equal(report.code, 200);
+      const history = await readClock("get", `${clockPath}/register`, null, { ...range, view: "history" });
+      assert.equal(history.body.history.length, 1);
+      const sheets = [];
+      for (const [router, path] of [
+        [timeClock, `${reportPath}/export/excel`],
+        [timeClock, `${clockPath}/export/excel`],
+        [employees, `${planningPath}/export/excel`],
+      ]) {
+        const result = await call(router, "post", path, scopedOwner, params, range);
+        assert.equal(result.code, 200);
+        sheets.push(workbookSheets(result.body));
+      }
+      for (const [router, path] of [[timeClock, clockPath], [employees, planningPath]]) {
+        const result = await call(router, "post", `${path}/export/pdf`, scopedOwner, params, range);
+        assert.equal(result.code, 200);
+        assert.equal(result.body.subarray(0, 4).toString(), "%PDF");
+      }
+      return { values: report.body.rows[0].values, sheets, history: history.body.history };
+    }
+    const before = await historicalData();
+    assert.equal(before.values.paid, 240);
+    assert.equal(before.values.planned, 240);
+    assert.equal(before.values.weeklyHours, 37);
+    assert.equal(before.values.absenceCount, 1);
+    assert.equal(before.values.sunday50, 240);
+    assert.equal(before.values.mealsDue, 1);
+    assert.equal(before.values.leaveAvailable, 3);
+    assert.equal(before.sheets[0].length, 5);
+
+    assert.equal((await f.request("delete", employeePath)).code, 200);
     const employee = await f.read();
     assert.deepEqual(employee.restaurants, [f.restaurantIds[1]]);
-    assert.deepEqual(employee.restaurantProfiles, [other]);
+    assert.deepEqual(employee.restaurantProfiles[1], other);
+    assert.equal(employee.sessionVersion, 8);
+    assert.equal(await isAccountSessionValid({ role: "employee", id: f.employeeId, sessionVersion: 7 }), false);
+    assert.deepEqual(employee.restaurantProfiles[0].documents, first.documents);
+    assert.deepEqual(employee.restaurantProfiles[0].planningFiles, first.planningFiles);
+    assert.deepEqual(employee.restaurantProfiles[0].leaveRequests, first.leaveRequests);
+    assert.ok(employee.restaurantProfiles[0].archivedAt instanceof Date);
     assert.deepEqual((await Restaurant.collection.findOne({ _id: f.restaurantIds[0] })).employees, []);
-    assert.ok(await EmployeeAssetDeletion.exists({ public_id: first.planningFiles[0].public_id }));
-    assert.equal(await EmployeeAssetDeletion.exists({ public_id: other.planningFiles[0].public_id }), null);
-    assert.equal((await f.request("delete", employeePath, 1)).body.assetCleanupPending, true);
-    assert.equal(await f.read(), null);
-    assert.ok(await EmployeeAssetDeletion.exists({ public_id: other.planningFiles[0].public_id }));
-    assert.equal(assets.mock.callCount(), 4);
+    assert.equal(await TimeClockPin.findById(pin._id), null);
+    assert.ok(await TimeClockPin.exists({ _id: otherPin._id, revision: otherPin.revision }));
+    assert.ok(await TimeClockSession.exists({ _id: session._id, status: "closed" }));
+    assert.deepEqual(await historicalData(), before);
+    const inputParams = { ...params, kind: "amendment", date };
+    assert.deepEqual((await call(timeClock, "get", `${reportPath}/inputs/:employeeId/:kind/:date`,
+      scopedOwner, inputParams)).body, { values: { weeklyHours: 37 }, revision: 1 });
+    assert.equal((await call(timeClock, "put", `${reportPath}/inputs/:employeeId/:kind/:date`,
+      scopedOwner, inputParams, { values: { weeklyHours: 39 }, revision: 1 })).code, 404);
+    assert.equal((await f.request("get", `${employeePath}/leave-requests`)).body[0].history[0].to, "approved");
+    assert.equal((await f.request("get", `${employeePath}/documents`)).body.documents[0].title, "Contrat");
+    assert.equal((await f.request("get", archivePath)).body.employees[0].id, String(f.employeeId));
+    assert.equal((await call(employees, "post", `${archivePath}/:employeeId/reactivate`, { role: "owner", id: new ObjectId() }, params)).code, 403);
+    assert.equal((await f.request("post", `${archivePath}/:employeeId/reactivate`)).code, 200);
+    const active = await f.read();
+    assert.equal(String(active.restaurantProfiles[0]._id), String(first._id));
+    assert.equal(active.restaurantProfiles[0].archivedAt, undefined);
+    assert.deepEqual(active.restaurantProfiles[0].membershipHistory.map(({ action }) => action), ["archived", "reactivated"]);
+    assert.notEqual(active.restaurantProfiles[0].options.employees, true);
+    assert.ok(await TimeClockPin.exists({ restaurant, employee: f.employeeId, revision: { $ne: pin.revision } }));
+    assert.deepEqual(await historicalData(), before);
+    assert.equal((await f.request("post", `${archivePath}/:employeeId/reactivate`)).code, 409);
+    assert.equal((await f.request("delete", employeePath)).code, 200);
+    assert.equal(assets.mock.callCount(), 0);
+    const { revision, shared, documents } = (await f.request("get", erasePath)).body;
+    assert.equal(shared, true);
+    assert.equal(documents.length, 2);
+    const erase = { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [optionalPiece], ...retention };
+    assert.equal((await call(employees, "post", erasePath, { ...scopedOwner, superAdmin: true }, params, erase)).code, 403);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, confirmation: "" })).code, 400);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionReviewed: false })).code, 400);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionUntil: "2020-01-01" })).code, 400);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionReason: " " })).code, 400);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, revision: revision - 1 })).code, 409);
+    assert.equal((await f.request("post", erasePath, 0, { ...erase, documentIds: [other.documents[0].public_id] })).code, 409);
+    const beforeFailure = await f.read();
+    const writeSessions = st.mock.method(TimeClockSession, "updateMany", async () => {
+      throw new Error("Fixture erasure write failure");
+    });
+    try {
+      assert.equal((await f.request("post", erasePath, 0, erase)).code, 500);
+    } finally {
+      writeSessions.mock.restore();
+    }
+    assert.deepEqual(await f.read(), beforeFailure);
+    assert.equal(await EmployeeAssetDeletion.exists({ public_id: optionalPiece }), null);
+    assert.equal(assets.mock.callCount(), 0);
+    assets.mock.mockImplementation(async () => ({ result: "unavailable" }));
+    const [removed, replay] = await Promise.all([f.request("post", erasePath, 0, erase), f.request("post", erasePath, 0, erase)]);
+    assert.equal(removed.code, 200);
+    assert.equal(replay.code, 200);
+    assert.deepEqual(removed.body, replay.body);
+    assert.equal(removed.body.accountErased, false);
+    assert.equal(removed.body.removedDocuments, 1);
+    assert.equal(removed.body.retainedDocuments, 1);
+    assert.equal(removed.body.assetCleanupPending, true);
+    assert.equal(assets.mock.callCount(), 1);
+    const erased = await f.read();
+    const pseudonym = erased.restaurantProfiles[0].snapshot;
+    assert.equal(pseudonym.firstname, "Ancien membre");
+    assert.equal(pseudonym.email, undefined);
+    assert.equal(erased.rhArchiveIdentities[String(restaurant)].firstname, "Ari");
+    assert.equal(erased.rhArchiveIdentities[String(restaurant)].lastname, "Test");
+    assert.equal((await Employee.findById(f.employeeId).select("restaurantProfiles").lean()).rhArchiveIdentities, undefined);
+    assert.equal(erased.email, f.email);
+    assert.deepEqual(erased.restaurantProfiles[1], other);
+    assert.ok(await TimeClockPin.exists({ _id: otherPin._id, revision: otherPin.revision }));
+    assert.equal((await f.request("post", `${archivePath}/:employeeId/reactivate`)).code, 409);
+    const archive = (await f.request("get", archivePath)).body;
+    assert.deepEqual(archive.employees, []);
+    assert.equal(archive.historical[0].retainedDocuments, 1);
+    assert.equal(archive.historical[0].firstname, "Ari");
+    assert.equal(archive.historical[0].lastname, "Test");
+    assert.deepEqual((await call(employees, "get", archivePath, { ...scopedOwner, superAdmin: true }, params)).body.historical, []);
+    assert.deepEqual((await f.request("get", `${employeePath}/documents`)).body.documents.map(({ title }) => title), ["Contrat"]);
+    const after = await historicalData();
+    assert.deepEqual(after.values, before.values);
+    const withoutContact = before.sheets.map((workbook) => workbook.map((sheet) => sheet
+      .replaceAll(f.email, "").replaceAll("0600000000", "")));
+    assert.doesNotMatch(after.sheets.flat().join(""), /@example\.test|0600000000/);
+    assert.deepEqual(after.sheets, withoutContact);
+    assert.equal(after.history[0].employee.firstname, "Ari");
+    const indirect = await call(timeClock, "get", reportPath, { ...scopedOwner, superAdmin: true }, params, null, { query: range });
+    assert.equal(indirect.body.rows[0].employee.firstname, "Ancien membre");
+    assert.equal(after.history[0].at.toISOString(), before.history[0].at.toISOString());
+    assert.ok(await PlanningDay.exists({ restaurant, date, lockedAt: { $ne: null } }));
+    const queued = await EmployeeAssetDeletion.findOne({ public_id: optionalPiece }).lean();
+    assert.ok(queued);
+    assert.equal(await EmployeeAssetDeletion.exists({ public_id: first.documents[0].public_id }), null);
+    assets.mock.mockImplementation(async () => ({ result: "ok" }));
+    await retryEmployeeAssetDeletions({ ids: [queued._id], now: new Date(+queued.nextAttemptAt + 1) });
+    assert.equal((await f.request("get", erasePath)).body.result.assetCleanupPending, false);
+
+    const changed = await f.request("patch", employeePath, 1, { email: "compte-partage-fictif@example.test" });
+    assert.equal(changed.code, 200);
+    assert.equal((await f.read()).restaurantProfiles[0].snapshot.email, undefined);
+    assert.equal((await f.request("delete", employeePath, 1)).code, 200);
+    const last = (await f.request("get", erasePath, 1)).body;
+    assert.equal(last.shared, false);
+    const lastErasure = await f.request("post", erasePath, 1, { ...erase, revision: last.revision, documentIds: [] });
+    assert.equal(lastErasure.body.accountErased, true);
+    const former = await f.read();
+    assert.deepEqual(former.restaurants, []);
+    assert.equal(former.email, undefined);
+    assert.equal(former.secuNumber, undefined);
+    assert.equal(former.profilePicture, undefined);
+    assert.ok(former.restaurantProfiles.every(({ archivedAt, erasure }) => archivedAt instanceof Date && erasure.at instanceof Date));
+    assert.deepEqual(await historicalData(), after);
+    await Employee.collection.updateOne({ _id: f.employeeId }, { $set: { [`rhArchiveIdentities.${restaurant}.until`]: "2020-01-01" } });
+    const expired = await readClock("get", reportPath, null, range);
+    assert.equal(expired.body.rows[0].employee.firstname, "Ancien membre");
+    assert.deepEqual(expired.body.rows[0].values, after.values);
+  });
+
+  await t.test("erasure fences a concurrent payroll correction and preserves a second archived dossier", async (st) => {
+    const f = await fixture(2);
+    const [restaurant, otherRestaurant] = f.restaurantIds;
+    const employeeSnapshot = { firstname: "Ari", lastname: "Test", email: f.email };
+    const date = "2026-11-18";
+    const session = await TimeClockSession.create({ restaurant, employee: f.employeeId, businessDate: date,
+      employeeSnapshot, status: "closed", clockInAt: new Date(`${date}T08:00:00Z`), clockOutAt: new Date(`${date}T12:00:00Z`) });
+    await TimeClockSession.create({ restaurant: otherRestaurant, employee: f.employeeId, businessDate: date,
+      employeeSnapshot, status: "closed", clockInAt: session.clockInAt, clockOutAt: session.clockOutAt });
+
+    assert.equal((await f.request("delete", employeePath)).code, 200);
+    assert.equal((await f.request("delete", employeePath, 1)).code, 200);
+    const before = await f.read();
+    const erasePath = "/restaurants/:restaurantId/employees/archived/:employeeId/erasure";
+    const { revision, shared } = (await f.request("get", erasePath)).body;
+    assert.equal(shared, true);
+    const correctionStarted = Promise.withResolvers();
+    const resumeCorrection = Promise.withResolvers();
+    const originalFind = TimeClockSession.findOne;
+    const find = st.mock.method(TimeClockSession, "findOne", async function (...args) {
+      const stored = await originalFind.apply(this, args);
+      correctionStarted.resolve();
+      await resumeCorrection.promise;
+      return stored;
+    });
+    const correction = call(timeClock, "put", "/restaurants/:restaurantId/time-clock/sessions/:sessionId/payroll",
+      { ...f.owner, restaurantId: String(restaurant) }, { restaurantId: String(restaurant), sessionId: String(session._id) },
+      { expectedRevision: session.__v, expectedUpdatedAt: session.updatedAt.toISOString(),
+        clockOutAt: `${date}T12:30:00Z`, reason: "Correction fictive concurrente" });
+    const erase = { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [], ...retention };
+    try {
+      assert.equal(await Promise.race([correctionStarted.promise.then(() => true), correction.then(() => false)]), true);
+      find.mock.restore();
+      const result = await f.request("post", erasePath, 0, erase);
+      assert.equal(result.code, 200);
+      assert.equal(result.body.accountErased, false);
+    } finally {
+      resumeCorrection.resolve();
+    }
+    assert.equal((await correction).code, 409);
+    const updated = await TimeClockSession.findById(session._id).lean();
+    assert.equal(updated.employeeSnapshot.firstname, "Ancien membre");
+    assert.equal(updated.employeeSnapshot.email, undefined);
+    assert.equal(updated.payroll, undefined);
+    assert.deepEqual(updated.clockOutAt, session.clockOutAt);
+    assert.deepEqual(updated.updatedAt, session.updatedAt);
+    assert.deepEqual((await f.read()).restaurantProfiles[1], before.restaurantProfiles[1]);
+    assert.equal((await TimeClockSession.findOne({ restaurant: otherRestaurant }).lean()).employeeSnapshot.email, f.email);
+
+    const last = (await f.request("get", erasePath, 1)).body;
+    assert.equal(last.shared, false);
+    const result = await f.request("post", erasePath, 1, { ...erase, revision: last.revision });
+    assert.equal(result.code, 200);
+    assert.equal(result.body.accountErased, true);
+    assert.equal((await f.read()).email, undefined);
+  });
+
+  await t.test("an archived dossier without activity erases contact and credentials while keeping a non-reactivatable reference", async () => {
+    const f = await fixture();
+    await Employee.collection.updateOne({ _id: f.employeeId }, { $set: {
+      "restaurantProfiles.0.shifts": [], "restaurantProfiles.0.documents": [], password: "fixture-no-real-password",
+      address: "Adresse fictive", emergencyContact: "Contact fictif",
+    } });
+    const path = "/restaurants/:restaurantId/employees/archived/:employeeId/erasure";
+    assert.equal((await f.request("delete", employeePath)).code, 200);
+    const { revision } = (await f.request("get", path)).body;
+    const result = await f.request("post", path, 0, { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [], ...retention });
+    assert.equal(result.code, 200);
+    assert.equal(result.body.retainedDocuments, 0);
+    const employee = await f.read();
+    for (const field of ["email", "password", "address", "emergencyContact"]) assert.equal(employee[field], undefined);
+    assert.equal(employee.restaurantProfiles[0].snapshot.firstname, "Ancien membre");
+    assert.equal((await f.request("post", "/restaurants/:restaurantId/employees/archived/:employeeId/reactivate")).code, 409);
+  });
+
+  await t.test("a running service blocks archival and a failed PIN revocation rolls back the membership change", async (st) => {
+    const f = await fixture();
+    const restaurant = f.restaurantIds[0];
+    const session = await TimeClockSession.create({ employee: f.employeeId, restaurant, businessDate: "2026-11-18",
+      status: "open", clockInAt: new Date("2026-11-18T08:00:00Z") });
+    assert.equal((await f.request("delete", employeePath)).code, 409);
+    await session.deleteOne();
+    st.mock.method(TimeClockPin, "deleteOne", async () => { throw new Error("Fixture PIN revocation failure"); });
+    assert.equal((await f.request("delete", employeePath)).code, 500);
+    assert.equal((await f.read()).restaurantProfiles[0].archivedAt, undefined);
+    assert.deepEqual((await Restaurant.collection.findOne({ _id: restaurant })).employees, [f.employeeId]);
   });
 
   await t.test("a failed durable job write rolls back the shift and its attachment references", async (st) => {
@@ -577,10 +897,6 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.deepEqual((await f.read()).restaurantProfiles[0], profile);
     assert.equal(destroy.mock.callCount(), 0);
 
-    assert.equal((await f.request("delete", employeePath)).code, 500);
-    assert.deepEqual((await f.read()).restaurantProfiles[0], profile);
-    assert.deepEqual((await Restaurant.collection.findOne({ _id: f.restaurantIds[0] })).employees, [f.employeeId]);
-    assert.equal(destroy.mock.callCount(), 0);
   });
 
   await t.test("a Cloudinary upload that finishes after shift deletion is recorded for cleanup", async (st) => {

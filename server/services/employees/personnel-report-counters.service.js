@@ -2,6 +2,7 @@ const { DateTime } = require("luxon");
 const { ABSENCE_TYPES } = require("./planning-absence.service");
 const { toLocalDateKey } = require("./time-clock.service");
 const { isPlannedAbsence } = require("./time-clock-register.service");
+const { ruleAt } = require("./personnel-report-rule-dates.service");
 
 const ZONE = "Europe/Paris";
 const civil = (key) => DateTime.fromISO(key, { zone: ZONE });
@@ -97,16 +98,19 @@ function rollBuckets(bucket, preserveCarry) {
   };
 }
 
-function calculateLeaveCounter({ rules, snapshots, contractStart, contractEnd, reportEnd, asOf, absences, shifts,
+function calculateLeaveCounter({ rules, versions = rules ? [{ date: "-", values: rules }] : [], snapshots, contractStart, contractEnd, reportEnd, asOf, absences, shifts,
   validatedWorkDays = [], contractMinutes, isHoliday }) {
-  if (!rules?.startMonth) return { balance: snapshots?.get(reportEnd), status: "unconfigured" };
-  if (!contractStart) return { status: "missingContract" };
-
-  const activation = civil(`${rules.startMonth}-01`);
-  const start = civil(contractStart);
   const reportDate = civil(reportEnd);
   const cutoff = contractEnd && contractEnd < reportEnd ? civil(contractEnd) : reportDate;
   const accruedUntil = cutoff.toISODate() > asOf ? civil(asOf) : cutoff;
+  const current = ruleAt(versions, accruedUntil.toISODate());
+  if (!current?.values.startMonth) return { balance: snapshots?.get(reportEnd), status: "unconfigured" };
+  if (!contractStart) return { status: "missingContract" };
+  const start = civil(contractStart);
+  const compatible = (version) => version?.values.startMonth === current.values.startMonth && version?.values.unit === current.values.unit;
+  // A change of unit or a restarted accrual needs a new opening expressed in the new unit.
+  const epoch = versions.slice(versions.indexOf(current)).find((_, index, history) => !compatible(history[index + 1]));
+  const activation = civil([epoch.date, `${current.values.startMonth}-01`].sort().at(-1));
   if (accruedUntil < activation || accruedUntil < start) return { balance: snapshots?.get(reportEnd), status: "outside" };
   const baseline = [...(snapshots || [])]
     .filter(([date, values]) => date >= contractStart && date <= accruedUntil.toISODate() &&
@@ -127,23 +131,29 @@ function calculateLeaveCounter({ rules, snapshots, contractStart, contractEnd, r
   };
   let balances = bucket;
   const work = new Set([...validatedWorkDays, ...shifts.filter((shift) => !isPlannedAbsence(shift)).map(({ start }) => dateKey(start))]);
-  const daysPerWeek = rules.unit === "businessDays" ? 6 : 5;
-  const absenceDays = absenceFractionsByDay(absences, rules, isHoliday, from, cutoff, contractMinutes / daysPerWeek);
-  const allowed = new Set(rules.assimilated || defaultAcquisition);
   let incomplete = false;
-  let cycle = referenceStart(baseline ? initial : from, rules.referenceMonth).toISODate();
+  const cycleRule = ruleAt(versions, from.toISODate()) || current;
+  let cycle = referenceStart(baseline ? initial : from, cycleRule.values.referenceMonth).toISODate();
   const acquiredThrough = accruedUntil.toISODate();
   const activeMonths = new Set([...work].filter((date) => date && date >= from.toISODate() && date <= acquiredThrough)
     .map((date) => date.slice(0, 7)));
 
-  for (let month = from.startOf("month"); month <= accruedUntil; month = month.plus({ months: 1 })) {
+  let scheduled = 0;
+  for (let month = from.startOf("month"); month <= cutoff; month = month.plus({ months: 1 })) {
+    const version = ruleAt(versions, month.toISODate());
+    if (!compatible(version)) continue;
+    const rules = version.values;
+    const daysPerWeek = rules.unit === "businessDays" ? 6 : 5;
+    const allowed = new Set(rules.assimilated || defaultAcquisition);
     const nextCycle = referenceStart(month, rules.referenceMonth).toISODate();
-    if (cycle !== nextCycle) {
+    if (month <= accruedUntil && month.month === rules.referenceMonth && cycle !== nextCycle) {
       balances = rollBuckets(balances, rules.preserveCarry);
       cycle = nextCycle;
     }
     const eligibleDates = [];
     const monthEnd = month.endOf("month").startOf("day");
+    const absenceDays = absenceFractionsByDay(absences, rules, isHoliday, from > month ? from : month,
+      cutoff < monthEnd ? cutoff : monthEnd, contractMinutes / daysPerWeek);
     let monthDays = 0;
     for (let day = month; day <= monthEnd; day = day.plus({ days: 1 })) {
       if (isExcludedDay(day, rules, isHoliday)) continue;
@@ -171,7 +181,7 @@ function calculateLeaveCounter({ rules, snapshots, contractStart, contractEnd, r
         balances.previousBalance -= previous;
         balances.currentUsed += taken - previous;
         balances.currentBalance -= taken - previous;
-      }
+      } else scheduled += dayAbsences.get("paid_leave") ?? 0;
     }
     const acquired = monthDays ? earned / monthDays * (daysPerWeek === 6 ? 2.5 : 25 / 12) : 0;
     balances.currentAcquired += acquired;
@@ -179,11 +189,6 @@ function calculateLeaveCounter({ rules, snapshots, contractStart, contractEnd, r
   }
   if (incomplete) return { status: "unknownDuration" };
 
-  let scheduled = 0;
-  for (const [date, types] of absenceDays) {
-    if (types.get("paid_leave") === null) return { status: "unknownDuration" };
-    if (date > asOf) scheduled += types.get("paid_leave") ?? 0;
-  }
   return { status: "automatic", balance: {
     ...Object.fromEntries(Object.entries(balances).map(([key, value]) => [key, normalize(value)])),
     leaveAvailable: normalize(balances.previousBalance + balances.currentBalance - scheduled),

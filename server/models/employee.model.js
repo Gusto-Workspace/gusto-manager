@@ -75,8 +75,10 @@ function stripEmployeeDocumentsFromSerializedValue(_document, value) {
     if (Array.isArray(profile.shifts)) profile.shifts = profile.shifts.filter((shift) => !shift.requiresPlanningPublication);
     delete profile.planningBatches;
     delete profile.planningFiles;
+    delete profile.erasure;
   }
   delete value?.documents;
+  delete value?.rhArchiveIdentities;
   return value;
 }
 
@@ -196,6 +198,25 @@ const restaurantProfileSchema = new mongoose.Schema(
       ref: "Restaurant",
       required: true,
     },
+    archivedAt: Date,
+    skelloPayrollCode: { type: String, select: false },
+    erasure: {
+      at: Date,
+      actor: String,
+      accountErased: Boolean,
+      removedDocuments: Number,
+      retainedDocuments: Number,
+      assetJobs: { type: [String], default: undefined },
+      retentionUntil: String,
+    },
+    membershipHistory: {
+      type: [new mongoose.Schema({
+        at: { type: Date, required: true },
+        action: { type: String, enum: ["archived", "reactivated"], required: true },
+        actor: { type: String, required: true },
+      }, { _id: false })],
+      default: undefined,
+    },
     options: { type: optionsSchema, default: {} },
     documents: { type: [documentSchema], default: [] },
     shifts: { type: [shiftSchema], default: [] },
@@ -210,6 +231,11 @@ const restaurantProfileSchema = new mongoose.Schema(
 
 const employeeSchema = new mongoose.Schema({
   historicalImport: { type: mongoose.Schema.Types.ObjectId, select: false },
+  rhArchiveIdentities: {
+    type: Map,
+    of: new mongoose.Schema({ firstname: String, lastname: String, until: String, reason: String }, { _id: false }),
+    select: false,
+  },
   // Les anciennes fiches sans valeur restent des salariés classiques.
   accountType: {
     type: String,

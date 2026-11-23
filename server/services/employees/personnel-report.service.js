@@ -7,6 +7,9 @@ const { calculateLeaveCounter, absenceFractionsByDay } = require("./personnel-re
 const { applyHourLedger, calculateAnnual, annualPeriod, effectiveContract, ledgerStart, ledgerEnd, contractDayPortion } = require("./personnel-report-ledgers.service");
 const { plannedMinutes, readWorkDetails } = require("./planning-shift.service");
 const { isFrenchPublicHoliday } = require("../excel/render-time-clock-export-workbook.service");
+const { ruleAt } = require("./personnel-report-rule-dates.service");
+const { historicalRecords, historyIntervalConflict } = require("./skello-history.service");
+const { premiumLabel } = require("./skello-workbook.service");
 
 const MAX_DAYS = 92;
 const ZONE = "Europe/Paris";
@@ -75,7 +78,7 @@ function absenceColumn(type) {
   return sumColumn(`absence:${type}`, absenceLabels[type] || absenceLabels.unspecified, "number");
 }
 
-function reportGroups(weeks, rules, absenceTypes, activeOvertime, counters, annual, to) {
+function reportGroups(weeks, rules, absenceTypes, activeOvertime, counters, annual, to, sourceColumns) {
   const appliedOvertime = overtimeColumns(activeOvertime);
   const hasOvertime = activeOvertime.some((rule) => rule.enabled);
   const usesRetainedServices = activeOvertime.some(({ planningAttribution, enabled, source }) =>
@@ -137,6 +140,7 @@ function reportGroups(weeks, rules, absenceTypes, activeOvertime, counters, annu
       column("currentUsed", "N · Pris", "number"), column("currentBalance", "N · Solde", "number"),
       column("scheduled", "Congés planifiés", "number"), column("leaveAvailable", "Jours disponibles", "number"),
     ] },
+    ...(sourceColumns.length ? [{ id: "skello", label: "Historique importé · Skello", summary: sourceColumns[0], columns: sourceColumns }] : []),
     ...(annual ? [{ id: "annual", label: "Annualisation", summary: column("annualRemaining", "Heures restant à réaliser", "minutes"), columns: [
       column("annualTarget", "Objectif annuel", "minutes"), column("annualPlanned", "Total planifié sur le cycle", "minutes"),
       column("annualWorked", "Réalisé", "minutes"), column("annualRemaining", "Heures restant à réaliser", "minutes"),
@@ -214,6 +218,10 @@ function dayHours(day, shifts, workById, published) {
     hours.paid = day.payroll.reduce((sum, item) => sum + item.timings.workedMinutes, 0);
     hours.paidBreak = day.payroll.reduce((sum, item) => sum + item.timings.breakMinutes, 0);
   }
+  for (const [key, property] of [["paid", "paid"], ["paidBreak", "paidBreak"]]) {
+    const value = sumKnown((day.sourceServices || []).map((service) => service[property]));
+    if (value !== null) hours[key] = (hours[key] || 0) + value;
+  }
   return hours;
 }
 
@@ -259,10 +267,14 @@ function reportTardiness(days, workById, records, batch) {
 function prepareAbsencePayroll(absences, rules, amendments, hours, overtime, leaveCredits) {
   const absenceMeals = new Map();
   const allocatedLeave = new Set();
-  const detail = absences.map((absence) => {
-    const rule = rules?.categories?.[absence.type];
-    let credited = 0;
+  const detail = absences.flatMap((absence) => {
+    const segments = [];
     for (let date = absence.startDate; date <= absence.endDate; date = addDaysToDateKey(date, 1)) {
+      const rule = ruleAt(rules, date)?.values.categories?.[absence.type];
+      const payer = rule?.payer || null;
+      if (segments.at(-1)?.payer !== payer) segments.push({ startDate: date, payer, paid: 0 });
+      const segment = segments.at(-1);
+      segment.endDate = date;
       const day = DateTime.fromISO(date, { zone: ZONE });
       const week = day.startOf("week").toISODate();
       const timing = overtime.find((record) => record.date <= week)?.values;
@@ -271,7 +283,7 @@ function prepareAbsencePayroll(absences, rules, amendments, hours, overtime, lea
       if (rule?.meal) absenceMeals.set(date, Math.max(rule.meal, absenceMeals.get(date) || 0));
       if (absence.type === "paid_leave" && timing?.paidLeaveDays) {
         if (!allocatedLeave.has(date) && leaveCredits.has(date)) {
-          credited += leaveCredits.get(date);
+          segment.paid += leaveCredits.get(date);
           allocatedLeave.add(date);
         }
         continue;
@@ -280,13 +292,18 @@ function prepareAbsencePayroll(absences, rules, amendments, hours, overtime, lea
       const base = effectiveContract(amendments, hours, date);
       if (absence.unit === "custom") {
         const bounds = getRangeBounds(date, date);
-        credited += diffMinutes(new Date(Math.max(+absence.start, +bounds.start)), new Date(Math.min(+absence.end, +bounds.endExclusive)));
+        segment.paid += diffMinutes(new Date(Math.max(+absence.start, +bounds.start)), new Date(Math.min(+absence.end, +bounds.endExclusive)));
       } else if (base) {
         const fractions = absenceFractionsByDay([absence], { weekdays }, reportHoliday, day, day, base * 60 / workdays);
-        credited += Math.round((fractions.get(date)?.get(absence.type) || 0) * base * 60 / workdays);
+        segment.paid += Math.round((fractions.get(date)?.get(absence.type) || 0) * base * 60 / workdays);
       }
     }
-    return { ...absence, payer: rule?.payer || null, payrollMinutes: credited || null };
+    return segments.map(({ startDate, endDate, payer, paid }) => {
+      const boundaries = getRangeBounds(startDate, endDate);
+      const interval = segments.length > 1
+        ? reportAbsence(absence.type, absence.unit, absence.start, absence.end, boundaries, absence.note) : absence;
+      return { ...interval, payer, payrollMinutes: paid || null };
+    });
   });
   return { absenceMeals, detail };
 }
@@ -382,6 +399,94 @@ function verifiedReportHistory(records, employee, profile, registerDays, rules) 
   return byDate;
 }
 
+function projectSkelloHistory(records, profile, days) {
+  const occupied = [...(profile.shifts || []), ...(profile.leaveRequests || []).filter(({ status }) => status === "approved"),
+    ...days.flatMap(({ sessions, payroll }) => [...sessions, ...payroll].map((item) => ({
+      start: item.clockInAt, end: item.clockOutAt || new Date(),
+    })))];
+  const daily = new Map();
+  const summaries = [];
+  const absenceShifts = [];
+  for (const { date, values } of historicalRecords(records)) {
+    if (values.summary) { summaries.push(values); continue; }
+    const accepted = (entry) => toLocalDateKey(entry.start) === date && !occupied.some((other) => historyIntervalConflict(entry, other));
+    const services = (values.services || []).filter(accepted).map((item, index) => ({
+      ...item, id: `skello:${date}:${index}`, source: "skello",
+      plannedMinutes: item.planned ? plannedMinutes(new Date(item.start), new Date(item.end), item.breakMinutes) : null,
+    }));
+    const absences = (values.absences || []).filter(accepted);
+    absenceShifts.push(...absences.map((entry, index) => ({ ...entry, _id: `skello-absence:${date}:${index}`, notes: "Absence historique (Skello)" })));
+    if (services.length || absences.length) daily.set(date, services);
+  }
+  return {
+    daily, summaries, absenceShifts,
+    days: days.map((day) => {
+      const sourceServices = daily.get(day.date);
+      if (!sourceServices) return day;
+      const sourcePlanning = sourceServices.filter((item) => item.planned);
+      return { ...day, sourceServices, shifts: [...day.shifts, ...sourcePlanning],
+        plannedMinutes: day.plannedMinutes + sourcePlanning.reduce((total, { plannedMinutes }) => total + plannedMinutes, 0) };
+    }),
+  };
+}
+
+function skelloTimings(item) {
+  const minutes = item.worked ?? item.paid ?? item.plannedMinutes;
+  return { id: item.id, source: "skello", timings: {
+    startAt: item.start, endAt: item.end, workedMinutes: minutes, breakMinutes: item.breakMinutes,
+  }, breaks: [], planned: item.planned };
+}
+
+const sourceHours = { worked: "Heures travaillées", paid: "Heures rémunérées" };
+const sourceMeals = { mealsDue: "Repas dus", mealsTaken: "Avantages en nature" };
+
+function sourceTotals(history, from, to, columns) {
+  const visible = [...history.daily].filter(([date]) => date >= from && date <= to);
+  const summaries = history.summaries.filter(({ period }) => period.from >= from && period.to <= to)
+    .sort((left, right) => Number(right.period.from.endsWith("-01")) - Number(left.period.from.endsWith("-01")) ||
+      left.period.from.localeCompare(right.period.from));
+  const values = {};
+  function add(key, label, field, type) {
+    const selected = [];
+    for (const { period, summary } of summaries) {
+      if (field(summary) != null && !selected.some((item) => item.period.to >= period.from && item.period.from <= period.to)) {
+        selected.push({ period, amount: field(summary) });
+      }
+    }
+    const uncovered = visible.filter(([date]) => !selected.some(({ period }) => date >= period.from && date <= period.to));
+    const amount = sumKnown([...selected.map(({ amount }) => amount), ...uncovered.flatMap(([, services]) => services.map(field))]);
+    if (amount === null) return;
+    const id = `skello:${key}`;
+    values[id] = amount;
+    columns.set(id, sumColumn(id, `${label} · Skello`, type));
+  }
+  for (const [key, label] of Object.entries(sourceHours)) add(key, label, (entry) => entry[key], "minutes");
+  for (const [key, label] of Object.entries(sourceMeals)) add(key, label, (entry) => entry[key], "number");
+  const premiums = new Set([...summaries.flatMap(({ summary }) => Object.keys(summary.premiums || {})),
+    ...visible.flatMap(([, services]) => services.flatMap((entry) => Object.keys(entry.premiums || {})))]);
+  for (const key of premiums) add(`premium:${key}`, premiumLabel(key), (entry) => entry.premiums?.[key], "minutes");
+  const contract = summaries.reduce((latest, entry) => !latest || entry.period.to > latest.period.to ? entry : latest, null)?.summary.contract;
+  if (contract?.weeklyHours != null) {
+    values["skello:weeklyHours"] = contract.weeklyHours;
+    columns.set("skello:weeklyHours", column("skello:weeklyHours", "Volume horaire hebdomadaire · Skello", "hours"));
+  }
+  return values;
+}
+
+function addSkelloMeals(meals, sourceDays) {
+  const entries = new Map(meals.mealDays.map((meal) => [meal.date, meal]));
+  for (const { date, sourceServices } of sourceDays) {
+    const due = sumKnown((sourceServices || []).map(({ mealsDue }) => mealsDue));
+    const taken = sumKnown((sourceServices || []).map(({ mealsTaken }) => mealsTaken));
+    if (due === null && taken === null) continue;
+    const prior = entries.get(date);
+    entries.set(date, { ...prior, date, source: "skello", due: sumKnown([prior?.due, due]), taken: sumKnown([prior?.taken, taken]) });
+    if (due !== null && prior?.basis !== "monthly") meals.values.mealsDue = (meals.values.mealsDue || 0) + due;
+    if (taken !== null) meals.values.benefits = (meals.values.benefits || 0) + taken;
+  }
+  return { ...meals, mealDays: [...entries.values()].sort((left, right) => left.date.localeCompare(right.date)) };
+}
+
 function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, attendance, planningDays, filters,
   inputs = [], detail = false, asOf = toLocalDateKey(new Date()) }) {
   const { from, to } = filters;
@@ -393,7 +498,10 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
   const detailedIsoWeeks = detail && activeOvertime.some((rule) => rule.planningAttribution);
   const detailStart = detailedIsoWeeks ? weeks[0].from : from;
   const detailEnd = detailedIsoWeeks ? weeks.at(-1).to : to;
-  const counterActive = Boolean(hoursRules?.start && hoursRules.start <= weeks.at(-1).to);
+  const counterActive = weeks.some((week) => {
+    const start = ruleAt(hoursRules, week.from)?.values.start;
+    return start && start <= week.from;
+  });
   const annualActive = inputs.some((item) => item.kind === "annual" && item.values.target && item.date <= to && annualPeriod(item).end >= from);
   const calculationWeeks = listWeeks(ledgerStart(filters, inputs), ledgerEnd(filters, inputs));
   const overtimeBounds = getRangeBounds(calculationWeeks[0].from, calculationWeeks.at(-1).to);
@@ -414,29 +522,42 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     employees, sessions, absences: attendance, restaurantId,
     startDate: calculationWeeks[0].from, endDate: calculationWeeks.at(-1).to,
     openingHours: restaurant.opening_hours,
-  }).filter(({ former, days }) => !former || days.some((day) => day.date >= from && day.date <= to && (day.sessions.length || day.payroll.length)));
+  }).filter(({ employee, former, days }) => !former || sources.has(employee.id) ||
+    days.some((day) => day.date >= from && day.date <= to && (day.sessions.length || day.payroll.length)));
   const options = register.map(({ employee, former }) => ({ ...employee, former }));
   const selected = register.filter(({ employee }) =>
     (!filters.employeeId || employee.id === filters.employeeId) &&
     (!filters.post || normalizeSearch(employee.post) === filters.post) &&
     (!filters.search || normalizeSearch(`${employee.firstname} ${employee.lastname} ${employee.lastname} ${employee.firstname} ${employee.post} ${sources.get(employee.id)?.profile.employment?.payrollCode || ""}`).includes(filters.search)));
   const encountered = new Set(standardAbsenceTypes);
-  const rows = selected.map(({ employee, days: registerDays, former }) => {
-    const days = registerDays.filter((day) => day.date >= from && day.date <= to);
+  const sourceColumns = new Map();
+  const rows = selected.map(({ employee, days: nativeDays, former }) => {
     const source = sources.get(employee.id);
     const profile = source?.profile || {};
     const employment = profile.employment || {};
     const payrollInput = profiles.get(String(profile._id));
+    const imported = projectSkelloHistory(payrollInput?.historicalWork, profile, nativeDays);
+    const registerDays = imported.days;
+    const days = registerDays.filter((day) => day.date >= from && day.date <= to);
+    const reportProfile = { ...profile, shifts: [...(profile.shifts || []), ...imported.absenceShifts] };
     const amendments = payrollInput?.amendment || [];
-    const contract = payrollInput?.contract || {};
+    const sourceContract = imported.summaries.filter(({ period }) => period.from <= to && period.to >= from)
+      .sort((left, right) => right.period.to.localeCompare(left.period.to))[0]?.summary.contract || {};
+    const contract = { ...payrollInput?.contract };
+    for (const [key, value] of Object.entries(sourceContract)) {
+      if (!["start", "type", "weeklyHours"].includes(key) && value != null && contract[key] == null) contract[key] = value;
+    }
     const scopedStart = profile.snapshot?.dateOnPost;
-    const start = scopedStart === undefined ? source?.employee.dateOnPost : scopedStart;
+    const start = (scopedStart === undefined ? source?.employee.dateOnPost : scopedStart) || sourceContract.start;
     const workById = new Map((profile.shifts || []).filter((shift) => !isPlannedAbsence(shift)).map((shift) => [String(shift._id), shift]));
-    const tardiness = reportTardiness(days, workById, payrollInput?.historicalLate, source?.employee.historicalImport);
-    const historical = verifiedReportHistory(payrollInput?.historicalWork, source?.employee, profile, registerDays, overtime);
+    const tardiness = [...reportTardiness(days, workById, payrollInput?.historicalLate, source?.employee.historicalImport),
+      ...days.flatMap(({ date, sourceServices }) => (sourceServices || []).filter(({ late }) => late > 0)
+        .map(({ id, late }) => ({ shiftId: id, date, minutes: late, source: "skello" })))];
+    const historical = verifiedReportHistory(payrollInput?.historicalWork, source?.employee, profile, nativeDays, overtime);
     const reportWork = new Map([...workById, ...[...historical.values()].flatMap(({ services }) => services.map((item) => [item.id, item]))]);
-    const absences = collectAbsences(profile, workById, days, bounds);
-    const baseWeekly = employment.contractualUnit === "week" ? employment.contractualValue || 0 : 0;
+    const absences = collectAbsences(reportProfile, workById, days, bounds);
+    const baseWeekly = employment.contractualUnit === "week" ? employment.contractualValue || sourceContract.weeklyHours || 0
+      : employment.contractualUnit === "month" ? 0 : sourceContract.weeklyHours || 0;
     const absencesByType = {};
     for (const entry of absences) {
       encountered.add(entry.type);
@@ -444,8 +565,8 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     }
     const values = {
       post: employee.post || null,
-      payrollCode: employment.payrollCode || null, contractType: employment.contractType || null,
-      contractStart: start ? toLocalDateKey(start) : null,
+      payrollCode: employment.payrollCode || null, contractType: employment.contractType || sourceContract.type || null,
+      contractStart: typeof start === "string" && isValidDateKey(start) ? start : start ? toLocalDateKey(start) : null,
       ...contract,
       weeklyHours: effectiveContract(amendments, baseWeekly, to) || null,
       monthlyHours: employment.contractualUnit === "month" && employment.contractualValue > 0
@@ -453,9 +574,10 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       absenceCount: absences.length, absenceDays: sumKnown(absences.map((entry) => entry.days)),
       absenceMinutes: sumKnown(absences.map((entry) => entry.minutes)),
       late: sumKnown(tardiness.map(({ minutes }) => minutes)),
+      ...sourceTotals(imported, from, to, sourceColumns),
     };
     const contractDates = { base: baseWeekly, start: values.contractStart, end: values.contractEnd, amendments };
-    const fullWeekAbsences = collectAbsences(profile, workById, registerDays, overtimeBounds);
+    const fullWeekAbsences = collectAbsences(reportProfile, workById, registerDays, overtimeBounds);
     const leaveCredits = new Map();
     if (overtime.some(({ values: timing }) => timing.paidLeaveDays)) {
       for (const week of calculationWeeks) {
@@ -466,16 +588,19 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       }
     }
     const { absenceMeals, detail: absenceDetails } = prepareAbsencePayroll(absences, absenceRules, amendments, baseWeekly, overtime, leaveCredits);
-    const reportDay = (day) => historical.has(day.date)
-      ? { ...day, shifts: [...day.shifts, ...historical.get(day.date).services] } : day;
+    const reportDay = (day) => ({ ...day, shifts: [...day.shifts, ...(historical.get(day.date)?.services || [])] });
+    const mealDay = (day) => {
+      const prepared = reportDay(day);
+      return { ...prepared, shifts: prepared.shifts.filter(({ source }) => source !== "skello") };
+    };
     const taken = new Map([...historical].filter(([, item]) => item.taken != null).map(([date, item]) => [date, item.taken]));
     for (const [date, count] of payrollInput?.meals || []) taken.set(date, count);
     updateMonthlyVariables(values, (payrollInput?.variables || []).filter(({ date }) =>
       date >= from.slice(0, 7) && date <= to.slice(0, 7)));
-    const { values: meals, mealDays } = calculateReportMeals({
-      days: days.map(reportDay), filters, rules, taken, openingHours: restaurant.opening_hours,
+    const { values: meals, mealDays } = addSkelloMeals(calculateReportMeals({
+      days: days.map(mealDay), filters, rules, taken, openingHours: restaurant.opening_hours,
       start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals, requiresValidatedWork,
-    });
+    }), days);
     Object.assign(values, meals);
     const weeklyHours = {};
     const fullWeekPlanned = new Map();
@@ -487,6 +612,7 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       if (day.plannedMinutes > 0) workedDates.add(day.date);
     }
     const historicalWeekMinutes = new Map();
+    const sourceWeekAdjustment = new Map();
     const historicalWeekOverlaps = new Set();
     for (const [date, { services, hasOverlap }] of historical) {
       const week = weekByDate.get(date);
@@ -496,10 +622,19 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       historicalWeekMinutes.set(week, (historicalWeekMinutes.get(week) || 0) +
         services.reduce((sum, service) => sum + service.plannedMinutes, 0));
     }
+    for (const day of registerDays) {
+      const week = weekByDate.get(day.date);
+      if (!week || !day.sourceServices?.length) continue;
+      const retained = day.sourceServices.reduce((total, service) => total + (skelloTimings(service).timings.workedMinutes ?? 0), 0);
+      const planned = day.sourceServices.reduce((total, service) => total + (service.plannedMinutes ?? 0), 0);
+      if (retained) workedDates.add(day.date);
+      historicalWeekMinutes.set(week, (historicalWeekMinutes.get(week) || 0) + retained);
+      sourceWeekAdjustment.set(week, (sourceWeekAdjustment.get(week) || 0) - planned);
+    }
     let provisional = false;
     for (const day of days) {
       const shifts = day.shifts.filter((shift) => !shift.absence);
-      if (shifts.length || day.sessions.length || day.payroll.length) {
+      if (shifts.length || day.sessions.length || day.payroll.length || day.sourceServices?.length) {
         const hours = dayHours(day, shifts, workById, publication.get(day.date)?.has(employee.id));
         const week = weekByDate.get(day.date);
         const weekly = weeklyHours[week] ??= { provisional: false };
@@ -508,6 +643,7 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
           weekly.requiresCorrection = true;
           values.requiresCorrection = true;
         }
+        if (day.payroll.some((item) => item.payrollOverlap)) values.payrollOverlap = true;
         provisional ||= weekly.provisional;
         addHours(values, hours);
         addHours(weekly, hours);
@@ -522,15 +658,18 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     const activeAnnual = (payrollInput?.annual || []).filter((item) => item.values.target).map(annualPeriod)
       .find((item) => item.from <= to && item.end >= from);
     const trackHours = (counterActive && employment.contractType?.toLowerCase() !== "extra") || Boolean(activeAnnual);
-    const overtimeResult = calculateOvertime({ days: registerDays,
+    const overtimeResult = calculateOvertime({ days: registerDays.map((day) => ({ ...day,
+      sourceWork: day.sourceServices?.map(skelloTimings).filter(({ timings }) => timings.workedMinutes != null),
+    })),
       absences: useOvertime || trackHours ? fullWeekAbsences : [],
       shifts: reportWork, weeks: trackHours ? calculationWeeks : weeks, rules: overtime, contractMinutes: Math.round(baseWeekly * 60),
       contractStart: values.contractStart, contractEnd: values.contractEnd, amendments, trackHours: true, activeAnnual,
       from, to, isHoliday: reportHoliday, leaveCredits });
     Object.assign(values, overtimeResult.values);
+    if (overtimeResult.weekData.some((week) => week.payrollOverlap)) values.payrollOverlap = true;
     const workedWeeks = new Map(overtimeResult.weekData.map((week) => [week.key, week]));
     const ledger = trackHours && counterActive && employment.contractType?.toLowerCase() !== "extra"
-      ? applyHourLedger({ rules: hoursRules, entries: payrollInput?.hoursEntry || [], weekData: overtimeResult.weekData,
+      ? applyHourLedger({ versions: hoursRules, entries: payrollInput?.hoursEntry || [], weekData: overtimeResult.weekData,
         first: weeks[0], last: weeks.at(-1) }) : {};
     const { weekBalances, ...counter } = ledger;
     Object.assign(values, counter, calculateAnnual(activeAnnual, overtimeResult.weekData, to, asOf));
@@ -538,8 +677,13 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     const retainedServices = (day) => {
       const effectiveDay = effectiveDays.get(day.date);
       if (effectiveDay) return effectiveDay.items;
+      if (day.payroll.some((item) => item.payrollOverlap)) return [];
       const validated = day.payroll.filter((item) => item.validated);
-      if (validated.length || requiresValidatedWork(day.date)) return validated.filter((item) => !item.absent);
+      const source = (day.sourceServices || []).map(skelloTimings).filter(({ timings }) => timings.workedMinutes != null);
+      if (validated.length || requiresValidatedWork(day.date)) return [...validated.filter((item) => !item.absent), ...source];
+      if (source.length) return [...day.shifts.filter((shift) => shift.source !== "skello" && !shift.absence && !shift.absenceValidated)
+        .map((shift) => ({ id: shift.id, timings: { startAt: shift.start, endAt: shift.end,
+          workedMinutes: shift.plannedMinutes, breakMinutes: shift.breakMinutes } })), ...source];
       return undefined;
     };
     const actualWork = days.map((day) => {
@@ -548,9 +692,9 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
       return day.shifts.filter((shift) => !shift.absence && !shift.absenceValidated)
         .map((shift) => ({ workedMinutes: shift.plannedMinutes, breakMinutes: shift.breakMinutes }));
     });
-    values.referenceWorked = actualWork.flat().reduce((sum, item) => sum + item.workedMinutes, 0);
-    values.referencePause = actualWork.flat().reduce((sum, item) => sum + item.breakMinutes, 0);
-    values.referenceDays = actualWork.filter((entry) => entry.some((item) => item.workedMinutes > 0)).length;
+    values.referenceWorked = values.payrollOverlap ? null : actualWork.flat().reduce((sum, item) => sum + item.workedMinutes, 0);
+    values.referencePause = values.payrollOverlap ? null : actualWork.flat().reduce((sum, item) => sum + item.breakMinutes, 0);
+    values.referenceDays = values.payrollOverlap ? null : actualWork.filter((entry) => entry.some((item) => item.workedMinutes > 0)).length;
     for (const week of weeks) {
       const worked = workedWeeks.get(week.key);
       // The complete week sets the threshold. Only additions inside the report are exported.
@@ -568,42 +712,49 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
         const strictlyValidated = validatedWeeks.has(week.key);
         const validatedTotal = strictlyValidated && worked?.complete
           ? worked.days.reduce((sum, day) => sum + day.worked + day.credited, 0) : null;
+        const sourceAdjustment = sourceWeekAdjustment.get(week.key) || 0;
         if (fullWeekPlanned.has(week.key) || credited || history || timedSickness || validatedTotal > 0) {
           Object.assign(weeklyHours[week.key] ??= {}, {
             plannedWeek,
             contractWeek: target,
             paidAbsences: weeklyAbsencePayers(week, fullWeekAbsences, absenceRules, amendments, baseWeekly, overtime, leaveCredits),
             plannedWeekCredit: credited,
-            retainedWeek: strictlyValidated ? validatedTotal : plannedWeek + history + credited + timedSickness,
+            retainedWeek: worked?.payrollOverlap ? null : strictlyValidated ? validatedTotal : plannedWeek + history + sourceAdjustment + credited + timedSickness,
             ...(history && { historicalWeek: history }),
             ...(timedSickness && { timedSicknessWeek: timedSickness }),
             ...(historicalWeekOverlaps.has(week.key) && { historicalOverlap: true }),
-            plannedWeekSurplus: target != null && plannedWeek + history + credited > target ? plannedWeek + history + credited - target : null,
+            plannedWeekSurplus: target != null && plannedWeek + history + sourceAdjustment + credited > target
+              ? plannedWeek + history + sourceAdjustment + credited - target : null,
           });
         }
       }
     }
-    const counterFrom = leaveRules?.startMonth && values.contractStart && `${leaveRules.startMonth}-01` <= to
-      ? [values.contractStart, `${leaveRules.startMonth}-01`].sort().at(-1) : null;
-    const { balance: leaveBalance, status: leaveStatus } = calculateLeaveCounter({
-      rules: leaveRules, snapshots: payrollInput?.leave, contractStart: values.contractStart, contractEnd: values.contractEnd,
+    const counterFrom = values.contractStart && calculationWeeks[0].from;
+    const leaveResult = calculateLeaveCounter({
+      versions: leaveRules, snapshots: payrollInput?.leave, contractStart: values.contractStart, contractEnd: values.contractEnd,
       reportEnd: to, asOf, absences: counterFrom && counterFrom <= to
-        ? collectAbsences(profile, workById, [], getRangeBounds(counterFrom, to)) : [],
-      shifts: profile.shifts || [], contractMinutes: weeklyMinutes, isHoliday: reportHoliday,
+        ? collectAbsences(reportProfile, workById, [], getRangeBounds(counterFrom, to)) : [],
+      shifts: [...reportProfile.shifts, ...[...imported.daily.values()].flat().filter(({ planned }) => planned)],
+      contractMinutes: weeklyMinutes, isHoliday: reportHoliday,
       validatedWorkDays: registerDays.filter((day) => day.payroll.some((item) =>
-        item.validated && !item.absent && item.timings.workedMinutes > 0)).map(({ date }) => date),
+        item.validated && !item.absent && !item.payrollOverlap && item.timings.workedMinutes > 0)).map(({ date }) => date),
     });
+    const sourceLeave = payrollInput?.skelloLeave.has(to) && payrollInput.leave.get(to);
+    const leaveBalance = sourceLeave ? { ...leaveResult.balance,
+      ...Object.fromEntries(Object.entries(sourceLeave).filter(([, value]) => value != null)) } : leaveResult.balance;
+    const leaveStatus = sourceLeave ? "skello" : leaveResult.status;
     Object.assign(values, leaveBalance);
     const detailDays = detail ? registerDays.filter((day) => day.date >= detailStart && day.date <= detailEnd).map(reportDay)
-      .filter((day) => day.shifts.some((shift) => !shift.absence) || day.sessions.length || day.payroll.length) : [];
+      .filter((day) => day.sourceServices?.length || day.shifts.some((shift) => !shift.absence) || day.sessions.length || day.payroll.length) : [];
     const schedule = detailedIsoWeeks
-      ? prepareAbsencePayroll(collectAbsences(profile, workById, registerDays, getRangeBounds(detailStart, detailEnd)),
+      ? prepareAbsencePayroll(collectAbsences(reportProfile, workById, registerDays, getRangeBounds(detailStart, detailEnd)),
         absenceRules, amendments, baseWeekly, overtime, leaveCredits) : null;
-    const detailMeals = schedule && calculateReportMeals({
-      days: registerDays.filter(({ date }) => date >= detailStart && date <= detailEnd).map(reportDay),
+    const detailRange = registerDays.filter(({ date }) => date >= detailStart && date <= detailEnd);
+    const detailMeals = schedule && addSkelloMeals(calculateReportMeals({
+      days: detailRange.map(mealDay),
       filters: { from: detailStart, to: detailEnd }, rules, taken, openingHours: restaurant.opening_hours,
       start: values.contractStart, end: values.contractEnd, workById: reportWork, absenceMeals: schedule.absenceMeals, requiresValidatedWork,
-    }).mealDays;
+    }), detailRange).mealDays;
     return { employee, former, provisional, values, weeklyHours, absencesByType, mealDays, leaveBalance, leaveStatus,
       ...(detail && { establishment: employment.primaryEstablishment, tardiness,
         days: detailDays.map((day) => ({ ...day, shifts: day.shifts.filter((shift) => !shift.absence),
@@ -624,7 +775,7 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
   const previousRule = rules.find(({ date }) => date < from.slice(0, 7));
   const activeMealRules = previousRule && !availableRules.some(({ date }) => date === from.slice(0, 7)) ? [...availableRules, previousRule] : availableRules;
   const groups = reportGroups(weeks, activeMealRules,
-    absenceTypes, activeOvertime, counterActive, annualActive, to);
+    absenceTypes, activeOvertime, counterActive, annualActive, to, [...sourceColumns.values()]);
   const absenceDetailColumns = [...absenceColumns, ...absenceTypes.map(absenceColumn)];
   const counted = [...groups.flatMap(({ columns }) => columns), ...hoursColumns, ...absenceDetailColumns];
   const totals = Object.fromEntries(counted.filter(({ total }) => total)

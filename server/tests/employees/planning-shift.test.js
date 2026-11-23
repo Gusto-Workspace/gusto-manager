@@ -82,7 +82,10 @@ function fixture(t) {
   t.mock.method(EmployeeModel, "exists", async (query) => matchTenant(query));
   t.mock.method(EmployeeModel, "findOne", (query) => ({ lean: async () => matchTenant(query) ? employee : null }));
   t.mock.method(EmployeeModel.collection, "findOne", async (query) => matchTenant(query) ? employee : null);
-  t.mock.method(EmployeeModel, "find", () => ({ lean: async () => [employee] }));
+  t.mock.method(EmployeeModel, "find", () => ({
+    select() { return this; },
+    lean: async () => [employee],
+  }));
   t.mock.method(EmployeeModel, "updateOne", async () => ({ modifiedCount: 0 }));
   function call(method, path, options = {}) {
     const handlers = route(method, path);

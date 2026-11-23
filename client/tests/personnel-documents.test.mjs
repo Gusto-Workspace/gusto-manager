@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 import {
   buildEmployeeDocumentsForm, categories, filterEmployeeDocuments, getEmployeeDocumentsPage,
@@ -61,33 +62,81 @@ test("multipart upload preserves file ordering with one metadata entry per file"
   ]);
 });
 
-test("the service worker purges old private HR responses and preserves unrelated cache entries", async () => {
-  const privateRequests = [
-    { url: "https://api.example.test/api/restaurants/one/employees/a/documents?scope=personal" },
-    { url: "https://api.example.test/api/restaurants/one/employees/a/documents/private%2Ffile.pdf/download" },
-    { url: "https://api.example.test/api/restaurants/one/employees/a/shifts" },
-    { url: "https://api.example.test/api/restaurants/one/employees/planning/templates" },
-    { url: "https://api.example.test/api/employees/me" },
-    { url: "https://api.example.test/api/accountants/me" },
-    { url: "https://api.example.test/api/owner/restaurants/one?scope=reservations" },
-    { url: "https://api.example.test/api/events/one" },
-    { url: "https://api.example.test/api/restaurants/one/callsense/calls" },
-    { url: "https://api.example.test/api/time-clock/device" },
-  ];
-  const requests = [...privateRequests, { url: "https://api.example.test/api/restaurants/one/menus" }];
+const appOrigin = "https://manager.example.test";
+const apiOrigin = "https://api.example.test";
+const apiRequests = [
+  `${appOrigin}/api/contact-form-email`,
+  `${apiOrigin}/api/restaurants/one/employees/a/documents?scope=personal`,
+  `${apiOrigin}/api/restaurants/one/reservations`,
+  `${apiOrigin}/api/restaurants/one/callsense/calls`,
+  `${apiOrigin}/api/restaurants/one/gift-card-orders`,
+  `${apiOrigin}/api/restaurants/one/take-away/orders`,
+  `${apiOrigin}/api/time-clock/device`,
+  `${apiOrigin}/api/admin/documents`,
+  `${apiOrigin}/api/restaurants/one/menus`,
+  `${apiOrigin}/api/future-module/report.csv`,
+  `${apiOrigin}/api/future-module/avatar.png`,
+  `${apiOrigin}/api?status`,
+  "http://localhost:8012/api",
+];
+
+const assetRoutes = new Map([
+  [`${appOrigin}/_next/static/chunks/page.js`, "static-js-assets"],
+  [`${appOrigin}/locales/fr/planning.json`, "static-data-assets"],
+  [`${appOrigin}/apiary/page`, "others"],
+  [`${apiOrigin}/file?returnTo=/api/employees/me`, "cross-origin"],
+]);
+
+test("the production worker bypasses caching for all API routes before any default strategy", () => {
+  const entry = new URL("../next.config.js", import.meta.url);
+  const requireFromConfig = createRequire(entry);
+  let routes;
+  runInNewContext(readFileSync(entry, "utf8"), {
+    module: { exports: {} },
+    process: { env: { NODE_ENV: "production" } },
+    require(name) {
+      if (name === "next-pwa") return (config) => { routes = config.runtimeCaching; return (next) => next; };
+      return requireFromConfig(name);
+    },
+  });
+  const matchers = routes.map(({ urlPattern }) => {
+    if (typeof urlPattern !== "function") return (href) => urlPattern.test(href);
+    const matchUrl = runInNewContext(`(${urlPattern.toString()})`, { self: { origin: appOrigin } });
+    return (href) => matchUrl({ url: new URL(href) });
+  });
+  const match = (href) => routes[matchers.findIndex((matches) => matches(href))];
+  assert.ok(!routes.some(({ options }) => options?.cacheName === "apis"));
+  for (const url of apiRequests) {
+    assert.equal(match(url)?.handler, "NetworkOnly", url);
+    assert.equal(match(url)?.options?.fetchOptions?.cache, "no-store", url);
+  }
+  for (const [url, cacheName] of assetRoutes) assert.equal(match(url)?.options?.cacheName, cacheName, url);
+});
+
+test("activation purges old API responses from every cache and preserves unrelated entries", async () => {
+  const cacheNames = ["apis", "cross-origin", "others", "static-data-assets", "static-image-assets", "workbox-precache"];
+  const gustoApiRequests = apiRequests.filter((url) => [appOrigin, apiOrigin].includes(new URL(url).origin));
+  const requests = [...apiRequests, ...assetRoutes.keys(), "https://third-party.example.test/api/resources"].map((url) => ({ url }));
   const deleted = [];
   let activate;
-  const worker = readFileSync(new URL("../worker/index.js", import.meta.url), "utf8");
-  runInNewContext(worker, {
+  const worker = new URL("../worker/index.js", import.meta.url);
+  runInNewContext(readFileSync(worker, "utf8"), {
     URL,
-    self: { addEventListener: (event, handler) => { if (event === "activate") activate = handler; } },
+    process: { env: { NEXT_PUBLIC_API_URL: `${apiOrigin}/api` } },
+    self: { location: { origin: appOrigin }, addEventListener: (event, handler) => { if (event === "activate") activate = handler; } },
     caches: {
-      has: async (name) => name === "cross-origin",
-      open: async () => ({ keys: async () => requests, delete: async (request) => deleted.push(request) }),
+      keys: async () => cacheNames,
+      open: async (name) => ({
+        keys: async () => requests,
+        delete: async ({ url }) => deleted.push([name, url]),
+      }),
     },
   });
   let cleanup;
   activate({ waitUntil: (promise) => { cleanup = promise; } });
   await cleanup;
-  assert.deepEqual(deleted, privateRequests);
+  assert.equal(deleted.length, cacheNames.length * gustoApiRequests.length);
+  for (const name of cacheNames) {
+    assert.deepEqual(deleted.filter(([cache]) => cache === name).map(([, url]) => url), gustoApiRequests);
+  }
 });

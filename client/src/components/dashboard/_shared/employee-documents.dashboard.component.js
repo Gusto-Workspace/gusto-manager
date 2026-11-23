@@ -116,7 +116,7 @@ export default function EmployeeDocumentsList({ documents, endpoint, personal = 
 
   return (
     <div className="min-w-0">
-      <div role="group" aria-label="Dossiers des documents" className="grid grid-cols-2 gap-2 border-b border-darkBlue/10 p-4 mobile:grid-cols-3 tablet:grid-cols-4 desktop:grid-cols-7 midTablet:px-5">
+      <div role="group" aria-label="Dossiers des documents" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.25rem),1fr))] gap-2 border-b border-darkBlue/10 p-4 midTablet:px-5">
         {[["", "Tous les documents"], ...folders].map(([key, label]) => {
           const Icon = key ? Folder : Files;
           return (
@@ -126,10 +126,10 @@ export default function EmployeeDocumentsList({ documents, endpoint, personal = 
                 onCategoryChange(key);
                 setVisibleLimit(documentPageSize);
               }}
-              className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-semibold hover:border-blue/60 ${(category || "") === key ? "border-blue/40 bg-blue/5 text-blue" : "border-darkBlue/10 text-darkBlue"}`}>
+              className={`flex min-h-11 min-w-0 items-center gap-1.5 rounded-lg border px-2 py-2 text-left text-xs font-semibold hover:border-blue/60 ${(category || "") === key ? "border-blue/40 bg-blue/5 text-blue" : "border-darkBlue/10 text-darkBlue"}`}>
               <Icon size={16} className="shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1 break-words">{label}</span>
-              <span className="text-darkBlue/60">{key ? counts.get(key) || 0 : documents.length}</span>
+              <span className="min-w-0 flex-1">{label}</span>
+              <span className="shrink-0 tabular-nums text-darkBlue/60">{key ? counts.get(key) || 0 : documents.length}</span>
             </button>
           );
         })}

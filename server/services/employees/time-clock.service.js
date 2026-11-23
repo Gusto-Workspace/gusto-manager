@@ -684,12 +684,15 @@ function getEmployeeDisplay(employee, restaurantId) {
   );
 
   const snapshot = profile?.snapshot || {};
+  const identities = employee?.rhArchiveIdentities;
+  const retained = identities instanceof Map ? identities.get(String(restaurantId)) : identities?.[String(restaurantId)];
+  const identity = retained?.until >= toLocalDateKey(new Date()) ? retained : snapshot;
 
   return {
     id: employee?._id ? String(employee._id) : "",
-    firstname: snapshot.firstname || employee?.firstname || "",
-    lastname: snapshot.lastname || employee?.lastname || "",
-    email: snapshot.email || employee?.email || "",
+    firstname: identity.firstname || employee?.firstname || "",
+    lastname: identity.lastname || employee?.lastname || "",
+    email: profile?.erasure?.at ? "" : snapshot.email || employee?.email || "",
     post: snapshot.post || employee?.post || "",
   };
 }

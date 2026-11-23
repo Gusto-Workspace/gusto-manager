@@ -659,6 +659,8 @@ export function PlanningGrid({
                           {Number.isFinite(counter?.annualRemaining) && <span className={styles.hoursCounter}>
                             {t("planning:counters.annual")} {counter.annualRemaining < 0 ? "−" : ""}{formatPlanningDuration(Math.abs(counter.annualRemaining))}
                           </span>}
+                          {counters && target?.hasCounter && !Number.isFinite(counter?.balance) && !Number.isFinite(counter?.annualRemaining) &&
+                            <span className={styles.hoursCounter}>{t("planning:counters.unavailable")}</span>}
                         </div>
                       </div>
                     </th>

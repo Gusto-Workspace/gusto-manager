@@ -1,6 +1,7 @@
 const { DateTime } = require("luxon");
 const { ABSENCE_TYPES } = require("./planning-absence.service");
 const { isValidDateKey } = require("./time-clock.service");
+const { ruleAt } = require("./personnel-report-rule-dates.service");
 
 const ZONE = "Europe/Paris";
 const civil = (value) => DateTime.fromISO(value, { zone: ZONE });
@@ -15,8 +16,8 @@ function validateLedgerInput(kind, values, date) {
     if (!categories || typeof categories !== "object" || Array.isArray(categories)) return null;
     const entries = Object.entries(categories);
     if (entries.some(([type, rule]) => !defaultAbsenceTypes.includes(type) || !rule ||
-      !(rule.payer === null || payers.includes(rule.payer)) || !Number.isInteger(rule.meal) ||
-      !amount(rule.meal, 0, 10))) return null;
+      !(rule.payer === null || payers.includes(rule.payer)) ||
+      (rule.meal !== null && (!Number.isInteger(rule.meal) || !amount(rule.meal, 0, 10))))) return null;
     return { categories: Object.fromEntries(entries.map(([type, { payer, meal }]) => [type, { payer, meal }])) };
   }
   if (kind === "amendment") {
@@ -81,11 +82,12 @@ function annualPeriod(record) {
 
 function ledgerStart(filters, inputs) {
   const bounds = [filters.from];
-  const counters = inputs.find(({ kind }) => kind === "hoursRules")?.values;
-  const leave = inputs.find(({ kind }) => kind === "leaveRules")?.values;
-  if (counters?.start && counters.start <= filters.to) bounds.push(counters.start);
-  if (leave?.startMonth && `${leave.startMonth}-01` <= filters.to) bounds.push(`${leave.startMonth}-01`);
   for (const item of inputs) {
+    if (item.date <= filters.to && ((item.kind === "hoursRules" && item.values.start) || (item.kind === "leaveRules" && item.values.startMonth))) {
+      const start = item.kind === "hoursRules" ? item.values.start : `${item.values.startMonth}-01`;
+      const effective = start > item.date ? start : item.date;
+      if (effective <= filters.to) bounds.push(effective);
+    }
     if (item.kind !== "annual" || !item.values.target) continue;
     const period = annualPeriod(item);
     if (period.end >= filters.from && period.from <= filters.to) bounds.push(period.initialized);
@@ -101,37 +103,50 @@ function ledgerEnd(filters, inputs) {
     }, filters.to);
 }
 
-function applyHourLedger({ rules, entries, weekData, first, last }) {
+function applyHourLedger({ rules, versions = rules ? [{ date: "-", values: rules }] : [], entries, weekData, first, last }) {
   const values = {};
-  if (!rules?.start || rules.start > last.to) return values;
+  if (!versions.some(({ values }) => values.start)) return values;
   let balance = 0;
   let recovery = 0;
   let changed = 0;
   let complete = true;
   const weekBalances = {};
   const byWeek = new Map();
-  const previousSunday = civil(rules.start).minus({ days: 1 }).toISODate();
+  const byDate = new Map();
   for (const item of [...entries].sort((a, b) => a.date.localeCompare(b.date))) {
     const moves = item.values.entries || [item.values];
-    if (item.date === previousSunday) {
-      for (const move of moves) {
-        if (move.operation === "reset") balance = minutes(move.hours);
-        if (move.operation === "adjust") balance += minutes(move.hours);
-      }
-      continue;
-    }
+    byDate.set(item.date, moves);
     const monday = civil(item.date).startOf("week").toISODate();
     if (!byWeek.has(monday)) byWeek.set(monday, []);
     byWeek.get(monday).push(...moves);
   }
+  let activeStart = null;
   for (const week of weekData) {
-    if (week.from < rules.start || week.from > last.from) continue;
+    if (week.from > last.from) break;
+    const version = ruleAt(versions, week.from);
+    const config = version?.values;
+    if (!config?.start || config.start > week.from) {
+      activeStart = null;
+      continue;
+    }
+    if (activeStart !== config.start) {
+      activeStart = config.start;
+      balance = 0;
+      recovery = 0;
+      complete = true;
+      const opening = config.start > version.date ? config.start : version.date;
+      const previousSunday = civil(opening).minus({ days: 1 }).toISODate();
+      for (const move of byDate.get(previousSunday) || []) {
+        if (move.operation === "reset") balance = minutes(move.hours);
+        if (move.operation === "adjust") balance += minutes(move.hours);
+      }
+    }
     const visible = week.from >= first.from;
     if (visible && !Object.hasOwn(values, "counterStart")) values.counterStart = complete ? balance : null;
     if (!Number.isFinite(week.delta)) complete = false;
-    else if (complete) balance += week.delta + (rules.enhanced ? week.premiumBonus || 0 : 0);
+    else if (complete) balance += week.delta + (config.enhanced ? week.premiumBonus || 0 : 0);
     if (visible) weekBalances[week.key] = Number.isFinite(week.delta) ?
-      week.delta + (rules.enhanced ? week.premiumBonus || 0 : 0) : null;
+      week.delta + (config.enhanced ? week.premiumBonus || 0 : 0) : null;
     recovery -= week.recoveryUsed || 0;
     for (const entry of byWeek.get(week.from) || []) {
       const value = minutes(entry.hours);
@@ -150,7 +165,7 @@ function applyHourLedger({ rules, entries, weekData, first, last }) {
     }
   }
   if (Object.hasOwn(values, "counterStart")) Object.assign(values, {
-    counterEnd: complete ? balance : null, counterChanges: changed, recoveryBalance: recovery, weekBalances,
+    counterEnd: complete && activeStart ? balance : null, counterChanges: changed, recoveryBalance: recovery, weekBalances,
   });
   return values;
 }

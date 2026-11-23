@@ -24,6 +24,7 @@ export default function ExportRangeModalComponent({
   const [to, setTo] = useState(initialTo || "");
   const [format, setFormat] = useState(initialFormat || "pdf");
   const [selectedIds, setSelectedIds] = useState(employeeIds);
+  const [wholePeriod, setWholePeriod] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function ExportRangeModalComponent({
     setTo(initialTo || "");
     setFormat(initialFormat || "pdf");
     setSelectedIds(employeeIds);
+    setWholePeriod(false);
     setError("");
   }, [employeeIds, initialFormat, initialFrom, initialTo, open]);
 
@@ -59,7 +61,7 @@ export default function ExportRangeModalComponent({
       return;
     }
 
-    if (!selectedIds.length) {
+    if (!wholePeriod && !selectedIds.length) {
       setError("Sélectionnez au moins un salarié.");
       return;
     }
@@ -69,7 +71,7 @@ export default function ExportRangeModalComponent({
       from,
       to,
       format,
-      employeeIds: selectedIds,
+      employeeIds: wholePeriod ? [] : selectedIds,
     });
   }
 
@@ -220,11 +222,17 @@ export default function ExportRangeModalComponent({
                 <button
                   type="button"
                   onClick={toggleAll}
+                  disabled={wholePeriod}
                   className="inline-flex h-11 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white px-4 text-sm font-medium text-darkBlue transition hover:bg-darkBlue/5"
                 >
                   {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
                 </button>
               </div>
+
+              <label className="mt-3 flex items-center gap-2 text-sm text-darkBlue">
+                <input type="checkbox" checked={wholePeriod} onChange={(event) => setWholePeriod(event.target.checked)} />
+                Tous les salariés de la période, archives comprises
+              </label>
 
               <div className="mt-4 max-h-[45dvh] overflow-y-auto pr-1 midTablet:max-h-[280px]">
                 <div className="grid gap-3">
@@ -244,6 +252,7 @@ export default function ExportRangeModalComponent({
                         <input
                           type="checkbox"
                           checked={checked}
+                          disabled={wholePeriod}
                           onChange={() => toggleEmployee(String(employee.id))}
                           className="mt-1 h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue"
                         />

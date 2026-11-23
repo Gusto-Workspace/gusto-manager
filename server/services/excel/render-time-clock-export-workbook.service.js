@@ -1243,7 +1243,7 @@ function buildEmployeeSheetRows(reports = []) {
       report?.employee?.firstname || "",
       report?.employee?.lastname || "",
       report?.employee?.email || "",
-      report?.rawEmployee?.phone || "",
+      report?.profile?.erasure?.at ? "" : report?.rawEmployee?.phone || "",
       report?.employee?.post || "",
       employment.payrollCode || "",
       employment.contractType || "",

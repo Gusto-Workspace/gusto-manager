@@ -73,6 +73,7 @@ function ServiceRow({ person, day, former, employeeView, service, busy, onDay, o
   const showAbsence = Boolean(paid || plannedOnly);
   const canMarkAbsent = Boolean(paid || (plannedOnly && (initial.absent || Date.parse(shift.start) <= now)));
   const anomalies = (session?.anomalies || []).map(getTimeClockAnomalyLabel);
+  if (paid?.payrollOverlap) anomalies.unshift("Horaires rémunérés chevauchants. Corrigez les services concernés.");
   const anomalyText = anomalies.join(" · ");
   const clippedAnomalies = anomalyText.length > anomalyPreviewLength;
   const sessionNote = session?.note ?? paid?.note;
@@ -153,7 +154,7 @@ function ServiceRow({ person, day, former, employeeView, service, busy, onDay, o
         : mealCount ?? emptyValue}
     </td>
     <td className={`${cell} whitespace-nowrap`}>{paid ? <>
-      <span className="font-semibold tabular-nums">{formatMinutes(paid.timings.workedMinutes)}</span>
+      <span className="font-semibold tabular-nums">{paid.payrollOverlap ? emptyValue : formatMinutes(paid.timings.workedMinutes)}</span>
       <p className="mt-0.5 text-xs text-darkBlue/65">{paid.requiresCorrection ? "À corriger avant validation" : paid.manual ? "Corrigée" : "Automatique"}</p>
     </> : initial.absent ? "0 min" : emptyValue}</td>
     <td className={cell}>{anomalyText ? <div className="flex items-center justify-center gap-1 whitespace-nowrap text-xs font-semibold text-amber-900">

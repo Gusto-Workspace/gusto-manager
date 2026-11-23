@@ -167,7 +167,7 @@ function buildRegisterRows({ employees, sessions, absences = [], restaurantId, s
 
     return {
       employee: identity,
-      former: Boolean(employee.former),
+      former: Boolean(employee.former || profile?.archivedAt),
       days: range.days.map((day) => {
         const shifts = (shiftsByDate.get(day.date) || []).sort((a, b) => +new Date(a.start) - +new Date(b.start));
         return {

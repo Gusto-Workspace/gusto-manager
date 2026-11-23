@@ -12,6 +12,7 @@ const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 const authenticateToken = require("../middleware/authentificate-token");
 const {
   isAccountSessionValid,
+  isSuperAdminSession,
   normalizeSessionVersion,
   rotatePasswordSession,
   signAccountToken,
@@ -21,9 +22,12 @@ const {
 
 // MODELS
 const EmployeeModel = require("../models/employee.model");
-const PersonnelReportInput = require("../models/personnel-report-input.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
-const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
+const { previewEmployeeErasure, eraseArchivedEmployee } = require("../services/employees/employee-erasure.service");
+const TimeClockSession = require("../models/time-clock-session.model");
+const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction, workforceHistoryRoster } = require("../services/employees/time-clock-pin.service");
+const { clockTransaction, lockClockEmployees, timeClockConflict } = require("../services/employees/time-clock-write.service");
+const { getEmployeeDisplay } = require("../services/employees/time-clock.service");
 const RestaurantModel = require("../models/restaurant.model");
 const OwnerModel = require("../models/owner.model");
 const TrainingSession = require("../models/logs/training-session.model");
@@ -198,6 +202,7 @@ function syncEmployeeIdentityAcrossProfiles(employee, updates = {}) {
   }
 
   profiles.forEach((profile) => {
+    if (profile.archivedAt) return;
     profile.snapshot ??= {};
 
     if (updates.firstname !== undefined) {
@@ -436,6 +441,13 @@ async function getEmployeeDocumentRouteAccess(
       String(employee?._id || employee || "") === String(employeeId),
   );
   if (!employeeIsListedByRestaurant) {
+    if (options.archivedRead && accessContext.isManager && accessContext.restaurant.options?.employees === true) {
+      const employee = await EmployeeModel.findById(employeeId).select("restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at").lean();
+      const profile = findRestaurantProfile(employee, restaurantId);
+      if (profile?.archivedAt && (!profile.erasure?.at || (request.user.role === "owner" && !isSuperAdminSession(request.user)))) {
+        return accessContext;
+      }
+    }
     return { error: { status: 404, message: "Employee not found" } };
   }
 
@@ -733,7 +745,7 @@ function getShiftEndLabel(startValue, endValue) {
 
 function buildPlanningExportEmployee(employee, restaurantId, bounds) {
   const profile = findRestaurantProfile(employee, restaurantId);
-  const snapshot = profile?.snapshot || {};
+  const { id, firstname, lastname, post } = getEmployeeDisplay(employee, restaurantId);
   const planningDays = new Map();
   let shiftCount = 0;
   let plannedMinutes = 0;
@@ -809,12 +821,7 @@ function buildPlanningExportEmployee(employee, restaurantId, bounds) {
   }
 
   return {
-    employee: {
-      id: employee?._id ? String(employee._id) : "",
-      firstname: snapshot.firstname || employee?.firstname || "",
-      lastname: snapshot.lastname || employee?.lastname || "",
-      post: snapshot.post || employee?.post || "",
-    },
+    employee: { id, firstname, lastname, post },
     totals: {
       shiftCount,
       plannedMinutes,
@@ -1315,6 +1322,10 @@ router.post(
         existingEmployee = employeeDuplicate;
       }
 
+      if (findRestaurantProfile(existingEmployee, restaurantId)?.archivedAt) {
+        return res.status(409).json({ message: "Réactivez ce membre depuis les archives de cet établissement." });
+      }
+
       if (existingEmployee && !employeeWorksInRestaurant(existingEmployee, restaurantId) &&
           !(await RestaurantModel.exists({
             _id: { $in: existingEmployee.restaurants },
@@ -1669,6 +1680,7 @@ router.patch(
 
         employee.email = normalizedEmail;
         for (const restaurantProfile of employee.restaurantProfiles || []) {
+          if (restaurantProfile.archivedAt) continue;
           restaurantProfile.snapshot ??= {};
           restaurantProfile.snapshot.email = normalizedEmail;
         }
@@ -1864,6 +1876,7 @@ router.get(
         req,
         restaurantId,
         employeeId,
+        { archivedRead: true },
       );
       if (accessContext.error) {
         return res
@@ -1872,13 +1885,10 @@ router.get(
       }
 
       const employee = await EmployeeModel.findById(employeeId).lean();
-      if (!employee || !employeeWorksInRestaurant(employee, restaurantId)) {
+      const profile = findRestaurantProfile(employee, restaurantId);
+      if (!employee || (!employeeWorksInRestaurant(employee, restaurantId) && !(accessContext.isManager && profile?.archivedAt))) {
         return res.status(404).json({ message: "Employee not found" });
       }
-
-      const profile = (employee.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId),
-      );
 
       const documents = profile?.documents || [];
       const visibleDocuments = documents.filter((document) => canReadEmployeeDocument(req, accessContext, document));
@@ -1905,6 +1915,7 @@ router.get(
         req,
         restaurantId,
         employeeId,
+        { archivedRead: true },
       );
       if (accessContext.error) {
         return res
@@ -1913,11 +1924,10 @@ router.get(
       }
 
       const emp = await EmployeeModel.findById(employeeId);
-      if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
+      const profile = findRestaurantProfile(emp, restaurantId);
+      if (!emp || (!employeeWorksInRestaurant(emp, restaurantId) && !(accessContext.isManager && profile?.archivedAt))) {
         return res.status(404).json({ message: "Employee not found" });
       }
-
-      const profile = findRestaurantProfile(emp, restaurantId);
       if (!profile) {
         return res.status(404).json({ message: "Profile not found" });
       }
@@ -2085,7 +2095,115 @@ router.delete(
   },
 );
 
-// ---------- DELETE EMPLOYEE D'UN RESTO (multi-resto) ----------
+// ---------- ARCHIVER OU RÉACTIVER LE RATTACHEMENT ----------
+
+const archivedEmployeesPath = "/restaurants/:restaurantId/employees/archived";
+
+router.get(archivedEmployeesPath, async (req, res, next) => {
+  try {
+    const { restaurantId } = req.params;
+    const access = await getEmployeeRouteAccess(req, restaurantId, null, { managerOnly: true, requireModule: true });
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    const includeErased = req.user.role === "owner" && !isSuperAdminSession(req.user);
+    const employees = await EmployeeModel.find({
+      restaurantProfiles: { $elemMatch: { restaurant: restaurantId, archivedAt: { $type: "date" } } },
+    }).select("firstname lastname accountType restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at restaurantProfiles.erasure.retainedDocuments restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname")
+      .select(includeErased ? "rhArchiveIdentities" : "").lean();
+    res.set("Cache-Control", "private, no-store");
+    const entries = employees.map((employee) => {
+      const profile = findRestaurantProfile(employee, restaurantId);
+      const { firstname, lastname } = getEmployeeDisplay(employee, restaurantId);
+      return {
+        id: String(employee._id),
+        firstname, lastname,
+        accountType: normalizeAccountType(employee.accountType),
+        archivedAt: profile.archivedAt,
+        erasedAt: profile.erasure?.at,
+        retainedDocuments: profile.erasure?.retainedDocuments,
+      };
+    }).sort((a, b) => a.lastname.localeCompare(b.lastname, "fr") || a.firstname.localeCompare(b.firstname, "fr"));
+    return res.json({ employees: entries.filter(({ erasedAt }) => !erasedAt),
+      historical: includeErased ? entries.filter(({ erasedAt }) => erasedAt) : [] });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+const employeeErasurePath = `${archivedEmployeesPath}/:employeeId/erasure`;
+async function requireErasureAccess(req, res, next) {
+  try {
+    res.set("Cache-Control", "private, no-store");
+    const { restaurantId, employeeId } = req.params;
+    if (![restaurantId, employeeId].every(mongoose.isObjectIdOrHexString)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+    if (req.user.role !== "owner" || isSuperAdminSession(req.user)) {
+      return res.status(403).json({ message: "L’effacement est réservé au propriétaire connecté de cet établissement." });
+    }
+    const access = await getEmployeeRouteAccess(req, restaurantId, null, { managerOnly: true, requireModule: true });
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+router.get(employeeErasurePath, requireErasureAccess, async (req, res, next) => {
+  try {
+    return res.json(await previewEmployeeErasure(req.params.restaurantId, req.params.employeeId));
+  } catch (error) {
+    return error.status ? res.status(error.status).json({ message: error.message }) : next(error);
+  }
+});
+
+router.post(employeeErasurePath, requireErasureAccess, async (req, res, next) => {
+  try {
+    const { revision, confirmation, retentionReviewed, documentIds, retentionUntil, retentionReason } = req.body || {};
+    return res.json(await eraseArchivedEmployee({ ...req.params, actor: String(req.user.id),
+      revision, confirmation, retentionReviewed, documentIds, retentionUntil, retentionReason }));
+  } catch (error) {
+    return error.status ? res.status(error.status).json({ message: error.message }) : next(error);
+  }
+});
+
+router.post(`${archivedEmployeesPath}/:employeeId/reactivate`, async (req, res, next) => {
+  try {
+    const { restaurantId, employeeId } = req.params;
+    if (!mongoose.isValidObjectId(employeeId)) return res.status(400).json({ message: "Identifiant invalide." });
+    const access = await getEmployeeRouteAccess(req, restaurantId, null, { managerOnly: true, requireModule: true });
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    if (req.user.role !== "owner") return res.status(403).json({ message: "Seul le propriétaire peut réactiver un membre." });
+
+    const reactivated = await withClockPinTransaction(async (session) => {
+      const employee = await EmployeeModel.findOneAndUpdate({
+        _id: employeeId, restaurants: { $ne: restaurantId },
+        restaurantProfiles: { $elemMatch: { restaurant: restaurantId, archivedAt: { $type: "date" }, "erasure.at": null } },
+      }, {
+        $addToSet: { restaurants: restaurantId },
+        $unset: { "restaurantProfiles.$[profile].archivedAt": "" },
+        $set: { "restaurantProfiles.$[profile].options": {} },
+        $push: { "restaurantProfiles.$[profile].membershipHistory": { action: "reactivated", at: new Date(), actor: String(req.user.id) } },
+        $inc: { __v: 1 },
+      }, { session, new: true, arrayFilters: [{ "profile.restaurant": restaurantId }] })
+        .select("accountType restaurantProfiles.restaurant restaurantProfiles._id").lean();
+      if (!employee) return false;
+      await RestaurantModel.updateOne({ _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session });
+      if (!isAccountant(employee)) {
+        await provisionInitialClockPin({
+          restaurant: restaurantId, employee: employeeId,
+          profile: String(findRestaurantProfile(employee, restaurantId)._id), changedBy: String(req.user.id), session,
+        });
+      }
+      return true;
+    });
+    if (!reactivated) return res.status(409).json({ message: "Ce membre n’est plus archivé dans cet établissement." });
+    return res.json({ restaurant: await buildDecoratedRestaurant(restaurantId) });
+  } catch (error) {
+    const problem = clockPinWriteProblem(error);
+    if (problem) return res.status(409).json(problem);
+    return next(error);
+  }
+});
 
 router.delete(
   "/restaurants/:restaurantId/employees/:employeeId",
@@ -2111,42 +2229,45 @@ router.delete(
         return res.status(400).json({ message: "Identifiant invalide" });
       }
       const target = { _id: employeeObjectId, restaurants: restaurantObjectId };
-      const jobIds = await mongoose.connection.transaction(async (session) => {
+      const archivedAt = new Date();
+      const archived = await clockTransaction(async (session) => {
+        await lockClockEmployees(restaurantId, [employeeId], session);
         const employee = await EmployeeModel.collection.findOne(target, {
-          projection: { restaurants: 1, restaurantProfiles: 1, profilePicture: 1 },
+          projection: { restaurantProfiles: 1, firstname: 1, lastname: 1, post: 1, dateOnPost: 1 },
           session,
         });
-        if (!employee) return null;
+        if (!employee) return false;
 
-        const keepAccount = employee.restaurants.some((id) => String(id) !== String(restaurantObjectId));
-        const profiles = (employee.restaurantProfiles || []).filter(
-          (profile) => !keepAccount || String(profile.restaurant) === String(restaurantObjectId),
-        );
-        const assets = profiles.flatMap((profile) => [
-          ...(profile.documents || []), ...(profile.planningFiles || []),
-        ]);
-        if (!keepAccount && employee.profilePicture?.public_id) {
-          assets.push({ ...employee.profilePicture, resource_type: "image", delivery_type: "upload" });
+        const profile = findRestaurantProfile(employee, restaurantId);
+        if (profile?.shifts?.some(({ end }) => new Date(end) > archivedAt) ||
+            profile?.leaveRequests?.some(({ end, status }) => ["pending", "approved"].includes(status) && new Date(end) > archivedAt)) {
+          throw timeClockConflict("Traitez les services et congés à venir avant d’archiver ce membre.");
         }
-
-        if (keepAccount) {
-          await EmployeeModel.updateOne(target, {
-            $pull: { restaurants: restaurantId, restaurantProfiles: { restaurant: restaurantId } },
-            $inc: { __v: 1 },
-          }, { session });
-        } else {
-          await EmployeeModel.deleteOne(target, { session });
+        if (await TimeClockSession.exists({
+          restaurant: restaurantId, employee: employeeId, status: { $in: ["open", "on_break"] },
+        }).session(session)) {
+          throw timeClockConflict("Clôturez le pointage en cours avant d’archiver ce membre.");
         }
+        const snapshot = {
+          firstname: employee.firstname, lastname: employee.lastname, post: employee.post, dateOnPost: employee.dateOnPost,
+          ...profile?.snapshot,
+        };
+        const event = { action: "archived", at: archivedAt, actor: String(req.user.id) };
+        await EmployeeModel.updateOne(target, {
+          $pull: { restaurants: restaurantId },
+          $inc: { __v: 1, sessionVersion: 1 },
+          ...(profile
+            ? { $set: { "restaurantProfiles.$[profile].archivedAt": archivedAt, "restaurantProfiles.$[profile].snapshot": snapshot },
+              $push: { "restaurantProfiles.$[profile].membershipHistory": event } }
+            : { $push: { restaurantProfiles: { restaurant: restaurantId, archivedAt, snapshot, membershipHistory: [event] } } }),
+        }, { session, ...(profile && { arrayFilters: [{ "profile.restaurant": restaurantId }] }) });
         await RestaurantModel.updateOne(
           { _id: restaurantId }, { $pull: { employees: employeeId } }, { session },
         );
         await TimeClockPin.deleteOne({ restaurant: restaurantId, employee: employeeId }, { session });
-        await PersonnelReportInput.deleteMany(keepAccount
-          ? { employee: employeeId, restaurant: restaurantId } : { employee: employeeId }, { session });
-        return enqueueEmployeeAssetDeletions(assets, session);
+        return true;
       });
-      if (!jobIds) return res.status(404).json({ message: "Employee not found" });
-      const assetCleanupPending = await attemptEmployeeAssetDeletions(jobIds);
+      if (!archived) return res.status(404).json({ message: "Employee not found" });
 
       const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
 
@@ -2156,9 +2277,10 @@ router.delete(
           .json({ message: "Restaurant not found after update" });
       }
 
-      res.status(200).json({ restaurant: updatedRestaurant, ...(assetCleanupPending && { assetCleanupPending }) });
+      res.status(200).json({ restaurant: updatedRestaurant });
     } catch (error) {
-      console.error("Error deleting employee:", error);
+      if (error.status === 409) return res.status(409).json({ message: error.message });
+      console.error("Error archiving employee:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   },
@@ -3027,26 +3149,10 @@ router.post(
       const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
         ? req.body.employeeIds.map((value) => String(value))
         : [];
-      const fallbackEmployeeIds = (
-        accessContext.restaurant?.employees || []
-      ).map((value) => String(value));
-      const selectedEmployeeIds = Array.from(
-        new Set(
-          requestedEmployeeIds.length
-            ? requestedEmployeeIds
-            : fallbackEmployeeIds,
-        ),
-      );
-
-      if (!selectedEmployeeIds.length) {
-        return res.status(400).json({ message: "Aucun salarie selectionne." });
-      }
-
-      const employees = await EmployeeModel.find({
-        _id: { $in: selectedEmployeeIds },
-        restaurants: restaurantId,
-        ...workforceAccountFilter(),
-      }).lean();
+      const selectedEmployeeIds = [...new Set(requestedEmployeeIds)];
+      const employees = await EmployeeModel.find(
+        workforceHistoryRoster(restaurantId, accessContext.restaurant, bounds.start, selectedEmployeeIds),
+      ).select(isSuperAdminSession(req.user) ? "" : "+rhArchiveIdentities").lean();
 
       if (!employees.length) {
         return res.status(404).json({ message: "Employees not found" });
@@ -3125,26 +3231,10 @@ router.post(
       const requestedEmployeeIds = Array.isArray(req.body?.employeeIds)
         ? req.body.employeeIds.map((value) => String(value))
         : [];
-      const fallbackEmployeeIds = (
-        accessContext.restaurant?.employees || []
-      ).map((value) => String(value));
-      const selectedEmployeeIds = Array.from(
-        new Set(
-          requestedEmployeeIds.length
-            ? requestedEmployeeIds
-            : fallbackEmployeeIds,
-        ),
-      );
-
-      if (!selectedEmployeeIds.length) {
-        return res.status(400).json({ message: "Aucun salarie selectionne." });
-      }
-
-      const employees = await EmployeeModel.find({
-        _id: { $in: selectedEmployeeIds },
-        restaurants: restaurantId,
-        ...workforceAccountFilter(),
-      }).lean();
+      const selectedEmployeeIds = [...new Set(requestedEmployeeIds)];
+      const employees = await EmployeeModel.find(
+        workforceHistoryRoster(restaurantId, accessContext.restaurant, bounds.start, selectedEmployeeIds),
+      ).select(isSuperAdminSession(req.user) ? "" : "+rhArchiveIdentities").lean();
 
       if (!employees.length) {
         return res.status(404).json({ message: "Employees not found" });
@@ -3287,13 +3377,16 @@ router.put(`${planningActionsPath}/lock`, planningManager(async (req, res, resta
 
 const leaveRequestPath = "/restaurants/:restaurantId/employees/:employeeId/leave-requests";
 
-async function leaveRequestAccess(req, { managerOnly = false } = {}) {
+async function leaveRequestAccess(req, { managerOnly = false, archivedRead = false } = {}) {
   const { restaurantId, employeeId, reqId } = req.params;
   if (![restaurantId, employeeId, ...(reqId ? [reqId] : [])].every(mongoose.isValidObjectId)) {
     return { error: { status: 400, message: "Identifiant invalide." } };
   }
   const access = await getEmployeeRouteAccess(req, restaurantId, employeeId, { managerOnly, requireModule: true });
   if (!access.error && !(access.restaurant.employees || []).some((item) => String(item._id || item) === String(employeeId))) {
+    if (archivedRead && access.isManager && await EmployeeModel.exists({
+      _id: employeeId, restaurantProfiles: { $elemMatch: { restaurant: restaurantId, archivedAt: { $type: "date" } } },
+    })) return access;
     return { error: { status: 404, message: "Salarié introuvable dans ce restaurant." } };
   }
   return access;
@@ -3400,7 +3493,7 @@ router.get(
     try {
       const { restaurantId, employeeId } = req.params;
 
-      const accessContext = await leaveRequestAccess(req);
+      const accessContext = await leaveRequestAccess(req, { archivedRead: true });
       if (accessContext.error) {
         return res
           .status(accessContext.error.status)
@@ -3408,14 +3501,11 @@ router.get(
       }
 
       const emp = await EmployeeModel.findById(employeeId).lean();
-      if (!emp || !employeeWorksInRestaurant(emp, restaurantId)) {
+      const profile = findRestaurantProfile(emp, restaurantId);
+      if (!emp || (!employeeWorksInRestaurant(emp, restaurantId) && !(accessContext.isManager && profile?.archivedAt))) {
         return res.status(404).json({ message: "Employee not found" });
       }
-
-      const profile = (emp.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId),
-      );
-
+      res.set("Cache-Control", "private, no-store");
       return res.json(profile?.leaveRequests || []);
     } catch (err) {
       console.error("Erreur list leaveRequests:", err);
@@ -3908,7 +3998,7 @@ router.put(
       // ---------- Mise à jour des infos de base + snapshots ----------
 
       const profiles = Array.isArray(emp.restaurantProfiles)
-        ? emp.restaurantProfiles
+        ? emp.restaurantProfiles.filter((profile) => !profile.archivedAt)
         : [];
 
       // firstname

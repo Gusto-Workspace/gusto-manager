@@ -26,6 +26,39 @@ const contracts = new Map([
   ["alternance", "Alternance"], ["stage", "Stage"], ["interim", "Intérim"],
   ["saisonnier", "Saisonnier"], ["contrat professionnel", "Contrat professionnel"],
 ]);
+const premiumNames = {
+  complement: "Heures complémentaires", extra: "Heures supplémentaires exceptionnelles",
+  structural: "Heures supplémentaires structurelles", night: "Heures de nuit", sunday: "Heures du dimanche",
+  holiday: "Heures fériées", premiums: "Heures majorées", normal: "Heures normales",
+};
+
+function premiumLabel(field) {
+  const [kind, rate] = field.split(":");
+  return `${premiumNames[kind]}${rate ? ` ${rate} %` : ""}`;
+}
+
+function sourcePremiums(read, row, columns) {
+  const values = {};
+  for (const column of columns) {
+    const title = key(column).replace(/^(dont|total) /, "");
+    const prefix = /^(heures (?:comp\.|complementaires|supp\. exceptionnelles|supp\. structurelles|supplementaires exceptionnelles|supplementaires structurelles|de nuit|du dimanche|j\. feries?|jours? feries?|feriees|majorees|normales))(?=\s|$)/.exec(title)?.[1];
+    if (!prefix) continue;
+    const names = ["comp", "exceptionnelles", "structurelles", "nuit", "dimanche", "feri", "majorees", "normales"];
+    const kind = Object.keys(premiumNames)[names.findIndex((name) => prefix.includes(name))];
+    const rate = /(?:^|[ (])(\d{1,3}(?:[.,]\d+)?)\s*%/.exec(title)?.[1]?.replace(",", ".");
+    const hours = read(row, key(column));
+    if (kind && validNumber(hours) && hours >= 0 && hours <= 1512) values[rate == null ? kind : `${kind}:${+rate}`] = Math.round(hours * 60);
+  }
+  return values;
+}
+
+function sourceNumber(read, row, columns, limit, scale = 1) {
+  for (const column of columns) {
+    const number = read(row, column);
+    if (validNumber(number) && number >= 0 && number <= limit) return scale === 60 ? Math.round(number * scale) : rounded(number);
+  }
+  return null;
+}
 const knownPosts = new Map([
   "Serveur", "Serveuse", "Dessert Plonge", "Chef de rang", "Commis de cuisine", "Chef Cuisinier",
   "Barman", "Barmaid", "Chef de partie", "Apprenti mineur salle", "Direction", "Cuisinier", "Plongeur",
@@ -160,7 +193,7 @@ function leaveValues(read, row) {
   ].map(([name, source]) => [name, validNumber(read(row, source)) ? rounded(read(row, source)) : null])));
 }
 
-function analyzeSkelloWorkbook(buffer, scope = "weeks") {
+function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = {}) {
   if (!["weeks", "month"].includes(scope)) throw new SkelloImportError("Choisissez une période d’import.");
   let sheets;
   try {
@@ -233,8 +266,28 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
       note("Données contractuelles incompatibles", roster.firstRow + index, true);
       continue;
     }
-    const person = { source, order: people.length + 1, type, volume, start, post: safePost(read(row, "intitule poste")),
+    const person = { source, order: people.length + 1, type, volume, start,
+      post: workforce ? text(read(row, "intitule poste")).slice(0, 120) : safePost(read(row, "intitule poste")),
       contract, shifts: [], inputs: [], meals: new Map() };
+    if (workforce) {
+      const firstname = text(read(row, "prenom"));
+      const lastname = text(read(row, "nom"));
+      const payrollCode = source.code ? text(read(row, "matricule de paie")) : "";
+      if (firstname.length > 120 || lastname.length > 120 || payrollCode.length > 64 ||
+          /\p{Cc}/u.test(firstname + lastname + payrollCode + person.post)) {
+        throw new SkelloImportError("Une identité, un matricule ou un poste dépasse le format accepté.");
+      }
+      person.identity = { firstname, lastname, payrollCode };
+      person.history = [];
+      person.summary = {
+        contract: { ...contract, start, type, weeklyHours: volume },
+        premiums: sourcePremiums(read, row, roster.header),
+        worked: sourceNumber(read, row, ["heures travaillees retenues (h)", "heures travaillees (h)"], 1512, 60),
+        paid: sourceNumber(read, row, ["heures remunerees (h)", "heures payees (h)"], 1512, 60),
+        mealsDue: sourceNumber(read, row, ["repas dus"], 1000),
+        mealsTaken: sourceNumber(read, row, ["avantages nature"], 1000),
+      };
+    }
     people.push(person);
     if (source.code) byCode.set(source.code, person);
     byName.set(source.name, [...(byName.get(source.name) || []), person]);
@@ -292,6 +345,7 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
         continue;
       }
       person.shifts.push({ ...shift, sourceRow: rowNumber });
+      if (workforce) person.history.push({ ...shift, date, row: rowNumber });
       continue;
     }
     if (kind !== "travail") {
@@ -306,7 +360,8 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
       continue;
     }
     const hasPlanningEvidence = Boolean(evidence.get(signature));
-    const position = hasPlanningEvidence ? safePost(label) : knownPosts.get(key(label)) || person.post;
+    const position = workforce ? text(label).slice(0, 120) || person.post
+      : hasPlanningEvidence ? safePost(label) : knownPosts.get(key(label)) || person.post;
     const breakMinutes = validNumber(pause) && Math.abs(pause * 60 - Math.round(pause * 60)) < 0.5
       ? Math.round(pause * 60) : null;
     const work = readWorkDetails({ position, breakMinutes }, null, range.start, range.end);
@@ -317,8 +372,24 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
     const due = read(row, "repas dus");
     const taken = read(row, "avantages nature");
     const mealCount = Number.isInteger(due) && due >= 0 && due <= 10 ? due : 0;
+    if (workforce) {
+      const worked = sourceNumber(read, row, ["heures travaillees retenues (h)", "heures travaillees (h)"], 24, 60);
+      const paid = sourceNumber(read, row, ["heures remunerees (h)", "heures payees (h)"], 24, 60);
+      const premiums = sourcePremiums(read, row, detail.header);
+      const paidBreak = sourceNumber(read, row, ["pause remuneree (h)", "pause deduite pour la paie (h)"], 24, 60);
+      if (hasPlanningEvidence || worked !== null || paid !== null || Object.keys(premiums).length) {
+        person.history.push({ ...range, date, row: rowNumber, position, planned: hasPlanningEvidence,
+          breakMinutes, worked, paid, paidBreak, premiums,
+          late: sourceNumber(read, row, ["retard (h)"], 24, 60),
+          mealsDue: Number.isInteger(due) && due >= 0 && due <= 10 ? due : null,
+          mealsTaken: Number.isInteger(taken) && taken >= 0 && taken <= 10 ? taken : null });
+        if (!hasPlanningEvidence) note("Heures source reprises, horaire planifié non confirmé dans la Fiche employés", rowNumber);
+      }
+    }
     if (!hasPlanningEvidence) {
-      note("Horaire présent dans Détails uniquement, absent du Détail Planning", rowNumber, true);
+      if (!workforce || person.history.at(-1)?.row !== rowNumber) {
+        note("Horaire présent dans Détails uniquement, absent du Détail Planning", rowNumber, true);
+      }
       if (date < monthly.from || date > monthly.to) {
         reportCandidates.push({ reason: "outsideMonthlyPlanning", order: person.order, date, row: rowNumber, ...range, breakMinutes, position,
           taken: Number.isInteger(taken) && taken >= 0 && taken <= 10 ? taken : null });
@@ -353,7 +424,7 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
     }
     person.shifts = person.shifts.filter((shift) => {
       if (ignored.has(shift.sourceRow)) {
-        note("Créneau écarté avec les autres créneaux qui le chevauchent", shift.sourceRow, true);
+        if (!workforce) note("Créneau écarté avec les autres créneaux qui le chevauchent", shift.sourceRow, true);
         if (!shift.absenceType) {
           const { date, start, end, breakMinutes, position, taken } = shift;
           reportCandidates.push({ reason: "overlap", order: person.order, date, row: shift.sourceRow, start, end, breakMinutes, position,
@@ -407,7 +478,7 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
       if (!present(balance.read(row, "prenom"))) continue;
       const person = findPerson(balance.read, row);
       const values = leaveValues(balance.read, row);
-      if (!person || !values || already.has(person.order)) {
+      if (!person || !values || !Object.values(values).some((value) => value != null) || already.has(person.order)) {
         note("Solde de congés non rapproché ou incompatible");
         continue;
       }
@@ -417,7 +488,7 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
     }
   }
   for (const person of people) delete person.source;
-  if (!counts.shifts && !counts.absences) throw new SkelloImportError("Aucune donnée de planning détaillée exploitable pour cette période.");
+  if (!workforce && !counts.shifts && !counts.absences) throw new SkelloImportError("Aucune donnée de planning détaillée exploitable pour cette période.");
   return { people, reportCandidates, preview: {
     sheets: [
       { name: "Synthèse datée", rows: roster.rows.length },
@@ -430,7 +501,12 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
     sourceTotals: Object.fromEntries(Object.entries(sourceTotals).map(([name, value]) => [name, rounded(value)])),
     monthlyTotals: Object.fromEntries(Object.entries(monthlyTotals).map(([name, value]) => [name, rounded(value)])),
     shiftTotals,
-    unsupported: [
+    unsupported: workforce ? [
+      "Badgeuse et signatures Gusto : le rapport mensuel ne contient pas les événements natifs. Les heures rémunérées sont reprises uniquement si elles sont chiffrées explicitement.",
+      "Les ventilations de synthèse restent attachées à la période source. Une valeur absente ne peut pas être déduite de la synthèse.",
+      "Les absences sont reprises depuis Détails. L’onglet Absences Employés sert au contrôle, pour éviter les doublons.",
+      "Avenants non datés, notes, coordonnées, justificatifs, taux non identifiés et montants sans colonne reconnue.",
+    ] : [
       "Badgeuse : arrivées, départs, pauses badgées, horaires payés et corrections séparées.",
       "Synthèses, majorations et indemnités calculées : conservées pour comparaison seulement.",
       "Absences Employés : les absences détaillées viennent de Détails, pour éviter un double comptage.",
@@ -440,4 +516,4 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks") {
   } };
 }
 
-module.exports = { SkelloImportError, analyzeSkelloWorkbook };
+module.exports = { SkelloImportError, analyzeSkelloWorkbook, normalizeSkelloIdentity: key, premiumLabel };

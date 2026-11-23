@@ -9,6 +9,7 @@ const schema = new mongoose.Schema({
     "hoursRules", "clockRules", "absenceRules", "amendment", "hoursEntry", "annual", "historicalWork", "historicalLate"], required: true },
   date: { type: String, required: true },
   values: { type: mongoose.Schema.Types.Mixed, required: true },
+  source: { type: String, enum: ["skello"] },
   revision: { type: Number, required: true },
   updatedBy: { type: String, required: true },
 }, { timestamps: true });

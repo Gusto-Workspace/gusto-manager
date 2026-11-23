@@ -124,6 +124,7 @@ function buildSummary(report) {
     { ...groups.get("absence"), columns: [...groups.get("absence").columns, ...report.absenceDetailColumns
       .filter(({ key }) => !groups.get("absence").columns.some((col) => col.key === key))] },
     ...(groups.has("annual") ? [groups.get("annual")] : []),
+    ...(groups.has("skello") ? [groups.get("skello")] : []),
   ];
   const columns = sections.flatMap(({ columns }) => columns);
   const groupNames = [];
@@ -177,9 +178,11 @@ function appendEmployeeSheet(sheet, report, item, items, premiums, specialHeader
     "Avenants (Type)", "Avenants (Heures en +)"];
   const compensation = ["Primes (€)", "Description des Primes", "Avances (€)", "Description des Avances",
     mealCostLabel(report), "Repas Dûs", "Avantages Nature", "Indemnités Compensatrices", "Coût Transport Employeur (€)"];
+  const imported = report.groups.find(({ id }) => id === "skello");
   const segments = [["Détail Planning", detailColumns.slice(0, 11)], ["Heures Planning Période", detailColumns.slice(11)],
     ["Total Heures Sup/Comp Majorées Période", premiums.map(({ label }) => label)],
-    ["Autres Heures Majorées ou Compensées", specialHeaders], ["Éléments de Rémunération", compensation]];
+    ["Autres Heures Majorées ou Compensées", specialHeaders], ["Éléments de Rémunération", compensation],
+    ...(imported ? [[imported.label, imported.columns.map(({ label }) => label)]] : [])];
   sheet.rows.push(line([]), title(`${employee.firstname} ${employee.lastname}`.trim()));
   const group = [];
   let offset = 1;
@@ -198,7 +201,8 @@ function appendEmployeeSheet(sheet, report, item, items, premiums, specialHeader
     null, null, null, null, null, ...premiums.map(({ key }) => cell(values[key], "minutes")),
     ...["holidays", "night", "sunday"].map((key) => cell(values[key], "minutes")),
     numberCell(values.bonus), values.bonusLabel, numberCell(values.advance), values.advanceLabel, numberCell(values.mealCost),
-    numberCell(values.mealsDue), numberCell(values.benefits), numberCell(values.compensation), numberCell(values.transport)));
+    numberCell(values.mealsDue), numberCell(values.benefits), numberCell(values.compensation), numberCell(values.transport),
+    ...(imported?.columns.map(({ key, type }) => cell(values[key], type)) || [])));
   for (const week of report.weeks) {
     const hours = weeklyHours[week.key];
     const weekItems = items.filter(({ date }) => date >= week.from && date <= week.to);
@@ -226,11 +230,15 @@ function buildDetails(report) {
     "Début", "Fin", "Pause (h)", "Retard (h)", "Note", "Heures Travaillées (h)", "Jours Travaillés (j)",
     "Absences indemnisées par l’employeur (h)", "Absences indemnisées par un tiers (h)", "Absences non indemnisées (h)",
     "Avenant (Type)", "Avenant (h en+/-)", ...specialHeaders, mealCostLabel(report), "Avantages Nature", "Repas Dûs"];
+  const hasSkello = report.rows.some((row) => row.days?.some((day) => day.sourceServices?.length) ||
+    row.absences?.some((absence) => absence.note === "Absence historique (Skello)"));
+  if (hasSkello) detailHeaders.push("Source", "Heures travaillées Skello (h)", "Heures rémunérées Skello (h)", "Pause rémunérée Skello (h)");
   const rows = [header(detailHeaders)];
   const employeeSheet = { name: "Fiche employés", rows: [title("Fiche employés", report.restaurant)], widths: [25], merges: [], freeze: 1 };
   const hasHistoricalLate = report.rows.some((item) => item.tardiness?.some(({ source }) => source === "skello"));
   const absenceHeaders = ["Nom", "Prénom", "Matricule de paie", "Type absence", "Date de début", "Date de fin", "Nb heures", "Nb jours"];
   if (hasHistoricalLate) absenceHeaders.push("Source du retard");
+  if (hasSkello) absenceHeaders.push("Source de l’absence");
   const absenceRows = [header(absenceHeaders)];
   const hours = (value) => cell(value, "minutes");
   const week = (date) => numberCell(DateTime.fromISO(date, { zone: ZONE }).weekNumber);
@@ -240,7 +248,7 @@ function buildDetails(report) {
     const items = [];
     const lateByShift = new Map((item.tardiness || []).map((record) => [record.shiftId, record]));
     const displayedLate = new Set();
-    const collect = ({ date, type, subject, start, end, pause, note, worked, workedDay, late, payer, absenceMinutes, amendment, change, premium, meal, volume }) => {
+    const collect = ({ date, type, subject, start, end, pause, note, worked, workedDay, late, payer, absenceMinutes, amendment, change, premium, meal, volume, source }) => {
       items.push({ date, start, cells: [employee.firstname, employee.lastname, values.payrollCode,
         values.contractType, numberCell(volume ?? values.weeklyHours ?? values.monthlyHours),
         volume || values.weeklyHours ? "h / semaine" : values.monthlyHours ? "h / mois" : null,
@@ -248,37 +256,45 @@ function buildDetails(report) {
         timeCell(start), timeCell(end), hours(pause), hours(late), note, hours(worked), numberCell(workedDay),
         ...["employer", "thirdParty", "unpaid"].map((value) => payer === value ? hours(absenceMinutes) : null),
         amendment, numberCell(change), hours(premium?.holidays), hours(dateInRange(date, report) ? premium?.night : null), hours(premium?.sunday),
-        numberCell(meal?.cost), numberCell(meal?.taken), numberCell(meal?.basis === "monthly" ? meal?.protectedMeals : meal?.due)] });
+        numberCell(meal?.cost), numberCell(meal?.taken), numberCell(meal?.basis === "monthly" ? meal?.protectedMeals : meal?.due),
+        ...(hasSkello ? [source ? "Historique Skello" : null, hours(source?.worked), hours(source?.paid), hours(source?.paidBreak)] : [])] });
     };
     const mealsByDate = new Map((item.detailMeals || item.mealDays || []).filter((meal) => meal.due || meal.taken != null).map((meal) => [meal.date, meal]));
     for (const day of item.days || []) {
-      const worked = day.effective ?? day.shifts.filter((shift) => !shift.absenceValidated).map((shift) => ({ id: shift.id,
-        timings: { startAt: shift.start, endAt: shift.end, breakMinutes: shift.breakMinutes, workedMinutes: shift.plannedMinutes } }));
+      const worked = [...(day.effective ?? day.shifts.filter((shift) => !shift.absenceValidated).map((shift) => ({ id: shift.id,
+        timings: { startAt: shift.start, endAt: shift.end, breakMinutes: shift.breakMinutes, workedMinutes: shift.plannedMinutes } })))];
+      for (const service of day.sourceServices || []) {
+        if (!worked.some(({ id }) => id === service.id)) worked.push({ id: service.id, timings: { startAt: service.start,
+          endAt: service.end, breakMinutes: service.breakMinutes, workedMinutes: service.worked ?? service.paid ?? service.plannedMinutes } });
+      }
       worked.forEach(({ id, timings, note }, index) => {
         const session = day.sessions.find((entry) => entry.id === id);
         const shift = day.shifts.find((entry) => entry.id === (session?.shiftId || id));
-        const record = lateByShift.get(shift?.id);
+        const source = day.sourceServices?.find((item) => item.id === id);
+        const record = lateByShift.get(shift?.id || id);
         const lateness = record?.date === day.date && !displayedLate.has(record.shiftId) ? record : null;
         if (lateness) displayedLate.add(lateness.shiftId);
-        const details = [note?.text || shift?.note?.text, lateness?.source === "skello" && "Retard historique (Skello)"]
+        const details = [note?.text || shift?.note?.text, source && "Service historique (Skello)", lateness?.source === "skello" && "Retard historique (Skello)"]
           .filter(Boolean).join(" · ");
-        collect({ date: day.date, type: "Travail", subject: shift?.position || employee.post,
+        collect({ date: day.date, type: "Travail", subject: source?.position || shift?.position || employee.post,
           start: timings.startAt, end: timings.endAt, pause: timings.breakMinutes, late: lateness?.minutes,
           note: details, worked: timings.workedMinutes, workedDay: 1 / worked.length,
           premium: day.premium?.shiftPremiums?.[id],
-          meal: index === worked.length - 1 ? mealsByDate.get(day.date) : null, volume: day.volume });
+          meal: index === worked.length - 1 ? mealsByDate.get(day.date) : null, volume: day.volume, source });
       });
       if (worked.length) mealsByDate.delete(day.date);
     }
     for (const absence of item.scheduleAbsences || item.absences || []) {
       const meal = mealsByDate.get(absence.startDate);
       collect({ date: absence.startDate, type: "Absence", subject: absence.label, start: absence.start,
-        end: absence.end, note: absence.note, payer: absence.payer, absenceMinutes: absence.payrollMinutes, meal });
+        end: absence.end, note: absence.note, payer: absence.payer, absenceMinutes: absence.payrollMinutes, meal,
+        source: absence.note === "Absence historique (Skello)" ? {} : null });
       if (meal) mealsByDate.delete(absence.startDate);
     }
     for (const absence of absenceSummary(item.absences || [])) {
       absenceRows.push(line([employee.lastname, employee.firstname, values.payrollCode, absence.label,
-        dateCell(absence.startDate), dateCell(absence.endDate), hours(absence.payrollMinutes ?? absence.minutes), numberCell(absence.days)]));
+        dateCell(absence.startDate), dateCell(absence.endDate), hours(absence.payrollMinutes ?? absence.minutes), numberCell(absence.days),
+        ...(hasHistoricalLate ? [null] : []), ...(hasSkello ? [absence.note === "Absence historique (Skello)" ? "Historique Skello" : null] : [])]));
     }
     for (const { date, minutes, source } of lateByShift.values()) {
       if (!minutes || !dateInRange(date, report)) continue;
@@ -308,7 +324,7 @@ function buildDetails(report) {
   return [
     employeeSheet,
     { name: "Détails", rows, widths, freeze: 1, filter: `A1:${columnNumberToLetters(detailHeaders.length)}${rows.length}` },
-    { name: "Absences Employés", rows: absenceRows, widths: [25, 23, 19, 28, 17, 17, 13, 13, ...(hasHistoricalLate ? [22] : [])],
+    { name: "Absences Employés", rows: absenceRows, widths: [25, 23, 19, 28, 17, 17, 13, 13, ...(hasHistoricalLate ? [22] : []), ...(hasSkello ? [22] : [])],
       freeze: 1, filter: `A1:${columnNumberToLetters(absenceHeaders.length)}${absenceRows.length}` },
   ];
 }
@@ -316,7 +332,7 @@ function buildDetails(report) {
 function buildLeaveBalance(report) {
   const columns = ["Nom", "Prénom", "Matricule de paie", "N-1 : Congés payés acquis", "N-1 : Congés payés posés",
     "N-1 : Solde de congés payés", "N : Congés payés acquis", "N : Congés payés posés", "N : Solde des congés payés", "Congés disponibles", "Congés futurs planifiés", "Source du solde"];
-  const statuses = { automatic: "Calcul automatique", needsOpening: "Solde d’ouverture requis", missingContract: "Date de prise de poste manquante", unknownDuration: "Durée d’absence à compléter" };
+  const statuses = { automatic: "Calcul automatique", needsOpening: "Solde d’ouverture requis", missingContract: "Date de prise de poste manquante", unknownDuration: "Durée d’absence à compléter", skello: "Historique Skello" };
   return {
     name: "Solde Congés",
     widths: columns.map((label) => Math.max(17, label.length + 2)),

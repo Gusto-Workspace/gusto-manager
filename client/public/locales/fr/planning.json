@@ -3,7 +3,8 @@
     "toggle": "Compteurs",
     "loading": "Chargement des compteurs…",
     "error": "Impossible de charger les compteurs.",
-    "empty": "Aucun solde d’heures ni reste annuel disponible pour les salariés affichés sur cette période.",
+    "help": "Un solde positif indique des heures au-dessus de l’objectif suivi, un solde négatif des heures en dessous. Le reste annuel indique les heures restant à réaliser sur le cycle.",
+    "unavailable": "Calcul en attente",
     "balance": "Solde",
     "annual": "Reste annuel"
   },

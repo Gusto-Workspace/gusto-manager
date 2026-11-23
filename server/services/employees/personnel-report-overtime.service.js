@@ -239,11 +239,13 @@ function calculateOvertime({ days, absences, shifts, weeks, rules, contractMinut
     const weekDates = [];
     for (let day = DateTime.fromISO(week.from, { zone: ZONE }); day.toISODate() <= week.to; day = day.plus({ days: 1 })) weekDates.push(day);
     const weekdayOrder = [...(rule.weekdays || Array.from({ length: rule.workdays }, (_, index) => index + 1))].sort((a, b) => a - b);
-    const needsValidation = rule.source === "validated" && weekDates.some((day) => {
+    const payrollOverlap = rule.source !== "planning" && weekDates.some((day) =>
+      byDay.get(day.toISODate())?.payroll.some((item) => item.payrollOverlap));
+    const needsValidation = payrollOverlap || (rule.source === "validated" && weekDates.some((day) => {
       const date = day.toISODate();
       return planned.get(date)?.some(({ id }) => !matched.has(id)) ||
         byDay.get(date)?.sessions.some((item) => !item.review);
-    });
+    }));
     const ordinary = rule.enabled ? minutes(rule.ordinary) : Infinity;
     const bands = [[ordinary, minutes(rule.firstEnd), rule.firstRate],
       [minutes(rule.firstEnd), minutes(rule.secondEnd), rule.secondRate],
@@ -265,9 +267,10 @@ function calculateOvertime({ days, absences, shifts, weeks, rules, contractMinut
       const contractual = minutes(volume);
       const target = contractDayPortion(contractual, day.weekday, weekdayOrder);
       const fallback = weeklyPlanning.get(date) || [];
-      const real = byDay.get(date)?.payroll.filter((item) => item.validated && !item.absent) || [];
-      const items = rule.source === "planning" ? fallback : rule.source === "validated" ? real :
+      const real = byDay.get(date)?.payroll.filter((item) => item.validated && !item.absent && !item.payrollOverlap) || [];
+      const native = rule.source === "planning" ? fallback : rule.source === "validated" ? real :
         [...fallback.filter(({ id }) => !matched.has(id)), ...real];
+      const items = [...native, ...(byDay.get(date)?.sourceWork || [])];
       const worked = items.reduce((sum, item) => sum + item.timings.workedMinutes, 0);
       const daily = contractual / rule.workdays;
       const eligibleAbsences = absenceFractionsByDay(weekAbsences, { weekdays: weekdayOrder }, isHoliday, day, day, daily);
@@ -291,7 +294,7 @@ function calculateOvertime({ days, absences, shifts, weeks, rules, contractMinut
     const recoveryUsed = effectiveDays.reduce((sum, day) => sum + day.recoveryUsed, 0);
     const counterEffective = effectiveDays.reduce((sum, day) => sum + day.worked + day.credited +
       (rule.creditedAbsences.includes("compensatory_rest") ? 0 : day.recoveryUsed), 0);
-    const weekResult = { ...week, days: effectiveDays, complete, delta: complete ? counterEffective - target : null, recoveryUsed,
+    const weekResult = { ...week, days: effectiveDays, complete, payrollOverlap, delta: complete ? counterEffective - target : null, recoveryUsed,
       planningAttribution: rule.planningAttribution,
       exceptional: null, premiumBonus: 0 };
     weekData.push(weekResult);
