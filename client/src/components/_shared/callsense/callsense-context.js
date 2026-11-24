@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { isEmployeeDashboardRouteAllowed } from "../../../_assets/utils/dashboard-access";
 import { useRouter } from "next/router";
 import { GlobalContext } from "@/contexts/global.context";
 import { markCallsRead, mergeCalls } from "./callsense-read-state";
@@ -16,7 +17,13 @@ function comparablePhone(value) {
 export function CallSenseProvider({ children }) {
   const { restaurantContext: context } = useContext(GlobalContext);
   const router = useRouter();
-  const rid = context.restaurantData?._id;
+  const user = context.userConnected;
+  const restaurant = context.restaurantData;
+  const activeRestaurant = user?.restaurantId && String(user.restaurantId) === String(restaurant?._id);
+  const authorized = user?.role === "owner" || (user?.role === "employee" && activeRestaurant &&
+    isEmployeeDashboardRouteAllowed("/dashboard/customers", { restaurantData: restaurant, userConnected: user }));
+  const rid = context.isAuth && !context.dataLoading && authorized && router.pathname !== "/dashboard/my-space"
+    ? restaurant?._id : null;
   const ridRef = useRef(rid);
   ridRef.current = rid;
   const [calls, setCalls] = useState({});
@@ -170,5 +177,5 @@ export function CallSenseProvider({ children }) {
   const requestedId = typeof router.query.callId === "string" ? router.query.callId : "";
   useEffect(() => { if (requestedId && rid && context.isAuth && inScope) load(null, { callId: requestedId }); }, [requestedId, rid, context.isAuth, inScope, load]);
   const items = Object.values(calls).filter((call) => String(call.restaurantId) === String(rid)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.id).localeCompare(String(a.id)));
-  return <CallSenseContext.Provider value={{ enabled, testMode, available: enabled || testMode, availabilityRestaurantId, calls: items, highlightIds, highlightReadAt, popups, dismissed, dismiss: (id) => setDismissed((old) => ({ ...old, [id]: true })), unreadMissedCount, open, openHistory, closeHistory, loading, error, cursor, loadMore: () => cursor && load(cursor), reload: () => load(null, { first: true }) }}>{children}</CallSenseContext.Provider>;
+  return <CallSenseContext.Provider value={{ enabled: Boolean(rid && enabled), testMode: Boolean(rid && testMode), available: Boolean(rid && (enabled || testMode)), availabilityRestaurantId: rid && availabilityRestaurantId, calls: items, highlightIds, highlightReadAt, popups, dismissed, dismiss: (id) => setDismissed((old) => ({ ...old, [id]: true })), unreadMissedCount, open, openHistory, closeHistory, loading, error, cursor, loadMore: () => cursor && load(cursor), reload: () => load(null, { first: true }) }}>{children}</CallSenseContext.Provider>;
 }

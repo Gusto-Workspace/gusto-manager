@@ -15,7 +15,8 @@
     "download": "Télécharger",
     "addDocument": "Ajouter un document",
     "remove": "Retirer",
-    "understood": "Compris"
+    "understood": "Compris",
+    "viewTimeClock": "Voir les pointages"
   },
   "modale": {
     "titles": {
@@ -42,7 +43,9 @@
     "emergencyContact": "Contact d'urgence",
     "documents": "Documents",
     "uploadedDocuments": "Documents chargés",
-    "assignRights": "Droits d'accès"
+    "assignRights": "Droits d’accès",
+    "employeeProfile": "Fiche salarié",
+    "personalInformation": "Informations personnelles"
   },
   "documents": {
     "document": "Document",

@@ -1,8 +1,6 @@
 import { useContext } from "react";
 import Head from "next/head";
 
-// I18N
-import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // CONTEXT
@@ -14,21 +12,8 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import PlanningEmployeesComponent from "@/components/dashboard/employees/planning.employees.component";
 
-export default function PlanningEmployeePage(props) {
+export default function PlanningEmployeePage() {
   const { restaurantContext } = useContext(GlobalContext);
-
-  let title;
-  let description;
-
-  switch (i18n.language) {
-    case "en":
-      title = "Gusto Manager";
-      description = "";
-      break;
-    default:
-      title = "Gusto Manager";
-      description = "";
-  }
 
   if (!restaurantContext.isAuth) return null;
 
@@ -56,14 +41,14 @@ export default function PlanningEmployeePage(props) {
   return (
     <>
       <Head>
-        <title>{title}</title>
+        <title>Gusto Manager</title>
       </Head>
 
       <div>
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[88px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen min-w-0">
+          <main className="tablet:ml-[88px] bg-lightGrey text-darkBlue min-w-0 flex-1 p-3 mobile:p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -72,21 +57,19 @@ export default function PlanningEmployeePage(props) {
               restaurantData={restaurantContext.restaurantData}
             />
 
-            <hr className="opacity-20" />
-
             {!hasEmployeesModule ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
                 emptyText="Vous n'avez pas souscrit à cette option"
               />
-            ) : !employeeHasEmployeesAccess ? (
+            ) : !employeeHasEmployeesAccess || user?.role === "accountant" ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
               />
             ) : (
-              <PlanningEmployeesComponent />
+              <PlanningEmployeesComponent key={restaurant._id} />
             )}
-          </div>
+          </main>
         </div>
       </div>
     </>
@@ -96,7 +79,7 @@ export default function PlanningEmployeePage(props) {
 export async function getStaticProps({ locale }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common", "employees"])),
+      ...(await serverSideTranslations(locale, ["common", "employees", "planning"])),
     },
   };
 }

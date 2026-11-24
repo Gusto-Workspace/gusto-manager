@@ -1,592 +1,303 @@
-import { useRouter } from "next/router";
-import { useState, useContext, useMemo, useRef, useCallback } from "react";
+import Link from "next/link";
+import useDialogBackdrop from "../_shared/use-dialog-backdrop";
+import Image from "next/image";
+import { useContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { Archive, CalendarDays, ChevronRight, ClipboardList, Clock3, Plus, Search, UsersRound } from "lucide-react";
+import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
 import { GlobalContext } from "@/contexts/global.context";
-import { useTranslation } from "next-i18next";
-import { EmployeesSvg } from "../../_shared/_svgs/_index";
-import CardEmployeesComponent from "./card.employees.component";
-import ExportRangeModalComponent from "./export-range-modal.component";
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
+import { EmployeeErasure, RetainedEmployeeDocuments } from "./erasure.employees.component";
 import {
-  getAuthConfig,
-  openTimeClockInNewTab,
-} from "../time-clock/time-clock.utils";
+  applyRosterResponse, directoryPath, employeeDirectoryEntry, filterDirectory, normalizePersonnelSearch,
+} from "./employee-directory.utils.mjs";
 
-import {
-  Search,
-  X,
-  Calendar,
-  Plus,
-  Clock3,
-  Download,
-  Briefcase,
-} from "lucide-react";
+const emptyFilters = { search: "", post: "", account: "" };
+const control = "h-12 max-w-full rounded-2xl border border-darkBlue/10 bg-white/70 px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
+const action = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey";
+const headerAction = "inline-flex items-center gap-2 whitespace-nowrap rounded-2xl border px-3 py-2 text-sm font-semibold transition hover:bg-darkBlue/5 midTablet:px-4";
+const secondaryHeaderAction = `${headerAction} border-darkBlue/10 bg-white/70`;
+const headerIcon = "grid size-9 shrink-0 place-items-center rounded-full";
+const rowAction = "inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-darkBlue/15 bg-white hover:bg-lightGrey focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue";
+const headCell = "px-4 py-3 text-left text-xs font-semibold text-darkBlue/70 whitespace-nowrap";
+const cell = "px-4 py-3 text-sm";
 
-function pad2(value) {
-  return String(value).padStart(2, "0");
-}
-
-function getCurrentMonthRange() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-
-  return {
-    from: `${year}-${pad2(month + 1)}-01`,
-    to: `${year}-${pad2(month + 1)}-${pad2(lastDay)}`,
-  };
-}
-
-async function getExportErrorMessage(error, fallbackMessage) {
-  const responseData = error?.response?.data;
-
-  if (
-    typeof responseData?.message === "string" &&
-    responseData.message.trim()
-  ) {
-    return responseData.message;
-  }
-
-  if (responseData instanceof Blob) {
-    try {
-      const parsed = JSON.parse(await responseData.text());
-      if (typeof parsed?.message === "string" && parsed.message.trim()) {
-        return parsed.message;
-      }
-    } catch {}
-  }
-
-  return fallbackMessage;
-}
-
-function normalize(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-export default function ListEmployeesComponent() {
-  const { t } = useTranslation("employees");
-  const { restaurantContext } = useContext(GlobalContext);
-  const router = useRouter();
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [postFilter, setPostFilter] = useState("all");
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isLoadingDelete, setIsLoadingDelete] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [isHoursExportOpen, setIsHoursExportOpen] = useState(false);
-  const [isHoursExportLoading, setIsHoursExportLoading] = useState(false);
-  const [hoursExportError, setHoursExportError] = useState("");
-
-  const searchRef = useRef(null);
-
-  // filtered employees
-  const restaurantId = restaurantContext.restaurantData?._id;
-  const personnel = useMemo(
-    () => [
-      ...(restaurantContext.restaurantData?.employees || []),
-      ...(restaurantContext.restaurantData?.accountants || []),
-    ],
-    [
-      restaurantContext.restaurantData?.accountants,
-      restaurantContext.restaurantData?.employees,
-    ],
+export function EmployeeAvatar({ entry, large = false }) {
+  const image = entry.employee.profilePicture?.url;
+  return (
+    <span aria-hidden="true" className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-blue/10 font-semibold text-blue ${large ? "size-14 text-lg" : "size-9 text-xs"}`}>
+      {image ? <Image src={image} alt="" fill sizes={large ? "56px" : "36px"} className="object-cover" unoptimized />
+        : entry.initials || <UsersRound size={18} />}
+    </span>
   );
+}
 
-  const getSnapshotForRestaurant = useCallback(
-    (emp) => {
-      const profile =
-        (emp.restaurantProfiles || []).find(
-          (p) => String(p.restaurant) === String(restaurantId),
-        ) || null;
-      return profile?.snapshot || {};
-    },
-    [restaurantId],
-  );
-
-  const filtered = useMemo(() => {
-    const list = personnel;
-    const selectedPost = normalize(postFilter);
-    const hasSearch = Boolean(searchTerm.trim());
-
-    const norm = normalize(searchTerm);
-
-    return list.filter((e) => {
-      const snap = getSnapshotForRestaurant(e);
-      const firstname = snap.firstname ?? e.firstname ?? "";
-      const lastname = snap.lastname ?? e.lastname ?? "";
-      const post = snap.post ?? e.post ?? "";
-
-      const matchesSearch = hasSearch
-        ? normalize(`${firstname} ${lastname}`).includes(norm)
-        : true;
-      const matchesPost =
-        postFilter === "all" ? true : normalize(post) === selectedPost;
-
-      return matchesSearch && matchesPost;
-    });
-  }, [searchTerm, postFilter, getSnapshotForRestaurant, personnel]);
-
-  const postOptions = useMemo(() => {
-    const map = new Map();
-    personnel.forEach((employee) => {
-      if (employee.accountType === "accountant") return;
-      const snapshot = getSnapshotForRestaurant(employee);
-      const post = String(snapshot.post ?? employee.post ?? "").trim();
-      if (!post) return;
-      map.set(normalize(post), post);
-    });
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "fr"));
-  }, [getSnapshotForRestaurant, personnel]);
-
-  const exportEmployees = useMemo(() => {
-    return personnel
-      .filter((employee) => employee.accountType !== "accountant")
-      .map((employee) => {
-        const snapshot = getSnapshotForRestaurant(employee);
-        const firstname = snapshot.firstname ?? employee.firstname ?? "";
-        const lastname = snapshot.lastname ?? employee.lastname ?? "";
-        const post = snapshot.post ?? employee.post ?? "";
-
-        return {
-          id: employee._id,
-          label: `${firstname} ${lastname}`.trim(),
-          subtitle: post || "Poste non renseigné",
-        };
+function ArchivedEmployees({ restaurantId, rosterSize, canReactivate, canErase, updateRestaurant }) {
+  const [open, setOpen] = useState(false);
+  const [employees, setEmployees] = useState(null);
+  const [historical, setHistorical] = useState([]);
+  const [erasing, setErasing] = useState(null);
+  const [retained, setRetained] = useState(null);
+  const [refresh, setRefresh] = useState(0);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/archived`;
+  useEffect(() => {
+    if (!open) return undefined;
+    const controller = new AbortController();
+    setError("");
+    axios.get(endpoint, { signal: controller.signal })
+      .then(({ data }) => {
+        setEmployees(data.employees);
+        setHistorical(data.historical || []);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError(failure.response?.data?.message || "Impossible de charger les archives.");
       });
-  }, [getSnapshotForRestaurant, personnel]);
+    return () => controller.abort();
+  }, [endpoint, open, rosterSize, refresh]);
 
-  const defaultExportRange = useMemo(() => getCurrentMonthRange(), []);
-  const totalEmployees = personnel.length;
-
-  const handleSearchChange = (e) => setSearchTerm(e.target.value);
-
-  const clearSearch = () => {
-    setSearchTerm("");
-    searchRef.current?.focus?.();
-  };
-
-  const handleDeleteClick = (emp) => {
-    setSelectedEmployee(emp);
-    setIsDeleting(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!selectedEmployee) return;
-    setIsLoadingDelete(true);
+  async function reactivate(id) {
+    setBusy(id);
+    setError("");
     try {
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantContext.restaurantData._id}/employees/${selectedEmployee._id}`;
-      const response = await axios.delete(url);
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-    } catch (err) {
-      console.error("Error deleting employee:", err);
+      const { data } = await axios.post(`${endpoint}/${id}/reactivate`);
+      updateRestaurant((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
+      setEmployees((previous) => previous.filter((employee) => employee.id !== id));
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible de réactiver ce membre.");
     } finally {
-      setIsLoadingDelete(false);
-      setIsDeleting(false);
-      setSelectedEmployee(null);
-    }
-  };
-
-  async function handleExportHours(payload) {
-    if (!restaurantId) return;
-
-    setIsHoursExportLoading(true);
-    setHoursExportError("");
-
-    try {
-      const format = payload?.format === "excel" ? "excel" : "pdf";
-      const endpoint = format === "excel" ? "excel" : "pdf";
-      const extension = format === "excel" ? "xlsx" : "pdf";
-      const fallbackMimeType =
-        format === "excel"
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          : "application/pdf";
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/time-clock/export/${endpoint}`,
-        payload,
-        {
-          ...getAuthConfig(),
-          responseType: "blob",
-        },
-      );
-
-      const blob = new Blob([response.data], {
-        type: response.headers?.["content-type"] || fallbackMimeType,
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `heures-salaries-${payload.from}-au-${payload.to}.${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      setIsHoursExportOpen(false);
-    } catch (error) {
-      console.error("Erreur export heures salariés :", error);
-      setHoursExportError(
-        await getExportErrorMessage(
-          error,
-          `Impossible de generer l'export ${
-            payload?.format === "excel" ? "Excel" : "PDF"
-          } pour le moment.`,
-        ),
-      );
-    } finally {
-      setIsHoursExportLoading(false);
+      setBusy(null);
     }
   }
 
   return (
-    <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
+    <details className="rounded-xl border border-darkBlue/10 bg-white p-4" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer font-semibold">Membres archivés</summary>
+      {open && <div className="mt-3 text-sm">
+        {error && <p role="alert" className="text-red">{error}</p>}
+        {!employees && !error && <p role="status">Chargement des archives…</p>}
+        {employees?.length === 0 && <p>Aucun membre archivé dans cet établissement.</p>}
+        {employees?.length > 0 && <ul className="divide-y divide-darkBlue/10">
+          {employees.map(({ id, firstname, lastname, archivedAt }) => (
+            <li key={id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span>{firstname} {lastname} · {new Date(archivedAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}</span>
+              {canReactivate && <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={Boolean(busy)} className={action}
+                  aria-label={`Réactiver ${firstname} ${lastname}`} onClick={() => reactivate(id)}>
+                  {busy === id ? "Réactivation…" : "Réactiver"}
+                </button>
+                {canErase && <button type="button" disabled={Boolean(busy)} className={`${action} text-red`}
+                  onClick={() => setErasing({ id, firstname, lastname })}>Supprimer le profil opérationnel</button>}
+              </div>}
+            </li>
+          ))}
+        </ul>}
+        {canReactivate && employees?.length > 0 && <p className="mt-2 text-darkBlue/70">La réactivation restaure le rattachement. Les droits du membre doivent être attribués à nouveau.</p>}
+        {historical.length > 0 && <details className="mt-4 border-t border-darkBlue/10 pt-3">
+          <summary className="cursor-pointer font-semibold">Archives RH sécurisées</summary>
+          <ul className="mt-2 grid gap-2">
+            {historical.map(({ id, firstname, lastname, retainedDocuments }) => <li key={id} className="flex flex-wrap items-center justify-between gap-2">
+              <span>{firstname} {lastname}</span>
+              {retainedDocuments > 0 && <button type="button" className={action} onClick={() => setRetained(id)}>Justificatifs conservés ({retainedDocuments})</button>}
+            </li>)}
+          </ul>
+        </details>}
+      </div>}
+      {erasing && <EmployeeErasure endpoint={`${endpoint}/${erasing.id}/erasure`} member={erasing}
+        onErased={() => setRefresh((value) => value + 1)} onClose={() => setErasing(null)} />}
+      {retained && <RetainedEmployeeDocuments endpoint={`${endpoint.replace(/\/archived$/, "")}/${retained}/documents`}
+        onClose={() => setRetained(null)} />}
+    </details>
+  );
+}
 
-      {/* Header + actions */}
-      <div className="flex flex-col gap-4">
+export default function ListEmployeesComponent() {
+  const { restaurantContext } = useContext(GlobalContext);
+  const { restaurantData: restaurant, setRestaurantData, userConnected } = restaurantContext;
+  const restaurantId = restaurant._id;
+  const storageKey = `gusto:employee-directory:${userConnected.id}:${restaurantId}`;
+  const [filters, setFilters] = useState(emptyFilters);
+  const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const removalDialog = useRef(null);
+  const backdrop = useDialogBackdrop(() => { if (!busy) setSelected(null); });
+
+  useEffect(() => {
+    const dialog = removalDialog.current;
+    if (!selected) return undefined;
+    dialog.showModal();
+    return () => dialog.close();
+  }, [selected]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey));
+      if (saved) {
+        const { search = "", post = "", account = "" } = saved;
+        setFilters({ search, post, account });
+      }
+    } catch {
+      // Filters remain available for the current visit.
+    }
+  }, [storageKey]);
+
+  function updateFilters(next) {
+    setFilters(next);
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // Keep filtering if browser storage is unavailable.
+    }
+  }
+
+  const entries = [...(restaurant.employees || []), ...(restaurant.accountants || [])]
+    .map((employee) => employeeDirectoryEntry(employee, restaurantId))
+    .sort((a, b) => a.lastname.localeCompare(b.lastname, "fr", { sensitivity: "base" }) ||
+      a.firstname.localeCompare(b.firstname, "fr", { sensitivity: "base" }));
+  const posts = [...new Map(entries.filter((entry) => entry.post && entry.accountType === "employee")
+    .map((entry) => [normalizePersonnelSearch(entry.post), entry.post]))]
+    .sort(([, a], [, b]) => a.localeCompare(b, "fr"));
+  const visible = filterDirectory(entries, filters);
+  const filtered = Object.values(filters).some(Boolean);
+
+  async function removeEmployee() {
+    setBusy(true);
+    setError("");
+    try {
+      const { data } = await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${selected.id}`);
+      setRestaurantData((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
+      setSelected(null);
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible d’archiver ce membre.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="grid min-w-0 gap-4">
+      <header>
         <CatalogHeaderDashboardComponent
-          icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
-          title={t("employees:titles.main")}
-          subtitle={`${totalEmployees} membre${totalEmployees > 1 || totalEmployees === 0 ? "s" : ""}`}
+          icon={<span aria-hidden="true"><EmployeesSvg width={30} height={30} fillColor="#131E3690" /></span>}
+          title="Gestion du personnel"
+          subtitle={<span role="status">{visible.length}{filtered ? ` sur ${entries.length}` : ""} {entries.length === 1 ? "membre" : "membres"}</span>}
           actions={
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setHoursExportError("");
-                  setIsHoursExportOpen(true);
-                }}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Télécharger les heures"
-                title="Télécharger les heures"
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                  <Download className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  Télécharger les heures
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openTimeClockInNewTab}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label="Ouvrir la pointeuse"
-                title="Ouvrir la pointeuse"
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                  <Clock3 className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">Ouvrir la pointeuse</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/employees/planning")}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-2 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-                aria-label={t("buttons.planning")}
-                title={t("buttons.planning")}
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-                  <Calendar className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  {t("buttons.planning")}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/employees/add")}
-                className="hidden midTablet:inline-flex items-center gap-2 rounded-2xl border border-blue bg-white px-4 py-2 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
-                aria-label={t("buttons.addEmployee")}
-                title={t("buttons.addEmployee")}
-              >
-                <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
-                  <Plus className="size-4" />
-                </span>
-                <span className="whitespace-nowrap">
-                  {t("buttons.addEmployee")}
-                </span>
-              </button>
-            </>
+            <nav aria-label="Gestion du personnel" className="flex flex-wrap gap-1">
+              <Link href={`${directoryPath}/time-clock`} className={secondaryHeaderAction}>
+                <span className={`${headerIcon} bg-blue/15 text-blue`}><Clock3 size={16} aria-hidden="true" /></span>
+                Pointeuse
+              </Link>
+              <Link href={`${directoryPath}/planning`} className={secondaryHeaderAction}>
+                <span className={`${headerIcon} bg-violet text-white`}><CalendarDays size={16} aria-hidden="true" /></span>
+                Planning
+              </Link>
+              <Link href={`${directoryPath}/reports`} className={secondaryHeaderAction}>
+                <span className={`${headerIcon} bg-blue/15 text-blue`}><ClipboardList size={16} aria-hidden="true" /></span>
+                Rapport
+              </Link>
+              <Link href={`${directoryPath}/add`} className={`${headerAction} border-blue bg-white text-blue shadow-sm`}>
+                <span className={`${headerIcon} bg-blue/15`}><Plus size={16} aria-hidden="true" /></span>
+                Ajouter un employé
+              </Link>
+            </nav>
           }
         />
+      </header>
 
-        {/* Mobile webapp actions row */}
-        <div className="grid grid-cols-2 gap-2 midTablet:hidden">
-          <button
-            type="button"
-            onClick={() => {
-              setHoursExportError("");
-              setIsHoursExportOpen(true);
-            }}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Télécharger les heures"
-            title="Télécharger les heures"
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
-              <Download className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              Télécharger les heures
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openTimeClockInNewTab}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label="Ouvrir la pointeuse"
-            title="Ouvrir la pointeuse"
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15 text-blue">
-              <Clock3 className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">Ouvrir la pointeuse</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/employees/planning")}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70 px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5"
-            aria-label={t("buttons.planning")}
-            title={t("buttons.planning")}
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-violet text-white">
-              <Calendar className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              {t("buttons.planning")}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/employees/add")}
-            className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-blue bg-white px-3 py-3 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]"
-            aria-label={t("buttons.addEmployee")}
-            title={t("buttons.addEmployee")}
-          >
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-blue/15">
-              <Plus className="size-4" />
-            </span>
-            <span className="min-w-0 leading-tight">
-              {t("buttons.addEmployee")}
-            </span>
-          </button>
-        </div>
-
-        {/* Search + post filter */}
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(150px,240px)] gap-2">
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <input
-              ref={searchRef}
-              type="text"
-              inputMode="search"
-              placeholder={t(
-                "placeholders.searchEmployee",
-                "Rechercher un employé",
-              )}
-              value={searchTerm}
-              onChange={handleSearchChange}
-              className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-                searchTerm ? "pr-12" : "pr-4"
-              } pl-9 text-base`}
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-2 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white transition hover:bg-darkBlue/5"
-                aria-label={t("buttons.clear", "Effacer")}
-                title={t("buttons.clear", "Effacer")}
-              >
-                <X className="size-4 text-darkBlue/60" />
-              </button>
-            )}
-          </div>
-
-          <div className="relative min-w-0">
-            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-            <select
-              value={postFilter}
-              onChange={(e) => setPostFilter(e.target.value)}
-              className="h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 pl-9 pr-4 text-base text-darkBlue outline-none"
-              aria-label="Filtrer par poste"
-            >
-              <option value="all">Tous les postes</option>
-              {postOptions.map((post) => (
-                <option key={post} value={post}>
-                  {post}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-[min(100%,15rem)] flex-1">
+          <Search aria-hidden="true" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-darkBlue/40" />
+          <input type="search" aria-label="Rechercher un membre" placeholder="Nom, e-mail ou téléphone" value={filters.search}
+            onChange={(event) => updateFilters({ ...filters, search: event.target.value })} className={`${control} w-full pl-9`} />
+        </label>
+        <select className={control} aria-label="Filtrer par poste" value={filters.post} onChange={(event) => updateFilters({ ...filters, post: event.target.value })}>
+          <option value="">Tous les postes</option>
+          {posts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+        <select className={control} aria-label="Filtrer par type de compte" value={filters.account} onChange={(event) => updateFilters({ ...filters, account: event.target.value })}>
+          <option value="">Tous les types</option><option value="employee">Salariés</option><option value="accountant">Comptables</option>
+        </select>
+        {filtered && <button type="button" className={action} onClick={() => updateFilters(emptyFilters)}>Effacer les filtres</button>}
       </div>
 
-      {/* Grille d’employés */}
-      <div className="my-6 grid grid-cols-2 midTablet:grid-cols-3 tablet:grid-cols-3 desktop:grid-cols-4 ultraWild:grid-cols-4 gap-2 gap-y-8 midTablet:gap-4 midTablet:gap-y-8">
-        {filtered.map((emp) => (
-          <CardEmployeesComponent
-            key={emp._id}
-            employee={emp}
-            restaurantId={restaurantContext.restaurantData._id}
-            handleDeleteClick={handleDeleteClick}
-          />
-        ))}
+      <div className="min-w-0 rounded-xl border border-darkBlue/10 bg-white">
+        {visible.length ? (
+          <div className="overflow-x-auto rounded-xl" tabIndex={0} role="region" aria-label="Liste des membres">
+            <table className="w-full min-w-[720px] border-separate border-spacing-0">
+              <thead className="bg-[#f4f6fb]">
+                <tr>
+                  <th scope="col" className={headCell}>Nom et prénom</th>
+                  <th scope="col" className={headCell}>Poste</th>
+                  <th scope="col" className={headCell}>Contrat</th>
+                  <th scope="col" className={headCell}>Compte</th>
+                  <th scope="col" className={`${headCell} w-[30%]`}>Contact</th>
+                  <th scope="col" className={`${headCell} w-px`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((entry) => {
+                  const href = `${directoryPath}/${entry.id}`;
+                  return (
+                    <tr key={entry.id} className="hover:bg-lightGrey/70 [&>td]:border-t [&>td]:border-darkBlue/10">
+                      <td className={cell}>
+                        <Link href={href} className="inline-flex min-h-10 items-center gap-2.5 rounded font-semibold hover:text-blue">
+                          <EmployeeAvatar entry={entry} /><span className="min-w-24">{entry.name}</span>
+                        </Link>
+                      </td>
+                      <td className={cell}>{entry.post || "—"}</td>
+                      <td className={cell}>{entry.contract || "—"}</td>
+                      <td className={cell}>
+                        <span className="whitespace-nowrap rounded-md bg-blue/10 px-2 py-1 text-xs font-semibold text-blue">{entry.accountType === "accountant" ? "Comptable" : "Salarié"}</span>
+                        {!entry.email && <span className="mt-1 block whitespace-nowrap text-xs text-darkBlue/60">Sans e-mail</span>}
+                      </td>
+                      <td className={`${cell} max-w-0`}>
+                        <p className="truncate" title={entry.email || undefined}>{entry.email || "—"}</p>
+                        {entry.phone && <p className="mt-0.5 whitespace-nowrap text-xs text-darkBlue/65">{entry.phone}</p>}
+                      </td>
+                      <td className={cell}>
+                        <div className="inline-flex items-center gap-1">
+                          <Link href={href} aria-label={`Ouvrir la fiche de ${entry.name}`} className={rowAction}><ChevronRight size={17} aria-hidden="true" /></Link>
+                          <button type="button" aria-label={`Archiver ${entry.name} dans ce restaurant`} className={rowAction}
+                            onClick={() => { setError(""); setSelected(entry); }}><Archive size={15} aria-hidden="true" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="px-4 py-10 text-center text-sm text-darkBlue/70">
+            {entries.length ? "Aucun membre ne correspond à ces filtres." : "Aucun membre n’est rattaché à ce restaurant."}
+          </p>
+        )}
       </div>
 
-      {/* Confirmation de suppression */}
-      {isDeleting && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end midTablet:items-center justify-center p-3 midTablet:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-employee-title"
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && !isLoadingDelete) setIsDeleting(false);
-          }}
-        >
-          {/* Overlay */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isLoadingDelete) return;
-              setIsDeleting(false);
-            }}
-            className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
-            aria-label={t("buttons.close", "Fermer")}
-          />
+      <ArchivedEmployees key={restaurantId} restaurantId={restaurantId} rosterSize={entries.length}
+        canReactivate={userConnected.role === "owner"} canErase={userConnected.role === "owner" && userConnected.superAdmin !== true}
+        updateRestaurant={setRestaurantData} />
 
-          {/* Modal card */}
-          <div className="relative w-full max-w-[460px]">
-            <div className="rounded-3xl border border-darkBlue/10 bg-white/90 backdrop-blur shadow-[0_20px_60px_rgba(0,0,0,0.15)] overflow-hidden animate-[fadeInUp_.18s_ease-out]">
-              {/* Header */}
-              <div className="flex items-start justify-between gap-3 px-5 pt-5">
-                <div className="min-w-0">
-                  <h2
-                    id="delete-employee-title"
-                    className="text-lg font-semibold text-darkBlue"
-                  >
-                    {t("modale.titles.deleteEmployee")}
-                  </h2>
-                  <p className="mt-1 text-sm text-darkBlue/70">
-                    {t("modale.description.deleteEmployee")}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLoadingDelete) return;
-                    setIsDeleting(false);
-                  }}
-                  className="shrink-0 inline-flex items-center justify-center size-10 rounded-full border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-                  aria-label={t("buttons.close", "Fermer")}
-                  title={t("buttons.close", "Fermer")}
-                  disabled={isLoadingDelete}
-                >
-                  <span className="text-xl leading-none text-darkBlue/60">
-                    ×
-                  </span>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="px-5 pb-5">
-                <div className="mt-4 rounded-2xl border border-darkBlue/10 bg-white/70 px-4 py-3">
-                  <div className="text-sm text-darkBlue/70">
-                    <span className="font-medium text-darkBlue">
-                      {selectedEmployee?.firstname} {selectedEmployee?.lastname}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-darkBlue/50">
-                    {t(
-                      "modale.hint.deleteEmployee",
-                      "Cette action est définitive.",
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="mt-5 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isLoadingDelete) return;
-                      setIsDeleting(false);
-                    }}
-                    disabled={isLoadingDelete}
-                    className="flex-1 h-12 rounded-2xl border border-darkBlue/10 bg-white/70 text-darkBlue font-semibold hover:bg-darkBlue/5 transition disabled:opacity-60"
-                  >
-                    {t("buttons.cancel")}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={confirmDelete}
-                    disabled={isLoadingDelete}
-                    className="flex-1 h-12 rounded-2xl bg-red text-white font-semibold shadow-sm hover:bg-red/90 active:scale-[0.99] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
-                  >
-                    {isLoadingDelete ? (
-                      <>
-                        <span className="size-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                        <span>{t("buttons.loading")}</span>
-                      </>
-                    ) : (
-                      t("buttons.confirm")
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Small animation keyframes (Tailwind arbitrary) */}
-            <style jsx>{`
-              @keyframes fadeInUp {
-                from {
-                  opacity: 0;
-                  transform: translateY(10px);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateY(0);
-                }
-              }
-            `}</style>
+      <dialog ref={removalDialog}
+        aria-labelledby="employee-remove-title"
+        aria-describedby="employee-remove-description"
+        {...backdrop}
+        className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-5 text-darkBlue shadow-lg backdrop:bg-darkBlue/35"
+      >
+        {selected && <div className="grid gap-4">
+          <h2 id="employee-remove-title" className="text-balance text-center font-semibold">Archiver {selected.name} dans {restaurant.name} ?</h2>
+          <p id="employee-remove-description" className="text-balance text-center text-sm text-darkBlue/70">L’accès à cet établissement et le PIN de Pointeuse sont révoqués. Les données RH restent disponibles pour l’historique.</p>
+          {error && <p role="alert" className="text-sm text-red">{error}</p>}
+          <div className="flex flex-wrap justify-center gap-2">
+            <button type="button" disabled={busy} className={action} onClick={() => setSelected(null)}>Annuler</button>
+            <button type="button" disabled={busy} className="min-h-10 rounded-lg bg-red px-3 text-sm font-semibold text-white disabled:opacity-60" onClick={removeEmployee}>
+              {busy ? "Archivage en cours…" : "Archiver"}
+            </button>
           </div>
-        </div>
-      )}
-
-      <ExportRangeModalComponent
-        open={isHoursExportOpen}
-        title="Télécharger les heures des salariés"
-        description="Choisissez une periode, les salaries a inclure et le format d'export."
-        confirmLabel="Telecharger"
-        employees={exportEmployees}
-        initialFrom={defaultExportRange.from}
-        initialTo={defaultExportRange.to}
-        loading={isHoursExportLoading}
-        submitError={hoursExportError}
-        onClose={() => {
-          if (isHoursExportLoading) return;
-          setIsHoursExportOpen(false);
-          setHoursExportError("");
-        }}
-        onConfirm={handleExportHours}
-      />
+        </div>}
+      </dialog>
     </section>
   );
 }

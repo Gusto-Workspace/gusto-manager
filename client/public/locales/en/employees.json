@@ -15,7 +15,8 @@
     "download": "Download",
     "addDocument": "Add Document",
     "remove": "Remove",
-    "understood": "Understood"
+    "understood": "Understood",
+    "viewTimeClock": "View time entries"
   },
   "modale": {
     "titles": {
@@ -42,7 +43,9 @@
     "emergencyContact": "Emergency Contact",
     "documents": "Documents",
     "uploadedDocuments": "Uploaded Documents",
-    "assignRights": "Access Rights"
+    "assignRights": "Access Rights",
+    "employeeProfile": "Employee profile",
+    "personalInformation": "Personal information"
   },
   "documents": {
     "document": "Document",

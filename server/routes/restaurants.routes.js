@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
@@ -27,61 +28,27 @@ const {
   decorateRestaurantEmployees,
   sanitizeEmployeeForRestaurants,
 } = require("../services/employees/employee-serialization.service");
+const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("../services/employees/time-clock-pin.service");
 const {
   buildPublicReservationServiceBlockedRange,
 } = require("../services/reservations/reservation-service-closure.service");
 
-// Ajoute le restaurant dans employee.restaurants s'il n'y est pas déjà
-function ensureEmployeeRestaurantLink(employee, restaurantId) {
-  const idStr = String(restaurantId);
-  if (!Array.isArray(employee.restaurants)) {
-    employee.restaurants = [];
-  }
-  const alreadyLinked = employee.restaurants.some(
-    (rId) => String(rId) === idStr,
-  );
-  if (!alreadyLinked) {
-    employee.restaurants.push(restaurantId);
-  }
-}
-
-// Crée un profil "snapshot" pour ce restaurant si inexistant
-function getOrCreateRestaurantProfile(employee, restaurantId) {
-  const idStr = String(restaurantId);
-
-  if (!Array.isArray(employee.restaurantProfiles)) {
-    employee.restaurantProfiles = [];
-  }
-
-  let profile = employee.restaurantProfiles.find(
-    (p) => String(p.restaurant) === idStr,
-  );
-
-  if (!profile) {
-    profile = {
-      restaurant: restaurantId,
-      options: {},
-      documents: [],
-      shifts: [],
-      leaveRequests: [],
-      employment: {},
-      snapshot: {
-        firstname: employee.firstname || "",
-        lastname: employee.lastname || "",
-        email: employee.email || "",
-        phone: employee.phone || "",
-        secuNumber: employee.secuNumber || "",
-        address: employee.address || "",
-        emergencyContact: employee.emergencyContact || "",
-        post: employee.post || "",
-        dateOnPost: employee.dateOnPost || null,
-      },
-    };
-
-    employee.restaurantProfiles.push(profile);
-  }
-
-  return profile;
+// Build a new profile without hydrating or serializing the other profiles.
+function createRestaurantProfile(employee, restaurantId) {
+  return {
+    restaurant: restaurantId,
+    snapshot: {
+      firstname: employee.firstname || "",
+      lastname: employee.lastname || "",
+      email: employee.email || "",
+      phone: employee.phone || "",
+      secuNumber: employee.secuNumber || "",
+      address: employee.address || "",
+      emergencyContact: employee.emergencyContact || "",
+      post: employee.post || "",
+      dateOnPost: employee.dateOnPost || null,
+    },
+  };
 }
 
 // Trouve le profil de restaurant pour cet employé
@@ -183,6 +150,7 @@ router.post(
 
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   try {
     const { id } = req.params;
     const reservationsScope = req.query?.scope === "reservations";
@@ -517,9 +485,7 @@ router.get("/owner/employees", authenticateToken, async (req, res) => {
     })
       .select(
         `
-        accountType firstname lastname email phone secuNumber address emergencyContact
-        post dateOnPost profilePicture
-        restaurants restaurantProfiles
+        accountType firstname lastname email phone restaurants
       `,
       )
       .populate("restaurants", "name _id")
@@ -559,6 +525,9 @@ router.post(
       if (String(restaurant.owner_id) !== String(req.user.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      if (restaurant.options?.employees !== true || !mongoose.isValidObjectId(employeeId)) {
+        return res.status(400).json({ message: "Rattachement indisponible." });
+      }
 
       const employee = await EmployeeModel.findById(employeeId);
       if (!employee) {
@@ -577,19 +546,48 @@ router.post(
           .status(409)
           .json({ message: "Employee already in this restaurant" });
       }
-
-      // On lie l'employé à ce resto + on crée le profil pour ce resto au besoin
-      ensureEmployeeRestaurantLink(employee, restaurantId);
-      getOrCreateRestaurantProfile(employee, restaurantId);
-
-      await employee.save();
-
-      if (
-        !restaurant.employees.some((id) => String(id) === String(employee._id))
-      ) {
-        restaurant.employees.push(employee._id);
-        await restaurant.save();
+      const existingProfile = findRestaurantProfile(employee, restaurantId);
+      if (existingProfile?.archivedAt) {
+        return res.status(409).json({ message: "Réactivez ce membre depuis les archives de cet établissement." });
       }
+      const canLink = await RestaurantModel.exists({
+        _id: { $in: employee.restaurants },
+        owner_id: req.user.id,
+        employees: employee._id,
+      });
+      if (!canLink) return res.status(404).json({ message: "Compte à rattacher introuvable." });
+
+      const profile = existingProfile || {
+        ...createRestaurantProfile(employee, restaurantId),
+        _id: new mongoose.Types.ObjectId(),
+      };
+      const linked = await withClockPinTransaction(async (session) => {
+        const result = await EmployeeModel.updateOne(
+          {
+            _id: employee._id,
+            restaurants: { $ne: restaurantId },
+            __v: employee.__v ?? { $exists: false },
+          },
+          {
+            $addToSet: { restaurants: restaurantId },
+            $inc: { __v: 1 },
+            ...(!existingProfile && { $push: { restaurantProfiles: profile } }),
+          },
+          { session, runValidators: true },
+        );
+        if (!result.modifiedCount) return false;
+        await RestaurantModel.updateOne(
+          { _id: restaurantId }, { $addToSet: { employees: employee._id } }, { session },
+        );
+        if (employee.accountType !== "accountant") {
+          await provisionInitialClockPin({
+            restaurant: restaurantId, employee: employee._id, profile: String(profile._id || ""),
+            changedBy: String(req.user.id), session,
+          });
+        }
+        return true;
+      });
+      if (!linked) return res.status(409).json({ message: "Le rattachement du salarié a changé." });
 
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
@@ -604,7 +602,9 @@ router.post(
 
       return res.json({ restaurant: decoratedRestaurant });
     } catch (e) {
-      console.error("Error importing employee:", e);
+      const problem = clockPinWriteProblem(e);
+      if (problem) return res.status(409).json(problem);
+      console.error("Error importing employee", { code: e.code || e.name });
       return res.status(500).json({ message: "Internal server error" });
     }
   },

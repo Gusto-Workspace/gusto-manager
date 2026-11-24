@@ -1,5 +1,10 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const {
+  ABSENCE_TYPES,
+  ABSENCE_DURATIONS,
+} = require("../services/employees/planning-absence.service");
+const { MAX_SHIFT_NOTES, MAX_SHIFT_POST } = require("../services/employees/planning-shift.service");
 
 function normalizeShiftSourceValue(shift = {}) {
   if (shift?.leaveRequestId || shift?.isLeave === true) {
@@ -29,6 +34,7 @@ const optionsSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const { EMPLOYEE_DOCUMENT_CATEGORIES, EMPLOYEE_DOCUMENT_VISIBILITIES } = require("../services/employees/employee-documents.service");
 const documentSchema = new mongoose.Schema(
   {
     public_id: { type: String, required: true },
@@ -42,6 +48,11 @@ const documentSchema = new mongoose.Schema(
     format: { type: String, default: "" },
     filename: { type: String, required: true },
     title: { type: String, required: true },
+    category: { type: String, enum: EMPLOYEE_DOCUMENT_CATEGORIES },
+    visibility: { type: String, enum: EMPLOYEE_DOCUMENT_VISIBILITIES },
+    revision: { type: Number, min: 0 },
+    updatedAt: Date,
+    updatedBy: String,
     mimeType: { type: String, default: "application/octet-stream" },
     size: { type: Number, default: 0, min: 0 },
     uploadedAt: { type: Date, default: Date.now },
@@ -61,17 +72,25 @@ const documentSchema = new mongoose.Schema(
 function stripEmployeeDocumentsFromSerializedValue(_document, value) {
   for (const profile of value?.restaurantProfiles || []) {
     profile.documents = [];
+    if (Array.isArray(profile.shifts)) profile.shifts = profile.shifts.filter((shift) => !shift.requiresPlanningPublication);
+    delete profile.planningBatches;
+    delete profile.planningFiles;
+    delete profile.erasure;
   }
   delete value?.documents;
+  delete value?.rhArchiveIdentities;
   return value;
 }
 
 const shiftSchema = new mongoose.Schema({
+  requiresPlanningPublication: Boolean,
   title: { type: String, default: "" },
   start: { type: Date, required: true },
   end: { type: Date, required: true },
   isLeave: { type: Boolean, default: false },
   leaveRequestId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  absenceType: { type: String, enum: ABSENCE_TYPES, default: null },
+  absenceDuration: { type: String, enum: ABSENCE_DURATIONS, default: null },
   source: {
     type: String,
     enum: ["manual", "leave_request"],
@@ -79,6 +98,27 @@ const shiftSchema = new mongoose.Schema({
   },
   mealCount: { type: Number, default: 0, min: 0 },
   mealPeriods: { type: [String], default: [] },
+  breakMinutes: { type: Number, default: 0, min: 0, validate: Number.isInteger },
+  position: { type: String, default: null, trim: true, maxlength: MAX_SHIFT_POST },
+  notes: { type: String, default: "", maxlength: MAX_SHIFT_NOTES },
+  seriesId: { type: String, default: null },
+});
+
+const planningBatchSchema = new mongoose.Schema(
+  { key: String, signature: String },
+  { _id: false },
+);
+
+const planningFileSchema = new mongoose.Schema({
+  shiftId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  slot: { type: Number, min: 0, max: 5, required: true },
+  public_id: { type: String, required: true },
+  filename: { type: String, required: true },
+  format: { type: String, required: true },
+  mimeType: { type: String, required: true },
+  size: { type: Number, required: true },
+  resource_type: { type: String, enum: ["raw"], required: true },
+  delivery_type: { type: String, enum: ["authenticated"], required: true },
 });
 
 const leaveRequestSchema = new mongoose.Schema(
@@ -87,8 +127,21 @@ const leaveRequestSchema = new mongoose.Schema(
     end: { type: Date, required: true },
     type: {
       type: String,
-      enum: ["full", "morning", "afternoon"],
+      enum: ABSENCE_DURATIONS,
       default: "full",
+    },
+    absenceType: { type: String, enum: ABSENCE_TYPES, default: null },
+    note: { type: String, maxlength: 1000 },
+    history: {
+      type: [new mongoose.Schema({
+        action: { type: String, enum: ["edited", "decision"], required: true },
+        from: String,
+        to: String,
+        at: { type: Date, required: true },
+        actor: { id: String, name: String, role: String },
+        note: { type: String, maxlength: 1000 },
+      }, { _id: false })],
+      default: undefined,
     },
     status: {
       type: String,
@@ -145,9 +198,30 @@ const restaurantProfileSchema = new mongoose.Schema(
       ref: "Restaurant",
       required: true,
     },
+    archivedAt: Date,
+    skelloPayrollCode: { type: String, select: false },
+    erasure: {
+      at: Date,
+      actor: String,
+      accountErased: Boolean,
+      removedDocuments: Number,
+      retainedDocuments: Number,
+      assetJobs: { type: [String], default: undefined },
+      retentionUntil: String,
+    },
+    membershipHistory: {
+      type: [new mongoose.Schema({
+        at: { type: Date, required: true },
+        action: { type: String, enum: ["archived", "reactivated"], required: true },
+        actor: { type: String, required: true },
+      }, { _id: false })],
+      default: undefined,
+    },
     options: { type: optionsSchema, default: {} },
     documents: { type: [documentSchema], default: [] },
     shifts: { type: [shiftSchema], default: [] },
+    planningBatches: { type: [planningBatchSchema], default: undefined },
+    planningFiles: { type: [planningFileSchema], default: undefined, select: false },
     leaveRequests: { type: [leaveRequestSchema], default: [] },
     snapshot: { type: employeeSnapshotSchema, default: {} },
     employment: { type: employmentSchema, default: {} },
@@ -156,6 +230,12 @@ const restaurantProfileSchema = new mongoose.Schema(
 );
 
 const employeeSchema = new mongoose.Schema({
+  historicalImport: { type: mongoose.Schema.Types.ObjectId, select: false },
+  rhArchiveIdentities: {
+    type: Map,
+    of: new mongoose.Schema({ firstname: String, lastname: String, until: String, reason: String }, { _id: false }),
+    select: false,
+  },
   // Les anciennes fiches sans valeur restent des salariés classiques.
   accountType: {
     type: String,

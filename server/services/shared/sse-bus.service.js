@@ -39,7 +39,18 @@ function broadcastToRestaurant(restaurantId, payload) {
         reservation: omitReservationArrival(payload.reservation),
       })}\n\n`
     : line;
+  const employeeId = payload.employee?._id || payload.employeeId;
+  const hasPlanningShifts = payload.type === "employee_updated" ||
+    ["leave_request_updated", "leave_request_deleted"].includes(payload.type);
+  let lineWithoutPlanningShifts;
   for (const res of set) {
+    const manager = res.locals?.gustoEventModules?.planning === true;
+    const recipient = String(res.locals?.gustoEmployeeId || "");
+    if (payload.recipientEmployeeId && recipient !== String(payload.recipientEmployeeId)) continue;
+    if (String(payload.type).startsWith("leave_request_") && !manager && recipient !== String(employeeId)) continue;
+    if (payload.notification?.type === "leave_request_created" && !manager) continue;
+    if (payload.type === "planning_state_changed" && !manager) continue;
+    if (payload.type === "planning_changed" && !manager && !payload.employeeIds?.includes(recipient)) continue;
     if (
       isTakeAwayPayload(payload) &&
       res.locals?.gustoEventModules?.take_away !== true
@@ -50,11 +61,49 @@ function broadcastToRestaurant(restaurantId, payload) {
     const canReadArrival = res.locals?.gustoEventModules?.reservations === true;
     if (payload.type === "reservation_arrival_updated" && !canReadArrival) continue;
     try {
-      res.write(canReadArrival ? line : lineWithoutArrival);
+      if (payload.type === "planning_changed" && !manager) {
+        res.write('data: {"type":"planning_changed"}\n\n');
+      } else if (hasPlanningShifts && !manager) {
+        const ownsShift = employeeId && recipient === String(employeeId);
+        const redacted = redactPlanningShifts(payload, ownsShift);
+        if (ownsShift) res.write(`data: ${JSON.stringify(redacted)}\n\n`);
+        else {
+          lineWithoutPlanningShifts ??= `data: ${JSON.stringify(redacted)}\n\n`;
+          res.write(lineWithoutPlanningShifts);
+        }
+      } else {
+        res.write(canReadArrival ? line : lineWithoutArrival);
+      }
     } catch (_error) {
       // Ignore broken SSE connections; cleanup happens on close events.
     }
   }
+}
+
+function redactPlanningShifts(payload, own) {
+  const redact = (shifts) => shifts?.filter((shift) => own && !shift.requiresPlanningPublication).map((shift) => {
+    const publicShift = shift.toObject ? shift.toObject() : { ...shift };
+    return publicShift;
+  });
+  const employee = payload.employee && (own ? {
+    ...payload.employee,
+    shifts: redact(payload.employee.shifts),
+    restaurantProfiles: payload.employee.restaurantProfiles?.map((profile) => ({
+      ...profile,
+      shifts: redact(profile.shifts),
+    })),
+  } : Object.fromEntries(["_id", "firstname", "lastname", "post", "profilePicture"].map((key) => [key, payload.employee[key]])));
+  return { ...payload, employee, shifts: redact(payload.shifts) };
+}
+
+async function canManagePlanningEvents(user, restaurantId) {
+  if (user.role === "owner") return true; // The connection already passed the restaurant ownership check.
+  const restaurant = await RestaurantModel.findOne({ _id: restaurantId, employees: user.id, "options.employees": true }).select("_id").lean();
+  return Boolean(restaurant && await EmployeeModel.exists({
+    _id: user.id,
+    restaurants: restaurantId,
+    restaurantProfiles: { $elemMatch: { restaurant: restaurantId, "options.employees": true } },
+  }));
 }
 
 function isTakeAwayPayload(payload) {
@@ -93,6 +142,7 @@ async function canAccessRestaurantEvents(user, restaurantId) {
   }
 
   if (user?.role === "employee") {
+    if (String(user.restaurantId || "") !== String(restaurantId)) return false;
     return Boolean(
       await EmployeeModel.exists({
         _id: user.id,
@@ -142,7 +192,9 @@ function mountSseRoute(appOrRouter, opts = {}) {
         take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
         callsense: await canAccessCallSenseEvents(req.user, restaurantId),
         reservations: await canAccessReservationArrivals(req.user, restaurantId),
+        planning: await canManagePlanningEvents(req.user, restaurantId),
       };
+      res.locals.gustoEmployeeId = req.user.role === "employee" ? req.user.id : null;
     } catch {
       return res.status(500).json({ message: "Server error" });
     }
@@ -150,7 +202,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
     // headers SSE
     res.set({
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-store",
       Connection: "keep-alive",
       "Access-Control-Allow-Origin": allowOrigin,
     });
@@ -190,6 +242,7 @@ function mountSseRoute(appOrRouter, opts = {}) {
           take_away: await canAccessTakeAwayEvents(req.user, restaurantId),
           callsense: await canAccessCallSenseEvents(req.user, restaurantId),
           reservations: await canAccessReservationArrivals(req.user, restaurantId),
+          planning: await canManagePlanningEvents(req.user, restaurantId),
         };
 
         res.write(":\n\n");

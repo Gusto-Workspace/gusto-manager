@@ -482,6 +482,7 @@ function App({ Component, pageProps }) {
   const isManagerApp =
     router.pathname.startsWith("/dashboard") &&
     manifestHref === "/manifest.webmanifest?v=2";
+  const isClockDevice = router.pathname === "/dashboard/webapp/time-clock";
 
   useEffect(() => {
     const scrollToTopEverywhere = () => {
@@ -596,7 +597,7 @@ function App({ Component, pageProps }) {
         <meta name="theme-color" content="#131E36" />
       </Head>
 
-      <GlobalProvider>
+      {isClockDevice ? <Component {...pageProps} /> : <GlobalProvider>
         <CallSenseProvider>
         <PushWindowBridge />
         <PushRestaurantGuard>
@@ -612,8 +613,8 @@ function App({ Component, pageProps }) {
           </AccountantDashboardAccessGuard>
         </PushRestaurantGuard>
         </CallSenseProvider>
-      </GlobalProvider>
-      <Analytics />
+      </GlobalProvider>}
+      {!isClockDevice && <Analytics />}
     </>
   );
 }

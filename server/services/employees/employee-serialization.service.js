@@ -51,6 +51,11 @@ function buildRestaurantProfileView(
   };
 }
 
+function publicEmployeeDirectoryEntry(employee) {
+  const { _id, firstname, lastname, post, profilePicture, accountType } = employee;
+  return { _id, firstname, lastname, post, profilePicture, accountType };
+}
+
 function decorateEmployeeForRestaurant(
   employee,
   restaurantId,
@@ -156,5 +161,6 @@ module.exports = {
   decorateRestaurantEmployees,
   findRestaurantProfile,
   sanitizeEmployeeForRestaurants,
+  publicEmployeeDirectoryEntry,
   toPlainObject,
 };

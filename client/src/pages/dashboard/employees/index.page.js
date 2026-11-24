@@ -2,11 +2,11 @@ import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
-import { i18n } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 
 // CONTEXT
 import { GlobalContext } from "@/contexts/global.context";
+import { canManagePersonnel } from "@/components/dashboard/employees/employee-directory.utils.mjs";
 
 // COMPONENTS
 import NavComponent from "@/components/_shared/nav/nav.component";
@@ -14,21 +14,8 @@ import SettingsComponent from "@/components/_shared/settings/settings.component"
 import NoAvailableComponent from "@/components/_shared/options/no-available.options.component";
 import ListEmployeesComponent from "@/components/dashboard/employees/list.employees.component";
 
-export default function EmployeesPage(props) {
+export default function EmployeesPage() {
   const { restaurantContext } = useContext(GlobalContext);
-
-  let title;
-  let description;
-
-  switch (i18n.language) {
-    case "en":
-      title = "Gusto Manager";
-      description = "";
-      break;
-    default:
-      title = "Gusto Manager";
-      description = "";
-  }
 
   if (!restaurantContext.isAuth) return null;
 
@@ -36,34 +23,19 @@ export default function EmployeesPage(props) {
   const restaurantOptions = restaurant?.options || {};
   const hasEmployeesModule = !!restaurantOptions.employees;
 
-  const user = restaurantContext.userConnected;
-  const isEmployee = user?.role === "employee";
-
-  let employeeHasEmployeesAccess = true;
-
-  if (isEmployee && restaurant) {
-    const employeeInRestaurant = restaurant.employees?.find(
-      (emp) => String(emp._id) === String(user.id),
-    );
-
-    const profile = employeeInRestaurant?.restaurantProfiles?.find(
-      (p) => String(p.restaurant) === String(restaurant._id),
-    );
-
-    employeeHasEmployeesAccess = profile?.options?.employees === true;
-  }
+  const canManage = canManagePersonnel(restaurant, restaurantContext.userConnected);
 
   return (
     <>
       <Head>
-        <title>{title}</title>
+        <title>Gusto Manager</title>
       </Head>
 
       <div>
         <div className="flex">
           <NavComponent />
 
-          <div className="tablet:ml-[88px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
+          <main className="tablet:ml-[88px] bg-lightGrey text-darkBlue min-w-0 flex-1 p-3 mobile:p-6 flex flex-col gap-6 min-h-screen">
             <SettingsComponent
               dataLoading={restaurantContext.dataLoading}
               setDataLoading={restaurantContext.setDataLoading}
@@ -77,14 +49,14 @@ export default function EmployeesPage(props) {
                 dataLoading={restaurantContext.dataLoading}
                 emptyText="Vous n'avez pas souscrit à cette option"
               />
-            ) : !employeeHasEmployeesAccess ? (
+            ) : !canManage || restaurantContext.dataLoading ? (
               <NoAvailableComponent
                 dataLoading={restaurantContext.dataLoading}
               />
             ) : (
-              <ListEmployeesComponent />
+              <ListEmployeesComponent key={restaurant._id} />
             )}
-          </div>
+          </main>
         </div>
       </div>
     </>

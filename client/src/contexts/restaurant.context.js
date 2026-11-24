@@ -14,6 +14,7 @@ const EMPTY_UNREAD_BY_MODULE = {
   reservations: 0,
   gift_cards: 0,
   employees: 0,
+  my_planning: 0,
   take_away: 0,
 };
 
@@ -21,6 +22,14 @@ const TAKE_AWAY_PERIOD_CACHE_LIMIT = 9;
 const TAKE_AWAY_MUTATION_OVERRIDE_LIMIT = 500;
 const ACCOUNTANT_DOCUMENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const ACCOUNTANT_DOCUMENTS_CACHE_LIMIT = 200;
+
+function inferRequiredModuleFromPath(pathname = "") {
+  if (pathname.startsWith("/dashboard/webapp/reservations")) return "reservations";
+  if (pathname.startsWith("/dashboard/webapp/gift-cards")) return "gift_cards";
+  if (pathname.startsWith("/dashboard/webapp/take-away")) return "take_away";
+  if (pathname.startsWith("/dashboard/webapp/time-clock")) return "employees";
+  return null;
+}
 
 function buildAccountantDocumentsCacheKey(restaurantId, employeeId) {
   if (!restaurantId || !employeeId) return null;
@@ -139,6 +148,8 @@ export default function RestaurantContext() {
   const [restaurantData, setRestaurantData] = useState(null);
   const [callSenseEvents, setCallSenseEvents] = useState({});
   const [callSenseCountRevision, setCallSenseCountRevision] = useState(0);
+  const [planningRevision, setPlanningRevision] = useState(0);
+  const [planningStateRevision, setPlanningStateRevision] = useState(0);
   const [callSenseReadEvent, setCallSenseReadEvent] = useState({});
   const [callSenseReconnect, setCallSenseReconnect] = useState(0);
   const [callSenseIdentityChange, setCallSenseIdentityChange] = useState(null);
@@ -179,6 +190,7 @@ export default function RestaurantContext() {
 
   const hasFetchedDashboardDataRef = useRef(false);
   const sseRef = useRef(null);
+  const employeeRestaurantSelectionRef = useRef(null);
   const currentPathRef = useRef("");
   const customersCacheRef = useRef(new Map());
   const customerDetailsRequestsRef = useRef(new Map());
@@ -434,7 +446,7 @@ export default function RestaurantContext() {
     [restaurantData?._id],
   );
 
-  async function fetchUnreadCounts(token, rid) {
+  const fetchUnreadCounts = useCallback(async (token, rid) => {
     if (!token || !rid) return;
 
     const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${rid}/notifications/unread-counts`;
@@ -458,7 +470,7 @@ export default function RestaurantContext() {
       console.warn("Failed to fetch unread notifications counts", e);
       // en cas d'erreur -> on garde l'état précédent
     }
-  }
+  }, []);
 
   function bumpUnreadLocal(moduleKey) {
     if (!moduleKey) return;
@@ -1173,6 +1185,12 @@ export default function RestaurantContext() {
           return;
         }
 
+        if (payload.type === "planning_changed") setPlanningRevision((previous) => previous + 1);
+        if (payload.type === "planning_state_changed") setPlanningStateRevision((previous) => previous + 1);
+        if (String(payload.type).startsWith("leave_request_") && String(payload.employeeId) === String(userConnected?.id)) {
+          window.dispatchEvent(new CustomEvent("leaveRequestAdded", { detail: { restaurantId } }));
+        }
+
         if (payload.type === "notification_created" && payload.notification) {
           const n = payload.notification;
 
@@ -1492,27 +1510,25 @@ export default function RestaurantContext() {
 
         if (payload.type === "notifications_read_all") {
           const mod = payload.module;
+          const eligible = (n) => (!mod || n.module === mod) &&
+            (!payload.publicOnly || !n.recipientEmployeeId) &&
+            (!payload.recipientEmployeeId || n.recipientEmployeeId === payload.recipientEmployeeId);
 
           setNotifications((prev) =>
             prev.map((n) =>
-              !n.read && (!mod || n.module === mod)
+              !n.read && eligible(n)
                 ? { ...n, read: true, readAt: new Date() }
                 : n,
             ),
           );
 
           setUnreadCounts((prev) => {
-            if (!mod) {
-              return {
-                total: 0,
-                byModule: EMPTY_UNREAD_BY_MODULE,
-              };
-            }
             const nextBy = {
-              ...EMPTY_UNREAD_BY_MODULE,
-              ...prev.byModule,
-              [mod]: 0,
+              ...(mod ? prev.byModule : EMPTY_UNREAD_BY_MODULE),
             };
+            if (mod) nextBy[mod] = 0;
+            else if (payload.recipientEmployeeId) Object.assign(nextBy, prev.byModule, { my_planning: 0 });
+            else if (payload.publicOnly) nextBy.my_planning = prev.byModule.my_planning || 0;
             const total = countUnreadTotal(nextBy);
             return { total, byModule: nextBy };
           });
@@ -1532,6 +1548,7 @@ export default function RestaurantContext() {
     loadReservationPeriod,
     removeReservationFromCache,
     restaurantData?._id,
+    userConnected?.id,
     userConnected?.role,
   ]);
 
@@ -1555,16 +1572,6 @@ export default function RestaurantContext() {
   // ---------------------------
   // Misc helpers
   // ---------------------------
-
-  function inferRequiredModuleFromPath(pathname = "") {
-    if (pathname.startsWith("/dashboard/webapp/reservations"))
-      return "reservations";
-    if (pathname.startsWith("/dashboard/webapp/gift-cards"))
-      return "gift_cards";
-    if (pathname.startsWith("/dashboard/webapp/take-away")) return "take_away";
-    if (pathname.startsWith("/dashboard/webapp/time-clock")) return "employees";
-    return null;
-  }
 
   function buildCustomersCacheKey({
     rid,
@@ -1759,7 +1766,8 @@ export default function RestaurantContext() {
     return cached.data;
   }
 
-  function handleInvalidToken() {
+  const handleInvalidToken = useCallback(() => {
+    employeeRestaurantSelectionRef.current = null;
     setRestaurantsList([]);
     setRestaurantData(null);
     setReservationsList([]);
@@ -1822,12 +1830,12 @@ export default function RestaurantContext() {
         : "/dashboard";
 
     router.replace(`/dashboard/login?redirect=${encodeURIComponent(returnTo)}`);
-  }
+  }, [router]);
 
   // ---------------------------
   // Fetch restaurant data
   // ---------------------------
-  async function fetchRestaurantData(token, restaurantId) {
+  const fetchRestaurantData = useCallback(async (token, restaurantId) => {
     setDataLoading(true);
 
     let role = null;
@@ -1921,9 +1929,9 @@ export default function RestaurantContext() {
     } finally {
       setDataLoading(false);
     }
-  }
+  }, [fetchUnreadCounts, handleInvalidToken]);
 
-  function fetchRestaurantsList() {
+  const fetchRestaurantsList = useCallback(() => {
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -1972,7 +1980,7 @@ export default function RestaurantContext() {
             return;
           }
 
-          const requiredModule = inferRequiredModuleFromPath(router.pathname);
+          const requiredModule = inferRequiredModuleFromPath(currentPathRef.current);
 
           let selectedRestaurantId = decodedToken.restaurantId;
 
@@ -2094,7 +2102,7 @@ export default function RestaurantContext() {
 
     console.warn("Unknown role in token:", role);
     handleInvalidToken();
-  }
+  }, [fetchRestaurantData, fetchUnreadCounts, handleInvalidToken]);
 
   function handleRestaurantSelect(restaurantId) {
     const token = localStorage.getItem("token");
@@ -2164,6 +2172,8 @@ export default function RestaurantContext() {
     // ----- EMPLOYEE -----
     if (role === "employee") {
       const requestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/change-restaurant`;
+      const selection = {};
+      employeeRestaurantSelectionRef.current = selection;
       axios
         .post(
           requestUrl,
@@ -2171,8 +2181,11 @@ export default function RestaurantContext() {
           { headers: { Authorization: `Bearer ${token}` } },
         )
         .then((response) => {
+          if (employeeRestaurantSelectionRef.current !== selection) return;
           const { token: updatedToken } = response.data;
           localStorage.setItem("token", updatedToken);
+          setUserConnected(jwtDecode(updatedToken));
+          setRestaurantData(null);
 
           const employeeRequestUrl = `${process.env.NEXT_PUBLIC_API_URL}/employees/me`;
           axios
@@ -2180,12 +2193,15 @@ export default function RestaurantContext() {
               headers: { Authorization: `Bearer ${updatedToken}` },
             })
             .then(async (res) => {
+              if (employeeRestaurantSelectionRef.current !== selection) return;
+              employeeRestaurantSelectionRef.current = null;
               const { restaurant, restaurants } = res.data;
               const rid = restaurant?._id
                 ? String(restaurant._id)
                 : String(restaurantId);
               setRestaurantsList(restaurants || []);
               setRestaurantData(restaurant || null);
+              currentRestaurantIdRef.current = restaurant?._id ? rid : null;
 
               // ✅ reset drawer list
               setNotifications([]);
@@ -2214,6 +2230,8 @@ export default function RestaurantContext() {
               setCloseEditing(false);
             })
             .catch((err) => {
+              if (employeeRestaurantSelectionRef.current !== selection) return;
+              employeeRestaurantSelectionRef.current = null;
               console.error(
                 "Erreur lors de la récupération des données employé après changement de resto:",
                 err,
@@ -2224,6 +2242,8 @@ export default function RestaurantContext() {
             });
         })
         .catch((error) => {
+          if (employeeRestaurantSelectionRef.current !== selection) return;
+          employeeRestaurantSelectionRef.current = null;
           if (error.response?.status === 403) {
             handleInvalidToken();
           } else {
@@ -2231,6 +2251,7 @@ export default function RestaurantContext() {
               "Erreur lors de la sélection du restaurant (employee):",
               error,
             );
+            currentRestaurantIdRef.current = decoded.restaurantId ? String(decoded.restaurantId) : null;
             setDataLoading(false);
             setCloseEditing(false);
           }
@@ -2448,6 +2469,7 @@ export default function RestaurantContext() {
   }
 
   function logout() {
+    employeeRestaurantSelectionRef.current = null;
     localStorage.removeItem("token");
 
     if (sseRef.current) {
@@ -2516,7 +2538,7 @@ export default function RestaurantContext() {
     return () => {
       router.events.off("routeChangeComplete", handleRouteChangeComplete);
     };
-  }, [router.events]);
+  }, [router.events, fetchRestaurantsList]);
 
   useEffect(() => {
     const path = router.pathname;
@@ -2529,7 +2551,7 @@ export default function RestaurantContext() {
       fetchRestaurantsList();
       hasFetchedDashboardDataRef.current = true;
     }
-  }, [router.pathname]);
+  }, [router.pathname, fetchRestaurantsList]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -2545,10 +2567,12 @@ export default function RestaurantContext() {
       console.error("Token invalide :", err);
       handleInvalidToken();
     }
-  }, [router.pathname]);
+  }, [router.pathname, handleInvalidToken]);
 
   return {
     restaurantData,
+    planningRevision,
+    planningStateRevision,
     callSenseEvents,
     callSenseCountRevision,
     callSenseReadEvent,

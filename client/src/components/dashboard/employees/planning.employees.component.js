@@ -1,88 +1,49 @@
 import { useState, useMemo, useContext, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
-
-import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
-import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import { format, parse, startOfWeek, addDays, getDay } from "date-fns";
-import frLocale from "date-fns/locale/fr";
-import "react-big-calendar/lib/css/react-big-calendar.css";
-import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
-
 import { GlobalContext } from "@/contexts/global.context";
 import { useTranslation } from "next-i18next";
-import { EmployeesSvg } from "../../_shared/_svgs/_index";
-import CardEmployeesComponent from "./card.employees.component";
 import ExportRangeModalComponent from "./export-range-modal.component";
-import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
+import { PlanningGrid, PlanningToolbar } from "./planning-grid.employees.component";
+import { PlanningCommands, usePlanningCommands } from "./planning-commands.employees.component";
+import { visiblePlanningEmployees } from "./planning-actions.utils.mjs";
+import {
+  PlanningLockDialog, PlanningPublicationDialog, usePlanningPeriodState,
+} from "./planning-publication.employees.component";
 import axios from "axios";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
-
+import { X } from "lucide-react";
+import ShiftEditor, { shiftEditorTitle, useShiftEditorLabels } from "./shift-editor.employees.component";
+import PlanningShiftTemplates from "./planning-shift-templates.employees.component";
 import {
-  Search,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  CalendarDays,
-  Plus,
-  Download,
-  Send,
-  UtensilsCrossed,
-  AlertTriangle,
-} from "lucide-react";
-import { getShiftMealMeta } from "./planning-meals.utils";
+  findDraftConflict,
+  defaultShiftRepeat,
+  getShiftBatch,
+  getShiftDraftRange,
+  makeExtraShift,
+  makeShiftDraft,
+  planningShiftCollection,
+  savePlanningShift,
+  savePlanningShiftBatch,
+  updatePlanningEmployee,
+  validateShiftDraft,
+} from "./shift-editor.utils.mjs";
+import {
+  buildPlanningGrid, getPlanningEmployees, getPlanningPeriod, isLeaveShiftRecord, publicationRanges,
+  movePlanningDate, normalizePlanningText, parisPlanningDateKey, parsePlanningDate,
+  plannedShiftMinutes, planningDateKey, restorePlanningConsultation, PLANNING_GROUPS, PLANNING_TIME_ZONE, PLANNING_VIEWS,
+} from "./planning-grid.utils.mjs";
+import styles from "./planning-grid.module.scss";
 
-const DnDCalendar = withDragAndDrop(Calendar);
-
-// Helper: "Prénom N."
-const shortName = (emp) =>
-  `${emp?.firstname ?? ""} ${emp?.lastname ? emp.lastname[0] + "." : ""}`.trim();
-
-// Normalise un texte (enlève accents / espaces / casse)
-const normalizeTitle = (str) =>
-  (str || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-// Force un libellé "propre" pour l'affichage
-const canonicalizeShiftTitle = (title) => {
-  const n = normalizeTitle(title);
-  if (n === "conges" || n === "conge") return "Congés";
-  return (title || "").trim();
-};
-
-const isLeaveShiftRecord = (shift) =>
-  Boolean(
-    shift?.isLeave ||
-      shift?.leaveRequestId ||
-      ["conges", "conge"].includes(normalizeTitle(shift?.title)),
-  );
-
-const getShiftDisplayTitle = (shift) => {
-  if (isLeaveShiftRecord(shift)) return "Congés";
-  return canonicalizeShiftTitle(shift?.title);
-};
-
-const getManagerEventTitle = (employee, shift) => {
-  const shiftLabel = getShiftDisplayTitle(shift);
-  return shiftLabel
-    ? `${shortName(employee)} - ${shiftLabel}`
-    : shortName(employee);
-};
-
-const formatEventTimeRange = (start, end) =>
-  `${format(start, "HH:mm", { locale: frLocale })}-${format(end, "HH:mm", {
-    locale: frLocale,
-  })}`;
-
+const CONSULTATION_KEY = "gusto:employees:planning";
 const formatConflictDateTime = (value) => {
   if (!value) return "";
 
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
 
-  return format(date, "dd/MM/yyyy 'à' HH:mm", { locale: frLocale });
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short", timeStyle: "short", timeZone: PLANNING_TIME_ZONE,
+  }).format(date);
 };
 
 const formatConflictRange = (start, end) => {
@@ -96,197 +57,12 @@ const formatConflictRange = (start, end) => {
     return "";
   }
 
-  const sameDay = parsedStart.toDateString() === parsedEnd.toDateString();
-  if (sameDay) {
-    return `${format(parsedStart, "dd/MM/yyyy", {
-      locale: frLocale,
-    })} de ${format(parsedStart, "HH:mm", {
-      locale: frLocale,
-    })} à ${format(parsedEnd, "HH:mm", { locale: frLocale })}`;
-  }
-
   return `du ${formatConflictDateTime(parsedStart)} au ${formatConflictDateTime(
     parsedEnd,
   )}`;
 };
 
-const getEmptyDeleteModalData = () => ({
-  eventId: null,
-  employeeId: null,
-  title: "",
-  originalTitle: "",
-  start: null,
-  end: null,
-  leaveRequestId: null,
-  isLeave: false,
-});
-
-const getEmptyShiftConflictModalData = () => ({
-  isOpen: false,
-  employeeId: null,
-  message: "",
-  conflictType: "",
-  conflict: null,
-  attemptedStart: null,
-  attemptedEnd: null,
-  attemptedTitle: "",
-});
-
-const pad2 = (value) => String(value).padStart(2, "0");
-
-function toInputDate(value) {
-  if (!value) return "";
-
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
-
-function toStartOfDay(value) {
-  if (!value) return null;
-  const date =
-    value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function toEndOfDay(value) {
-  if (!value) return null;
-  const date =
-    value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 0, 0);
-  return date;
-}
-
-function isStartOfDay(value) {
-  return (
-    value instanceof Date && value.getHours() === 0 && value.getMinutes() === 0
-  );
-}
-
-function isEndOfDay(value) {
-  return (
-    value instanceof Date &&
-    value.getHours() === 23 &&
-    value.getMinutes() === 59
-  );
-}
-
-function getInclusiveDaySpan(start, end) {
-  if (!(start instanceof Date) || !(end instanceof Date)) return 1;
-
-  const startDay = new Date(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate(),
-  );
-  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-
-  return (
-    Math.max(
-      0,
-      Math.round((endDay.getTime() - startDay.getTime()) / 86400000),
-    ) + 1
-  );
-}
-
-function getFullDayLeaveLabel(start, end, isLeave) {
-  if (!isLeave || !isStartOfDay(start) || !isEndOfDay(end)) return "";
-  const days = getInclusiveDaySpan(start, end);
-  return days > 1 ? `${days} jours` : "1 jour";
-}
-
-function getCalendarRangeBounds(currentDate, currentView) {
-  if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
-    return null;
-  }
-
-  if (currentView === Views.DAY) {
-    const start = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      currentDate.getDate(),
-    );
-    const endExclusive = new Date(start.getTime());
-    endExclusive.setDate(endExclusive.getDate() + 1);
-    return { start, endExclusive };
-  }
-
-  if (currentView === Views.MONTH) {
-    const start = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      1,
-      0,
-      0,
-      0,
-      0,
-    );
-    const endExclusive = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth() + 1,
-      1,
-      0,
-      0,
-      0,
-      0,
-    );
-    return { start, endExclusive };
-  }
-
-  const start = startOfWeek(currentDate, {
-    locale: frLocale,
-    weekStartsOn: 1,
-  });
-  const endExclusive = new Date(start.getTime());
-  endExclusive.setDate(endExclusive.getDate() + 7);
-  return { start, endExclusive };
-}
-
-function eventIntersectsRange(event, bounds) {
-  if (!bounds) return false;
-
-  const start =
-    event?.start instanceof Date ? event.start : new Date(event?.start);
-  const end = event?.end instanceof Date ? event.end : new Date(event?.end);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return false;
-  }
-
-  return start < bounds.endExclusive && end >= bounds.start;
-}
-
-function getEmployeeEmploymentForRestaurant(employee, restaurantId) {
-  const profile = (employee?.restaurantProfiles || []).find(
-    (item) =>
-      String(item?.restaurant?._id || item?.restaurant || "") ===
-      String(restaurantId || ""),
-  );
-  return profile?.employment || employee?.employment || {};
-}
-
-function getContractPeriodBounds(value, unit) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  if (unit === "month") {
-    return {
-      start: new Date(date.getFullYear(), date.getMonth(), 1),
-      endExclusive: new Date(date.getFullYear(), date.getMonth() + 1, 1),
-    };
-  }
-
-  const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
-  const endExclusive = new Date(start.getTime());
-  endExclusive.setDate(endExclusive.getDate() + 7);
-  return { start, endExclusive };
-}
-
-function getShiftMinutesWithinPeriod(startValue, endValue, bounds) {
+function getShiftMinutesWithinPeriod(startValue, endValue, bounds, breakMinutes) {
   const start = startValue instanceof Date ? startValue : new Date(startValue);
   const end = endValue instanceof Date ? endValue : new Date(endValue);
   if (
@@ -298,9 +74,9 @@ function getShiftMinutesWithinPeriod(startValue, endValue, bounds) {
     return 0;
   }
 
-  const clippedStart = Math.max(start.getTime(), bounds.start.getTime());
-  const clippedEnd = Math.min(end.getTime(), bounds.endExclusive.getTime());
-  return Math.max(0, Math.round((clippedEnd - clippedStart) / 60000));
+  return start < bounds.endInstant && end > bounds.startInstant
+    ? plannedShiftMinutes(start, end, breakMinutes)
+    : 0;
 }
 
 function formatPlannedHours(minutes) {
@@ -309,9 +85,64 @@ function formatPlannedHours(minutes) {
   }).format(Number(minutes || 0) / 60);
 }
 
+function PlanningDialog({ label, onClose, behind = false, wide = false, children }) {
+  const panel = useRef(null);
+  useEffect(() => {
+    const trigger = document.activeElement;
+    panel.current?.focus({ preventScroll: true });
+    return () => {
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!behind && !panel.current?.contains(document.activeElement)) {
+      panel.current?.focus({ preventScroll: true });
+    }
+  }, [behind]);
+
+  function handleKeyDown(event) {
+    if (event.key === "Escape" && onClose) {
+      event.stopPropagation();
+      onClose();
+    }
+    if (event.key !== "Tab") return;
+    const controls = [...panel.current.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)")].filter(
+      (node) => node.tabIndex >= 0 && node.getClientRects().length,
+    );
+    const [first] = controls;
+    const last = controls.at(-1);
+    if (!first) {
+      event.preventDefault();
+      return;
+    }
+    const focused = document.activeElement;
+    if (focused === panel.current || !panel.current.contains(focused) || (event.shiftKey ? focused === first : focused === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center px-3 py-3" aria-hidden={behind || undefined}>
+      <div className="absolute inset-0 bg-black/25 backdrop-blur-[1px]" onClick={onClose} />
+      <div ref={panel} role="dialog" aria-modal={behind ? undefined : true} aria-label={label} tabIndex={-1} onKeyDown={handleKeyDown}
+        className={`relative flex max-h-full w-full flex-col rounded-2xl border border-darkBlue/10 bg-white shadow-[0_22px_55px_rgba(19,30,54,0.20)] outline-none ${
+          wide
+            ? "max-w-[620px] overflow-hidden"
+            : "max-w-[460px] gap-5 overflow-y-auto px-5 py-6 tablet:px-7 tablet:py-7"
+        }`}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function PlanningEmployeesComponent() {
   const { t } = useTranslation("employees");
+  const { label: editorLabel } = useShiftEditorLabels();
   const { restaurantContext } = useContext(GlobalContext);
+  const { restaurantData, setRestaurantData, userConnected, planningRevision, planningStateRevision } = restaurantContext;
   const router = useRouter();
 
   // 🔥 FIX iOS : désactive le hack global uniquement sur cette page
@@ -322,87 +153,78 @@ export default function PlanningEmployeesComponent() {
     return () => html.classList.remove("gm-disable-ios-scroll-hack");
   }, []);
 
-  const restaurantId = restaurantContext.restaurantData?._id;
-  const openingHours = restaurantContext.restaurantData?.opening_hours || [];
+  const restaurantId = restaurantData?._id;
+  const roster = restaurantData?.employees;
+  const openingHours = restaurantData?.opening_hours || [];
 
-  // ─── États ─────────────────────────────────────────────────────────────────
-  const [events, setEvents] = useState([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [view, setView] = useState(Views.WEEK);
-  const [date, setDate] = useState(new Date());
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdatingShiftTitle, setIsUpdatingShiftTitle] = useState(false);
+  const [consultation, setConsultation] = useState(() => restorePlanningConsultation(null, restaurantId));
+  const [consultationReady, setConsultationReady] = useState(false);
+  const [employeeFilter, setEmployeeFilter] = useState(null);
+  const { date, view, group, query: searchTerm } = consultation;
+  const updateConsultation = (patch) => setConsultation((previous) => ({ ...previous, ...patch }));
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(CONSULTATION_KEY));
+      setConsultation(restorePlanningConsultation(saved, restaurantId));
+    } catch {
+      // The schedule also works when session storage is unavailable.
+    }
+    setConsultationReady(true);
+  }, [restaurantId]);
+
+  const { employeeId: requestedEmployeeId, restaurantId: requestedRestaurantId } = router.query;
+  const linkedEmployeeId = requestedRestaurantId === String(restaurantId) &&
+    typeof requestedEmployeeId === "string" &&
+    roster?.some((employee) => String(employee._id) === requestedEmployeeId) ? requestedEmployeeId : null;
+  useEffect(() => {
+    setEmployeeFilter(linkedEmployeeId);
+    if (linkedEmployeeId) setConsultation((previous) => ({ ...previous, query: "" }));
+  }, [linkedEmployeeId]);
+
+  useEffect(() => {
+    if (!consultationReady || !restaurantId) return;
+    try {
+      window.sessionStorage.setItem(CONSULTATION_KEY, JSON.stringify({
+        ...consultation, date: planningDateKey(consultation.date), restaurantId: String(restaurantId),
+      }));
+    } catch {
+      // Navigation remains usable without persistence.
+    }
+  }, [consultation, consultationReady, restaurantId]);
+
+  const period = useMemo(() => getPlanningPeriod(date, view), [date, view]);
+  const [shiftOperation, setShiftOperation] = useState(null);
+  const shiftOperationPending = useRef(false);
   const [isPlanningExportOpen, setIsPlanningExportOpen] = useState(false);
   const [isPlanningExportLoading, setIsPlanningExportLoading] = useState(false);
   const [planningExportError, setPlanningExportError] = useState("");
-  const [isPlanningSendOpen, setIsPlanningSendOpen] = useState(false);
-  const [isPlanningSendLoading, setIsPlanningSendLoading] = useState(false);
-  const [planningSendError, setPlanningSendError] = useState("");
+  const [publicationOpen, setPublicationOpen] = useState(false);
+  const [lockRange, setLockRange] = useState(null);
+  const [periodRevision, setPeriodRevision] = useState(0);
+  const refreshPeriod = () => setPeriodRevision((previous) => previous + 1);
+  const [showCounters, setShowCounters] = useState(false);
+  const [planningCounters, setPlanningCounters] = useState(null);
+  const [planningTargets, setPlanningTargets] = useState(null);
 
-  // Modale d’ajout
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalData, setModalData] = useState({
-    employeeId: null,
-    start: null,
-    end: null,
-    title: "",
-    isLeave: false,
-    isFullDayLeave: false,
-  });
-  const [modalEmployeeQuery, setModalEmployeeQuery] = useState("");
-  const [shiftConflictModalData, setShiftConflictModalData] = useState(
-    getEmptyShiftConflictModalData(),
-  );
-
-  // Modale de suppression
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteModalData, setDeleteModalData] = useState(
-    getEmptyDeleteModalData(),
-  );
-
-  // ✅ détecter mobile (avant midTablet)
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 767px)"); // adapte si besoin
-    const onChange = () => setIsMobile(mq.matches);
-    onChange();
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-
-  // ✅ Sur mobile: par défaut Jour (sinon week view illisible)
-
-  // date‐fns localizer (FR)
-  const locales = { fr: frLocale };
-  const localizer = dateFnsLocalizer({
-    format,
-    parse,
-    startOfWeek: (d) => startOfWeek(d, { locale: frLocale }),
-    getDay,
-    locales,
-  });
-
-  // ─── Chargement des employés depuis le contexte ─────────────────────────────
+  const initialDraft = useRef(null);
+  const [editorDraft, setDraft] = useState(null);
+  const draft = editorDraft?.restaurantId === restaurantId ? editorDraft : null;
+  const [extra, setExtra] = useState([]);
+  const [repeat, setRepeat] = useState(defaultShiftRepeat);
+  const [fileBusy, setFileBusy] = useState(false);
+  const batchRequests = useRef(new Map());
+  const nextBlockKey = useRef(0);
+  const [submitError, setSubmitError] = useState("");
+  const [shiftConflict, setShiftConflict] = useState(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const allEmployees = useMemo(
-    () =>
-      restaurantContext.restaurantData?.employees
-        .filter((e) => e.accountType !== "accountant")
-        .map((e) => ({
-          _id: e._id,
-          firstname: e.firstname,
-          lastname: e.lastname,
-          name: `${e.firstname} ${e.lastname}`,
-          post: e.post,
-          profilePicture: e.profilePicture,
-          shifts: e.shifts || [],
-          restaurantProfiles: e.restaurantProfiles || [],
-          employment: e.employment || null,
-        })) || [],
-    [restaurantContext.restaurantData?.employees],
+    () => getPlanningEmployees(roster, restaurantId),
+    [roster, restaurantId],
   );
-
+  const selectedEmployeeId = allEmployees.some((employee) => String(employee._id) === employeeFilter)
+    ? employeeFilter : null;
   const exportEmployees = useMemo(
     () =>
       allEmployees.map((employee) => ({
@@ -413,71 +235,67 @@ export default function PlanningEmployeesComponent() {
     [allEmployees],
   );
 
+  const editorEmployee = draft && allEmployees.find(
+    (employee) => String(employee._id) === String(draft.employeeId),
+  );
+  const draftRange = useMemo(() => draft ? getShiftDraftRange(draft) : null, [draft]);
+  const batch = useMemo(() => draft && !draft.isLeave && !draft.shiftId
+    ? getShiftBatch(draft, extra, repeat) : null, [draft, extra, repeat]);
+  const draftValidation = draft && (
+    editorEmployee ? batch?.error || validateShiftDraft(draft, draftRange) : "employeeRequired"
+  );
+  const collection = draft && planningShiftCollection(process.env.NEXT_PUBLIC_API_URL, restaurantId, draft.employeeId);
+  const draftConflict = useMemo(() => {
+    if (!editorEmployee) return null;
+    if (!batch?.occurrences) {
+      if (draft.shiftId && +draftRange.start === +draft.originalStart && +draftRange.end === +draft.originalEnd) return null;
+      return findDraftConflict(editorEmployee.shifts, draft.shiftId, draftRange);
+    }
+    for (const occurrence of batch.occurrences) {
+      const conflict = findDraftConflict(editorEmployee.shifts, null, occurrence.range);
+      if (conflict) return { ...conflict, date: occurrence.draft.date };
+    }
+    return null;
+  }, [batch, draft, draftRange, editorEmployee]);
+  const posts = useMemo(() => [...new Set(allEmployees.flatMap((employee) => [
+    employee.post, ...employee.shifts.map((shift) => shift.position),
+  ]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [allEmployees]);
+
   const contractualOvertimeWarning = useMemo(() => {
-    if (
-      !modalData.employeeId ||
-      modalData.isLeave ||
-      !modalData.start ||
-      !modalData.end ||
-      modalData.end <= modalData.start
-    ) {
+    if (!editorEmployee || draft.isLeave || draftRange.error || batch?.error) return null;
+    const contractualHours = Number(editorEmployee.employment?.contractualValue || 0);
+    const unit = editorEmployee.employment?.contractualUnit;
+    if (!Number.isFinite(contractualHours) || contractualHours <= 0 || !["week", "month"].includes(unit)) {
       return null;
     }
 
-    const employee = allEmployees.find(
-      (item) => String(item?._id) === String(modalData.employeeId),
+    const bounds = getPlanningPeriod(parsePlanningDate(draft.date), unit);
+    const existingMinutes = editorEmployee.shifts.reduce(
+      (total, shift) =>
+        isLeaveShiftRecord(shift) || String(shift._id) === String(draft.shiftId)
+          ? total
+          : total + getShiftMinutesWithinPeriod(shift.start, shift.end, bounds, shift.breakMinutes),
+      0,
     );
-    if (!employee) return null;
-
-    const employment = getEmployeeEmploymentForRestaurant(
-      employee,
-      restaurantId,
-    );
-    const contractualHours = Number(employment?.contractualValue || 0);
-    const contractualUnit = String(employment?.contractualUnit || "");
-    if (
-      !Number.isFinite(contractualHours) ||
-      contractualHours <= 0 ||
-      !["week", "month"].includes(contractualUnit)
-    ) {
-      return null;
-    }
-
-    const bounds = getContractPeriodBounds(modalData.start, contractualUnit);
-    if (!bounds) return null;
-
-    const existingMinutes = (employee.shifts || [])
-      .filter((shift) => !isLeaveShiftRecord(shift))
-      .reduce(
-        (total, shift) =>
-          total + getShiftMinutesWithinPeriod(shift?.start, shift?.end, bounds),
-        0,
-      );
-    const proposedMinutes = getShiftMinutesWithinPeriod(
-      modalData.start,
-      modalData.end,
-      bounds,
+    const proposedMinutes = (batch?.occurrences || [{ draft, range: draftRange }]).reduce(
+      (total, { draft: block, range }) =>
+        total + getShiftMinutesWithinPeriod(range.start, range.end, bounds, Number(block.breakMinutes)), 0,
     );
     const plannedMinutes = existingMinutes + proposedMinutes;
     const contractualMinutes = Math.round(contractualHours * 60);
     if (plannedMinutes <= contractualMinutes) return null;
-
     return {
       planned: formatPlannedHours(plannedMinutes),
       contractual: formatPlannedHours(contractualMinutes),
       overtime: formatPlannedHours(plannedMinutes - contractualMinutes),
-      periodLabel: contractualUnit === "month" ? "ce mois" : "cette semaine",
+      period: unit,
     };
-  }, [allEmployees, modalData, restaurantId]);
-
+  }, [batch, draft, draftRange, editorEmployee]);
   // ─── HYDRATATION DES SHIFTS AU MONTAGE ─────────────────────────────────────
   useEffect(() => {
     if (!restaurantId) return;
-    const employees = restaurantContext.restaurantData?.employees || [];
+    const employees = (roster || []).filter((employee) => !Array.isArray(employee.shifts));
     if (!employees.length) return;
-
-    const alreadyHydrated = employees.every((e) => Array.isArray(e.shifts));
-    if (alreadyHydrated) return;
 
     let canceled = false;
 
@@ -495,23 +313,23 @@ export default function PlanningEmployeesComponent() {
               }))
               .catch((err) => {
                 console.error("Erreur fetch shifts pour", emp._id, err);
-                return { employeeId: emp._id, shifts: [] };
+                return null;
               }),
           ),
         );
 
-        if (canceled) return;
+        if (canceled || !results.some(Boolean)) return;
 
-        restaurantContext.setRestaurantData((prev) => {
-          if (!prev) return prev;
+        setRestaurantData((prev) => {
+          if (!prev || String(prev._id) !== String(restaurantId)) return prev;
           const prevEmployees = prev.employees || [];
           return {
             ...prev,
             employees: prevEmployees.map((emp) => {
               const match = results.find(
-                (r) => String(r.employeeId) === String(emp._id),
+                (r) => r && String(r.employeeId) === String(emp._id),
               );
-              return match ? { ...emp, shifts: match.shifts } : emp;
+              return match && !Array.isArray(emp.shifts) ? { ...emp, shifts: match.shifts } : emp;
             }),
           };
         });
@@ -523,433 +341,143 @@ export default function PlanningEmployeesComponent() {
     return () => {
       canceled = true;
     };
-  }, [restaurantId, restaurantContext.restaurantData?.employees?.length]);
+  }, [restaurantId, roster, setRestaurantData]);
 
-  // Normalisation pour recherche
-  const normalize = (str) =>
-    str
-      ?.normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim() ?? "";
-
-  const employees = useMemo(() => {
-    if (!searchTerm.trim()) return allEmployees;
-    const norm = normalize(searchTerm);
-    return allEmployees.filter((e) =>
-      normalize(`${e.firstname} ${e.lastname}`).includes(norm),
-    );
-  }, [allEmployees, searchTerm]);
-
-  // Liste filtrée pour la recherche dans la modale (quand aucun employé sélectionné)
-  const modalEmployeeOptions = useMemo(() => {
-    if (!modalEmployeeQuery.trim()) return [];
-    const norm = normalize(modalEmployeeQuery);
-    return allEmployees
-      .filter((e) => normalize(`${e.firstname} ${e.lastname}`).includes(norm))
-      .slice(0, 10);
-  }, [allEmployees, modalEmployeeQuery]);
-
-  // ─── Recompose les events à partir des shifts ──────────────────────────────
-  useEffect(() => {
-    const newEvents = allEmployees.flatMap((emp) =>
-      (emp.shifts || []).map((s) => {
-        const startDate = new Date(s.start);
-        const endDate = new Date(s.end);
-        const isLeave = isLeaveShiftRecord(s);
-        const shiftLabel = getShiftDisplayTitle(s);
-        const leaveDurationLabel = getFullDayLeaveLabel(
-          startDate,
-          endDate,
-          isLeave,
-        );
-        const mealMeta = getShiftMealMeta({
-          start: startDate,
-          end: endDate,
-          openingHours,
-          isLeave,
-        });
-
-        return {
-          id: String(s._id),
-          title: getManagerEventTitle(emp, s),
-          shiftLabel,
-          employeeShortName: shortName(emp),
-          start: startDate,
-          end: endDate,
-          allDay: Boolean(leaveDurationLabel),
-          leaveDurationLabel,
-          resourceId: emp._id,
-          leaveRequestId: s.leaveRequestId || null,
-          isLeave,
-          hasMeal: mealMeta.hasMeal,
-          mealCount: mealMeta.mealCount,
-          mealPeriods: mealMeta.mealPeriods,
-        };
-      }),
-    );
-    setEvents(newEvents);
-  }, [allEmployees, openingHours]);
-
-  // ─── Couleurs par employé ──────────────────────────────────────────────────
-  const colorPalette = [
-    "#4E79A7",
-    "#F28E2B",
-    "#E15759",
-    "#76B7B2",
-    "#59A14F",
-    "#EDC948",
-    "#B07AA1",
-    "#FF9DA7",
-    "#9C755F",
-    "#BAB0AC",
-    "#2F4B7C",
-    "#FF6361",
-    "#58508D",
-    "#FFA600",
-    "#003F5C",
-    "#00A9E0",
-  ];
-  const employeeColorMap = useMemo(() => {
-    const map = {};
-    allEmployees.forEach((e, idx) => {
-      map[e._id] = colorPalette[idx % colorPalette.length];
-    });
-    return map;
-  }, [allEmployees]);
-
-  // ─── Filtrage des événements selon la sélection ─────────────────────────────
-  const visibleEvents = useMemo(
-    () =>
-      selectedEmployeeId
-        ? events.filter((ev) => ev.resourceId === selectedEmployeeId)
-        : events,
-    [events, selectedEmployeeId],
+  const currentEmployee = roster?.find(({ _id }) => String(_id) === String(userConnected?.id));
+  const currentProfile = currentEmployee?.restaurantProfiles?.find(
+    ({ restaurant }) => String(restaurant?._id ?? restaurant) === String(restaurantId),
   );
-
-  const hasVisibleAllDayEvents = useMemo(() => {
-    if (view === Views.MONTH) return false;
-
-    const bounds = getCalendarRangeBounds(date, view);
-    return visibleEvents.some(
-      (event) => event.allDay && eventIntersectsRange(event, bounds),
+  const commands = usePlanningCommands({
+    enabled: Boolean(restaurantId && (userConnected?.role === "owner" ||
+      (userConnected?.role === "employee" && currentProfile?.options?.employees === true))),
+    restaurantId, employees: allEmployees, setRestaurantData, onShiftDeleted: refreshPeriod,
+  });
+  const filteredEmployees = useMemo(() => {
+    const query = normalizePlanningText(searchTerm);
+    return visiblePlanningEmployees(allEmployees, commands.hiddenShifts).filter((employee) =>
+      (!selectedEmployeeId || String(employee._id) === selectedEmployeeId) &&
+      [employee.name, employee.post, ...employee.shifts.map((shift) => shift.position)]
+        .some((value) => normalizePlanningText(value ?? "").includes(query)),
     );
-  }, [date, view, visibleEvents]);
+  }, [allEmployees, commands.hiddenShifts, searchTerm, selectedEmployeeId]);
+  const employeeColors = useMemo(() => new Map(allEmployees.map((employee, index) => [String(employee._id), index])), [allEmployees]);
+  const noPost = t("planning:grid.noPost");
+  const grid = useMemo(() => buildPlanningGrid(filteredEmployees, period, group, noPost), [filteredEmployees, period, group, noPost]);
+  const exportDateRange = {
+    from: planningDateKey(period.start),
+    to: planningDateKey(period.days.at(-1)),
+  };
+  const revision = `${periodRevision}:${planningStateRevision}`;
+  const { data: publicationState } = usePlanningPeriodState(commands.enabled ? restaurantId : null, exportDateRange, revision);
+  const lockedByDate = new Map((publicationState?.days || []).map(({ date, locked }) => [date, locked]));
+  useEffect(() => {
+    setPublicationOpen(false);
+    setLockRange(null);
+    setDraft(null);
+    setExtra([]);
+    setRepeat(defaultShiftRepeat);
+    setFileBusy(false);
+    setConfirmingDelete(false);
+    setShiftConflict(null);
+    batchRequests.current.clear();
+  }, [restaurantId]);
 
-  // ─── Sélection d’un créneau ────────────────────────────────────────────────
-  function handleSelectSlot(slotInfo) {
-    if (selectedEmployeeId) {
-      setModalData({
-        employeeId: selectedEmployeeId,
-        start: slotInfo.start,
-        end: slotInfo.end,
-        title: "",
-        isLeave: false,
-        isFullDayLeave: false,
-      });
-      setModalOpen(true);
-      return;
-    }
-
-    setModalData({
-      employeeId: null,
-      start: slotInfo.start,
-      end: slotInfo.end,
-      title: "",
-      isLeave: false,
-      isFullDayLeave: false,
-    });
-    setModalEmployeeQuery("");
-    setModalOpen(true);
+  function openShiftForm(employeeId, slot, position) {
+    if (commands.busy) return;
+    setSubmitError("");
+    const post = position ?? allEmployees.find((employee) => String(employee._id) === String(employeeId))?.post ?? "";
+    initialDraft.current = { ...makeShiftDraft({ employeeId, slot, position: post }), restaurantId };
+    setDraft(initialDraft.current);
   }
 
-  // ✅ AJOUT MANUEL via bouton "+"
-  function openManualAdd() {
-    setModalData({
-      employeeId: selectedEmployeeId || null,
-      start: null,
-      end: null,
-      title: "",
-      isLeave: false,
-      isFullDayLeave: false,
-    });
-    setModalEmployeeQuery("");
-    setModalOpen(true);
-  }
-
-  function closeShiftConflictModal() {
-    setShiftConflictModalData(getEmptyShiftConflictModalData());
-  }
-
-  // ─── Valider l’ajout de shift ──────────────────────────────────────────────
-  async function handleConfirmShift() {
-    const { employeeId, start, end, title, isLeave, isFullDayLeave } =
-      modalData;
-    if (!employeeId) {
-      window.alert(
-        t("planning:errors.employeeRequired", "Sélectionnez un employé"),
-      );
-      return;
-    }
-    if (!restaurantId) {
-      window.alert("Restaurant introuvable");
-      return;
-    }
-
-    if (!start || !end || end <= start) {
-      window.alert(
-        t(
-          "planning:errors.invalidRange",
-          "La période sélectionnée est invalide",
-        ),
-      );
-      return;
-    }
-
-    const normalizedStart =
-      isLeave && isFullDayLeave ? toStartOfDay(start) : new Date(start);
-    const normalizedEnd =
-      isLeave && isFullDayLeave ? toEndOfDay(end) : new Date(end);
-    const safeTitle = isLeave ? "" : canonicalizeShiftTitle(title);
-
-    try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts`,
-        {
-          isLeave,
-          title: safeTitle,
-          start: normalizedStart.toISOString(),
-          end: normalizedEnd.toISOString(),
-        },
-      );
-
-      const updatedShifts = response.data.shifts; // contient les _id
-      const updatedRestaurant = { ...restaurantContext.restaurantData };
-      updatedRestaurant.employees = updatedRestaurant.employees.map((emp) =>
-        emp._id === employeeId ? { ...emp, shifts: updatedShifts } : emp,
-      );
-      restaurantContext.setRestaurantData(updatedRestaurant);
-
-      const employee = allEmployees.find((e) => e._id === employeeId) || {};
-      const updatedEvents = updatedShifts.map((s) => ({
-        ...(() => {
-          const start = new Date(s.start);
-          const end = new Date(s.end);
-          const isLeave = isLeaveShiftRecord(s);
-          const leaveDurationLabel = getFullDayLeaveLabel(start, end, isLeave);
-          const mealMeta = getShiftMealMeta({
-            start,
-            end,
-            openingHours,
-            isLeave,
-          });
-
-          return {
-            start,
-            end,
-            allDay: Boolean(leaveDurationLabel),
-            leaveDurationLabel,
-            isLeave,
-            hasMeal: mealMeta.hasMeal,
-            mealCount: mealMeta.mealCount,
-            mealPeriods: mealMeta.mealPeriods,
-          };
-        })(),
-        id: String(s._id),
-        title: getManagerEventTitle(employee, s),
-        shiftLabel: getShiftDisplayTitle(s),
-        employeeShortName: shortName(employee),
-        resourceId: employeeId,
-        leaveRequestId: s.leaveRequestId || null,
-      }));
-      const other = events.filter((ev) => ev.resourceId !== employeeId);
-      setEvents([...other, ...updatedEvents]);
-      setModalOpen(false);
-      setModalData({
-        employeeId: null,
-        start: null,
-        end: null,
-        title: "",
-        isLeave: false,
-        isFullDayLeave: false,
-      });
-      setModalEmployeeQuery("");
-    } catch (err) {
-      console.error("Erreur ajout shift :", err);
-
-      if (err?.response?.status === 409 && err?.response?.data?.conflictType) {
-        setShiftConflictModalData({
-          isOpen: true,
-          employeeId,
-          message:
-            err?.response?.data?.message ||
-            "Impossible d’ajouter ce créneau sur cette période.",
-          conflictType: err?.response?.data?.conflictType || "",
-          conflict: err?.response?.data?.conflict || null,
-          attemptedStart: normalizedStart,
-          attemptedEnd: normalizedEnd,
-          attemptedTitle: safeTitle,
-        });
-        return;
-      }
-
-      window.alert(
-        t("planning:errors.addFailed", "Impossible d’ajouter le shift"),
-      );
-    }
-  }
-
-  function handleCancelShift() {
-    setModalOpen(false);
-    setModalData({
-      employeeId: null,
-      start: null,
-      end: null,
-      title: "",
-      isLeave: false,
-      isFullDayLeave: false,
-    });
-    setModalEmployeeQuery("");
-    closeShiftConflictModal();
-  }
-
-  // ─── Clic = modale suppression ─────────────────────────────────────────────
   function handleSelectEvent(event) {
-    setDeleteModalData({
-      eventId: event.id,
-      employeeId: event.resourceId,
-      title: event.shiftLabel || event.title.split(" - ")[1],
-      originalTitle: event.shiftLabel || event.title.split(" - ")[1],
-      start: event.start,
-      end: event.end,
-      leaveRequestId: event.leaveRequestId || null,
-      isLeave: !!event.isLeave,
-    });
-    setDeleteModalOpen(true);
+    setSubmitError("");
+    initialDraft.current = { ...makeShiftDraft({ event }), restaurantId };
+    setDraft(initialDraft.current);
   }
 
-  async function handleUpdateShiftTitle() {
-    if (isUpdatingShiftTitle || deleteModalData.isLeave) return;
-
-    const { employeeId, eventId: shiftId } = deleteModalData;
-
-    if (!restaurantId || !employeeId || !shiftId) return;
-
-    const nextTitle = canonicalizeShiftTitle(deleteModalData.title);
-    const currentTitle = canonicalizeShiftTitle(deleteModalData.originalTitle);
-
-    if (nextTitle === currentTitle) return;
-
-    try {
-      setIsUpdatingShiftTitle(true);
-
-      const response = await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
-        { title: nextTitle },
-      );
-
-      const updatedShifts = response.data?.shifts || [];
-
-      restaurantContext.setRestaurantData((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          employees: (prev.employees || []).map((employee) =>
-            String(employee._id) === String(employeeId)
-              ? { ...employee, shifts: updatedShifts }
-              : employee,
-          ),
-        };
-      });
-
-      handleCancelDelete();
-    } catch (err) {
-      console.error("Erreur modification intitulé shift :", err);
-      window.alert(
-        t(
-          "planning:errors.updateTitleFailed",
-          "Impossible de modifier l’intitulé du shift",
-        ),
-      );
-    } finally {
-      setIsUpdatingShiftTitle(false);
-    }
+  function changeShiftDraft(patch) {
+    setSubmitError("");
+    setDraft((previous) => previous && { ...previous, ...patch });
   }
 
-  // ─── Confirmer suppression ─────────────────────────────────────────────────
-  async function handleConfirmDelete() {
-    if (isDeleting) return;
-    setIsDeleting(true);
-    const {
-      employeeId,
-      eventId: shiftId,
-      leaveRequestId,
-      isLeave,
-    } = deleteModalData;
+  function dismissEditor() {
+    if (fileBusy || shiftOperationPending.current) return;
+    const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft.current) || extra.length > 0 ||
+      JSON.stringify(repeat) !== JSON.stringify(defaultShiftRepeat);
+    if (!dirty || window.confirm("Abandonner les modifications du créneau ?")) closeEditor();
+  }
 
+  function closeEditor() {
+    setDraft(null);
+    setExtra([]);
+    setRepeat(defaultShiftRepeat);
+    batchRequests.current.clear();
+    setConfirmingDelete(false);
+    setShiftConflict(null);
+  }
+
+  function applyShiftUpdate(employeeId, update) {
+    setRestaurantData((previous) => updatePlanningEmployee(previous, restaurantId, employeeId, update));
+  }
+
+  async function handleSaveShift() {
+    if (!restaurantId || draftValidation || draft.leaveRequestId || fileBusy || shiftOperationPending.current) return;
+    shiftOperationPending.current = true;
+    setShiftOperation("save");
+    setSubmitError("");
     try {
-      if (isLeave && leaveRequestId) {
-        await axios.put(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/leave-requests/${leaveRequestId}`,
-          { status: "canceled" },
-        );
-
-        const updated = { ...restaurantContext.restaurantData };
-        updated.employees = updated.employees.map((e) => {
-          if (e._id !== employeeId) return e;
-          return {
-            ...e,
-            leaveRequests: (e.leaveRequests || []).map((r) =>
-              String(r._id) === String(leaveRequestId)
-                ? { ...r, status: "canceled" }
-                : r,
-            ),
-            shifts: (e.shifts || []).filter(
-              (s) => String(s.leaveRequestId) !== String(leaveRequestId),
-            ),
-          };
+      const shifts = batch
+        ? await savePlanningShiftBatch(axios, collection, batch, batchRequests.current)
+        : await savePlanningShift(axios, process.env.NEXT_PUBLIC_API_URL, restaurantId, draft, draftRange);
+      applyShiftUpdate(draft.employeeId, (employee) => ({ ...employee, shifts }));
+      closeEditor();
+    } catch (error) {
+      const apiError = error.response?.data;
+      if (error.response?.status === 409) {
+        setShiftConflict({
+          message: apiError?.message || editorLabel("conflictDescription"),
+          entry: apiError?.conflict,
+          attempted: apiError?.attempted,
         });
-        restaurantContext.setRestaurantData(updated);
       } else {
-        await axios.delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}/shifts/${shiftId}`,
-        );
-
-        const updated = { ...restaurantContext.restaurantData };
-        updated.employees = updated.employees.map((e) => {
-          if (e._id !== employeeId) return e;
-          return {
-            ...e,
-            shifts: (e.shifts || []).filter(
-              (s) => String(s._id) !== String(shiftId),
-            ),
-          };
-        });
-        restaurantContext.setRestaurantData(updated);
+        setSubmitError(apiError?.message || editorLabel("saveError"));
       }
-
-      setEvents((prev) =>
-        prev.filter((ev) => String(ev.id) !== String(shiftId)),
-      );
-    } catch (err) {
-      console.error("Erreur suppression shift / annulation congé :", err);
-      window.alert(
-        t(
-          "planning:errors.deleteFailed",
-          "Impossible de supprimer le shift / annuler le congé",
-        ),
-      );
     } finally {
-      setIsDeleting(false);
+      shiftOperationPending.current = false;
+      setShiftOperation(null);
     }
-
-    setDeleteModalOpen(false);
   }
 
-  function handleCancelDelete() {
-    setDeleteModalOpen(false);
-    setDeleteModalData(getEmptyDeleteModalData());
+  async function handleConfirmDelete() {
+    if (!restaurantId || !editorEmployee || !draft.shiftId || shiftOperationPending.current) return;
+    shiftOperationPending.current = true;
+    setShiftOperation("delete");
+    setDeleteError("");
+    const { employeeId, shiftId, leaveRequestId } = draft;
+
+    try {
+      const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
+      if (leaveRequestId) {
+        const { data } = await axios.put(`${baseUrl}/leave-requests/${leaveRequestId}`, { status: "canceled" });
+        applyShiftUpdate(employeeId, (employee) => ({
+          ...employee,
+          leaveRequests: (employee.leaveRequests || []).map((request) =>
+            String(request._id) === String(leaveRequestId) ? { ...request, status: "canceled" } : request,
+          ),
+          shifts: data.shifts || (employee.shifts || []).filter((shift) => String(shift.leaveRequestId) !== String(leaveRequestId)),
+        }));
+      } else {
+        const { data } = await axios.delete(`${baseUrl}/shifts/${shiftId}`);
+        applyShiftUpdate(employeeId, (employee) => ({ ...employee, shifts: data.shifts || [] }));
+      }
+      closeEditor();
+    } catch (error) {
+      setDeleteError(error.response?.data?.message || editorLabel("deleteError"));
+    } finally {
+      shiftOperationPending.current = false;
+      setShiftOperation(null);
+    }
   }
 
   async function handlePlanningExport(payload) {
@@ -996,1195 +524,196 @@ export default function PlanningEmployeesComponent() {
     }
   }
 
-  async function handlePlanningSend(payload) {
-    if (!restaurantId) return;
+  const weekByEmployee = commands.enabled && view === PLANNING_VIEWS.WEEK && group === PLANNING_GROUPS.EMPLOYEES;
+  const counterRequestKey = `${restaurantId}:${exportDateRange.from}:${exportDateRange.to}`;
+  const visibleCounters = planningCounters?.key === counterRequestKey ? planningCounters : null;
+  const currentTargets = planningTargets?.key === counterRequestKey ? planningTargets.targets : undefined;
+  const showCounterControl = weekByEmployee && filteredEmployees.some(({ _id }) => currentTargets?.[String(_id)]?.hasCounter === true);
+  useEffect(() => {
+    if (!weekByEmployee || !restaurantId) return undefined;
+    const controller = new AbortController();
+    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/reports/planning-targets`, {
+      ...getAuthConfig(), signal: controller.signal, params: { from: exportDateRange.from },
+    }).then(({ data }) => {
+      if (!controller.signal.aborted) setPlanningTargets({ key: counterRequestKey, targets: data.targets });
+    }).catch(() => {
+      if (!controller.signal.aborted) setPlanningTargets(null);
+    });
+    return () => controller.abort();
+  }, [weekByEmployee, restaurantId, exportDateRange.from, counterRequestKey, roster, periodRevision, planningStateRevision]);
+  useEffect(() => {
+    if (!showCounterControl || !showCounters || !restaurantId) return undefined;
+    const controller = new AbortController();
+    setPlanningCounters(null);
+    axios.get(`${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/reports`, {
+      ...getAuthConfig(), signal: controller.signal, params: { from: exportDateRange.from, to: exportDateRange.to },
+    }).then(({ data }) => {
+      if (!controller.signal.aborted) setPlanningCounters({ key: counterRequestKey, rows: Object.fromEntries(data.rows
+        .map(({ employee, values }) => [employee.id, { balance: values.counterEnd, annualRemaining: values.annualRemaining }])) });
+    }).catch(() => {
+      if (!controller.signal.aborted) setPlanningCounters({ key: counterRequestKey, error: true });
+    });
+    return () => controller.abort();
+  }, [showCounterControl, showCounters, restaurantId, exportDateRange.from, exportDateRange.to, counterRequestKey, periodRevision, planningRevision, planningStateRevision]);
 
-    setIsPlanningSendLoading(true);
-    setPlanningSendError("");
-
-    try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/planning/send`,
-        payload,
-        getAuthConfig(),
-      );
-
-      setIsPlanningSendOpen(false);
-    } catch (error) {
-      console.error("Erreur envoi planning salariés :", error);
-      setPlanningSendError(
-        error?.response?.data?.message ||
-          "Impossible d'envoyer le planning pour le moment.",
-      );
-    } finally {
-      setIsPlanningSendLoading(false);
-    }
-  }
-
-  const CustomEvent = ({ event }) => {
-    const timeLabel = formatEventTimeRange(event.start, event.end);
-    const nameLine = selectedEmployeeId ? "" : event.employeeShortName || "";
-    const shiftLine = event.shiftLabel || "";
-    const tooltipSuffix = event.hasMeal ? " • Repas" : "";
-    const tooltip = event.allDay
-      ? `${event.title}${tooltipSuffix}`
-      : event.title
-        ? `${event.title} : ${timeLabel}${tooltipSuffix}`
-        : timeLabel;
-
-    if (event.allDay) {
-      return (
-        <div
-          className="flex items-start justify-between gap-2 overflow-hidden"
-          title={tooltip}
-        >
-          <span className="truncate text-[11px] font-medium leading-tight">
-            {event.title}
-          </span>
-          {event.hasMeal ? (
-            <span className="mt-[1px] inline-flex shrink-0 text-darkBlue/80">
-              <UtensilsCrossed className="size-3" />
-            </span>
-          ) : null}
-        </div>
-      );
-    }
-
-    const useCompactLayout = isMobile || view === Views.DAY;
-
-    if (useCompactLayout) {
-      return (
-        <div
-          className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-[1.05]"
-          title={tooltip}
-        >
-          <div className="min-w-0 flex-1">
-            {nameLine ? (
-              <span className="block truncate text-[11px] font-medium opacity-95">
-                {nameLine}
-              </span>
-            ) : null}
-            {shiftLine ? (
-              <span className="block truncate text-[10px] opacity-90">
-                {shiftLine}
-              </span>
-            ) : null}
-          </div>
-          {event.hasMeal ? (
-            <span className="mt-[1px] inline-flex shrink-0 text-white/90">
-              <UtensilsCrossed className="size-3" />
-            </span>
-          ) : null}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="flex h-full items-start justify-between gap-2 overflow-hidden whitespace-normal leading-tight"
-        title={tooltip}
-      >
-        <div className="min-w-0 flex-1">
-          {event.employeeShortName ? (
-            <span className="block truncate text-[11px] font-medium opacity-95">
-              {event.employeeShortName}
-            </span>
-          ) : null}
-          {event.shiftLabel ? (
-            <span className="block truncate text-[10px] opacity-90">
-              {event.shiftLabel}
-            </span>
-          ) : !event.employeeShortName && event.title ? (
-            <span className="block truncate text-[11px] font-medium opacity-95">
-              {event.title}
-            </span>
-          ) : null}
-        </div>
-        {event.hasMeal ? (
-          <span className="mt-[1px] inline-flex shrink-0 text-white/90">
-            <UtensilsCrossed className="size-3" />
-          </span>
-        ) : null}
-      </div>
-    );
-  };
-
-  // ─── Toolbar mobile compacte ────────────────────────────────────────────────
-  const rangeLabel = useMemo(() => {
-    if (!date) return "";
-    if (view === Views.DAY)
-      return format(date, "EEE dd MMM yyyy", { locale: frLocale });
-    if (view === Views.MONTH)
-      return format(date, "MMMM yyyy", { locale: frLocale });
-
-    const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
-    const end = addDays(start, 6);
-    const left = format(start, "dd MMM", { locale: frLocale });
-    const right = format(end, "dd MMM yyyy", { locale: frLocale });
-    return `${left} – ${right}`;
-  }, [date, view]);
-
-  const exportDateRange = useMemo(() => {
-    if (!date) {
-      const now = new Date();
-      return {
-        from: toInputDate(now),
-        to: toInputDate(now),
-      };
-    }
-
-    if (view === Views.DAY) {
-      return {
-        from: toInputDate(date),
-        to: toInputDate(date),
-      };
-    }
-
-    if (view === Views.MONTH) {
-      const start = new Date(date.getFullYear(), date.getMonth(), 1);
-      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      return {
-        from: toInputDate(start),
-        to: toInputDate(end),
-      };
-    }
-
-    const start = startOfWeek(date, { locale: frLocale, weekStartsOn: 1 });
-    const end = addDays(start, 6);
-
-    return {
-      from: toInputDate(start),
-      to: toInputDate(end),
-    };
-  }, [date, view]);
-
-  const goToday = () => setDate(new Date());
-
-  const goPrev = () => {
-    if (view === Views.MONTH)
-      setDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-    else if (view === Views.DAY)
-      setDate((d) => new Date(d.getTime() - 24 * 60 * 60 * 1000));
-    else setDate((d) => new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000));
-  };
-
-  const goNext = () => {
-    if (view === Views.MONTH)
-      setDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-    else if (view === Views.DAY)
-      setDate((d) => new Date(d.getTime() + 24 * 60 * 60 * 1000));
-    else setDate((d) => new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000));
-  };
-
-  // ─── Search UI ─────────────────────────────────────────────────────────────
-  const searchRef = useRef(null);
-  const clearSearch = () => {
-    setSearchTerm("");
-    searchRef.current?.focus?.();
-  };
-
-  function dateToLocalInputValue(d) {
-    if (!d) return "";
-    const y = d.getFullYear();
-    const m = pad2(d.getMonth() + 1);
-    const day = pad2(d.getDate());
-    const hh = pad2(d.getHours());
-    const mm = pad2(d.getMinutes());
-    return `${y}-${m}-${day}T${hh}:${mm}`;
-  }
-
-  function dateToLocalDateInputValue(d) {
-    if (!d) return "";
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-
-  function localInputValueToDate(v) {
-    if (!v) return null;
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  function localDateInputValueToDate(v, boundary = "start") {
-    if (!v) return null;
-    const [year, month, day] = String(v)
-      .split("-")
-      .map((value) => Number(value));
-    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
-    if (Number.isNaN(date.getTime())) return null;
-    if (boundary === "end") {
-      date.setHours(23, 59, 0, 0);
-    }
-    return date;
-  }
-
-  // ─── Hauteur calendrier : évite le “gros blanc” ─────────────────────────────
-  const calendarHeight = isMobile ? "calc(100vh - 160px)" : "75vh";
+  const counterRows = showCounterControl && showCounters ? visibleCounters?.rows : undefined;
 
   return (
-    <section
-      className={`${isMobile ? "gm-mobile-planning " : ""}gm-show-allday-calendar ${
-        hasVisibleAllDayEvents ? "gm-has-allday-events" : ""
-      } flex flex-col gap-4 min-w-0`}
-    >
-      {/* ================= Header ================= */}
-      <CatalogHeaderDashboardComponent
-        icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
-        title={t("titles.main")}
-        onTitleClick={() => router.push("/dashboard/employees")}
+    <section className="flex min-w-0 flex-col gap-3">
+      <PlanningToolbar
+        {...{ date, period, view, group, employees: allEmployees }}
+        query={searchTerm}
+        employeeId={selectedEmployeeId}
+        onDate={(selected) => updateConsultation({ date: selected })}
+        onStep={(direction) => updateConsultation({ date: movePlanningDate(date, view, direction) })}
+        onToday={() => updateConsultation({ date: parsePlanningDate(parisPlanningDateKey(new Date())) })}
+        onView={(selected) => updateConsultation({ view: selected })}
+        onGroup={(selected) => updateConsultation({ group: selected })}
+        onQuery={(query) => updateConsultation({ query })}
+        onEmployee={setEmployeeFilter}
+        onClear={() => { setEmployeeFilter(null); updateConsultation({ query: "" }); }}
         onBack={() => router.push("/dashboard/employees")}
-        subtitle={t("titles.planning")}
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setPlanningExportError("");
-                setIsPlanningExportOpen(true);
-              }}
-              className="hidden midTablet:inline-flex
-       items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-2 text-sm font-semibold text-darkBlue
-      hover:bg-darkBlue/5 transition
-    "
-            >
-              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                <Download className="size-4" />
-              </span>
-              <span className="whitespace-nowrap">Télécharger le planning</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPlanningSendError("");
-                setIsPlanningSendOpen(true);
-              }}
-              className="hidden midTablet:inline-flex
-       items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-2 text-sm font-semibold text-darkBlue
-      hover:bg-darkBlue/5 transition
-    "
-            >
-              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue">
-                <Send className="size-4" />
-              </span>
-              <span className="whitespace-nowrap">Envoyer le planning</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                router.push("/dashboard/employees/planning/days-off")
-              }
-              className="hidden midTablet:inline-flex
-       items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-4 py-2 text-sm font-semibold text-darkBlue
-      hover:bg-darkBlue/5 transition
-    "
-            >
-              <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white">
-                <CalendarDays className="size-4" />
-              </span>
-              <span className="whitespace-nowrap">{t("titles.daysOff")}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={openManualAdd}
-              className="hidden midTablet:inline-flex
-       items-center gap-2
-      rounded-2xl bg-white text-blue
-      px-4 py-2 text-sm font-semibold border border-blue
-      shadow-sm hover:bg-darkBlue/5 active:scale-[0.98] transition
-    "
-              aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
-              title={t("planning:buttons.addShift", "Ajouter un créneau")}
-            >
-              <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15">
-                <Plus className="size-4" />
-              </span>
-              <span className="whitespace-nowrap">
-                {t("planning:buttons.addShift", "Ajouter un créneau")}
-              </span>
-            </button>
-          </>
-        }
+        onLeaves={() => router.push("/dashboard/employees/planning/days-off")}
+        onExport={() => { setPlanningExportError(""); setIsPlanningExportOpen(true); }}
+        onPublish={commands.enabled ? () => setPublicationOpen(true) : undefined}
+        publicationStatus={publicationState?.status}
+        onLockPeriod={publicationState ? () => setLockRange(exportDateRange) : undefined}
+        hasPeriodLock={publicationState?.days.some(({ locked }) => locked)}
+        counterControl={showCounterControl && <button type="button" aria-pressed={showCounters}
+          onClick={() => setShowCounters((value) => !value)} className={styles.control}>{t("planning:counters.toggle")}</button>}
+      />
+      {showCounterControl && showCounters && !visibleCounters && <p className="px-2 text-sm text-darkBlue/75" role="status">{t("planning:counters.loading")}</p>}
+      {showCounterControl && showCounters && visibleCounters?.error && <p className="px-2 text-sm text-red" role="alert">{t("planning:counters.error")}</p>}
+      {counterRows && <p className="px-2 text-sm text-darkBlue/75">{t("planning:counters.help")}</p>}
+      <PlanningCommands {...{ commands }} employees={allEmployees} Dialog={PlanningDialog} />
+      <PlanningGrid
+        {...{ view, period, employeeColors, openingHours, commands, group }}
+        data={grid}
+        targets={currentTargets}
+        counters={counterRows}
+        lockedByDate={lockedByDate}
+        onLockDay={publicationState ? (date) => setLockRange({ from: date, to: date }) : undefined}
+        onDay={(day) => updateConsultation({ date: day, view: PLANNING_VIEWS.DAY })}
+        onAdd={openShiftForm}
+        onOpen={handleSelectEvent}
       />
 
-      <div className="grid w-full grid-cols-2 gap-2 midTablet:hidden">
-        <button
-          type="button"
-          onClick={() => {
-            setPlanningExportError("");
-            setIsPlanningExportOpen(true);
-          }}
-          className="
-      inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
-      px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
-    "
-          aria-label="Télécharger le planning"
-          title="Télécharger le planning"
+      {draft && (
+        <PlanningDialog
+          wide
+          behind={Boolean(shiftConflict || confirmingDelete)}
+          label={shiftEditorTitle(editorLabel, draft, editorEmployee, !draft.isLeave && extra.length > 0)}
+          onClose={shiftOperation || fileBusy ? undefined : dismissEditor}
         >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
-            <Download className="size-4" />
-          </span>
-          <span className="min-w-0 leading-tight">Télécharger le planning</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setPlanningSendError("");
-            setIsPlanningSendOpen(true);
-          }}
-          className="
-      inline-flex flex-1 min-w-0 items-center gap-2 rounded-2xl border border-darkBlue/10 bg-white/70
-      px-3 py-3 text-sm font-semibold text-darkBlue transition hover:bg-darkBlue/5
-    "
-          aria-label="Envoyer le planning"
-          title="Envoyer le planning"
-        >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 text-blue shrink-0">
-            <Send className="size-4" />
-          </span>
-          <span className="min-w-0 leading-tight">Envoyer le planning</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/employees/planning/days-off")}
-          className="
-      inline-flex min-w-0 items-center gap-2
-      rounded-2xl border border-darkBlue/10 bg-white/70
-      px-3 py-3 text-sm font-semibold text-darkBlue
-      hover:bg-darkBlue/5 transition
-    "
-        >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-violet text-white shrink-0">
-            <CalendarDays className="size-4" />
-          </span>
-          <span className="min-w-0 leading-tight">{t("titles.daysOff")}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={openManualAdd}
-          className="
-      inline-flex min-w-0 items-center gap-2 rounded-2xl border border-blue bg-white
-      px-3 py-3 text-sm font-semibold text-blue shadow-sm transition hover:bg-darkBlue/5 active:scale-[0.98]
-    "
-          aria-label={t("planning:buttons.addShift", "Ajouter un créneau")}
-          title={t("planning:buttons.addShift", "Ajouter un créneau")}
-        >
-          <span className="inline-flex items-center justify-center size-9 rounded-full bg-blue/15 shrink-0">
-            <Plus className="size-4" />
-          </span>
-          <span className="min-w-0 leading-tight">
-            {t("planning:buttons.addShift", "Ajouter un créneau")}
-          </span>
-        </button>
-      </div>
-
-      {/* ================= Search ================= */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-darkBlue/40" />
-        <input
-          ref={searchRef}
-          type="text"
-          inputMode="search"
-          placeholder={t(
-            "planning:placeholders.searchEmployee",
-            "Rechercher un employé",
-          )}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={`h-12 w-full rounded-2xl border border-darkBlue/10 bg-white/70 ${
-            searchTerm ? "pr-12" : "pr-4"
-          } pl-9 text-base`}
-        />
-        {searchTerm && (
-          <button
-            onClick={clearSearch}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-9 rounded-2xl border border-darkBlue/10 bg-white hover:bg-darkBlue/5 transition"
-            aria-label={t("buttons.clear", "Effacer")}
-            title={t("buttons.clear", "Effacer")}
-          >
-            <X className="size-4 text-darkBlue/60" />
-          </button>
-        )}
-      </div>
-
-      {/* ================= Employees selector ================= */}
-      <div>
-        <div className="flex items-center gap-2">
-          {/* Liste scrollable */}
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <div className="flex gap-2 py-1 px-px">
-              {employees.map((emp) => {
-                const active = selectedEmployeeId === emp._id;
-
-                return (
-                  <button
-                    key={emp._id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedEmployeeId((prev) =>
-                        prev === emp._id ? null : emp._id,
-                      )
-                    }
-                    className={`
-        shrink-0 min-w-[130px] p-0 bg-transparent
-        rounded-xl transition
-        ${active ? "ring-2 ring-blue" : "ring-1 ring-darkBlue/10"}
-      `}
-                    aria-pressed={active}
-                  >
-                    <CardEmployeesComponent
-                      employee={emp}
-                      planning={true}
-                      restaurantId={restaurantId}
-                      planningCompact={true}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ================= Calendar toolbar compact ================= */}
-      <div className="rounded-3xl border border-darkBlue/10 bg-white/70 p-3">
-        {/* Ligne 1 : prev + date (tap=goToday) + plus + next */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={goPrev}
-            className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-            aria-label={t("calendar.prev", "Précédent")}
-          >
-            <ChevronLeft className="size-5 text-darkBlue/70" />
-          </button>
-
-          <button
-            type="button"
-            onClick={goToday}
-            className="h-11 flex-1 min-w-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 px-3 bg-white/70 hover:bg-darkBlue/5"
-            aria-label={t("calendar.today", "Aller à aujourd’hui")}
-            title={t("calendar.today", "Aller à aujourd’hui")}
-          >
-            <span className="truncate text-sm font-semibold">{rangeLabel}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={goNext}
-            className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-2xl border border-darkBlue/10 bg-white/70 hover:bg-darkBlue/5 transition"
-            aria-label={t("calendar.next", "Suivant")}
-          >
-            <ChevronRight className="size-5 text-darkBlue/70" />
-          </button>
-        </div>
-
-        {/* Ligne 2 : Segmented control */}
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setView(Views.WEEK)}
-            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
-              view === Views.WEEK
-                ? "bg-blue text-white"
-                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
-            }`}
-          >
-            {t("calendar.week", "Semaine")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView(Views.DAY)}
-            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
-              view === Views.DAY
-                ? "bg-blue text-white"
-                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
-            }`}
-          >
-            {t("calendar.day", "Jour")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView(Views.MONTH)}
-            className={`flex-1 h-11 rounded-2xl border border-darkBlue/10 font-semibold text-sm transition ${
-              view === Views.MONTH
-                ? "bg-blue text-white"
-                : "bg-white/70 text-darkBlue hover:bg-darkBlue/5"
-            }`}
-          >
-            {t("calendar.month", "Mois")}
-          </button>
-        </div>
-      </div>
-
-      {/* ================= Calendar ================= */}
-      <div className="rounded-3xl border border-darkBlue/10 bg-white/70 overflow-hidden">
-        <div className="overflow-x-auto">
-          <div
-            style={{ height: calendarHeight, minHeight: isMobile ? 420 : 520 }}
-          >
-            <DnDCalendar
-              date={date}
-              onNavigate={(d) => setDate(d)}
-              view={view}
-              onView={(v) => setView(v)}
-              components={{ event: CustomEvent, toolbar: () => null }}
-              showMultiDayTimes
-              localizer={localizer}
-              culture="fr"
-              events={visibleEvents}
-              defaultView={Views.MONTH}
-              views={[Views.WEEK, Views.DAY, Views.MONTH]}
-              step={30}
-              timeslots={2}
-              defaultDate={new Date()}
-              selectable="ignoreEvents"
-              onSelectSlot={handleSelectSlot}
-              onSelectEvent={handleSelectEvent}
-              draggableAccessor={() => false}
-              eventPropGetter={(event) => {
-                const isLeave = event.isLeave;
-                const compactEvent = isMobile || view === Views.DAY;
-                return {
-                  style: {
-                    backgroundColor: isLeave
-                      ? "#FFD19C"
-                      : employeeColorMap[event.resourceId],
-                    border: `1px solid ${
-                      isLeave ? "#FDBA74" : "rgba(255,255,255,0.9)"
-                    }`,
-                    borderRadius: compactEvent ? 10 : 12,
-                    outline: "none",
-                    fontSize: compactEvent ? 11 : 12,
-                    padding: compactEvent ? "3px 5px" : "2px 6px",
-                    lineHeight: 1.05,
-                  },
-                };
-              }}
-              messages={{
-                today: "Aujourd’hui",
-                previous: "<",
-                next: ">",
-                month: "Mois",
-                week: "Semaine",
-                day: "Jour",
-                date: "Date",
-                time: "Heure",
-              }}
-              formats={{
-                timeGutterFormat: (d) =>
-                  format(d, "HH:mm", { locale: frLocale }),
-                weekdayFormat: (d) =>
-                  format(d, "EEE dd/MM", { locale: frLocale }),
-                dayRangeHeaderFormat: ({ start, end }) =>
-                  `${format(start, "dd MMM", { locale: frLocale })} – ${format(
-                    end,
-                    "dd MMM yyyy",
-                    { locale: frLocale },
-                  )}`,
-                dayHeaderFormat: (d) =>
-                  format(d, "EEEE dd MMMM yyyy", { locale: frLocale }),
-                eventTimeRangeFormat: ({ start, end }) =>
-                  `${format(start, "HH:mm", { locale: frLocale })} – ${format(
-                    end,
-                    "HH:mm",
-                    { locale: frLocale },
-                  )}`,
-              }}
-              style={{ height: "100%", width: "100%" }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Modale Ajout Shift (inchangée) ───────────────────────────────────── */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
-          <div
-            onClick={() => setModalOpen(false)}
-            className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
-          />
-
-          <div
-            className="
-              relative w-full max-w-[460px]
-              rounded-2xl border border-darkBlue/10 bg-white/95
-              px-5 py-6 tablet:px-7 tablet:py-7
-              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
-              flex flex-col gap-5
-            "
-          >
-            {modalData.employeeId ? (
-              <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
-                {(() => {
-                  const emp = allEmployees.find(
-                    (e) => e._id === modalData.employeeId,
-                  );
-                  return emp ? `${emp.firstname} ${emp.lastname}` : "";
-                })()}
-              </h2>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <label className="block text-md font-medium text-center text-darkBlue">
-                  {t("planning:labels.chooseEmployee", "Choisir un employé")}
-                </label>
-                <div className="relative mt-1">
-                  <input
-                    type="text"
-                    value={modalEmployeeQuery}
-                    onChange={(e) => setModalEmployeeQuery(e.target.value)}
-                    placeholder={t(
-                      "planning:placeholders.searchEmployee",
-                      "Rechercher un employé",
-                    )}
-                    className="
-                      w-full h-10 rounded-lg border border-darkBlue/20 bg-white/90
-                      px-3 text-base outline-none
-                      placeholder:text-darkBlue/40
-                      focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                      transition
-                    "
-                  />
-                  {modalEmployeeQuery.trim() && (
-                    <ul
-                      className="
-                        absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto
-                        rounded-xl border border-darkBlue/10 bg-white
-                        shadow-[0_14px_35px_rgba(15,23,42,0.18)]
-                        text-sm z-20
-                      "
-                    >
-                      {modalEmployeeOptions.length === 0 && (
-                        <li className="px-3 py-2 text-xs text-darkBlue/60 italic">
-                          {t("planning:labels.noResult", "Aucun résultat")}
-                        </li>
-                      )}
-                      {modalEmployeeOptions.map((emp) => (
-                        <li
-                          key={emp._id}
-                          className={`
-                            px-3 py-[6px] cursor-pointer
-                            hover:bg-lightGrey/80
-                            ${
-                              modalData.employeeId === emp._id
-                                ? "bg-lightGrey"
-                                : ""
-                            }
-                          `}
-                          onClick={() =>
-                            setModalData((prev) => ({
-                              ...prev,
-                              employeeId: emp._id,
-                            }))
-                          }
-                        >
-                          {emp.firstname} {emp.lastname}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-3 rounded-2xl border border-darkBlue/10 bg-lightGrey/55 px-4 py-3">
-              <label className="inline-flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={modalData.isLeave}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setModalData((prev) => ({
-                      ...prev,
-                      isLeave: checked,
-                      isFullDayLeave: checked ? prev.isFullDayLeave : false,
-                      title: checked ? "" : prev.title,
-                    }));
-                  }}
-                  className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
-                />
-                <span className="text-sm font-medium text-darkBlue">
-                  {t("planning:labels.leave", "Congés")}
-                </span>
-              </label>
-
-              {modalData.isLeave && (
-                <label className="inline-flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={modalData.isFullDayLeave}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setModalData((prev) => {
-                        const next = {
-                          ...prev,
-                          isFullDayLeave: checked,
-                        };
-
-                        if (checked) {
-                          next.start = prev.start
-                            ? toStartOfDay(prev.start)
-                            : prev.start;
-                          if (prev.end) {
-                            next.end = toEndOfDay(prev.end);
-                          } else if (prev.start) {
-                            next.end = toEndOfDay(prev.start);
-                          }
-                        }
-
-                        return next;
-                      });
-                    }}
-                    className="h-4 w-4 rounded border-darkBlue/20 text-blue focus:ring-blue/30"
-                  />
-                  <span className="text-sm text-darkBlue/80">
-                    {t("planning:labels.fullDayLeave", "Journée entière")}
-                  </span>
-                </label>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <p className="text-sm text-center text-darkBlue/80">
-                {modalData.isLeave
-                  ? t("planning:labels.leavePeriod", "Période :")
-                  : t("planning:labels.slot", "Créneau :")}
-              </p>
-
-              <div className="grid grid-cols-1 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-darkBlue/60">
-                    {t("planning:labels.start", "Début")}
-                  </label>
-                  <input
-                    type={
-                      modalData.isLeave && modalData.isFullDayLeave
-                        ? "date"
-                        : "datetime-local"
-                    }
-                    value={
-                      modalData.isLeave && modalData.isFullDayLeave
-                        ? dateToLocalDateInputValue(modalData.start)
-                        : dateToLocalInputValue(modalData.start)
-                    }
-                    onChange={(e) => {
-                      const nextStart =
-                        modalData.isLeave && modalData.isFullDayLeave
-                          ? localDateInputValueToDate(e.target.value, "start")
-                          : localInputValueToDate(e.target.value);
-                      setModalData((prev) => {
-                        const next = { ...prev, start: nextStart };
-                        if (nextStart && (!next.end || next.end <= nextStart)) {
-                          next.end =
-                            prev.isLeave && prev.isFullDayLeave
-                              ? toEndOfDay(nextStart)
-                              : new Date(nextStart.getTime() + 60 * 60 * 1000);
-                        }
-                        return next;
-                      });
-                    }}
-                    className="
-          w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
-          px-3 text-base outline-none
-          focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-          transition
-        "
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-darkBlue/60">
-                    {t("planning:labels.end", "Fin")}
-                  </label>
-                  <input
-                    type={
-                      modalData.isLeave && modalData.isFullDayLeave
-                        ? "date"
-                        : "datetime-local"
-                    }
-                    value={
-                      modalData.isLeave && modalData.isFullDayLeave
-                        ? dateToLocalDateInputValue(modalData.end)
-                        : dateToLocalInputValue(modalData.end)
-                    }
-                    min={
-                      modalData.isLeave && modalData.isFullDayLeave
-                        ? dateToLocalDateInputValue(modalData.start)
-                        : dateToLocalInputValue(modalData.start)
-                    }
-                    onChange={(e) => {
-                      const nextEnd =
-                        modalData.isLeave && modalData.isFullDayLeave
-                          ? localDateInputValueToDate(e.target.value, "end")
-                          : localInputValueToDate(e.target.value);
-                      setModalData((prev) => ({ ...prev, end: nextEnd }));
-                    }}
-                    className="
-          w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
-          px-3 text-base outline-none
-          focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-          transition
-        "
-                  />
-                </div>
-              </div>
-            </div>
-
-            {!modalData.isLeave && (
-              <div className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  placeholder={t(
-                    "planning:placeholders.shiftTitleOptional",
-                    "Titre du shift (facultatif)",
-                  )}
-                  value={modalData.title}
-                  onChange={(e) =>
-                    setModalData((prev) => ({ ...prev, title: e.target.value }))
-                  }
-                  className="
-                    w-full h-10 rounded-lg border border-darkBlue/20 bg-white/95
-                    px-3 text-base outline-none
-                    placeholder:text-darkBlue/40
-                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                    transition
-                  "
-                />
-              </div>
-            )}
-
-            {contractualOvertimeWarning ? (
-              <div
-                role="status"
-                className="flex items-start gap-3 rounded-2xl border border-orange/30 bg-orange/10 px-4 py-3 text-sm text-darkBlue/80"
-              >
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-orange" />
-                <p>
-                  <span className="font-semibold text-darkBlue">
-                    Attention :
-                  </span>{" "}
-                  {contractualOvertimeWarning.planned} h sont planifiées{" "}
-                  {contractualOvertimeWarning.periodLabel} pour un contrat de{" "}
-                  {contractualOvertimeWarning.contractual} h (+
-                  {contractualOvertimeWarning.overtime} h). Le planning peut
-                  tout de même être enregistré.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="mt-2 flex justify-center gap-3">
-              <button
-                onClick={handleConfirmShift}
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl bg-blue px-4 py-2.5
-                  text-sm font-medium text-white shadow
-                  hover:bg-blue/90 transition
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                "
-                disabled={
-                  !modalData.start ||
-                  !modalData.end ||
-                  (modalData.end &&
-                    modalData.start &&
-                    modalData.end <= modalData.start) ||
-                  (!modalData.employeeId && !selectedEmployeeId)
-                }
-              >
-                {t("buttons.confirm", "Valider")}
-              </button>
-              <button
-                onClick={handleCancelShift}
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl bg-red px-4 py-2.5
-                  text-sm font-medium text-white shadow
-                  hover:bg-red/90 transition
-                "
-              >
-                {t("buttons.cancel", "Annuler")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {shiftConflictModalData.isOpen && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
-          <div
-            onClick={closeShiftConflictModal}
-            className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
-          />
-
-          <div
-            className="
-              relative z-[1] w-full max-w-[460px]
-              rounded-2xl border border-darkBlue/10 bg-white/95
-              px-5 py-6 tablet:px-6 tablet:py-7
-              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
-              flex flex-col gap-4
-            "
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-lg font-semibold text-darkBlue">
-                  {shiftConflictModalData.conflictType === "leave_overlap"
-                    ? "Créneau impossible pendant un congé"
-                    : "Créneau déjà occupé"}
-                </h3>
-                <p className="text-sm text-darkBlue/70">
-                  {shiftConflictModalData.message}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeShiftConflictModal}
-                className="inline-flex size-10 items-center justify-center rounded-full border border-darkBlue/10 bg-white text-darkBlue/60 transition hover:bg-darkBlue/5"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-darkBlue/10 bg-lightGrey/35 px-4 py-4 text-sm text-darkBlue/80">
-              <p className="font-medium text-darkBlue">
-                {(() => {
-                  const employee = allEmployees.find(
-                    (item) =>
-                      String(item._id) ===
-                      String(shiftConflictModalData.employeeId),
-                  );
-                  return employee
-                    ? `${employee.firstname} ${employee.lastname}`
-                    : "Employé concerné";
-                })()}
-              </p>
-
-              <p className="mt-2">
-                <span className="font-medium text-darkBlue">
-                  Créneau saisi :
-                </span>{" "}
-                {formatConflictRange(
-                  shiftConflictModalData.attemptedStart,
-                  shiftConflictModalData.attemptedEnd,
-                )}
-              </p>
-
-              {shiftConflictModalData.attemptedTitle ? (
-                <p className="mt-1">
-                  <span className="font-medium text-darkBlue">Intitulé :</span>{" "}
-                  {shiftConflictModalData.attemptedTitle}
-                </p>
-              ) : null}
-            </div>
-
-            {shiftConflictModalData.conflict ? (
-              <div className="rounded-2xl border border-orange/20 bg-orange/5 px-4 py-4 text-sm text-darkBlue/80">
-                <p className="font-medium text-darkBlue">
-                  {shiftConflictModalData.conflict?.isLeave
-                    ? "Période déjà occupée par un congé"
-                    : "Créneau déjà présent sur cette période"}
-                </p>
-                <p className="mt-2">
-                  <span className="font-medium text-darkBlue">
-                    Élément bloquant :
-                  </span>{" "}
-                  {shiftConflictModalData.conflict?.title || "Créneau existant"}
-                </p>
-                <p className="mt-1">
-                  <span className="font-medium text-darkBlue">Période :</span>{" "}
-                  {formatConflictRange(
-                    shiftConflictModalData.conflict?.start,
-                    shiftConflictModalData.conflict?.end,
-                  )}
-                </p>
-              </div>
-            ) : null}
-
-            <p className="text-sm text-darkBlue/70">
-              {shiftConflictModalData.conflictType === "leave_overlap"
-                ? "Il faut d’abord modifier ou supprimer le congé concerné avant d’ajouter un shift sur cette plage."
-                : "Il faut d’abord modifier ou supprimer le créneau existant avant d’en créer un nouveau sur la même plage."}
-            </p>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={closeShiftConflictModal}
-                className="inline-flex items-center justify-center rounded-xl bg-blue px-4 py-2.5 text-sm font-medium text-white shadow transition hover:bg-blue/90"
-              >
-                Compris
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Modale Shift ─────────────────────────────────────────────────────── */}
-      {deleteModalOpen && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center px-4">
-          <div
-            onClick={() => {
-              if (isDeleting || isUpdatingShiftTitle) return;
-              handleCancelDelete();
+          <ShiftEditor
+            draft={draft}
+            employee={editorEmployee}
+            range={draftRange}
+            conflict={draftConflict}
+            overtime={contractualOvertimeWarning}
+            openingHours={openingHours}
+            templateTools={commands.enabled && !draft.isLeave && <PlanningShiftTemplates key={restaurantId}
+              restaurantId={restaurantId} draft={draft} range={draftRange} onChange={changeShiftDraft} />}
+            {...{ posts, collection, extra, repeat, batch, fileBusy }}
+            onFileBusy={setFileBusy}
+            onExtraChange={(key, patch) => {
+              setSubmitError("");
+              setExtra((blocks) => blocks.map((block) => block.key === key ? { ...block, ...patch } : block));
             }}
-            className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
+            onAddBlock={() => {
+              const key = nextBlockKey.current++;
+              setExtra((blocks) => [...blocks, {
+                ...makeExtraShift(draft, { ...(blocks.at(-1) || draft), date: draft.date }),
+                key,
+              }]);
+            }}
+            onRemoveBlock={(key) => {
+              setSubmitError("");
+              setExtra((blocks) => blocks.filter((block) => block.key !== key));
+            }}
+            onRemoveFirstBlock={() => {
+              changeShiftDraft({ ...extra[0], date: draft.date });
+              setExtra((blocks) => blocks.slice(1));
+            }}
+            onRepeatChange={(patch) => {
+              setSubmitError("");
+              setRepeat((rule) => ({ ...rule, ...patch }));
+            }}
+            validation={draftValidation}
+            submitError={submitError}
+            saving={Boolean(shiftOperation)}
+            onChange={changeShiftDraft}
+            onClose={dismissEditor}
+            onSave={handleSaveShift}
+            onDelete={() => {
+              setDeleteError("");
+              setConfirmingDelete(true);
+            }}
           />
+        </PlanningDialog>
+      )}
 
-          <div
-            className="
-              relative w-full max-w-[420px]
-              rounded-2xl border border-darkBlue/10 bg-white/95
-              px-5 py-6 tablet:px-7 tablet:py-7
-              shadow-[0_22px_55px_rgba(19,30,54,0.20)]
-              flex flex-col gap-5
-            "
-          >
-            <h2 className="text-lg tablet:text-xl font-semibold text-center text-darkBlue">
-              {(() => {
-                const emp = allEmployees.find(
-                  (e) => e._id === deleteModalData.employeeId,
-                );
-                return emp ? `${emp.firstname} ${emp.lastname}` : "";
-              })()}
-            </h2>
-
-            <div className="text-sm text-center text-darkBlue/80 flex flex-col gap-2">
-              <p>
-                {deleteModalData.isLeave
-                  ? t("planning:labels.deleteShift", "Supprimer ce shift")
-                  : "Modifier l’intitulé ou supprimer ce shift"}{" "}
-                :{" "}
-                <span className="font-medium text-darkBlue">
-                  {deleteModalData?.originalTitle}
-                </span>
-              </p>
-
-              <p className="mt-1">
-                <strong className="text-darkBlue">
-                  {(() => {
-                    const sameDay =
-                      deleteModalData.start.toDateString() ===
-                      deleteModalData.end.toDateString();
-
-                    const isFullDay =
-                      deleteModalData.start.getHours() === 0 &&
-                      deleteModalData.start.getMinutes() === 0 &&
-                      deleteModalData.end.getHours() === 23 &&
-                      deleteModalData.end.getMinutes() >= 59;
-
-                    if (sameDay && isFullDay) {
-                      return format(deleteModalData.start, "EEEE dd MMM yyyy", {
-                        locale: frLocale,
-                      });
-                    } else if (!sameDay) {
-                      return `${format(
-                        deleteModalData.start,
-                        "EEEE dd MMM yyyy",
-                        { locale: frLocale },
-                      )} – ${format(deleteModalData.end, "EEEE dd MMM yyyy", {
-                        locale: frLocale,
-                      })}`;
-                    } else {
-                      return `${format(
-                        deleteModalData.start,
-                        "EEEE dd MMM yyyy HH:mm",
-                        { locale: frLocale },
-                      )} – ${format(deleteModalData.end, "HH:mm", {
-                        locale: frLocale,
-                      })}`;
-                    }
-                  })()}
-                </strong>
-              </p>
+      {draft && shiftConflict && (
+        <PlanningDialog label={editorLabel("conflict")} onClose={() => setShiftConflict(null)}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold text-darkBlue">{editorLabel("conflict")}</h2>
+              <p className="text-sm text-darkBlue/70">{shiftConflict.message}</p>
             </div>
-
-            {!deleteModalData.isLeave ? (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-darkBlue">
-                  Intitulé du shift
-                </label>
-                <input
-                  type="text"
-                  value={deleteModalData.title}
-                  onChange={(e) =>
-                    setDeleteModalData((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                  placeholder="Titre du shift"
-                  disabled={isDeleting || isUpdatingShiftTitle}
-                  className="
-                    w-full h-11 rounded-lg border border-darkBlue/20 bg-white/95
-                    px-3 text-base outline-none
-                    placeholder:text-darkBlue/40
-                    focus:border-darkBlue/50 focus:ring-1 focus:ring-darkBlue/20
-                    transition disabled:opacity-60
-                  "
-                />
-              </div>
-            ) : null}
-
-            <div className="mt-2 flex justify-center gap-3">
-              {!deleteModalData.isLeave ? (
-                <button
-                  onClick={handleUpdateShiftTitle}
-                  disabled={
-                    isDeleting ||
-                    isUpdatingShiftTitle ||
-                    canonicalizeShiftTitle(deleteModalData.title) ===
-                      canonicalizeShiftTitle(deleteModalData.originalTitle)
-                  }
-                  className="
-                    inline-flex items-center justify-center
-                    rounded-xl bg-blue px-4 py-2.5
-                    text-sm font-medium text-white shadow
-                    hover:bg-blue/90 transition
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                  "
-                >
-                  {isUpdatingShiftTitle ? "Enregistrement…" : "Enregistrer"}
-                </button>
-              ) : null}
-              <button
-                onClick={handleConfirmDelete}
-                disabled={isDeleting || isUpdatingShiftTitle}
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl bg-red px-4 py-2.5
-                  text-sm font-medium text-white shadow
-                  hover:bg-red/90 transition
-                "
-              >
-                {t("buttons.delete", "Supprimer")}
-              </button>
-              <button
-                onClick={handleCancelDelete}
-                disabled={isDeleting || isUpdatingShiftTitle}
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl bg-darkBlue/10 px-4 py-2.5
-                  text-sm font-medium text-darkBlue shadow-sm
-                  hover:bg-darkBlue/15 transition
-                "
-              >
-                {t("buttons.cancel", "Annuler")}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShiftConflict(null)}
+              aria-label={editorLabel("close")}
+              className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-darkBlue/15 hover:bg-darkBlue/5"
+            >
+              <X className="size-4" />
+            </button>
           </div>
-        </div>
+          <div className="rounded-xl border border-darkBlue/10 bg-lightGrey/35 p-4 text-sm">
+            <p className="font-semibold">{editorLabel("attempted")}</p>
+            <p>{formatConflictRange(shiftConflict.attempted?.start ?? draftRange.start, shiftConflict.attempted?.end ?? draftRange.end)}</p>
+          </div>
+          {shiftConflict.entry && (
+            <div className="rounded-xl border border-orange/20 bg-orange/5 p-4 text-sm">
+              <p className="font-semibold">{editorLabel("blockedBy")}</p>
+              <p>{shiftConflict.entry.title || editorLabel(shiftConflict.entry.isLeave ? "absence" : "shift")}</p>
+              <p>{formatConflictRange(shiftConflict.entry.start, shiftConflict.entry.end)}</p>
+            </div>
+          )}
+          <button
+            type="button"
+            className="self-end rounded-lg bg-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue/90"
+            onClick={() => setShiftConflict(null)}
+          >
+            {editorLabel("backToEditor")}
+          </button>
+        </PlanningDialog>
+      )}
+
+      {draft && confirmingDelete && (
+        <PlanningDialog
+          label={editorLabel(draft.leaveRequestId ? "leaveConfirm" : "deleteConfirm")}
+          onClose={shiftOperation ? undefined : () => setConfirmingDelete(false)}
+        >
+          <h2 className="text-lg font-semibold text-darkBlue">
+            {editorLabel(draft.leaveRequestId ? "leaveConfirm" : "deleteConfirm")}
+          </h2>
+          <div className="text-sm text-darkBlue/80">
+            <p className="font-semibold">{editorEmployee?.name}</p>
+            <p>{formatConflictRange(draft.originalStart, draft.originalEnd)}</p>
+          </div>
+          {deleteError && <p className="rounded-lg bg-red/10 p-3 text-sm text-darkBlue" role="alert">{deleteError}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className="rounded-lg border border-darkBlue/15 px-4 py-2.5 text-sm font-semibold" disabled={Boolean(shiftOperation)} onClick={() => setConfirmingDelete(false)}>
+              {editorLabel("backToEditor")}
+            </button>
+            <button type="button" className="rounded-lg bg-red px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" disabled={Boolean(shiftOperation) || !editorEmployee} onClick={handleConfirmDelete}>
+              {editorLabel(draft.leaveRequestId
+                ? shiftOperation ? "leaveCanceling" : "cancelLeave"
+                : shiftOperation ? "deleting" : "delete")}
+            </button>
+          </div>
+        </PlanningDialog>
       )}
 
       <ExportRangeModalComponent
@@ -2205,24 +734,13 @@ export default function PlanningEmployeesComponent() {
         onConfirm={handlePlanningExport}
       />
 
-      <ExportRangeModalComponent
-        open={isPlanningSendOpen}
-        title="Envoyer le planning aux salariés"
-        description="Choisissez une période et les salariés qui recevront leur planning individuel par email."
-        confirmLabel="Envoyer le planning"
-        mode="send"
-        employees={exportEmployees}
-        initialFrom={exportDateRange.from}
-        initialTo={exportDateRange.to}
-        loading={isPlanningSendLoading}
-        submitError={planningSendError}
-        onClose={() => {
-          if (isPlanningSendLoading) return;
-          setIsPlanningSendOpen(false);
-          setPlanningSendError("");
-        }}
-        onConfirm={handlePlanningSend}
-      />
+      {publicationOpen && commands.enabled && <PlanningPublicationDialog Dialog={PlanningDialog}
+        key={restaurantId} {...{ restaurantId, revision }} ranges={publicationRanges(period, view)}
+        initialDate={planningDateKey(date)} onClose={() => setPublicationOpen(false)} onChanged={refreshPeriod} />}
+      {lockRange && commands.enabled && <PlanningLockDialog Dialog={PlanningDialog} restaurantId={restaurantId}
+        range={lockRange} lockedDays={(publicationState?.days || []).filter(({ date }) =>
+          date >= lockRange.from && date <= lockRange.to).map(({ locked }) => locked)}
+        onClose={() => setLockRange(null)} onChanged={refreshPeriod} />}
     </section>
   );
 }

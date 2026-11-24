@@ -1,0 +1,271 @@
+const { createHash, createHmac } = require("node:crypto");
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const { DateTime } = require("luxon");
+const Employee = require("../../models/employee.model");
+const Restaurant = require("../../models/restaurant.model");
+const PersonnelInput = require("../../models/personnel-report-input.model");
+const SkelloImport = require("../../models/skello-import.model");
+const { analyzeSkelloWorkbook, normalizeSkelloIdentity, SkelloImportError } = require("./skello-workbook.service");
+const { dayId, planHistory, readHistoryContext } = require("./skello-history.service");
+const { clockTransaction, lockClockEmployees } = require("./time-clock-write.service");
+const { toLocalDateKey } = require("./time-clock.service");
+
+const mode = "workforce";
+const audience = "gusto-skello-employees";
+const zone = "Europe/Paris";
+const hash = (value) => createHash("sha256").update(value).digest("hex");
+const planHash = (value) => hash(JSON.stringify(value));
+const signingKey = () => createHmac("sha256", process.env.JWT_SECRET).update(audience).digest();
+const nameKey = ({ firstname, lastname }) => JSON.stringify([firstname, lastname].map(normalizeSkelloIdentity));
+const recheck = "Le rapprochement a changé. Vérifiez un nouvel aperçu avant de confirmer.";
+
+function batchView(batch) {
+  return batch && {
+    id: String(batch._id), mode, status: batch.status, actor: batch.actor,
+    period: { from: batch.from, to: batch.to }, summary: batch.summary, createdAt: batch.createdAt,
+  };
+}
+
+async function readTarget(id, session = null) {
+  if (!mongoose.isObjectIdOrHexString(id)) throw new SkelloImportError("Restaurant invalide.", 400);
+  const restaurant = await Restaurant.findById(id).select("name employees options.employees").session(session).lean();
+  if (!restaurant) throw new SkelloImportError("Restaurant introuvable.", 404);
+  if (restaurant.options?.employees !== true) {
+    throw new SkelloImportError("La gestion du personnel doit être active pour ce restaurant.", 409);
+  }
+  return restaurant;
+}
+
+async function readRoster(restaurant, session = null) {
+  const id = String(restaurant._id);
+  const activeIds = new Set((restaurant.employees || []).map(String));
+  const employees = await Employee.find({
+    historicalImport: { $exists: false },
+    accountType: { $in: ["employee", null] },
+    $or: [
+      { _id: { $in: restaurant.employees || [] }, restaurants: restaurant._id },
+      { "restaurantProfiles.restaurant": restaurant._id },
+    ],
+  }).select("firstname lastname restaurants restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.employment.payrollCode restaurantProfiles.shifts restaurantProfiles.leaveRequests +restaurantProfiles.skelloPayrollCode")
+    .sort("_id").session(session).lean();
+  return employees.map((employee) => {
+    const profile = employee.restaurantProfiles.find((entry) => String(entry.restaurant) === id);
+    return {
+      id: String(employee._id), profile: profile?._id ? String(profile._id) : "",
+      firstname: profile?.snapshot?.firstname || employee.firstname,
+      lastname: profile?.snapshot?.lastname || employee.lastname,
+      payrollCode: profile?.employment?.payrollCode || "",
+      sourceCode: profile?.skelloPayrollCode || "",
+      shifts: profile?.shifts,
+      leaveRequests: profile?.leaveRequests,
+      archivedAt: profile?.archivedAt,
+      erased: Boolean(profile?.erasure?.at),
+      active: Boolean(profile?._id && !profile.archivedAt && activeIds.has(String(employee._id)) &&
+        employee.restaurants?.some((entry) => String(entry) === id)),
+    };
+  });
+}
+
+function readWorkbook(buffer, scope) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw new SkelloImportError("Choisissez un rapport XLSX Skello.", 400);
+  const parsed = analyzeSkelloWorkbook(buffer, scope, { workforce: true });
+  const fingerprint = hash(Buffer.concat([Buffer.from(`skello-workforce/v2\0${scope}\0`), buffer]));
+  return { ...parsed, fingerprint };
+}
+
+function readChoices(rawChoices, people) {
+  let entries;
+  try { entries = JSON.parse(rawChoices); } catch { /* format error below */ }
+  if (!Array.isArray(entries) || entries.length !== people.length) {
+    throw new SkelloImportError("Choisissez une action pour chaque ligne reconnue.", 400);
+  }
+  const choices = new Map();
+  for (const entry of entries) {
+    const { order, destination, keepExisting = false } = entry || {};
+    if (!Number.isInteger(order) || order < 1 || order > people.length || choices.has(order) ||
+        typeof keepExisting !== "boolean" || typeof destination !== "string" ||
+        (!["create", "skip"].includes(destination) && !/^[a-f\d]{24}$/.test(destination))) {
+      throw new SkelloImportError("Rapprochement invalide.", 400);
+    }
+    choices.set(order, { destination, keepExisting });
+  }
+  return people.map(({ order }) => choices.get(order));
+}
+
+function reconcile(people, roster, choices) {
+  const destinations = new Set();
+  return people.map((person, index) => {
+    const destination = choices?.[index].destination;
+    const code = normalizeSkelloIdentity(person.identity.payrollCode);
+    const names = roster.filter((entry) => nameKey(entry) === nameKey(person.identity));
+    const codes = code ? roster.filter((entry) => [entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)].includes(code)) : [];
+    const candidates = roster.filter((entry) => !entry.erased && (entry.active || (entry.archivedAt && codes.includes(entry))) &&
+      (codes.length ? codes.includes(entry) : names.includes(entry)) &&
+      (!entry.sourceCode || !code || entry.sourceCode === code));
+    const canCreate = Boolean(code && !codes.length && names.every((entry) =>
+      (entry.sourceCode || normalizeSkelloIdentity(entry.payrollCode)) && ![entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)].includes(code)));
+    const target = candidates.find((entry) => entry.id === destination);
+    let error = "";
+    if (destination === "create" && !canCreate) {
+      error = "Création bloquée. Vérifiez le matricule et les dossiers actifs ou archivés.";
+    } else if (destination && !["create", "skip"].includes(destination) && (!target || destinations.has(destination))) {
+      error = "Rattachement ambigu, déjà choisi ou indisponible dans ce restaurant.";
+    }
+    if (target) destinations.add(destination);
+    const { firstname, lastname, payrollCode } = person.identity;
+    return {
+      order: person.order, firstname, lastname, payrollCode, post: person.post, type: person.type, volume: person.volume,
+      start: person.start, end: person.inputs.find(({ kind }) => kind === "contract")?.values.contractEnd,
+      canCreate, candidates: candidates.map(({ id, firstname, lastname, payrollCode, archivedAt }) => ({ id, firstname, lastname, payrollCode, archived: Boolean(archivedAt) })),
+      error,
+    };
+  });
+}
+
+async function reviewHistory(people, roster, choices, rows, restaurant, preview, session = null) {
+  if (!choices || rows.some(({ error }) => error)) return [];
+  const rosterById = new Map(roster.map((entry) => [entry.id, entry]));
+  const selected = choices.map(({ destination }) => rosterById.get(destination));
+  const context = await readHistoryContext(restaurant, selected.filter(Boolean), preview.period, preview.monthly, session);
+  return choices.map(({ destination }, index) => destination === "skip" ? null :
+    planHistory(people[index], selected[index], restaurant, preview.monthly, context));
+}
+
+const rosterSignature = (roster) => planHash(roster.map(({ shifts: _shifts, leaveRequests: _leaveRequests, ...member }) => member));
+const canApplyHistory = (choices, history) => history.every((plan, index) => !plan?.conflicts.length || choices[index].keepExisting);
+
+function claimsFor(restaurant, actor, fingerprint, scope, choices) {
+  return { target: String(restaurant._id), database: mongoose.connection.name, actor, fingerprint, scope, choices: planHash(choices) };
+}
+
+async function listSkelloEmployees(restaurantId) {
+  const restaurant = await readTarget(restaurantId);
+  const batches = await SkelloImport.find({ restaurant: restaurant._id, mode }).sort({ createdAt: -1 }).limit(30).lean();
+  return { target: { id: String(restaurant._id), name: restaurant.name }, batches: batches.map(batchView) };
+}
+
+async function previewSkelloEmployees({ restaurantId, actor, buffer, scope, choices: supplied }) {
+  const restaurant = await readTarget(restaurantId);
+  const { people, preview, fingerprint } = readWorkbook(buffer, scope);
+  const choices = supplied === undefined ? null : readChoices(supplied, people);
+  const [roster, existing] = await Promise.all([
+    readRoster(restaurant),
+    SkelloImport.findOne({ restaurant: restaurant._id, fingerprint, mode, status: "complete" }).lean(),
+  ]);
+  const rows = reconcile(people, roster, choices);
+  const history = existing ? [] : await reviewHistory(people, roster, choices, rows, restaurant._id, preview);
+  for (const [index, plan] of history.entries()) {
+    if (plan) rows[index].history = { counts: plan.counts, conflicts: plan.conflicts };
+  }
+  const token = choices?.some(({ destination }) => destination !== "skip") && !existing && !rows.some(({ error }) => error) && canApplyHistory(choices, history)
+    ? jwt.sign({ ...claimsFor(restaurant, actor, fingerprint, scope, choices), roster: rosterSignature(roster), history: planHash(history) }, signingKey(),
+      { expiresIn: "15m", audience, algorithm: "HS256" })
+    : null;
+  return { period: preview.period, monthly: preview.monthly, rows, token, issues: preview.issues,
+    unsupported: preview.unsupported, alreadyImported: Boolean(existing) };
+}
+
+async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choices: supplied, token, confirmed }) {
+  if (confirmed !== "true") throw new SkelloImportError("Confirmez le rapprochement et l’établissement.", 400);
+  const restaurant = await readTarget(restaurantId);
+  const { people, preview, fingerprint } = readWorkbook(buffer, scope);
+  const choices = readChoices(supplied, people);
+  let claims;
+  try { claims = jwt.verify(token, signingKey(), { audience, algorithms: ["HS256"] }); } catch {
+    throw new SkelloImportError("L’aperçu a expiré. Vérifiez un nouveau rapprochement.", 409);
+  }
+  if (Object.entries(claimsFor(restaurant, actor, fingerprint, scope, choices)).some(([key, value]) => claims[key] !== value)) {
+    throw new SkelloImportError(recheck, 409);
+  }
+  await Promise.all([SkelloImport.init(), PersonnelInput.init()]);
+  const targetId = restaurant._id;
+  try {
+    return await clockTransaction(async (session) => {
+      // Serialize changes to the destination roster with imports and other membership writes.
+      const fenced = await Restaurant.updateOne({ _id: targetId, "options.employees": true }, { $inc: { __v: 1 } }, { session });
+      if (!fenced.matchedCount) throw new SkelloImportError(recheck, 409);
+      const previous = await SkelloImport.findOne({ restaurant: targetId, fingerprint, mode, status: "complete" }).session(session).lean();
+      if (previous) return { alreadyImported: true, batch: batchView(previous) };
+      const current = await readTarget(restaurantId, session);
+      const roster = await readRoster(current, session);
+      const rows = reconcile(people, roster, choices);
+      if (claims.roster !== rosterSignature(roster) || rows.some(({ error }) => error)) throw new SkelloImportError(recheck, 409);
+      await lockClockEmployees(targetId, choices.map(({ destination }) => destination).filter(mongoose.isObjectIdOrHexString), session);
+      const history = await reviewHistory(people, roster, choices, rows, targetId, preview, session);
+      if (claims.history !== planHash(history) || !canApplyHistory(choices, history)) throw new SkelloImportError(recheck, 409);
+
+      const counts = { created: 0, linked: 0, skipped: 0 };
+      const historyCounts = {};
+      const created = [];
+      const links = [];
+      const operations = [];
+      for (const [index, row] of rows.entries()) {
+        const { destination } = choices[index];
+        if (destination === "skip") {
+          counts.skipped++;
+          continue;
+        }
+        const code = normalizeSkelloIdentity(row.payrollCode);
+        let employeeId = destination;
+        let profileId;
+        if (destination === "create") {
+          const { firstname, lastname, payrollCode, post, type, volume, start, end } = row;
+          const snapshot = { firstname, lastname, post, ...(start && { dateOnPost: DateTime.fromISO(start, { zone }).toJSDate() }) };
+          const archived = end && end < toLocalDateKey(new Date());
+          const [employee] = await Employee.create([{
+            ...snapshot, phone: "Non renseigné", restaurants: archived ? [] : [targetId],
+            restaurantProfiles: [{ restaurant: targetId, snapshot, skelloPayrollCode: code,
+              ...(archived && { archivedAt: DateTime.fromISO(end, { zone }).endOf("day").toJSDate() }),
+              employment: { payrollCode, contractType: type, contractualValue: volume, contractualUnit: "week" } }],
+          }], { session });
+          employeeId = employee._id;
+          profileId = employee.restaurantProfiles[0]._id;
+          if (!archived) created.push(employee._id);
+          counts.created++;
+        } else {
+          profileId = roster.find(({ id }) => id === destination).profile;
+          const updated = await Employee.updateOne({
+            _id: destination, restaurantProfiles: { $elemMatch: { _id: profileId, restaurant: targetId, "erasure.at": null } },
+          }, {
+            $inc: { __v: 1 },
+            ...(code && { $set: { "restaurantProfiles.$[profile].skelloPayrollCode": code } }),
+          }, { session, ...(code && { arrayFilters: [{ "profile._id": profileId }] }) });
+          if (!updated.matchedCount) throw new SkelloImportError(recheck, 409);
+          counts.linked++;
+        }
+        const plan = history[index];
+        for (const [key, count] of Object.entries(plan.counts)) historyCounts[key] = (historyCounts[key] || 0) + count;
+        const inputs = [];
+        for (const { kind, date, suffix, values, revision } of plan.writes) {
+          const _id = dayId(targetId, profileId, kind, suffix);
+          inputs.push(_id);
+          operations.push(revision === undefined ? { insertOne: { document: { _id, restaurant: targetId,
+            employee: employeeId, profile: profileId, kind, date, values, source: "skello", revision: 1, updatedBy: actor } } } :
+            { updateOne: { filter: { _id, revision }, update: { $set: { values, updatedBy: actor }, $inc: { revision: 1 } } } });
+        }
+        links.push({ order: row.order, employee: employeeId, profile: profileId, action: destination === "create" ? "create" : "link", inputs });
+      }
+      if (created.length) {
+        await Restaurant.updateOne({ _id: targetId }, { $addToSet: { employees: { $each: created } } }, { session });
+      }
+      if (operations.length) {
+        const stored = await PersonnelInput.bulkWrite(operations, { session });
+        if (stored.insertedCount + stored.matchedCount !== operations.length) throw new SkelloImportError(recheck, 409);
+      }
+      const [batch] = await SkelloImport.create([{
+        restaurant: targetId, fingerprint, mode, scope, ...preview.period, status: "complete", actor,
+        summary: { counts, history: historyCounts, issues: preview.issues, unsupported: preview.unsupported,
+          historyConflicts: [...new Set(history.flatMap((plan) => plan?.conflicts.map(({ message }) => message) || []))] }, manifest: { links },
+      }], { session });
+      return { alreadyImported: false, batch: batchView(batch) };
+    });
+  } catch (error) {
+    if (error instanceof SkelloImportError) throw error;
+    const previous = await SkelloImport.findOne({ restaurant: targetId, fingerprint, mode, status: "complete" }).lean().catch(() => null);
+    if (previous) return { alreadyImported: true, batch: batchView(previous) };
+    throw new SkelloImportError("L’import n’a pas abouti. Relancez l’aperçu avant de réessayer.", 503);
+  }
+}
+
+module.exports = { listSkelloEmployees, previewSkelloEmployees, applySkelloEmployees };

@@ -10,6 +10,19 @@ const NotificationModel = require("../models/notification.model");
 
 const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 
+function notificationAudience(req) {
+  const { user, authorizedRestaurant } = req;
+  const recipient = user?.role === "employee" ? String(user.id) : null;
+  if (!recipient) return { recipientEmployeeId: null };
+  const manager = authorizedRestaurant?.employees?.some((employee) => String(employee._id) === recipient &&
+    employee.restaurantProfiles?.some((profile) => String(profile.restaurant) === String(authorizedRestaurant._id) &&
+      profile.options?.employees === true));
+  return {
+    recipientEmployeeId: { $in: [null, recipient] },
+    ...(!manager && { type: { $ne: "leave_request_created" } }),
+  };
+}
+
 async function canAccessTakeAwayNotifications(req) {
   const restaurant = req.authorizedRestaurant;
   if (restaurant?.options?.take_away !== true) return false;
@@ -38,7 +51,7 @@ router.get(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const q = { restaurantId };
+      const q = { restaurantId, ...notificationAudience(req) };
       if (module) {
         q.module = module;
       } else if (!canReadTakeAway) {
@@ -86,6 +99,7 @@ router.get(
       const agg = await NotificationModel.aggregate([
         {
           $match: {
+            ...notificationAudience(req),
             restaurantId:
               require("mongoose").Types.ObjectId.createFromHexString(
                 String(restaurantId),
@@ -123,6 +137,7 @@ router.post(
         {
           _id: notifId,
           restaurantId,
+          ...notificationAudience(req),
           ...(canReadTakeAway ? {} : { module: { $ne: "take_away" } }),
         },
         { $set: { read: true, readAt: new Date() } },
@@ -134,6 +149,7 @@ router.post(
 
       broadcastToRestaurant(String(restaurantId), {
         type: "notification_read",
+        recipientEmployeeId: updated.recipientEmployeeId,
         notificationId: String(updated._id),
         module: updated.module,
       });
@@ -159,23 +175,28 @@ router.post(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const q = { restaurantId, read: false };
+      const personalRecipient = req.user?.role === "employee" ? String(req.user.id) : null;
+      const q = { restaurantId, read: false, ...notificationAudience(req), recipientEmployeeId: null };
       if (module) {
         q.module = module;
       } else if (!canReadTakeAway) {
         q.module = { $ne: "take_away" };
       }
 
-      const r = await NotificationModel.updateMany(q, {
-        $set: { read: true, readAt: new Date() },
-      });
-
+      if (personalRecipient && (!module || module === "my_planning")) {
+        await NotificationModel.updateMany({ ...q, recipientEmployeeId: personalRecipient }, {
+          $set: { read: true, readAt: new Date() },
+        });
+        broadcastToRestaurant(String(restaurantId), {
+          type: "notifications_read_all", module: module || null, recipientEmployeeId: personalRecipient,
+        });
+      }
+      if (module === "my_planning") return res.json({ ok: true });
+      const result = await NotificationModel.updateMany(q, { $set: { read: true, readAt: new Date() } });
       broadcastToRestaurant(String(restaurantId), {
-        type: "notifications_read_all",
-        module: module || null,
+        type: "notifications_read_all", module: module || null, publicOnly: true,
       });
-
-      return res.json({ ok: true, modifiedCount: r.modifiedCount || 0 });
+      return res.json({ ok: true, modifiedCount: result.modifiedCount || 0 });
     } catch (e) {
       console.error("POST read-all error:", e);
       return res.status(500).json({ message: "Internal server error" });

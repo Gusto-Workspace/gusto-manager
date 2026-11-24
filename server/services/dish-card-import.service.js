@@ -81,7 +81,7 @@ function resolveWorkbookTarget(target) {
   return path.posix.normalize(path.posix.join("xl", target));
 }
 
-function parseWorksheetRows(archive, worksheetPath, sharedStrings) {
+function parseWorksheetRows(archive, worksheetPath, sharedStrings, storedValuesOnly) {
   const worksheetDocument = parseXml(archive, worksheetPath);
 
   return getElements(worksheetDocument, SPREADSHEET_NS, "row").map((row) => {
@@ -90,6 +90,9 @@ function parseWorksheetRows(archive, worksheetPath, sharedStrings) {
     for (const cell of getElements(row, SPREADSHEET_NS, "c")) {
       const columnIndex = columnReferenceToIndex(cell.getAttribute("r"));
       const type = cell.getAttribute("t");
+      if (storedValuesOnly && (type === "e" || getElements(cell, SPREADSHEET_NS, "f").length)) {
+        throw new Error("Les cellules calculées ou en erreur ne sont pas prises en charge.");
+      }
       const rawValue = getText(cell, SPREADSHEET_NS, "v");
       let value = rawValue;
 
@@ -111,7 +114,7 @@ function parseWorksheetRows(archive, worksheetPath, sharedStrings) {
   });
 }
 
-function parseXlsxSheets(buffer) {
+function parseXlsxSheets(buffer, { storedValuesOnly = false } = {}) {
   let uncompressedSize = 0;
   const archive = unzipSync(buffer, {
     filter: (file) => {
@@ -133,6 +136,11 @@ function parseXlsxSheets(buffer) {
   });
 
   const workbookDocument = parseXml(archive, "xl/workbook.xml");
+  if (storedValuesOnly && ["true", "1"].includes(
+    getElements(workbookDocument, SPREADSHEET_NS, "workbookPr")[0]?.getAttribute("date1904"),
+  )) {
+    throw new Error("Le calendrier Excel 1904 n’est pas pris en charge.");
+  }
   const relationshipsDocument = parseXml(archive, "xl/_rels/workbook.xml.rels");
   const relationships = new Map(
     getElements(
@@ -161,7 +169,7 @@ function parseXlsxSheets(buffer) {
 
     return {
       name: sheet.getAttribute("name") || "",
-      rows: parseWorksheetRows(archive, worksheetPath, sharedStrings),
+      rows: parseWorksheetRows(archive, worksheetPath, sharedStrings, storedValuesOnly),
     };
   });
 }
@@ -491,4 +499,5 @@ module.exports = {
   DISH_IMPORT_COLUMNS,
   DishCardImportError,
   parseDishCardWorkbook,
+  parseXlsxSheets,
 };

@@ -5,6 +5,8 @@ const EMPLOYEE_DOCUMENT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const EMPLOYEE_DOCUMENT_MAX_FILES = 10;
 const EMPLOYEE_DOCUMENT_MAX_TITLE_LENGTH = 30;
 const EMPLOYEE_DOCUMENT_DOWNLOAD_URL_TTL_SECONDS = 60;
+const EMPLOYEE_DOCUMENT_CATEGORIES = ["uncategorized", "contract", "social_security", "supporting", "payroll", "timesheet", "other"];
+const EMPLOYEE_DOCUMENT_VISIBILITIES = ["internal", "employee"];
 
 const DOCUMENT_FORMATS = [
   {
@@ -182,7 +184,17 @@ function normalizeDocumentTitles(value, expectedCount) {
   });
 }
 
-function validateEmployeeDocumentUpload(files, titleInput) {
+function validateEmployeeDocumentMetadata(input) {
+  if (!input || typeof input.title !== "string" ||
+      !EMPLOYEE_DOCUMENT_CATEGORIES.includes(input.category) ||
+      !EMPLOYEE_DOCUMENT_VISIBILITIES.includes(input.visibility)) {
+    throw new EmployeeDocumentValidationError("Le titre, la catégorie ou la visibilité du document est invalide.");
+  }
+  const [title] = normalizeDocumentTitles(input.title, 1);
+  return { title, category: input.category, visibility: input.visibility };
+}
+
+function validateEmployeeDocumentUpload(files, titleInput, metadataInput) {
   const inputFiles = Array.isArray(files) ? files : [];
   if (!inputFiles.length) {
     throw new EmployeeDocumentValidationError(
@@ -193,10 +205,27 @@ function validateEmployeeDocumentUpload(files, titleInput) {
     throw new EmployeeDocumentValidationError("Too many documents");
   }
 
-  const titles = normalizeDocumentTitles(titleInput, inputFiles.length);
+  let metadata;
+  if (metadataInput === undefined) {
+    metadata = normalizeDocumentTitles(titleInput, inputFiles.length)
+      .map((title) => ({ title, category: "uncategorized", visibility: "internal" }));
+  } else {
+    if (typeof metadataInput !== "string") {
+      throw new EmployeeDocumentValidationError("Les informations des documents sont invalides.");
+    }
+    try {
+      metadata = JSON.parse(metadataInput);
+    } catch {
+      throw new EmployeeDocumentValidationError("Les informations des documents sont invalides.");
+    }
+    if (!Array.isArray(metadata) || metadata.length !== inputFiles.length) {
+      throw new EmployeeDocumentValidationError("Chaque fichier doit avoir des informations documentaires.");
+    }
+    metadata = metadata.map(validateEmployeeDocumentMetadata);
+  }
   return inputFiles.map((file, index) => ({
     ...validateEmployeeDocumentFile(file),
-    title: titles[index],
+    ...metadata[index],
   }));
 }
 
@@ -252,6 +281,9 @@ function serializeEmployeeDocument(document) {
     public_id: plain.public_id,
     filename: plain.filename,
     title: plain.title,
+    category: EMPLOYEE_DOCUMENT_CATEGORIES.includes(plain.category) ? plain.category : "uncategorized",
+    visibility: plain.visibility === "employee" ? "employee" : "internal",
+    revision: Number.isSafeInteger(plain.revision) && plain.revision >= 0 ? plain.revision : 0,
     ...(plain.mimeType ? { mimeType: plain.mimeType } : {}),
     ...(Number.isFinite(Number(plain.size)) && Number(plain.size) >= 0
       ? { size: Number(plain.size) }
@@ -309,6 +341,8 @@ function setPrivateDocumentResponseHeaders(response) {
 }
 
 module.exports = {
+  EMPLOYEE_DOCUMENT_CATEGORIES,
+  EMPLOYEE_DOCUMENT_VISIBILITIES,
   DOCUMENT_FORMATS,
   EMPLOYEE_DOCUMENT_DOWNLOAD_URL_TTL_SECONDS,
   EMPLOYEE_DOCUMENT_MAX_FILES,
@@ -324,5 +358,6 @@ module.exports = {
   serializeEmployeeDocuments,
   setPrivateDocumentResponseHeaders,
   validateEmployeeDocumentFile,
+  validateEmployeeDocumentMetadata,
   validateEmployeeDocumentUpload,
 };

@@ -17,6 +17,8 @@
     "lint:files:fix": "../client/node_modules/.bin/eslint --fix",
     "test:gift-card-typography": "node --test tests/gift-cards/gift-card-typography.test.js",
     "test:personnel-overnight": "TZ=Europe/Paris node --test tests/employees/personnel-overnight.test.js",
+    "time-clock:backfill-pins": "node scripts/backfill-time-clock-pins.js",
+    "time-clock:backfill-pins:deploy": "node scripts/backfill-time-clock-pins.js --deployment",
     "test:quick-slot-closures": "TZ=Europe/Paris node --test tests/reservations/reservation-quick-slot-closure.test.js",
     "test:take-away-security": "TZ=Europe/Paris node --test tests/take-away/take-away-security.test.js",
     "test:take-away-reliability": "TZ=Europe/Paris node --test tests/take-away/take-away-reliability.test.js",

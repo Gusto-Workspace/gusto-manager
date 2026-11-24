@@ -31,6 +31,10 @@ const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
 app.use("/api", smsmodeWebhookRoutes);
 
 // JSON
+app.post(
+  "/api/restaurants/:restaurantId/employees/:employeeId/shifts/batch",
+  express.json({ limit: "3mb" }),
+);
 app.use(express.json());
 app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
 
@@ -106,6 +110,8 @@ app.use(apiRoutes, restrictAccountantAccess);
 // ADMIN
 const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");
 const restaurantsAdminRoutes = require("./routes/admin/restaurants.routes");
+const skelloImportRoutes = require("./routes/admin/skello-import.routes");
+const hrConfigurationRoutes = require("./routes/admin/hr-configuration.routes");
 const ownersAdminRoutes = require("./routes/admin/owners.routes");
 const subscriptionsAdminRoutes = require("./routes/admin/subscriptions.routes");
 const documentsAdminRoutes = require("./routes/admin/documents.routes");
@@ -113,6 +119,8 @@ const smsRemindersAdminRoutes = require("./routes/admin/sms-reminders.routes");
 
 app.use(apiRoutes, dashboardAdminRoutes);
 app.use(apiRoutes, restaurantsAdminRoutes);
+app.use(apiRoutes, skelloImportRoutes);
+app.use(apiRoutes, hrConfigurationRoutes);
 app.use(apiRoutes, ownersAdminRoutes);
 app.use(apiRoutes, subscriptionsAdminRoutes);
 app.use(apiRoutes, documentsAdminRoutes);

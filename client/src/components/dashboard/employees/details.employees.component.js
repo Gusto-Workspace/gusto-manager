@@ -1,479 +1,287 @@
+import Link from "next/link";
 import { useRouter } from "next/router";
-import { useContext, useState, useEffect, useRef } from "react";
+import { useContext, useEffect, useId, useState } from "react";
 import axios from "axios";
-import { useForm } from "react-hook-form";
+import { BriefcaseBusiness, CalendarDays, Files, ShieldCheck, UserRound } from "lucide-react";
 import { GlobalContext } from "@/contexts/global.context";
-import { useTranslation } from "next-i18next";
-
-// SVG
-import { EmployeesSvg } from "@/components/_shared/_svgs/employees.svg";
-
-// COMPONENTS
 import CatalogHeaderDashboardComponent from "../_shared/catalog-header.dashboard.component";
 import ModaleEmployeesComponent from "./modale.employees.component";
 import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
-import TimeClockEmployeesComponent from "./time-clock.employees.component";
+import EmployeePin from "./employee-pin.employees.component";
+import PersonnelReportInputDialog, { personnelReportInputsUrl } from "./personnel-report-input.employees.component";
+import { applyRosterResponse, directoryPath, employeeDirectoryEntry, employeeProfile } from "./employee-directory.utils.mjs";
+import { buildEmployeeDocumentsForm, documentLimit, documentSizeLimit } from "../_shared/employee-documents.utils.mjs";
 
-const DEFAULT_OPTIONS = {
-  dashboard: false,
-  restaurant: false,
-  menus: false,
-  dishes: false,
-  drinks: false,
-  wines: false,
-  news: false,
-  gift_card: false,
-  reservations: false,
-  take_away: false,
-  employees: false,
-  customers: false,
-  health_control_plan: false,
-};
+const tabs = [
+  { id: "personal", label: "Informations personnelles", Icon: UserRound },
+  { id: "employment", label: "Emploi et contrat", Icon: BriefcaseBusiness },
+  { id: "access", label: "Compte et accès", Icon: ShieldCheck },
+  { id: "documents", label: "Documents", Icon: Files },
+  { id: "activity", label: "Planning et absences", Icon: CalendarDays },
+];
+const action = "inline-flex min-h-10 items-center gap-2 rounded-lg border border-darkBlue/15 bg-white px-3 text-sm font-semibold hover:bg-lightGrey";
 
-export default function DetailsEmployeesComponent({ employeeId }) {
-  const { t } = useTranslation("employees");
-  const { restaurantContext } = useContext(GlobalContext);
-  const router = useRouter();
-  const fileInputRef = useRef();
+function EmployeePayroll({ restaurantId, employeeId, employeeName }) {
+  const [kind, setKind] = useState(null);
+  const [saved, setSaved] = useState(false);
+  function open(input) {
+    setSaved(false);
+    setKind(input);
+  }
+  return (
+    <section className="overflow-hidden rounded-xl border border-darkBlue/10 bg-white">
+      <header className="flex min-h-16 items-center border-b border-darkBlue/10 px-4 midTablet:px-5">
+        <h2 className="text-lg font-semibold">Données de paie</h2>
+      </header>
+      <div className="flex flex-wrap items-center gap-2 p-4 midTablet:p-5">
+        <button type="button" className={action} onClick={() => open("contract")}>Rémunération et contrat</button>
+        <button type="button" className={action} onClick={() => open("amendment")}>Avenant horaire</button>
+        <button type="button" className={action} onClick={() => open("hoursEntry")}>Mouvement du compteur</button>
+        <button type="button" className={action} onClick={() => open("annual")}>Annualisation</button>
+        <button type="button" className={action} onClick={() => open("leave")}>Solde d’ouverture des congés</button>
+        {saved && <span role="status" className="text-sm text-[#146144]">Données enregistrées.</span>}
+      </div>
+      {kind && <PersonnelReportInputDialog kind={kind} baseUrl={personnelReportInputsUrl(restaurantId, employeeId)}
+        employeeName={employeeName} onClose={() => setKind(null)} onSaved={() => { setKind(null); setSaved(true); }} />}
+    </section>
+  );
+}
 
-  const [employee, setEmployee] = useState(null);
-  const [profileFile, setProfileFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-
-  // documents
+function EmployeeDocuments({ baseUrl, employeeName }) {
   const [docs, setDocs] = useState([]);
-  const [uploadedDocuments, setUploadedDocuments] = useState([]);
-  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
-  const [isUploadingDocs, setIsUploadingDocs] = useState(false);
-  const [isDeletingDocId, setIsDeletingDocId] = useState(null);
-  const [docToDelete, setDocToDelete] = useState(null);
+  const [stored, setStored] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [toDelete, setToDelete] = useState(null);
+  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [notice, setNotice] = useState("");
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [optionsSaved, setOptionsSaved] = useState(false);
-
-  const restaurantId = restaurantContext.restaurantData?._id;
-  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
-
-  // Formulaire détails + photo (SNAPSHOT pour CE RESTO)
-  const {
-    register: regDetails,
-    handleSubmit: handleDetailsSubmit,
-    reset: resetDetails,
-    formState: { isDirty: detailsDirty },
-  } = useForm({ mode: "onChange" });
-
-  // Formulaire options (droits par resto)
-  const {
-    register: regOptions,
-    handleSubmit: handleOptionsSubmit,
-    reset: resetOptions,
-    watch: watchOptions,
-    formState: { isDirty: optionsDirty, isSubmitting: isSavingOptions },
-  } = useForm({ mode: "onChange" });
-
-  const optionLabels = {
-    dashboard: t("nav.dashboard", { ns: "common" }),
-    restaurant: t("nav.restaurant", { ns: "common" }),
-    menus: t("nav.menus", { ns: "common" }),
-    dishes: t("nav.dishes", { ns: "common" }),
-    drinks: t("nav.drinks", { ns: "common" }),
-    wines: t("nav.wines", { ns: "common" }),
-    news: t("nav.news", { ns: "common" }),
-    gift_card: t("nav.giftCards", { ns: "common" }),
-    reservations: t("nav.reservations", { ns: "common" }),
-    take_away: t("nav.takeAway", { ns: "common" }),
-    employees: t("nav.employees", { ns: "common" }),
-    customers: t("nav.customers", { ns: "common" }),
-    health_control_plan: t("nav.health", { ns: "common" }),
-  };
-
-  // Charger l’employé et initialiser les formulaires
   useEffect(() => {
-    const data = restaurantContext.restaurantData;
-    if (!data || !restaurantId) return;
+    const controller = new AbortController();
+    setLoadError("");
+    axios.get(`${baseUrl}/documents`, { signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setStored(data.documents || []); })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setStored(null);
+          setLoadError("Impossible de charger les documents.");
+        }
+      });
+    return () => controller.abort();
+  }, [baseUrl, attempt]);
 
-    const found = [...(data.employees || []), ...(data.accountants || [])].find(
-      (e) => e._id === employeeId,
-    );
-    if (!found) {
-      router.replace("/dashboard/employees");
+  function selectDocuments(event, category) {
+    const files = Array.from(event.target.files);
+    event.target.value = "";
+    if (!files.length) return;
+    if (files.length + docs.length > documentLimit || files.some((file) => !file.size || file.size > documentSizeLimit)) {
+      setUploadError("Choisissez au maximum 10 fichiers non vides, de 10 Mo chacun.");
       return;
     }
-    setEmployee(found);
-
-    // --- Récupérer le profile pour CE resto ---
-    const profile =
-      (found.restaurantProfiles || []).find(
-        (p) => String(p.restaurant) === String(restaurantId),
-      ) || null;
-
-    const snapshot = profile?.snapshot || {};
-
-    // Petite util pour la date
-    const rawDate = snapshot.dateOnPost || found.dateOnPost;
-    const dateOnPostStr = rawDate ? String(rawDate).slice(0, 10) : "";
-
-    // --- Initialisation des champs DÉTAILS avec priorité au snapshot ---
-    resetDetails({
-      firstname: snapshot.firstname ?? found.firstname ?? "",
-      lastname: snapshot.lastname ?? found.lastname ?? "",
-      post: snapshot.post ?? found.post ?? "",
-      dateOnPost: dateOnPostStr,
-      email: snapshot.email ?? found.email ?? "",
-      phone: snapshot.phone ?? found.phone ?? "",
-      secuNumber: snapshot.secuNumber ?? found.secuNumber ?? "",
-      address: snapshot.address ?? found.address ?? "",
-      emergencyContact:
-        snapshot.emergencyContact ?? found.emergencyContact ?? "",
-      contractType: profile?.employment?.contractType ?? "",
-      contractualValue:
-        profile?.employment?.contractualValue ||
-        profile?.employment?.contractualValue === 0
-          ? String(profile?.employment?.contractualValue || "")
-          : "",
-      contractualUnit: profile?.employment?.contractualUnit ?? "",
-    });
-
-    // --- Initialisation des options avec fallback DEFAULT_OPTIONS ---
-    const mergedOptions = {
-      ...DEFAULT_OPTIONS,
-      ...(profile?.options || {}),
-    };
-    resetOptions({ options: mergedOptions });
-
-    setPreviewUrl(found.profilePicture?.url || null);
-    setProfileFile(null);
-    setOptionsSaved(false);
-
-    // Initialise la liste de docs “en attente d’upload”
-    setDocs([]);
-  }, [
-    employeeId,
-    resetDetails,
-    resetOptions,
-    router,
-    restaurantContext.restaurantData,
-    restaurantId,
-  ]);
-
-  // Réinitialise le champ fileInput si docs est vide
-  useEffect(() => {
-    if (docs.length === 0 && fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, [docs]);
-
-  useEffect(() => {
-    if (
-      !restaurantId ||
-      !employeeId ||
-      !employee ||
-      employee.accountType === "accountant"
-    ) {
-      setUploadedDocuments([]);
-      return undefined;
-    }
-
-    let active = true;
-    setUploadedDocuments([]);
-    axios
-      .get(`${baseUrl}/documents`)
-      .then(({ data }) => {
-        if (active) setUploadedDocuments(data.documents || []);
-      })
-      .catch((error) => {
-        console.error("Erreur récupération documents :", error);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [baseUrl, employee, employeeId, restaurantId]);
-
-  // Sélection locale de la photo
-  function handleFileSelect(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    setProfileFile(f);
-    setPreviewUrl(URL.createObjectURL(f));
+    setUploadError("");
+    setDocs((current) => [...current, ...files.map((file) => ({
+      file, title: file.name.replace(/\.[^.]+$/, "").slice(0, 30), category: category || "uncategorized", visibility: "internal",
+    }))]);
   }
 
-  // Sauvegarde détails + photo
-  async function onSaveDetails(data) {
-    setIsSavingDetails(true);
+  async function uploadDocuments() {
+    if (uploading || !docs.length) return;
+    setUploading(true);
+    setUploadError("");
+    setNotice("");
     try {
-      const fd = new FormData();
-      Object.entries(data).forEach(
-        ([k, v]) => v !== undefined && fd.append(k, v),
-      );
-      if (profileFile) fd.append("profilePicture", profileFile);
-
-      const response = await axios.patch(baseUrl, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-
-      const updated = [
-        ...(response.data.restaurant.employees || []),
-        ...(response.data.restaurant.accountants || []),
-      ].find((e) => e._id === employeeId);
-      setEmployee(updated);
-      setIsEditing(false);
-    } catch (err) {
-      console.error("Erreur update détails :", err);
-    } finally {
-      setIsSavingDetails(false);
-    }
-  }
-
-  // Sauvegarde options (droits pour ce restaurant)
-  async function onSaveOptions(formData) {
-    try {
-      await handleOptionsSubmit(async (d) => {
-        const response = await axios.patch(baseUrl, {
-          options: d.options,
-        });
-
-        restaurantContext.setRestaurantData((prev) => ({
-          ...prev,
-          employees: response.data.restaurant.employees,
-          accountants: response.data.restaurant.accountants || [],
-        }));
-
-        const updated = [
-          ...(response.data.restaurant.employees || []),
-          ...(response.data.restaurant.accountants || []),
-        ].find((e) => e._id === employeeId);
-        setEmployee(updated);
-        setOptionsSaved(true);
-
-        const profile =
-          (updated.restaurantProfiles || []).find(
-            (p) => String(p.restaurant) === String(restaurantId),
-          ) || null;
-        const mergedOptions = {
-          ...DEFAULT_OPTIONS,
-          ...(profile?.options || {}),
-        };
-        resetOptions({ options: mergedOptions });
-      })(formData);
-    } catch (err) {
-      console.error("Erreur update options :", err);
-    }
-  }
-
-  // Sélection documents locaux
-  function onDocsChange(e) {
-    const selectedFiles = Array.from(e.target.files);
-    const existingNames = new Set(docs.map((d) => d.file.name));
-
-    const uploadedNames = new Set(
-      uploadedDocuments.map((document) => document.filename),
-    );
-
-    const uniqueFiles = selectedFiles.filter(
-      (f) => !existingNames.has(f.name) && !uploadedNames.has(f.name),
-    );
-
-    if (uniqueFiles.length < selectedFiles.length) {
-      setDuplicateModalOpen(true);
-    }
-
-    const newDocs = uniqueFiles.map((f) => ({ file: f, title: "" }));
-    setDocs((prev) => [...prev, ...newDocs]);
-  }
-
-  function onDocTitleChange(index, newTitle) {
-    setDocs((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, title: newTitle } : d)),
-    );
-  }
-
-  async function onSaveDocs() {
-    if (!docs.length) return;
-    setIsUploadingDocs(true);
-    try {
-      const fd = new FormData();
-      docs.forEach((d) => {
-        fd.append("documents", d.file);
-        fd.append("titles", d.title);
-      });
-      const response = await axios.post(`${baseUrl}/documents`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-      const updated = [
-        ...(response.data.restaurant.employees || []),
-        ...(response.data.restaurant.accountants || []),
-      ].find((e) => e._id === employeeId);
-      setEmployee(updated);
-      setUploadedDocuments(response.data.documents || []);
+      const { data } = await axios.post(`${baseUrl}/documents`, buildEmployeeDocumentsForm(docs));
+      setStored(data.documents || []);
       setDocs([]);
-    } catch (err) {
-      console.error("Erreur upload documents :", err);
+      return true;
+    } catch (failure) {
+      setUploadError(failure.response?.data?.message || "Impossible d’ajouter les documents. Réessayez.");
+      return false;
     } finally {
-      setIsUploadingDocs(false);
+      setUploading(false);
     }
   }
 
-  function removeSelectedDoc(index) {
-    setDocs((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function confirmDeleteDoc(doc) {
-    setDocToDelete(doc);
-  }
-
-  async function onDeleteDoc() {
-    const { public_id } = docToDelete;
-    setIsDeletingDocId(public_id);
+  async function editDocument(id, metadata) {
     try {
-      const response = await axios.delete(
-        `${baseUrl}/documents/${encodeURIComponent(public_id)}`,
-      );
-      restaurantContext.setRestaurantData((prev) => ({
-        ...prev,
-        employees: response.data.restaurant.employees,
-        accountants: response.data.restaurant.accountants || [],
-      }));
-      const updated = [
-        ...(response.data.restaurant.employees || []),
-        ...(response.data.restaurant.accountants || []),
-      ].find((e) => e._id === employeeId);
-      setEmployee(updated);
-      setUploadedDocuments(response.data.documents || []);
-      setDocToDelete(null);
-    } catch (err) {
-      console.error("Erreur suppression document :", err);
-    } finally {
-      setIsDeletingDocId(null);
+      const { data } = await axios.patch(`${baseUrl}/documents/${encodeURIComponent(id)}`, metadata);
+      setStored(data.documents || []);
+      setNotice("");
+    } catch (failure) {
+      if (failure.response?.status === 409) setAttempt((value) => value + 1);
+      throw failure;
     }
   }
 
-  if (!employee) return null;
-
-  // Profil & documents pour le restaurant courant
-  const currentProfile =
-    (employee.restaurantProfiles || []).find(
-      (p) => String(p.restaurant) === String(restaurantId),
-    ) || null;
-
-  const currentSnapshot = currentProfile?.snapshot || {};
-  const currentEmployment = currentProfile?.employment || {};
-  const currentDocuments = uploadedDocuments;
-  const currentOptions = watchOptions("options") || {};
-
-  const displayFirstname = currentSnapshot.firstname || employee.firstname;
-  const displayLastname = currentSnapshot.lastname || employee.lastname;
-  const employeeIsAccountant = employee.accountType === "accountant";
+  async function deleteDocument() {
+    if (!toDelete) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const { data } = await axios.delete(`${baseUrl}/documents/${encodeURIComponent(toDelete.public_id)}`);
+      setStored(data.documents || []);
+      setToDelete(null);
+      setNotice("Document supprimé du dossier.");
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible de retirer le document.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
-    <section className="flex flex-col gap-6">
-      <hr className="opacity-20" />
-
-      <CatalogHeaderDashboardComponent
-        icon={<EmployeesSvg width={30} height={30} fillColor="#131E3690" />}
-        title={t("titles.main")}
-        onTitleClick={() => router.push("/dashboard/employees")}
-        onBack={() => router.push("/dashboard/employees")}
-        subtitle={`${displayFirstname} ${displayLastname}${
-          employeeIsAccountant ? " · Comptable" : ""
-        }`.trim()}
+    <div className="grid gap-3">
+      {notice && <p role="status" className="rounded-lg bg-white p-3 text-sm text-[#146144]">{notice}</p>}
+      <DocumentsEmployeeComponent
+        docs={docs}
+        baseUrl={baseUrl}
+        employeeName={employeeName}
+        currentDocuments={stored || []}
+        loading={stored === null && !loadError}
+        error={loadError}
+        uploadError={uploadError}
+        onCancelUploads={() => { setDocs([]); setUploadError(""); }}
+        onRetry={() => setAttempt((value) => value + 1)}
+        isUploadingDocs={uploading}
+        onDocsChange={selectDocuments}
+        onSaveDocs={uploadDocuments}
+        onEditDoc={editDocument}
+        confirmDeleteDoc={(document) => { setNotice(""); setError(""); setToDelete(document); }}
+        removeSelectedDoc={(index) => setDocs((current) => current.filter((_, item) => item !== index))}
+        onDocMetadataChange={(index, changes) => setDocs((current) => current.map((doc, item) => item === index ? { ...doc, ...changes } : doc))}
+        canShare
       />
-
-      {/* Détails & Photo (formulaire branché sur le SNAPSHOT) */}
-      <DataEmployeesComponent
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        handleDetailsSubmit={handleDetailsSubmit}
-        onSaveDetails={onSaveDetails}
-        regDetails={regDetails}
-        isSavingDetails={isSavingDetails}
-        employee={employee}
-        currentSnapshot={currentSnapshot}
-        currentEmployment={currentEmployment}
-        previewUrl={previewUrl}
-        fileInputRef={fileInputRef}
-        handleFileSelect={handleFileSelect}
-        resetDetails={resetDetails}
-        setProfileFile={setProfileFile}
-        setPreviewUrl={setPreviewUrl}
-        detailsDirty={detailsDirty}
-        profileFile={profileFile}
-      />
-
-      {/* Attribuer des droits (par restaurant) */}
-      {!employeeIsAccountant ? (
-        <AccessRightsEmployeesComponent
-          handleOptionsSubmit={handleOptionsSubmit}
-          onSaveOptions={onSaveOptions}
-          employee={employee}
-          isSavingOptions={isSavingOptions}
-          isEditing={isEditing}
-          isSavingDetails={isSavingDetails}
-          optionLabels={optionLabels}
-          optionsSaved={optionsSaved}
-          optionsDirty={optionsDirty}
-          regOptions={regOptions}
-          options={currentOptions}
-        />
-      ) : null}
-
-      {/* Documents (par restaurant) */}
-      {!employeeIsAccountant ? (
-        <DocumentsEmployeeComponent
-          onDocsChange={onDocsChange}
-          isUploadingDocs={isUploadingDocs}
-          docs={docs}
-          onSaveDocs={onSaveDocs}
-          employee={employee}
-          restaurantId={restaurantId}
-          baseUrl={baseUrl}
-          currentDocuments={currentDocuments}
-          confirmDeleteDoc={confirmDeleteDoc}
-          isDeletingDocId={isDeletingDocId}
-          removeSelectedDoc={removeSelectedDoc}
-          onDocTitleChange={onDocTitleChange}
-          showUploader
-        />
-      ) : null}
-
-      {!employeeIsAccountant ? (
-        <TimeClockEmployeesComponent
-          restaurantId={restaurantId}
-          employeeId={employeeId}
-        />
-      ) : null}
-
-      {/* Modal doublon */}
-      {duplicateModalOpen && (
+      {toDelete && (
         <ModaleEmployeesComponent
-          type="duplicate"
-          onCloseDuplicate={() => setDuplicateModalOpen(false)}
+          docToDelete={toDelete}
+          setDocToDelete={setToDelete}
+          onDeleteDoc={deleteDocument}
+          isDeletingDocId={deleting ? toDelete.public_id : null}
+          deleteError={error}
         />
       )}
+    </div>
+  );
+}
 
-      {/* Modale de confirmation de suppression de document */}
-      {docToDelete && (
-        <ModaleEmployeesComponent
-          docToDelete={docToDelete}
-          setDocToDelete={setDocToDelete}
-          onDeleteDoc={onDeleteDoc}
-          isDeletingDocId={isDeletingDocId}
+function EmployeeActivity({ employeeId, restaurantId, leaveRequests }) {
+  const pending = (leaveRequests || []).filter((request) => request.status === "pending").length;
+  const query = { employeeId, restaurantId };
+  return (
+    <section className="grid gap-4 overflow-hidden rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+      <header className="-mx-4 -mt-4 flex min-h-16 items-center border-b border-darkBlue/10 px-4 py-3 midTablet:-mx-5 midTablet:-mt-5 midTablet:px-5">
+        <h2 className="flex min-h-10 items-center text-lg font-semibold">Planning et absences</h2>
+      </header>
+      <div className="grid gap-3">
+        <p className="text-sm text-darkBlue/70">{pending ? `${pending} demande${pending > 1 ? "s" : ""} de congé en attente.` : "Aucune demande de congé en attente."}</p>
+        <div className="flex flex-wrap gap-2">
+          <Link href={{ pathname: `${directoryPath}/planning`, query }} className={action}>Voir son planning</Link>
+          <Link href={{ pathname: `${directoryPath}/planning/days-off`, query }} className={action}>Voir ses demandes de congé</Link>
+          <Link href={{ pathname: `${directoryPath}/time-clock`, query: { employeeId } }} className={action}>Voir le pointage</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function DetailsEmployeesComponent({ employeeId }) {
+  const { restaurantContext } = useContext(GlobalContext);
+  const { restaurantData: restaurant, setRestaurantData } = restaurantContext;
+  const restaurantId = restaurant._id;
+  const router = useRouter();
+  const tabsId = useId();
+  const employee = [...(restaurant.employees || []), ...(restaurant.accountants || [])].find((item) => String(item._id) === String(employeeId));
+  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/employees/${employeeId}`;
+  const visibleTabs = employee?.accountType === "accountant" ? tabs.slice(0, 1) : tabs;
+  const selected = visibleTabs.find(({ id }) => id === router.query.tab)?.id || "personal";
+
+
+  const returnToDirectory = () => router.push(directoryPath);
+
+  if (!employee) return (
+    <CatalogHeaderDashboardComponent
+      title="Fiche indisponible dans ce restaurant"
+      onBack={returnToDirectory}
+      backLabel="Retour à la liste des salariés"
+    />
+  );
+
+  const entry = employeeDirectoryEntry(employee, restaurantId);
+  const profile = employeeProfile(employee, restaurantId);
+  const workforce = entry.accountType === "employee";
+  const viewer = restaurantContext.userConnected;
+
+  async function save(changes) {
+    const { data } = await axios.patch(baseUrl, changes);
+    setRestaurantData((previous) => applyRosterResponse(previous, restaurantId, data.restaurant));
+  }
+
+  function selectTab(id) {
+    const query = { employeeId, ...(id !== "personal" && { tab: id }) };
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true, scroll: false });
+  }
+
+  function handleTabKey(event, index) {
+    const last = visibleTabs.length - 1;
+    const positions = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index === 0 ? last : index - 1, Home: 0, End: last };
+    if (!Object.hasOwn(positions, event.key)) return;
+    event.preventDefault();
+    const { id } = visibleTabs[positions[event.key]];
+    selectTab(id);
+    document.getElementById(`${tabsId}-tab-${id}`)?.focus();
+  }
+
+  function panel(id) {
+    return { id: `${tabsId}-panel-${id}`, role: "tabpanel", "aria-labelledby": `${tabsId}-tab-${id}`, hidden: selected !== id };
+  }
+
+  return (
+    <section className="grid min-w-0 gap-4">
+      <header>
+        <CatalogHeaderDashboardComponent
+          title={<span className="[overflow-wrap:anywhere]">{entry.name}</span>}
+          subtitle={workforce ? entry.post || "Salarié" : "Comptable"}
+          onBack={returnToDirectory}
+          backLabel="Retour à la liste des salariés"
         />
-      )}
+      </header>
+
+      <div role="tablist" aria-label="Fiche salarié" className="flex flex-wrap gap-x-2 border-b border-darkBlue/10">
+        {visibleTabs.map(({ id, label, Icon }, index) => (
+          <button key={id} type="button" role="tab" id={`${tabsId}-tab-${id}`} aria-selected={selected === id}
+            aria-controls={`${tabsId}-panel-${id}`} tabIndex={selected === id ? 0 : -1}
+            onClick={() => selectTab(id)} onKeyDown={(event) => handleTabKey(event, index)}
+            className={`-mb-px inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-t border-b-2 px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue midTablet:gap-2 midTablet:px-3 midTablet:text-sm ${selected === id ? "border-blue bg-blue/5 text-blue" : "border-transparent text-darkBlue/70 hover:bg-white"}`}>
+            <Icon size={16} aria-hidden="true" /> {label}
+          </button>
+        ))}
+      </div>
+
+      <div {...panel("personal")}><DataEmployeesComponent section="personal" employee={employee} profile={profile} onSave={save} /></div>
+      {workforce && <>
+        <div {...panel("employment")}><div className="grid gap-4">
+          <DataEmployeesComponent section="employment" employee={employee} profile={profile} onSave={save} />
+          {selected === "employment" && viewer?.superAdmin !== true &&
+            <EmployeePayroll restaurantId={restaurantId} employeeId={employeeId} employeeName={entry.name} />}
+        </div></div>
+        <div {...panel("access")}>
+          <div className="grid gap-4">
+            <AccessRightsEmployeesComponent options={profile?.options} onSave={save} hasEmail={Boolean(entry.email)} />
+            {selected === "access" && viewer?.superAdmin !== true && (
+              <EmployeePin restaurantId={restaurantId} employeeId={employeeId} canReveal={viewer?.role === "owner"} />
+            )}
+          </div>
+        </div>
+        <div {...panel("documents")}>{selected === "documents" && <EmployeeDocuments key={baseUrl} baseUrl={baseUrl} employeeName={entry.name} />}</div>
+        <div {...panel("activity")}>
+          <EmployeeActivity employeeId={employeeId} restaurantId={restaurantId} leaveRequests={employee.leaveRequests ?? profile?.leaveRequests} />
+        </div>
+      </>}
     </section>
   );
 }

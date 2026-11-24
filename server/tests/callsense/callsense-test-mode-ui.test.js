@@ -94,7 +94,8 @@ test("PWA : les lectures CallSense passent toujours par le réseau", () => {
   };
   try {
     delete require.cache[file]; require(file);
-    const rule = options.runtimeCaching[0];
+    const url = new URL("https://api.example/api/restaurants/abc/callsense/calls");
+    const rule = options.runtimeCaching.find((entry) => typeof entry.urlPattern === "function" && entry.urlPattern({ url }));
     assert.equal(rule.handler, "NetworkOnly"); assert.equal(rule.method, "GET");
     for (const url of ["https://api.example/api/restaurants/abc/callsense/calls", "https://api.example/api/restaurants/abc/callsense/unread-missed-count"]) assert.equal(rule.urlPattern({ url: new URL(url) }), true);
     assert.equal(rule.urlPattern({ url: new URL("https://api.example/api/restaurants/abc/reservations") }), false);

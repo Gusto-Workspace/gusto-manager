@@ -1,3 +1,5 @@
+const { DateTime } = require("luxon");
+
 function safeArr(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -25,32 +27,8 @@ function rangesOverlap(startA, endA, startB, endB) {
   return startA < endB && endA > startB;
 }
 
-function getMinutesSinceStartOfDay(value) {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return 0;
-  return value.getHours() * 60 + value.getMinutes();
-}
-
-function isSameCalendarDay(left, right) {
-  return (
-    left instanceof Date &&
-    right instanceof Date &&
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
-}
-
-function getOpeningDayIndex(date) {
-  const weekday = date.getDay();
-  return weekday === 0 ? 6 : weekday - 1;
-}
-
 function getOpeningDay(openingHours, date) {
-  return safeArr(openingHours)[getOpeningDayIndex(date)] || null;
-}
-
-function getDayCursor(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return safeArr(openingHours)[date.weekday - 1] || null;
 }
 
 function normalizeMealPeriods(periods = []) {
@@ -89,9 +67,7 @@ function getOpeningSegmentsForDay(openingHours, date) {
         })),
       );
 
-  const previousDate = new Date(date.getTime());
-  previousDate.setDate(previousDate.getDate() - 1);
-  const previousDay = getOpeningDay(openingHours, previousDate);
+  const previousDay = getOpeningDay(openingHours, date.minus({ days: 1 }));
   const carryOverSegments = previousDay?.isClosed
     ? []
     : safeArr(previousDay?.hours).flatMap((slot) => {
@@ -170,30 +146,31 @@ function computeMealAllowance({
     return { count: 0, amount: 0, periods: [], source: "leave" };
   }
 
-  const shiftStart = start instanceof Date ? start : new Date(start);
-  const shiftEnd = end instanceof Date ? end : new Date(end);
+  const zone = "Europe/Paris";
+  const shiftStart = DateTime.fromJSDate(new Date(start), { zone });
+  const shiftEnd = DateTime.fromJSDate(new Date(end), { zone });
 
   if (
-    Number.isNaN(shiftStart.getTime()) ||
-    Number.isNaN(shiftEnd.getTime()) ||
+    start == null ||
+    end == null ||
+    !shiftStart.isValid ||
+    !shiftEnd.isValid ||
     shiftEnd <= shiftStart
   ) {
     return { count: 0, amount: 0, periods: [], source: "" };
   }
 
   const mealPeriods = new Set();
-  const dayCursor = getDayCursor(shiftStart);
-  const lastDay = getDayCursor(shiftEnd);
-
-  while (dayCursor <= lastDay) {
+  const lastDay = shiftEnd.startOf("day");
+  for (let dayCursor = shiftStart.startOf("day"); dayCursor <= lastDay; dayCursor = dayCursor.plus({ days: 1 })) {
     const openingSegments = getOpeningSegmentsForDay(openingHours, dayCursor);
 
     if (openingSegments.length > 0) {
-      const shiftSegmentStart = isSameCalendarDay(dayCursor, shiftStart)
-        ? getMinutesSinceStartOfDay(shiftStart)
+      const shiftSegmentStart = dayCursor.hasSame(shiftStart, "day")
+        ? shiftStart.hour * 60 + shiftStart.minute
         : 0;
-      const shiftSegmentEnd = isSameCalendarDay(dayCursor, shiftEnd)
-        ? getMinutesSinceStartOfDay(shiftEnd)
+      const shiftSegmentEnd = dayCursor.hasSame(shiftEnd, "day")
+        ? shiftEnd.hour * 60 + shiftEnd.minute
         : 24 * 60;
 
       openingSegments.forEach((segment) => {
@@ -226,8 +203,6 @@ function computeMealAllowance({
         }
       });
     }
-
-    dayCursor.setDate(dayCursor.getDate() + 1);
   }
 
   const periods = Array.from(mealPeriods);

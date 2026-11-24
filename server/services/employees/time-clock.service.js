@@ -10,10 +10,8 @@ const ACTIONS = {
 const STALE_OPEN_SESSION_MINUTES = 24 * 60;
 
 const { computeMealAllowance } = require("./meal-allowance.service");
-
-function pad2(value) {
-  return String(value).padStart(2, "0");
-}
+const { DateTime } = require("luxon");
+const TIME_CLOCK_ZONE = "Europe/Paris";
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -45,7 +43,7 @@ function toLocalDateKey(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
 
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return DateTime.fromJSDate(date, { zone: TIME_CLOCK_ZONE }).toISODate();
 }
 
 function dateKeyToDate(key) {
@@ -58,21 +56,7 @@ function dateKeyToDate(key) {
 function dateKeyToLocalDate(key) {
   if (!isValidDateKey(key)) return null;
 
-  const [year, month, day] = String(key)
-    .split("-")
-    .map((part) => Number(part));
-
-  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
-  if (Number.isNaN(date.getTime())) return null;
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return date;
+  return DateTime.fromISO(key, { zone: TIME_CLOCK_ZONE }).toJSDate();
 }
 
 function addDaysToDateKey(key, amount) {
@@ -233,8 +217,7 @@ function getRangeBounds(startDateKey, endDateKey) {
     return null;
   }
 
-  const endExclusive = new Date(end.getTime());
-  endExclusive.setDate(endExclusive.getDate() + 1);
+  const endExclusive = dateKeyToLocalDate(addDaysToDateKey(endDateKey, 1));
 
   return {
     start,
@@ -265,8 +248,7 @@ function splitIntervalByDay(startValue, endValue) {
 
   while (cursor < end) {
     const segmentDate = toLocalDateKey(cursor);
-    const nextBoundary = new Date(cursor.getTime());
-    nextBoundary.setHours(24, 0, 0, 0);
+    const nextBoundary = dateKeyToLocalDate(addDaysToDateKey(segmentDate, 1));
 
     const segmentEnd = nextBoundary < end ? nextBoundary : end;
     const minutes = diffMinutes(cursor, segmentEnd);
@@ -422,6 +404,7 @@ function serializeEvent(event) {
     actorRole: event?.actorRole || "",
     actorId: event?.actorId || "",
     source: event?.source || "kiosk",
+    receivedAt: event?.receivedAt || null,
     signature: serializeSignature(event?.signature),
   };
 }
@@ -469,6 +452,7 @@ function serializeSession(
 
   return {
     id: session?._id ? String(session._id) : null,
+    updatedAt: session?.updatedAt || null,
     businessDate: session?.businessDate || null,
     status: session?.status || "closed",
     situation: getSessionSituation(session),
@@ -481,10 +465,20 @@ function serializeSession(
       breakMinutes: metrics.breakMinutes,
       workedMinutes: metrics.workedMinutes,
     },
-    mealAllowance,
+    mealAllowance: {
+      ...mealAllowance,
+      count: session?.mealCountOverride ?? mealAllowance.count,
+    },
     anomalies: metrics.anomalies,
     breaks,
     events,
+    review: session?.reviews?.at(-1)?.type === "validated"
+      ? {
+          at: session.reviews.at(-1).at,
+          actorId: session.reviews.at(-1).actorId,
+          actorRole: session.reviews.at(-1).actorRole,
+        }
+      : null,
     adjustments: [...(session?.adjustments || [])]
       .sort((left, right) => new Date(right.editedAt) - new Date(left.editedAt))
       .map((adjustment) => ({
@@ -690,12 +684,15 @@ function getEmployeeDisplay(employee, restaurantId) {
   );
 
   const snapshot = profile?.snapshot || {};
+  const identities = employee?.rhArchiveIdentities;
+  const retained = identities instanceof Map ? identities.get(String(restaurantId)) : identities?.[String(restaurantId)];
+  const identity = retained?.until >= toLocalDateKey(new Date()) ? retained : snapshot;
 
   return {
     id: employee?._id ? String(employee._id) : "",
-    firstname: snapshot.firstname || employee?.firstname || "",
-    lastname: snapshot.lastname || employee?.lastname || "",
-    email: snapshot.email || employee?.email || "",
+    firstname: identity.firstname || employee?.firstname || "",
+    lastname: identity.lastname || employee?.lastname || "",
+    email: profile?.erasure?.at ? "" : snapshot.email || employee?.email || "",
     post: snapshot.post || employee?.post || "",
   };
 }
@@ -766,6 +763,7 @@ function buildEmployeeRangeSummary({
 
 module.exports = {
   ACTIONS,
+  addDaysToDateKey,
   buildEmployeeRangeSummary,
   buildOverlapQuery,
   buildSummaryPayload,
@@ -780,6 +778,7 @@ module.exports = {
   getWeekRangeFromDateKey,
   isValidDateKey,
   normalizeSignaturePayload,
+  serializeEvent,
   serializeSession,
   syncSessionTotals,
   toDateKey,

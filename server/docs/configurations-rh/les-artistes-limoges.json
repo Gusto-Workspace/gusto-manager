@@ -1,0 +1,498 @@
+{
+  "format": "gusto.hr-configuration",
+  "version": 1,
+  "metadata": {
+    "source": "skello",
+    "establishment": "Les Artistes Limoges",
+    "collectedOn": "2026-11-22"
+  },
+  "rules": {
+    "clockRules": {
+      "status": "confirmed",
+      "origin": {
+        "system": "gusto",
+        "path": "Rapprochement Badgeuse et choix Gusto sur les pauses",
+        "consultedOn": "2026-11-22"
+      },
+      "values": {
+        "enabled": true,
+        "earlyIn": "planned",
+        "lateIn": "planned",
+        "earlyOut": "clocked",
+        "lateOut": "clocked",
+        "roundMinutes": 0,
+        "pause": "plannedFallback"
+      },
+      "note": "Les bornes et l’arrondi viennent de Skello. Le repli sur la pause prévue est un choix explicite pour Gusto."
+    },
+    "overtime": {
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "values": null,
+      "note": "Les intitulés affichent des taux mais les seuils, assiettes, cumuls et accords applicables ne sont pas confirmés."
+    },
+    "rules": {
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles → Repas",
+        "consultedOn": "2026-11-22"
+      },
+      "values": {
+        "mode": "combined",
+        "basis": "days",
+        "quantity": 2,
+        "amount": null,
+        "criteria": null
+      },
+      "note": "Mode et quantité observés. Le montant et les droits en cas d’absence restent à confirmer. La famille entière reste en attente."
+    },
+    "leaveRules": {
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "values": null,
+      "note": "Unité et acquisition affichées. Le cycle, le mois de reprise, les reliquats et les absences assimilées restent à confirmer."
+    },
+    "absenceRules": {
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-22"
+      },
+      "values": null,
+      "note": "Le catalogue présente les rubriques de payeur. La politique complète par catégorie reste à confirmer."
+    },
+    "hoursRules": {
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "values": null,
+      "note": "Compteurs Skello désactivés, hors CP. Le compteur Gusto et les dispositifs individuels ont des périmètres distincts."
+    }
+  },
+  "observations": [
+    {
+      "id": "early-in",
+      "label": "Arrivée en avance",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Heure prévue",
+      "gusto": "clockRules.earlyIn = planned",
+      "note": null
+    },
+    {
+      "id": "late-in",
+      "label": "Arrivée en retard",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Heure prévue",
+      "gusto": "clockRules.lateIn = planned",
+      "note": null
+    },
+    {
+      "id": "early-out",
+      "label": "Départ anticipé",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Heure badgée",
+      "gusto": "clockRules.earlyOut = clocked",
+      "note": null
+    },
+    {
+      "id": "late-out",
+      "label": "Départ tardif",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Heure badgée",
+      "gusto": "clockRules.lateOut = clocked",
+      "note": null
+    },
+    {
+      "id": "rounding",
+      "label": "Arrondi des horaires badgés",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "clockRules.roundMinutes = 0",
+      "note": "Le sélecteur inactif affiche 5 min."
+    },
+    {
+      "id": "minimum-break",
+      "label": "Minimum de pause prévue",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "Modes de pause du Rapport RH",
+      "note": null
+    },
+    {
+      "id": "tablet-break",
+      "label": "Badge de pause sur tablette",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Badgeuse tablette",
+        "consultedOn": "2026-11-22"
+      },
+      "value": true,
+      "gusto": "Début et fin de pause dans la Pointeuse",
+      "note": null
+    },
+    {
+      "id": "mobile-break",
+      "label": "Badge de pause sur mobile",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Badgeuse mobile",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": null,
+      "note": null
+    },
+    {
+      "id": "missing-break",
+      "label": "Pause oubliée ou nulle dans Skello",
+      "status": "unavailable",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
+        "consultedOn": "2026-11-22"
+      },
+      "value": null,
+      "gusto": "Modes de pause du Rapport RH",
+      "note": "Le minimum désactivé ne suffit pas à identifier le repli en cas d’oubli."
+    },
+    {
+      "id": "gusto-break",
+      "label": "Politique de pause choisie pour Gusto",
+      "status": "confirmed",
+      "origin": {
+        "system": "gusto",
+        "path": "Décision Gusto et recette Pointeuse 2026-11-21",
+        "consultedOn": "2026-11-21"
+      },
+      "value": "Déduire la durée pointée positive, sinon la pause prévue si elle existe",
+      "gusto": "clockRules.pause = plannedFallback",
+      "note": "Choix Gusto. Si aucune pause n’est mesurée ou prévue, le responsable peut corriger avec motif."
+    },
+    {
+      "id": "paid-break",
+      "label": "Rémunération des pauses",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "Pause déduite dans la Pointeuse",
+      "note": null
+    },
+    {
+      "id": "break-threshold",
+      "label": "Déclenchement de pause affiché",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles",
+        "consultedOn": "2026-11-22"
+      },
+      "value": 360,
+      "gusto": null,
+      "note": "Le déclenchement automatique à 6 h ne correspond pas à un réglage de paie importable."
+    },
+    {
+      "id": "deduct-lateness",
+      "label": "Déduire le retard du salaire",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "L’arrivée reste au prévu, le badge conserve le retard",
+      "note": null
+    },
+    {
+      "id": "review",
+      "label": "Validation et correction des pointages",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Badgeuse → Journée / Historique",
+        "consultedOn": "2026-11-21"
+      },
+      "value": "Heures retenues corrigibles et validation des journées",
+      "gusto": "Correction motivée et validation dans la Pointeuse",
+      "note": "Mécanisme documenté en mission 16. Le choix de la source des majorations Gusto reste à confirmer."
+    },
+    {
+      "id": "collective-agreement",
+      "label": "Convention collective affichée",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "HCR · IDCC 1979",
+      "gusto": null,
+      "note": "La convention seule ne renseigne pas la grille effectivement appliquée."
+    },
+    {
+      "id": "reference-week",
+      "label": "Jours de référence",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles",
+        "consultedOn": "2026-11-22"
+      },
+      "value": 5,
+      "gusto": "overtime.workdays",
+      "note": "Affichage confirmé. Son usage par famille de majoration reste à confirmer."
+    },
+    {
+      "id": "extra-hours",
+      "label": "Heures supplémentaires",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Colonnes à 10 %, 20 % et 50 %",
+      "gusto": "overtime",
+      "note": "Confirmer seuils, mensualisation et accords particuliers."
+    },
+    {
+      "id": "complementary-hours",
+      "label": "Heures complémentaires",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Colonnes à 10 % et 25 %",
+      "gusto": "overtime",
+      "note": "Confirmer seuils, dérogations et volumes par contrat."
+    },
+    {
+      "id": "night",
+      "label": "Nuit",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Colonne à 0 %",
+      "gusto": "overtime.nightRate et fenêtre",
+      "note": "Confirmer la plage de nuit et la déduction des pauses."
+    },
+    {
+      "id": "sunday",
+      "label": "Dimanche",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Colonne à 50 %",
+      "gusto": "overtime.sundayRate",
+      "note": "Assiette de part et d’autre de minuit à confirmer. Les 40 min historiques restent inexpliquées."
+    },
+    {
+      "id": "holidays",
+      "label": "Jours fériés",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Colonne de volume",
+      "gusto": "overtime.countHolidays et overtime.holidayRate",
+      "note": "Confirmer taux et cumuls."
+    },
+    {
+      "id": "may-day",
+      "label": "Premier mai",
+      "status": "unavailable",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Heures majorées",
+        "consultedOn": "2026-11-22"
+      },
+      "value": null,
+      "gusto": null,
+      "note": "Le taux et le traitement du premier mai ne sont pas prouvés sur cet écran. Aucun équivalent Gusto séparé."
+    },
+    {
+      "id": "paid-leave",
+      "label": "Acquisition des congés payés",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Compteur actif · 2,5 jours ouvrables par mois",
+      "gusto": "leaveRules",
+      "note": "Cycle, exclusions et mois de reprise à confirmer."
+    },
+    {
+      "id": "absences",
+      "label": "Absences et payeurs",
+      "status": "to_confirm",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Employeur, tiers et non indemnisé",
+      "gusto": "absenceRules.categories",
+      "note": "Confirmer la politique de chaque catégorie et l’assimilation en paie."
+    },
+    {
+      "id": "meals",
+      "label": "Avantages en nature et indemnités",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles → Repas",
+        "consultedOn": "2026-11-22"
+      },
+      "value": "Deux repas dus par jour travaillé",
+      "gusto": "rules.mode, rules.basis et rules.quantity",
+      "note": "Valeur unitaire et maintien pendant une absence à confirmer."
+    },
+    {
+      "id": "modulation",
+      "label": "Modulation du temps de travail",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "Compteur d’heures, selon le dispositif",
+      "note": null
+    },
+    {
+      "id": "recovery",
+      "label": "Compteur de repos compensateur",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "Mouvements de récupération du Rapport RH",
+      "note": null
+    },
+    {
+      "id": "annualization",
+      "label": "Annualisation",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": "Annualisation individuelle hors de cet import",
+      "note": null
+    },
+    {
+      "id": "rtt",
+      "label": "Compteur RTT forfait jours",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": null,
+      "note": null
+    },
+    {
+      "id": "holiday-counter",
+      "label": "Compteur de jours fériés",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": false,
+      "gusto": null,
+      "note": "Ce compteur est distinct de l’assiette d’une majoration fériée."
+    },
+    {
+      "id": "special-contracts",
+      "label": "Contrats particuliers",
+      "status": "unavailable",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs",
+        "consultedOn": "2026-11-22"
+      },
+      "value": null,
+      "gusto": null,
+      "note": "Périmètre individuel exclu. Les accords et règles propres aux contrats restent à établir."
+    }
+  ],
+  "questions": [
+    "Confirmer les bandes d’heures supplémentaires et complémentaires, le traitement des absences assimilées, la source des heures et la mensualisation.",
+    "Confirmer la fenêtre de nuit, la base du dimanche autour de minuit, les règles des fériés et du premier mai, et les éventuels cumuls.",
+    "Faire valider les contrats particuliers et vérifier si un compteur Gusto ou une annualisation doit être mis en service.",
+    "Confirmer le cycle de congés payés, les exclusions, les catégories assimilées, les payeurs et la date de reprise.",
+    "Confirmer le montant unitaire du repas, les règles de prise et de maintien sur absence.",
+    "Désigner le responsable qui régularise les badges incomplets et confirme les corrections motivées."
+  ]
+}

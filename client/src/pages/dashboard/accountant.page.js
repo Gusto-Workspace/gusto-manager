@@ -19,6 +19,7 @@ import NavComponent from "@/components/_shared/nav/nav.component";
 import SettingsComponent from "@/components/_shared/settings/settings.component";
 import CatalogHeaderDashboardComponent from "@/components/dashboard/_shared/catalog-header.dashboard.component";
 import DocumentsEmployeeComponent from "@/components/dashboard/employees/documents.employees.component";
+import { buildEmployeeDocumentsForm, documentLimit, documentSizeLimit } from "@/components/dashboard/_shared/employee-documents.utils.mjs";
 
 const ACCOUNTANT_NAV_ITEMS = [
   { id: "hours", label: "Heures", icon: "ClockSvg" },
@@ -204,15 +205,22 @@ export default function AccountantPage() {
     setDocumentError("");
   }
 
-  function onDocumentsChange(event) {
+  function onDocumentsChange(event, category) {
     const selected = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!selected.length) return;
+    if (selected.length + pendingDocuments.length > documentLimit ||
+        selected.some((file) => !file.size || file.size > documentSizeLimit)) {
+      setDocumentError("Choisissez au maximum 10 fichiers non vides, de 10 Mo chacun.");
+      return;
+    }
     const knownNames = new Set([
       ...visibleDocuments.map((document) => document.filename),
       ...pendingDocuments.map((document) => document.file.name),
     ]);
     const unique = selected
       .filter((file) => !knownNames.has(file.name))
-      .map((file) => ({ file, title: "" }));
+      .map((file) => ({ file, title: file.name.replace(/\.[^.]+$/, "").slice(0, 30), category }));
 
     setPendingDocuments((current) => [...current, ...unique]);
     setDocumentError(
@@ -222,10 +230,10 @@ export default function AccountantPage() {
     );
   }
 
-  function onDocumentTitleChange(index, title) {
+  function onDocumentMetadataChange(index, changes) {
     setPendingDocuments((current) =>
       current.map((document, currentIndex) =>
-        currentIndex === index ? { ...document, title } : document,
+        currentIndex === index ? { ...document, ...changes } : document,
       ),
     );
   }
@@ -233,18 +241,10 @@ export default function AccountantPage() {
   async function uploadDocuments() {
     if (!baseUrl || !pendingDocuments.length) return;
 
-    const formData = new FormData();
-    pendingDocuments.forEach(({ file, title }) => {
-      formData.append("documents", file);
-      formData.append("titles", title);
-    });
-
     setUploading(true);
     setDocumentError("");
     try {
-      const { data } = await axios.post(`${baseUrl}/documents`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const { data } = await axios.post(`${baseUrl}/documents`, buildEmployeeDocumentsForm(pendingDocuments));
       const nextDocuments = data.documents || [];
       updateAccountantDocumentsCache({
         restaurantId,
@@ -255,11 +255,13 @@ export default function AccountantPage() {
       setDocuments(nextDocuments);
       setDocumentsKey(activeDocumentsKey);
       setPendingDocuments([]);
+      return true;
     } catch (error) {
       setDocumentError(
         error?.response?.data?.message ||
           "Impossible de déposer les documents.",
       );
+      return false;
     } finally {
       setUploading(false);
     }
@@ -488,6 +490,7 @@ export default function AccountantPage() {
                   {selectedEmployee ? (
                     <>
                       <DocumentsEmployeeComponent
+                        key={baseUrl}
                         onDocsChange={onDocumentsChange}
                         isUploadingDocs={uploading}
                         docs={pendingDocuments}
@@ -501,9 +504,11 @@ export default function AccountantPage() {
                             ),
                           )
                         }
-                        onDocTitleChange={onDocumentTitleChange}
-                        description={`Documents déposés pour ${selectedEmployee.firstname} ${selectedEmployee.lastname}.`}
-                        showUploader
+                        onDocMetadataChange={onDocumentMetadataChange}
+                        employeeName={`${selectedEmployee.firstname} ${selectedEmployee.lastname}`}
+                        loading={documentsLoading}
+                        uploadError={documentError}
+                        onCancelUploads={() => { setPendingDocuments([]); setDocumentError(""); }}
                       />
                       {documentsLoading ? (
                         <p className="mt-3 text-sm text-darkBlue/50">

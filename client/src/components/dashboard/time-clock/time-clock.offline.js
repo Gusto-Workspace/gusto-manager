@@ -1,9 +1,8 @@
 import axios from "axios";
 
-import { TIME_CLOCK_ACTIONS, cloneSignatureStrokes, toLocalDateKey } from "./time-clock.utils";
+import { TIME_CLOCK_ACTIONS, cloneSignatureStrokes, toLocalDateKey } from "./time-clock.utils.js";
 
 const STORAGE_KEY = "gm:timeClock:offline:v1";
-const MAX_FAILED_PUNCHES = 20;
 
 function safeParse(value, fallback) {
   try {
@@ -44,11 +43,14 @@ function readStore() {
 }
 
 function writeStore(store) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRestaurantId(restaurantId) {
@@ -82,8 +84,7 @@ function updateRestaurantEntry(restaurantId, updater) {
     },
   };
 
-  writeStore(store);
-  return store.restaurants[targetId];
+  return writeStore(store) ? store.restaurants[targetId] : null;
 }
 
 function pickRestaurantSnapshot(restaurant) {
@@ -559,7 +560,7 @@ export function queueOfflinePunch({
     source: "kiosk",
   };
 
-  updateRestaurantEntry(targetRestaurantId, (entry) => ({
+  const saved = updateRestaurantEntry(targetRestaurantId, (entry) => ({
     ...entry,
     pendingPunches: sortPendingPunches([
       ...(Array.isArray(entry.pendingPunches) ? entry.pendingPunches : []),
@@ -567,7 +568,7 @@ export function queueOfflinePunch({
     ]),
   }));
 
-  return punch;
+  return saved ? punch : null;
 }
 
 export function removePendingPunch(restaurantId, clientMutationId) {
@@ -588,7 +589,7 @@ export function appendFailedPunch(restaurantId, failedPunch) {
         recordedAt: new Date().toISOString(),
       },
       ...(Array.isArray(entry.failedPunches) ? entry.failedPunches : []),
-    ].slice(0, MAX_FAILED_PUNCHES),
+    ],
   }));
 }
 
@@ -611,14 +612,12 @@ export function getMergedKioskState({
     serverState ||
     entry?.statesByEmployee?.[String(employee?._id || employee?.id || "")] ||
     null;
-  const pendingPunches = sortPendingPunches(
-    (entry?.pendingPunches || []).filter(
-      (item) =>
-        String(item?.employeeId || "") ===
-        String(employee?._id || employee?.id || ""),
-    ),
-  );
+  return mergeTimeClockPunches({ baseState, employee, anchorDate, now, pending: entry?.pendingPunches });
+}
 
+export function mergeTimeClockPunches({ baseState, employee, anchorDate, now = new Date(), pending = [] }) {
+  const employeeId = String(employee?._id || employee?.id || "");
+  const pendingPunches = sortPendingPunches(pending.filter((punch) => String(punch.employeeId) === employeeId));
   let next = ensureKioskState(baseState, employee, anchorDate);
 
   for (const punch of pendingPunches) {
@@ -692,7 +691,10 @@ export async function replayPendingTimeClockPunches({
         },
       );
 
-      removePendingPunch(targetRestaurantId, punch.clientMutationId);
+      if (!removePendingPunch(targetRestaurantId, punch.clientMutationId)) {
+        result.stopped = true;
+        break;
+      }
       if (data?.summary) {
         saveTimeClockKioskStateForEmployee({
           restaurantId: targetRestaurantId,
@@ -708,15 +710,19 @@ export async function replayPendingTimeClockPunches({
     } catch (error) {
       const status = Number(error?.response?.status || 0);
 
-      if (status >= 400 && status < 500) {
-        removePendingPunch(targetRestaurantId, punch.clientMutationId);
-        appendFailedPunch(targetRestaurantId, {
-          punch,
-          message:
-            error?.response?.data?.message ||
-            "Le pointage en attente a ete refuse lors de la synchronisation.",
-          status,
-        });
+      if ([400, 404, 409, 422].includes(status)) {
+        const moved = updateRestaurantEntry(targetRestaurantId, (entry) => ({
+          ...entry,
+          pendingPunches: (entry.pendingPunches || []).filter((item) => item.clientMutationId !== punch.clientMutationId),
+          failedPunches: [{
+            punch, status, recordedAt: new Date().toISOString(),
+            message: error?.response?.data?.message || "Le pointage doit être régularisé.",
+          }, ...(entry.failedPunches || [])],
+        }));
+        if (!moved) {
+          result.stopped = true;
+          break;
+        }
         result.processed += 1;
         result.failed += 1;
         onItemFailed?.({ punch, error, conflict: true });

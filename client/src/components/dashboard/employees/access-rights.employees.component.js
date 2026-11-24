@@ -1,68 +1,87 @@
-// I18N
+import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { useTranslation } from "next-i18next";
 
-export default function AccessRightsEmployeesComponent(props) {
-  const { t } = useTranslation("employees");
+const modules = {
+  dashboard: "dashboard",
+  restaurant: "restaurant",
+  menus: "menus",
+  dishes: "dishes",
+  drinks: "drinks",
+  wines: "wines",
+  news: "news",
+  gift_card: "giftCards",
+  reservations: "reservations",
+  take_away: "takeAway",
+  employees: "employees",
+  customers: "customers",
+  health_control_plan: "health",
+};
 
-  const options = props?.options || {};
+export default function AccessRightsEmployeesComponent({ options = {}, onSave, hasEmail }) {
+  const { t } = useTranslation(["employees", "common"]);
+  const [changes, setChanges] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const dirty = Object.keys(changes).length > 0;
 
-  // styles communs
-  const cardWrap =
-    "group relative rounded-xl bg-white/60 px-4 py-3 border border-darkBlue/10 transition hover:border-darkBlue/30";
-  const titleCls = "text-sm font-medium text-darkBlue";
-  const checkboxBase =
-    "h-4 w-4 rounded cursor-pointer border border-darkBlue/30 text-blue focus:ring-blue focus:ring-offset-0";
+  useEffect(() => {
+    if (!saved) return;
+    const timeout = setTimeout(() => setSaved(false), 2500);
+    return () => clearTimeout(timeout);
+  }, [saved]);
 
-  const isDisabled =
-    props?.isSavingOptions || props?.isEditing || props?.isSavingDetails;
+  function toggle(key, checked) {
+    setSaved(false);
+    setChanges((previous) => {
+      const next = { ...previous, [key]: checked };
+      if (checked === Boolean(options[key])) delete next[key];
+      return next;
+    });
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (saving || !dirty) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onSave({ options: changes });
+      setChanges({});
+      setSaved(true);
+    } catch (failure) {
+      setError(failure.response?.data?.message || "Impossible d’enregistrer les accès.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <form
-      onSubmit={props?.handleOptionsSubmit(props?.onSaveOptions)}
-      className="bg-white/60 p-2 mobile:p-6 rounded-2xl border border-darkBlue/10 shadow-sm flex flex-col gap-4"
-    >
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="text-lg font-semibold text-darkBlue">
-          {t("labels.assignRights")}
-        </h3>
-        <p className="text-xs text-darkBlue/50">
-          {t("Cochez les accès autorisés")}
-        </p>
-      </div>
+    <form onSubmit={submit} className="grid gap-4 overflow-hidden rounded-xl border border-darkBlue/10 bg-white p-4 midTablet:p-5">
+      <header className="-mx-4 -mt-4 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-darkBlue/10 px-4 py-3 midTablet:-mx-5 midTablet:-mt-5 midTablet:px-5">
+        <h2 className="flex min-h-10 items-center text-lg font-semibold">Compte et accès</h2>
+        {!hasEmail && <p className="text-sm text-darkBlue/70">Ce compte n’a pas d’e-mail de connexion.</p>}
+        <span role="status" aria-live="polite">
+          {saved && <span className="grid size-7 place-items-center rounded-full bg-[#147349] text-white"><Check size={18} aria-hidden="true" /><span className="sr-only">Accès enregistrés.</span></span>}
+        </span>
+      </header>
+      <fieldset className="grid gap-x-6 gap-y-1 midTablet:grid-cols-2 [&>label:last-of-type]:border-b-0 midTablet:[&>label:nth-last-of-type(2):nth-of-type(odd)]:border-b-0" disabled={saving}>
+        <legend className="mb-2 text-sm font-semibold">Modules autorisés pour ce restaurant</legend>
+        {Object.entries(modules).map(([key, label]) => (
+          <label key={key} className="flex min-h-10 cursor-pointer items-center justify-between gap-3 border-b border-darkBlue/10 px-2 text-sm hover:bg-lightGrey">
+            {t(`common:nav.${label}`)}
+            <input type="checkbox" checked={changes[key] ?? Boolean(options[key])} onChange={(event) => toggle(key, event.target.checked)}
+              className="size-4 rounded border-darkBlue/30 text-blue focus:ring-blue" />
+          </label>
+        ))}
+      </fieldset>
+      {error && <p role="alert" className="text-sm text-red">{error}</p>}
 
-      <div className="grid grid-cols-1 mobile:grid-cols-2 gap-3">
-        {Object.keys(options).map((key) => {
-          const label = props?.optionLabels?.[key] || key;
-
-          return (
-            <label
-              key={key}
-              className={`${cardWrap} flex items-center justify-between gap-3 cursor-pointer ${
-                isDisabled ? "opacity-60 cursor-not-allowed" : ""
-              }`}
-            >
-              <span className={titleCls}>{label}</span>
-
-              <input
-                type="checkbox"
-                {...props?.regOptions(`options.${key}`)}
-                disabled={isDisabled}
-                className={checkboxBase}
-              />
-            </label>
-          );
-        })}
-      </div>
-
-      {props?.optionsDirty && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="submit"
-            disabled={isDisabled}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue px-4 py-2 text-sm font-medium text-white shadow disabled:opacity-40"
-          >
-            {props?.isSavingOptions ? t("buttons.loading") : t("buttons.save")}
-          </button>
+      {dirty && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => { setChanges({}); setError(""); }} className="min-h-10 rounded-lg border border-darkBlue/15 px-3 text-sm font-semibold">{t("buttons.cancel")}</button>
+          <button type="submit" disabled={saving} className="min-h-10 rounded-lg bg-blue px-3 text-sm font-semibold text-white disabled:opacity-60">{saving ? t("buttons.loading") : t("buttons.save")}</button>
         </div>
       )}
     </form>
