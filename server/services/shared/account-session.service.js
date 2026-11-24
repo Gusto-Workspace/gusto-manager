@@ -47,6 +47,12 @@ function isSuperAdminSession(user) {
   return user?.superAdmin === true;
 }
 
+function accountAuditContext(user) {
+  return isSuperAdminSession(user)
+    ? { authMethod: "super_admin", superAdminSessionId: user.superAdminSessionId }
+    : { authMethod: "password" };
+}
+
 function hasValidSuperAdminMetadata(user) {
   if (!isSuperAdminSession(user)) return true;
 
@@ -54,14 +60,6 @@ function hasValidSuperAdminMetadata(user) {
     user.authMethod === "super_admin" &&
     typeof user.superAdminSessionId === "string" &&
     user.superAdminSessionId.length > 0
-  );
-}
-
-function canUpdateOwnerEmail(user, currentEmail, requestedEmail) {
-  return !(
-    isSuperAdminSession(user) &&
-    requestedEmail &&
-    requestedEmail !== currentEmail
   );
 }
 
@@ -181,8 +179,8 @@ async function matchesSuperAdminPassword(password) {
 
 module.exports = {
   buildSessionVersionFilter,
-  canUpdateOwnerEmail,
   createSuperAdminSessionClaims,
+  accountAuditContext,
   getSessionVersion,
   hasMatchingSessionVersion,
   hasValidSuperAdminMetadata,

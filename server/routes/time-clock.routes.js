@@ -52,7 +52,6 @@ const { versionedCollectiveKinds, ruleAt } = require("../services/employees/pers
 const { payrollReadiness, reportIssues, clockIssues, missingClockRule, messageFor } = require("../services/employees/hr-payroll-readiness.service");
 const { ledgerStart, effectiveContract, planningContractTarget, annualPeriod } = require("../services/employees/personnel-report-ledgers.service");
 const { buildPersonnelReportWorkbook } = require("../services/excel/render-personnel-report-workbook.service");
-const { isSuperAdminSession } = require("../services/shared/account-session.service");
 
 const {
   ACTIONS,
@@ -359,7 +358,7 @@ async function sendPersonnelReport(req, res, excel) {
   const [employees, planningDays, inputs] = await Promise.all([
     EmployeeModel.find(workforceHistoryRoster(restaurantId, restaurant, getRangeBounds(from, to).start))
       .select("firstname lastname post dateOnPost +historicalImport restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.snapshot.post restaurantProfiles.snapshot.dateOnPost restaurantProfiles.employment restaurantProfiles.shifts restaurantProfiles.leaveRequests")
-      .select(isSuperAdminSession(req.user) ? "" : "rhArchiveIdentities").lean(),
+      .select("rhArchiveIdentities").lean(),
     PlanningDay.find({ restaurant: restaurantId, date: { $gte: from, $lte: to } }).select("date publishedEmployees").lean(),
     PersonnelReportInput.find({ restaurant: restaurantId, $or: [
       { kind: "contract" },
@@ -541,11 +540,10 @@ async function buildEmployeeExportReports({
   to,
   selectedEmployeeIds = [],
   openingHours = [],
-  showRetainedIdentity,
 }) {
   const employees = await EmployeeModel.find(
     workforceHistoryRoster(restaurantId, restaurant, getRangeBounds(from, to).start, selectedEmployeeIds),
-  ).select(showRetainedIdentity ? "+rhArchiveIdentities" : "").lean();
+  ).select("+rhArchiveIdentities").lean();
 
   if (!employees.length) {
     return { error: { status: 404, message: "Employees not found" } };
@@ -1308,7 +1306,7 @@ router.get(
         EmployeeModel.find(workforceHistoryRoster(restaurantId, restaurant, view === "history" ? null : bounds.start))
           .select(view === "history" ? "firstname lastname post restaurantProfiles.restaurant restaurantProfiles.snapshot restaurantProfiles.archivedAt"
             : "firstname lastname post restaurantProfiles.restaurant restaurantProfiles.snapshot restaurantProfiles.archivedAt restaurantProfiles.shifts")
-          .select(view === "history" && !isSuperAdminSession(req.user) ? "rhArchiveIdentities" : "").lean(),
+          .select(view === "history" ? "rhArchiveIdentities" : "").lean(),
         records,
       ]);
 
@@ -1906,7 +1904,6 @@ router.post(
         to,
         selectedEmployeeIds: [...new Set(requestedEmployeeIds)],
         openingHours: accessContext.restaurant?.opening_hours || [],
-        showRetainedIdentity: !isSuperAdminSession(req.user),
       });
       if (exportData.error) {
         return res
@@ -1977,7 +1974,6 @@ router.post(
         to,
         selectedEmployeeIds: [...new Set(requestedEmployeeIds)],
         openingHours: accessContext.restaurant?.opening_hours || [],
-        showRetainedIdentity: !isSuperAdminSession(req.user),
       });
       if (exportData.error) {
         return res

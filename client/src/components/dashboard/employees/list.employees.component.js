@@ -277,7 +277,7 @@ export default function ListEmployeesComponent() {
       </div>
 
       <ArchivedEmployees key={restaurantId} restaurantId={restaurantId} rosterSize={entries.length}
-        canReactivate={userConnected.role === "owner"} canErase={userConnected.role === "owner" && userConnected.superAdmin !== true}
+        canReactivate={userConnected.role === "owner"} canErase={userConnected.role === "owner"}
         updateRestaurant={setRestaurantData} />
 
       <dialog ref={removalDialog}

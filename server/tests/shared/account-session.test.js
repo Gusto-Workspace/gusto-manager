@@ -7,8 +7,8 @@ const OwnerModel = require("../../models/owner.model");
 const EmployeeModel = require("../../models/employee.model");
 
 const {
+  accountAuditContext,
   buildSessionVersionFilter,
-  canUpdateOwnerEmail,
   createSuperAdminSessionClaims,
   getSessionVersion,
   hasMatchingSessionVersion,
@@ -168,18 +168,14 @@ test("invalid password inputs and bcrypt errors are rejected", async () => {
   });
 });
 
-test("super-admin sessions are identifiable and cannot mutate credentials", () => {
+test("support audit metadata distinguishes the authentication method without including credentials", () => {
   const session = createSuperAdminSessionClaims();
 
   assert.equal(isSuperAdminSession(session), true);
-  assert.equal(
-    canUpdateOwnerEmail(session, "owner@example.com", "attacker@example.com"),
-    false,
-  );
-  assert.equal(
-    canUpdateOwnerEmail(session, "owner@example.com", "owner@example.com"),
-    true,
-  );
+  assert.deepEqual(accountAuditContext({ ...session, token: "fixture" }), {
+    authMethod: "super_admin", superAdminSessionId: session.superAdminSessionId,
+  });
+  assert.deepEqual(accountAuditContext({ role: "owner" }), { authMethod: "password" });
 });
 
 test("password rotation uses the initiating JWT version as an atomic guard", async () => {

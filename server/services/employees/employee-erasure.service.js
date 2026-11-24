@@ -52,7 +52,7 @@ function referencedElsewhere(employee, publicId, session) {
   ] }).session(session);
 }
 
-async function eraseArchivedEmployee({ restaurantId, employeeId, actor, revision, confirmation, retentionReviewed, documentIds,
+async function eraseArchivedEmployee({ restaurantId, employeeId, actor, authMethod, superAdminSessionId, revision, confirmation, retentionReviewed, documentIds,
   retentionUntil, retentionReason }) {
   if (confirmation !== "SUPPRIMER" || retentionReviewed !== true || !Number.isSafeInteger(revision) || revision < 0 ||
       !Array.isArray(documentIds) || documentIds.length > 100 ||
@@ -94,7 +94,8 @@ async function eraseArchivedEmployee({ restaurantId, employeeId, actor, revision
     }
     const pseudonym = { firstname: "Ancien membre", lastname: profile._id.toString().slice(-8).toUpperCase() };
     const erasure = {
-      at: new Date(), actor, accountErased: !shared, removedDocuments: removed.length, retainedDocuments: retained.length,
+      at: new Date(), actor, authMethod, superAdminSessionId,
+      accountErased: !shared, removedDocuments: removed.length, retainedDocuments: retained.length,
       retentionUntil,
       assetJobs: await enqueueEmployeeAssetDeletions(assets, session),
     };

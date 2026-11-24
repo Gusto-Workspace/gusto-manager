@@ -203,6 +203,8 @@ const restaurantProfileSchema = new mongoose.Schema(
     erasure: {
       at: Date,
       actor: String,
+      authMethod: { type: String, enum: ["password", "super_admin"] },
+      superAdminSessionId: String,
       accountErased: Boolean,
       removedDocuments: Number,
       retainedDocuments: Number,

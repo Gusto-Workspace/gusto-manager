@@ -37,6 +37,8 @@ const pinAuditSchema = new mongoose.Schema({
   employee: { type: ObjectId, required: true },
   actor: { type: ObjectId, required: true },
   actorRole: { type: String, enum: ["owner", "employee"], required: true },
+  authMethod: { type: String, enum: ["password", "super_admin"] },
+  superAdminSessionId: String,
   action: { type: String, enum: ["viewed", "reset"], required: true },
   at: { type: Date, default: Date.now, required: true },
 });

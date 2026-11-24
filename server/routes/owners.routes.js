@@ -20,18 +20,25 @@ const {
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const { allowPasswordAttempt } = require("../middleware/limit-login");
 const EmployeeModel = require("../models/employee.model");
 const {
-  canUpdateOwnerEmail,
+  buildSessionVersionFilter,
   incrementSessionVersion,
   isAccountSessionValid,
-  isSuperAdminSession,
   normalizeSessionVersion,
   rotatePasswordSession,
   signAccountToken,
   stripJwtMetadata,
   validatePasswordChangeInput,
 } = require("../services/shared/account-session.service");
+
+async function verifyCurrentOwnerPassword(req, res, owner, password) {
+  if (!allowPasswordAttempt(req, res, owner.email)) return false;
+  if (await owner.comparePassword(password, owner.password)) return true;
+  res.status(401).json({ message: "Incorrect current password" });
+  return false;
+}
 
 // ---------- CLOUDINARY / MULTER (pour owners) ----------
 cloudinary.config({
@@ -216,23 +223,21 @@ router.put(
   authenticateToken,
   upload.single("profilePicture"),
   async (req, res) => {
-    const { firstname, lastname, email, phoneNumber, removeProfilePicture } =
+    const { firstname, lastname, email, phoneNumber, removeProfilePicture, currentPassword } =
       req.body;
 
     try {
+      if (req.user.role !== "owner") return res.status(403).json({ message: "Forbidden" });
       const owner = await OwnerModel.findById(req.user.id);
       if (!owner) return res.status(404).json({ message: "Owner not found" });
 
       const normalizedEmail = (email || "").trim().toLowerCase();
 
-      if (!canUpdateOwnerEmail(req.user, owner.email, normalizedEmail)) {
-        return res.status(403).json({
-          message: "Super-admin sessions cannot change the owner email",
-        });
-      }
-
-      // Only check if email actually changes
       if (normalizedEmail && normalizedEmail !== owner.email) {
+        if (typeof currentPassword !== "string" || !currentPassword.trim()) {
+          return res.status(400).json({ field: "currentPassword", message: "Current password is required" });
+        }
+        if (!(await verifyCurrentOwnerPassword(req, res, owner, currentPassword))) return;
         const [ownerDup, employeeDup] = await Promise.all([
           OwnerModel.findOne({
             email: normalizedEmail,
@@ -245,14 +250,20 @@ router.put(
             .status(409)
             .json({ message: "L'adresse mail est déjà utilisée" });
         }
+        // Apply the verified email change only while the same credentials are current.
+        owner.$where = {
+          ...buildSessionVersionFilter(owner._id, req.user.sessionVersion),
+          email: owner.email,
+          password: owner.password,
+        };
+        owner.email = normalizedEmail;
+        owner.resetCode = undefined;
+        owner.resetCodeExpires = undefined;
       }
 
       // ---------- Mise à jour des infos de base ----------
       if (firstname !== undefined) owner.firstname = firstname;
       if (lastname !== undefined) owner.lastname = lastname;
-      if (normalizedEmail !== undefined && normalizedEmail !== "") {
-        owner.email = normalizedEmail;
-      }
       if (phoneNumber !== undefined) owner.phoneNumber = phoneNumber;
 
       // ---------- Photo de profil ----------
@@ -335,7 +346,8 @@ router.put(
 
       return res.status(200).json({ message: "Owner updated", token });
     } catch (error) {
-      console.error("Erreur MAJ owner :", error);
+      if (error.name === "DocumentNotFoundError") return res.status(403).json({ message: "Session revoked" });
+      console.error("Erreur MAJ owner", error.code || error.name);
       return res.status(500).json({ message: "Erreur serveur" });
     }
   },
@@ -346,12 +358,7 @@ router.put("/owner/update-password", authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   try {
-    if (isSuperAdminSession(req.user)) {
-      return res.status(403).json({
-        message: "Super-admin sessions cannot change the owner password",
-      });
-    }
-
+    if (req.user.role !== "owner") return res.status(403).json({ message: "Forbidden" });
     const validationError = validatePasswordChangeInput(
       currentPassword,
       newPassword,
@@ -362,16 +369,12 @@ router.put("/owner/update-password", authenticateToken, async (req, res) => {
 
     const owner = await OwnerModel.findById(req.user.id).select({
       _id: 1,
+      email: 1,
       password: 1,
     });
     if (!owner) return res.status(404).json({ message: "Owner not found" });
 
-    const isMatch = await owner.comparePassword(
-      currentPassword,
-      owner.password,
-    );
-    if (!isMatch)
-      return res.status(401).json({ message: "Incorrect current password" });
+    if (!(await verifyCurrentOwnerPassword(req, res, owner, currentPassword))) return;
 
     const previousVersion = normalizeSessionVersion(req.user.sessionVersion);
     const updatedOwner = await rotatePasswordSession({
@@ -393,7 +396,7 @@ router.put("/owner/update-password", authenticateToken, async (req, res) => {
 
     res.status(200).json({ message: "Password updated successfully", token });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du mot de passe :", error);
+    console.error("Erreur lors de la mise à jour du mot de passe", error.code || error.name);
     res.status(500).json({ message: "Erreur serveur" });
   }
 });

@@ -12,7 +12,7 @@ const {
   activeProfileId, clockPinWriteProblem, credentialIsCurrent, rotateClockPin, workforceRoster,
 } = require("../services/employees/time-clock-pin.service");
 const { toLocalDateKey } = require("../services/employees/time-clock.service");
-const { isSuperAdminSession } = require("../services/shared/account-session.service");
+const { accountAuditContext } = require("../services/shared/account-session.service");
 
 const deviceFields = "name activatedAt pairingExpiresAt revokedAt lastContactAt lastLimitedAt";
 const pairingError = "Le lien d’association est invalide ou expiré.";
@@ -52,6 +52,11 @@ function clockRequest(handler) {
   };
 }
 
+function sendRevealedPin(res, pin) {
+  // Avoid the ETag Express derives from the response body in res.json().
+  return res.type("json").end(JSON.stringify({ configured: true, pin }));
+}
+
 function installClockDeviceRoutes(router, { authenticateToken, requireClockManager, getAccessContext, buildKioskStatesPayload }) {
   const manager = "/restaurants/:restaurantId/time-clock";
   const kiosk = "/time-clock/device";
@@ -74,13 +79,16 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
       if (!reveal) return res.json({ configured: true });
 
       const pin = revealPin(credential);
-      await TimeClockPinAudit.create({ restaurant: restaurantId, employee: employee._id, actor: req.user.id, actorRole: "owner", action: "viewed" });
-      return res.json({ configured: true, pin });
+      await TimeClockPinAudit.create({
+        restaurant: restaurantId, employee: employee._id, actor: req.user.id, actorRole: "owner", action: "viewed",
+        ...accountAuditContext(req.user),
+      });
+      return sendRevealedPin(res, pin);
     });
   }
 
   function requireClockOwner(req, res, next) {
-    if (req.user.role !== "owner" || isSuperAdminSession(req.user)) {
+    if (req.user.role !== "owner") {
       return res.status(403).json({ message: "Consultation du PIN réservée au propriétaire." });
     }
     return next();
@@ -121,11 +129,11 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
       .select(reveal ? "restaurant employee profile sealedPin" : "profile").lean();
     const configured = credentialIsCurrent(credential, employee, restaurantId);
     res.set("Cache-Control", "private, no-store");
-    return res.json({ configured, ...(reveal && configured && { pin: revealPin(credential) }) });
+    if (reveal && configured) return sendRevealedPin(res, revealPin(credential));
+    return res.json({ configured });
   }));
 
   async function regenerate(req, res, employeeId) {
-    if (isSuperAdminSession(req.user)) return res.status(403).json({ message: "Réinitialisation réservée aux comptes autorisés." });
     const restaurantId = req.params.restaurantId;
     if (Object.keys(req.body || {}).length || !isValidObjectId(employeeId)) {
       return res.status(400).json({ message: "Le code est généré automatiquement." });
@@ -134,6 +142,7 @@ function installClockDeviceRoutes(router, { authenticateToken, requireClockManag
       restaurant: restaurantId,
       changedBy: String(req.user.id),
       actorRole: req.user.role,
+      ...accountAuditContext(req.user),
       findMember: async (session) => {
         const restaurant = await Restaurant.findOne({
           _id: restaurantId, employees: employeeId, "options.employees": true,

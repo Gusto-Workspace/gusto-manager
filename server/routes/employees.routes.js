@@ -12,7 +12,7 @@ const { broadcastToRestaurant } = require("../services/shared/sse-bus.service");
 const authenticateToken = require("../middleware/authentificate-token");
 const {
   isAccountSessionValid,
-  isSuperAdminSession,
+  accountAuditContext,
   normalizeSessionVersion,
   rotatePasswordSession,
   signAccountToken,
@@ -444,7 +444,7 @@ async function getEmployeeDocumentRouteAccess(
     if (options.archivedRead && accessContext.isManager && accessContext.restaurant.options?.employees === true) {
       const employee = await EmployeeModel.findById(employeeId).select("restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at").lean();
       const profile = findRestaurantProfile(employee, restaurantId);
-      if (profile?.archivedAt && (!profile.erasure?.at || (request.user.role === "owner" && !isSuperAdminSession(request.user)))) {
+      if (profile?.archivedAt && (!profile.erasure?.at || request.user.role === "owner")) {
         return accessContext;
       }
     }
@@ -2104,7 +2104,7 @@ router.get(archivedEmployeesPath, async (req, res, next) => {
     const { restaurantId } = req.params;
     const access = await getEmployeeRouteAccess(req, restaurantId, null, { managerOnly: true, requireModule: true });
     if (access.error) return res.status(access.error.status).json({ message: access.error.message });
-    const includeErased = req.user.role === "owner" && !isSuperAdminSession(req.user);
+    const includeErased = req.user.role === "owner";
     const employees = await EmployeeModel.find({
       restaurantProfiles: { $elemMatch: { restaurant: restaurantId, archivedAt: { $type: "date" } } },
     }).select("firstname lastname accountType restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at restaurantProfiles.erasure.retainedDocuments restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname")
@@ -2137,7 +2137,7 @@ async function requireErasureAccess(req, res, next) {
     if (![restaurantId, employeeId].every(mongoose.isObjectIdOrHexString)) {
       return res.status(400).json({ message: "Identifiant invalide." });
     }
-    if (req.user.role !== "owner" || isSuperAdminSession(req.user)) {
+    if (req.user.role !== "owner") {
       return res.status(403).json({ message: "L’effacement est réservé au propriétaire connecté de cet établissement." });
     }
     const access = await getEmployeeRouteAccess(req, restaurantId, null, { managerOnly: true, requireModule: true });
@@ -2159,7 +2159,7 @@ router.get(employeeErasurePath, requireErasureAccess, async (req, res, next) => 
 router.post(employeeErasurePath, requireErasureAccess, async (req, res, next) => {
   try {
     const { revision, confirmation, retentionReviewed, documentIds, retentionUntil, retentionReason } = req.body || {};
-    return res.json(await eraseArchivedEmployee({ ...req.params, actor: String(req.user.id),
+    return res.json(await eraseArchivedEmployee({ ...req.params, actor: String(req.user.id), ...accountAuditContext(req.user),
       revision, confirmation, retentionReviewed, documentIds, retentionUntil, retentionReason }));
   } catch (error) {
     return error.status ? res.status(error.status).json({ message: error.message }) : next(error);
@@ -3152,7 +3152,7 @@ router.post(
       const selectedEmployeeIds = [...new Set(requestedEmployeeIds)];
       const employees = await EmployeeModel.find(
         workforceHistoryRoster(restaurantId, accessContext.restaurant, bounds.start, selectedEmployeeIds),
-      ).select(isSuperAdminSession(req.user) ? "" : "+rhArchiveIdentities").lean();
+      ).select("+rhArchiveIdentities").lean();
 
       if (!employees.length) {
         return res.status(404).json({ message: "Employees not found" });
@@ -3234,7 +3234,7 @@ router.post(
       const selectedEmployeeIds = [...new Set(requestedEmployeeIds)];
       const employees = await EmployeeModel.find(
         workforceHistoryRoster(restaurantId, accessContext.restaurant, bounds.start, selectedEmployeeIds),
-      ).select(isSuperAdminSession(req.user) ? "" : "+rhArchiveIdentities").lean();
+      ).select("+rhArchiveIdentities").lean();
 
       if (!employees.length) {
         return res.status(404).json({ message: "Employees not found" });
