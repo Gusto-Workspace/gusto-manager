@@ -23,6 +23,7 @@ const {
 // MODELS
 const EmployeeModel = require("../models/employee.model");
 const { TimeClockPin } = require("../models/time-clock-device.model");
+const { activationFields, activateEmployeeAccount, createEmployeeCredentials, deliverEmployeeCredentials } = require("../services/employees/employee-activation.service");
 const { previewEmployeeErasure, eraseArchivedEmployee } = require("../services/employees/employee-erasure.service");
 const TimeClockSession = require("../models/time-clock-session.model");
 const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction, workforceHistoryRoster } = require("../services/employees/time-clock-pin.service");
@@ -551,7 +552,7 @@ async function buildDecoratedRestaurant(restaurantId) {
   const restaurant = await RestaurantModel.findById(restaurantId)
     .populate("owner_id", "firstname")
     .populate("menus")
-    .populate("employees");
+    .populate("employees", activationFields);
 
   if (!restaurant) return null;
 
@@ -559,6 +560,7 @@ async function buildDecoratedRestaurant(restaurantId) {
     restaurant,
     restaurantId,
     restaurant.employees || [],
+    { includeLoginStatus: true },
   );
 }
 
@@ -1144,6 +1146,24 @@ function sendTransactionalEmail(params) {
   }
 }
 
+function sendEmployeeCredentials(employee, password) {
+  const accountant = employee.accountType === "accountant";
+  return sendTransactionalEmail({
+    to: [{ email: employee.email, name: employee.firstname }],
+    subject: accountant ? "Votre accès comptable Gusto Manager" : "Votre accès employé Gusto Manager",
+    htmlContent: `
+      <p>Bonjour ${escapeHtml(employee.firstname)},</p>
+      <p>Votre compte ${accountant ? "comptable" : "employé"} est actif.</p>
+      <p>Connectez-vous à <a href="https://gusto-manager.com/dashboard/login">Gusto Manager</a>.</p>
+      <p><strong>Identifiant :</strong> ${escapeHtml(employee.email)}<br/>
+         <strong>Mot de passe${accountant ? " temporaire" : ""} :</strong> ${escapeHtml(password)}</p>
+      <p>${accountant ? "En cas de besoin, utilisez « Mot de passe oublié » depuis la page de connexion."
+        : "Vous pouvez modifier votre mot de passe depuis les paramètres de votre compte ou utiliser « Mot de passe oublié »."}</p>
+      ${accountant ? "" : "<p>Si votre restaurant utilise la Pointeuse, retrouvez votre PIN dans les paramètres de votre compte.</p>"}
+      <p>— L’équipe Gusto Manager</p>`,
+  });
+}
+
 function formatDateForEmail(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -1209,24 +1229,6 @@ async function sendLeaveRequestOwnerEmail({
       <p>— L’équipe Gusto Manager</p>
     `,
   });
-}
-
-// Générateur de mot de passe 8 caractères
-function generatePassword() {
-  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const digits = "0123456789";
-  const specials = "!@#$%^&*()_+-=[]{}|;:,.<>?";
-  const all = upper + upper.toLowerCase() + digits + specials;
-
-  let pw = [
-    upper[Math.floor(Math.random() * upper.length)],
-    digits[Math.floor(Math.random() * digits.length)],
-    specials[Math.floor(Math.random() * specials.length)],
-  ];
-  while (pw.length < 8) {
-    pw.push(all[Math.floor(Math.random() * all.length)]);
-  }
-  return pw.sort(() => 0.5 - Math.random()).join("");
 }
 
 // ---------- ADD / IMPORT EMPLOYEE (SNAPSHOT + MULTI-RESTOS) ----------
@@ -1368,7 +1370,7 @@ router.post(
 
       // ---------- CAS 1 : NOUVEL EMPLOYÉ ----------
       if (!existingEmployee) {
-        const temporaryPassword = generatePassword();
+        const credentials = createEmployeeCredentials({ email: normalizedEmail, restaurant: restaurantId });
         const employeeData = {
           accountType: normalizedAccountType,
           lastname: lastName,
@@ -1382,7 +1384,8 @@ router.post(
             normalizedAccountType === "accountant"
               ? undefined
               : emergencyContact,
-          password: temporaryPassword,
+          password: credentials.password,
+          ...(normalizedAccountType === "employee" && { loginDelivery: credentials.loginDelivery }),
           post: normalizedAccountType === "accountant" ? "" : post,
           dateOnPost:
             normalizedAccountType === "accountant" || !dateOnPost
@@ -1447,41 +1450,8 @@ router.post(
         });
 
         if (newEmployee.email) {
-          const emailParams = {
-            to: [
-              {
-                email: newEmployee.email,
-                name: newEmployee.firstname,
-              },
-            ],
-            subject:
-              normalizedAccountType === "accountant"
-                ? "Votre accès comptable Gusto Manager"
-                : "Votre accès employé Gusto Manager",
-            htmlContent: `
-              <p>Bonjour ${escapeHtml(newEmployee.firstname)},</p>
-              <p>Votre compte ${normalizedAccountType === "accountant" ? "comptable" : "employé"} a été créé avec succès.</p>
-              <p>Connectez-vous ici : 
-                <a href="https://gusto-manager.com/dashboard/login">
-                  https://gusto-manager.com/dashboard/login
-                </a>
-              </p>
-              <p><strong>Identifiant :</strong> ${escapeHtml(newEmployee.email)}<br/>
-                 <strong>Mot de passe temporaire :</strong> ${escapeHtml(temporaryPassword)}
-              </p>
-              <p>${
-                normalizedAccountType === "accountant"
-                  ? "En cas de besoin, utilisez « Mot de passe oublié » depuis la page de connexion."
-                  : "Merci de modifier votre mot de passe lors de votre première connexion. Si votre restaurant utilise la Pointeuse, retrouvez votre code PIN dans les paramètres de votre compte."
-              }</p>
-              <p>— L’équipe Gusto Manager</p>
-            `,
-          };
-          sendTransactionalEmail(emailParams)
-            .then(() => console.log("Mail création employé envoyé"))
-            .catch((err) =>
-              console.error("Erreur mail création employé :", err),
-            );
+          deliverEmployeeCredentials(newEmployee, credentials.password, sendEmployeeCredentials)
+            .catch(() => console.error("Impossible d’enregistrer le statut du mail de création employé."));
         }
 
         const updatedRestaurant = await buildDecoratedRestaurant(restaurantId);
@@ -1553,6 +1523,29 @@ router.post(
 
 // ---------- UPDATE EMPLOYEE POUR UN RESTO DONNÉ (options par resto) ----------
 
+router.post("/restaurants/:restaurantId/employees/:employeeId/account-activation", async (req, res, next) => {
+  const { restaurantId, employeeId } = req.params;
+  if (req.user.role !== "owner") return res.status(403).json({ message: "Seul le propriétaire peut envoyer les identifiants de ce salarié." });
+  if (!mongoose.isValidObjectId(restaurantId) || !mongoose.isValidObjectId(employeeId) ||
+      req.body?.confirmed !== true || !normalizeEmail(req.body?.email)) {
+    return res.status(400).json({ message: "Confirmez le salarié et l’adresse de destination." });
+  }
+  try {
+    const access = await getEmployeeRouteAccess(req, restaurantId, employeeId, { managerOnly: true, requireModule: true });
+    if (access.error) return res.status(access.error.status).json({ message: access.error.message });
+    if (!access.restaurant.employees.some((id) => String(id) === employeeId)) {
+      return res.status(404).json({ message: "Salarié actif introuvable dans ce restaurant." });
+    }
+    res.set("Cache-Control", "private, no-store");
+    const result = await activateEmployeeAccount({ employeeId, restaurantId, expectedEmail: normalizeEmail(req.body.email),
+      resend: req.body.resend === true, sendCredentials: sendEmployeeCredentials });
+    return res.json(result);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    return next(error);
+  }
+});
+
 router.patch(
   "/restaurants/:restaurantId/employees/:employeeId",
   upload.single("profilePicture"),
@@ -1588,7 +1581,7 @@ router.patch(
           .json({ message: accessContext.error.message });
       }
 
-      let employee = await EmployeeModel.findById(employeeId);
+      let employee = await EmployeeModel.findById(employeeId).select(activationFields);
       if (!employee || !employeeWorksInRestaurant(employee, restaurantId) ||
           !accessContext.restaurant.employees.some((id) => String(id) === employeeId)) {
         return res.status(404).json({ message: "Employee not found" });
@@ -1658,7 +1651,7 @@ router.patch(
       for (const [key, value] of Object.entries(scopedChanges)) {
         if (value === undefined) continue;
         profile.snapshot[key] = value;
-        if (employee.restaurants.length === 1) employee[key] = value;
+        if (employee.restaurants.length === 1 || (key === "phone" && !employee.phone)) employee[key] = value;
       }
 
       if (email !== undefined) {
@@ -1678,12 +1671,16 @@ router.patch(
           }
         }
 
+        if (employee.email !== normalizedEmail) employee.loginDelivery = undefined;
         employee.email = normalizedEmail;
         for (const restaurantProfile of employee.restaurantProfiles || []) {
           if (restaurantProfile.archivedAt) continue;
           restaurantProfile.snapshot ??= {};
           restaurantProfile.snapshot.email = normalizedEmail;
         }
+      }
+      if (employee.email && !employee.phone?.trim()) {
+        return res.status(400).json({ message: "Le téléphone est obligatoire lorsqu’une adresse e-mail est renseignée." });
       }
 
       if (optionChanges) {
@@ -3914,6 +3911,7 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
     let decoratedEmployee = { ...emp.toObject(), restaurantProfiles: [], shifts: [] };
 
     if (restaurant?._id) {
+      const canManageEmployees = restaurant.options?.employees === true && currentProfile?.options?.employees === true;
       const coworkerIds = Array.isArray(restaurant.employees)
         ? restaurant.employees
         : [];
@@ -3923,17 +3921,15 @@ router.get("/employees/me", authenticateToken, async (req, res) => {
         ...workforceAccountFilter(),
       })
         .select(
-          "firstname lastname post profilePicture restaurantProfiles restaurants",
+          `firstname lastname post profilePicture restaurantProfiles restaurants ${canManageEmployees ? `email ${activationFields}` : ""}`,
         )
         .lean();
-
-      const canManageEmployees = restaurant.options?.employees === true && currentProfile?.options?.employees === true;
 
       decoratedRestaurant = decorateRestaurantEmployees(
         restaurant,
         restaurant._id,
         coworkers,
-        { safe: !canManageEmployees, includeDocuments: false },
+        { safe: !canManageEmployees, includeDocuments: false, includeLoginStatus: canManageEmployees },
       );
       decoratedEmployee =
         decorateEmployeeForRestaurant(emp, restaurant._id, {
@@ -4013,6 +4009,10 @@ router.put(
 
       // email
       if (normalizedEmail !== undefined) {
+        if (emp.email !== normalizedEmail) {
+          emp.loginDelivery = undefined;
+          emp.markModified("loginDelivery");
+        }
         emp.email = normalizedEmail;
         profiles.forEach((p) => {
           p.snapshot ??= {};

@@ -8,7 +8,8 @@ const PersonnelInput = require("../../models/personnel-report-input.model");
 const SkelloImport = require("../../models/skello-import.model");
 const { analyzeSkelloWorkbook, normalizeSkelloIdentity, SkelloImportError } = require("./skello-workbook.service");
 const { dayId, planHistory, readHistoryContext } = require("./skello-history.service");
-const { clockTransaction, lockClockEmployees } = require("./time-clock-write.service");
+const { lockClockEmployees } = require("./time-clock-write.service");
+const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("./time-clock-pin.service");
 const { toLocalDateKey } = require("./time-clock.service");
 
 const mode = "workforce";
@@ -211,7 +212,7 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
   await Promise.all([SkelloImport.init(), PersonnelInput.init()]);
   const targetId = restaurant._id;
   try {
-    return await clockTransaction(async (session) => {
+    return await withClockPinTransaction(async (session) => {
       // Serialize changes to the destination roster with imports and other membership writes.
       const fenced = await Restaurant.updateOne({ _id: targetId, "options.employees": true }, { $inc: { __v: 1 } }, { session });
       if (!fenced.matchedCount) throw new SkelloImportError(recheck, 409);
@@ -259,7 +260,12 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
           }], { session });
           employeeId = employee._id;
           profileId = employee.restaurantProfiles[0]._id;
-          if (!archived) created.push(employee._id);
+          if (!archived) {
+            await provisionInitialClockPin({
+              restaurant: targetId, employee: employeeId, profile: String(profileId), changedBy: actor, session,
+            });
+            created.push(employee._id);
+          }
           counts.created++;
         } else {
           profileId = roster.find(({ id }) => id === destination).profile;
@@ -302,6 +308,8 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
     });
   } catch (error) {
     if (error instanceof SkelloImportError) throw error;
+    const pinProblem = clockPinWriteProblem(error);
+    if (pinProblem) throw new SkelloImportError(pinProblem.message, 409);
     const previous = await SkelloImport.findOne({ restaurant: targetId, fingerprint, mode, status: "complete" }).lean().catch(() => null);
     if (previous) return { alreadyImported: true, batch: batchView(previous) };
     throw new SkelloImportError("L’import n’a pas abouti. Relancez l’aperçu avant de réessayer.", 503);

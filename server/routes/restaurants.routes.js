@@ -168,7 +168,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
         "_id firstname lastname restaurantProfiles",
       );
     } else {
-      restaurantQuery = restaurantQuery.populate("menus").populate("employees");
+      restaurantQuery = restaurantQuery.populate("menus").populate("employees", "+password +loginDelivery");
     }
     const restaurant = await restaurantQuery;
 
@@ -191,6 +191,7 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
       restaurant,
       id,
       restaurant.employees || [],
+      { includeLoginStatus: !reservationsScope },
     );
 
     res.status(200).json({ restaurant: decoratedRestaurant });
@@ -592,12 +593,13 @@ router.post(
       const updatedRestaurant = await RestaurantModel.findById(restaurantId)
         .populate("owner_id", "firstname")
         .populate("menus")
-        .populate("employees");
+        .populate("employees", "+password +loginDelivery");
 
       const decoratedRestaurant = decorateRestaurantEmployees(
         updatedRestaurant,
         restaurantId,
         updatedRestaurant?.employees || [],
+        { includeLoginStatus: true },
       );
 
       return res.json({ restaurant: decoratedRestaurant });

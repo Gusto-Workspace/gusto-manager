@@ -10,6 +10,7 @@ import DocumentsEmployeeComponent from "./documents.employees.component";
 import AccessRightsEmployeesComponent from "./access-rights.employees.component";
 import DataEmployeesComponent from "./data.employees.component";
 import EmployeePin from "./employee-pin.employees.component";
+import EmployeeAccountActivation from "./account-activation.employees.component";
 import PersonnelReportInputDialog, { personnelReportInputsUrl } from "./personnel-report-input.employees.component";
 import { applyRosterResponse, directoryPath, employeeDirectoryEntry, employeeProfile } from "./employee-directory.utils.mjs";
 import { buildEmployeeDocumentsForm, documentLimit, documentSizeLimit } from "../_shared/employee-documents.utils.mjs";
@@ -271,6 +272,16 @@ export default function DetailsEmployeesComponent({ employeeId }) {
         </div></div>
         <div {...panel("access")}>
           <div className="grid gap-4">
+            {selected === "access" && <EmployeeAccountActivation key={`${entry.id}:${entry.email}`}
+              entry={entry} endpoint={`${baseUrl}/account-activation`} canActivate={viewer?.role === "owner"}
+              onEditPersonal={() => selectTab("personal")} onDelivery={(delivery) => {
+                setRestaurantData((previous) => String(previous?._id) === String(restaurantId) ? {
+                  ...previous, employees: previous.employees.map((member) =>
+                    String(member._id) === entry.id && member.email === entry.email
+                      ? { ...member, loginStatus: { active: true, hasPassword: true, delivery } }
+                      : member),
+                } : previous);
+              }} />}
             <AccessRightsEmployeesComponent options={profile?.options} onSave={save} hasEmail={Boolean(entry.email)} />
             {selected === "access" && (viewer?.role === "owner" || viewer?.role === "employee") && (
               <EmployeePin key={`${viewer.id}:${viewer.role}:${viewer.superAdminSessionId || ""}`}

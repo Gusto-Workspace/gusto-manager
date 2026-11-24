@@ -284,7 +284,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                         setConfirmed(false);
                       }} />
                       <span>
-                        J’ai vérifié l’identité et les informations contractuelles disponibles. Le dossier sera créé sans accès ni invitation.
+                        J’ai vérifié l’identité et les informations contractuelles disponibles. Un dossier actif reçoit un PIN Pointeuse. La connexion Gusto s’active depuis la fiche salarié.
                         {!row.payrollCode && " Matricule absent."}{!row.start && " Date de début non fournie."}
                         {row.volume == null && " Volume en heures non fourni."}
                       </span>

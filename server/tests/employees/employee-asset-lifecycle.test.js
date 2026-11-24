@@ -257,7 +257,7 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(send.mock.callCount(), 1);
     const [invitation] = send.mock.calls[0].arguments;
     assert.equal(invitation.to[0].email, account.email);
-    assert.match(invitation.htmlContent, /Mot de passe temporaire/);
+    assert.match(invitation.htmlContent, /Mot de passe :<\/strong> [\w-]{24}/);
 
     const accountant = { ...form, accountType: "accountant", email: `accountant-${first}@example.test` };
     assert.equal((await create(first, accountant)).code, 201);

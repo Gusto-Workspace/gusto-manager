@@ -120,7 +120,7 @@ async function eraseArchivedEmployee({ restaurantId, employeeId, actor, authMeth
       },
       $inc: { __v: 1, ...(!shared && { sessionVersion: 1 }) },
       $unset: { [`${scoped}.skelloNameKey`]: "", ...(!shared && { email: "", password: "", phone: "", secuNumber: "", address: "", emergencyContact: "",
-        resetCode: "", resetCodeExpires: "", profilePicture: "" }) },
+        resetCode: "", resetCodeExpires: "", profilePicture: "", loginDelivery: "" }) },
     }, { session, arrayFilters: [{ "profile._id": profile._id }] });
     await TimeClockSession.updateMany({ restaurant, employee: employee._id }, {
       $set: { "employeeSnapshot.firstname": pseudonym.firstname, "employeeSnapshot.lastname": pseudonym.lastname },
