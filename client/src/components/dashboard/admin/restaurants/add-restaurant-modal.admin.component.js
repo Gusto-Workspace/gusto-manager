@@ -423,7 +423,10 @@ export default function AddRestaurantModal(props) {
         {/* Form */}
         <div className="mx-4 my-4">
           <form
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={(event) => {
+              // Les formulaires des modales en portail propagent aussi leur événement submit.
+              if (event.target === event.currentTarget) return handleSubmit(onSubmit)(event);
+            }}
             className="flex flex-col gap-4"
           >
             {submitError ? (

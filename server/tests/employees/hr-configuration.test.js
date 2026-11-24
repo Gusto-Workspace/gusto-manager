@@ -139,7 +139,13 @@ test("RH configuration previews, applies, reports and restores only in the selec
     assert.equal(response.status, 200);
     return response.json();
   };
+  const targetInputs = () => Input.find({ restaurant: target }).sort({ _id: 1 }).lean();
+  const inputsBeforePreview = await targetInputs();
+  const restaurantBeforePreview = await Restaurant.findById(target).lean();
   const preview = await inspect();
+  assert.deepEqual(await targetInputs(), inputsBeforePreview);
+  assert.deepEqual(await Restaurant.findById(target).lean(), restaurantBeforePreview);
+  assert.equal(await Import.countDocuments({ restaurant: target }), 0);
   assert.deepEqual(preview.target, { id: String(target), name: "Destination fictive" });
   const ready = preview.rules.filter(({ action }) => action === "apply");
   assert.deepEqual(ready.map(({ kind }) => kind), ["clockRules", "overtime", "rules", "leaveRules", "absenceRules", "hoursRules"]);
@@ -148,6 +154,8 @@ test("RH configuration previews, applies, reports and restores only in the selec
   assert.equal(ready.find(({ kind }) => kind === "rules").previous.quantity, 1);
   const apply = (token, options = {}, path = base) => request(`${path}/apply`, { ...payload, token, confirmed: true, ...options });
   assert.equal((await apply(preview.token, { confirmed: false })).status, 400);
+  assert.deepEqual(await targetInputs(), inputsBeforePreview);
+  assert.equal(await Import.countDocuments({ restaurant: target }), 0);
   assert.equal((await apply(preview.token, {}, endpoint(source))).status, 409);
   assert.equal((await apply(preview.token, { effects: { ...effects, clockRules: opening.plus({ days: 7 }).toISODate() } })).status, 409);
   assert.equal((await request(`${base}/apply`, { ...payload, confirmed: true, token: preview.token }, { user: new ObjectId() })).status, 409);
