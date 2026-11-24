@@ -115,7 +115,10 @@ function indexReportInputs(inputs) {
     if (!profiles.has(key)) profiles.set(key, { contract: {}, variables: [], meals: new Map(), leave: new Map(), skelloLeave: new Set(),
       amendment: [], hoursEntry: [], annual: [], historicalWork: [], historicalLate: [] });
     const profile = profiles.get(key);
-    if (item.kind === "contract") profile.contract = item.values;
+    if (item.kind === "contract") {
+      profile.contract = item.values;
+      profile.contractEffectiveDates = item.skelloEffectiveDates;
+    }
     if (item.kind === "variables") profile.variables.push(item);
     if (item.kind === "meals") profile.meals.set(item.date, item.values.taken);
     if (item.kind === "leave") {

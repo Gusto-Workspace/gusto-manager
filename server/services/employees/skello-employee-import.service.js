@@ -19,6 +19,7 @@ const planHash = (value) => hash(JSON.stringify(value));
 const signingKey = () => createHmac("sha256", process.env.JWT_SECRET).update(audience).digest();
 const nameKey = ({ firstname, lastname }) => JSON.stringify([firstname, lastname].map(normalizeSkelloIdentity));
 const recheck = "Le rapprochement a changé. Vérifiez un nouvel aperçu avant de confirmer.";
+const profilePath = "restaurantProfiles.$[profile].";
 
 function batchView(batch) {
   return batch && {
@@ -47,16 +48,23 @@ async function readRoster(restaurant, session = null) {
       { _id: { $in: restaurant.employees || [] }, restaurants: restaurant._id },
       { "restaurantProfiles.restaurant": restaurant._id },
     ],
-  }).select("firstname lastname restaurants restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.employment.payrollCode restaurantProfiles.shifts restaurantProfiles.leaveRequests +restaurantProfiles.skelloPayrollCode")
+  }).select("firstname lastname post dateOnPost restaurants restaurantProfiles._id restaurantProfiles.restaurant restaurantProfiles.archivedAt restaurantProfiles.erasure.at restaurantProfiles.snapshot.firstname restaurantProfiles.snapshot.lastname restaurantProfiles.snapshot.post restaurantProfiles.snapshot.dateOnPost restaurantProfiles.employment restaurantProfiles.shifts restaurantProfiles.leaveRequests +restaurantProfiles.skelloPayrollCode +restaurantProfiles.skelloNameKey")
     .sort("_id").session(session).lean();
   return employees.map((employee) => {
-    const profile = employee.restaurantProfiles.find((entry) => String(entry.restaurant) === id);
+    const profiles = (employee.restaurantProfiles || []).filter((entry) => String(entry.restaurant) === id);
+    const profile = profiles.length === 1 ? profiles[0] : null;
+    const scopedStart = profile?.snapshot?.dateOnPost;
+    const start = scopedStart === undefined ? employee.dateOnPost : scopedStart;
     return {
       id: String(employee._id), profile: profile?._id ? String(profile._id) : "",
       firstname: profile?.snapshot?.firstname || employee.firstname,
       lastname: profile?.snapshot?.lastname || employee.lastname,
       payrollCode: profile?.employment?.payrollCode || "",
       sourceCode: profile?.skelloPayrollCode || "",
+      sourceNameKey: profile?.skelloNameKey || "",
+      start: start ? toLocalDateKey(start) : null,
+      post: profile?.snapshot?.post || employee.post || "",
+      employment: profile?.employment,
       shifts: profile?.shifts,
       leaveRequests: profile?.leaveRequests,
       archivedAt: profile?.archivedAt,
@@ -70,7 +78,7 @@ async function readRoster(restaurant, session = null) {
 function readWorkbook(buffer, scope) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw new SkelloImportError("Choisissez un rapport XLSX Skello.", 400);
   const parsed = analyzeSkelloWorkbook(buffer, scope, { workforce: true });
-  const fingerprint = hash(Buffer.concat([Buffer.from(`skello-workforce/v2\0${scope}\0`), buffer]));
+  const fingerprint = hash(Buffer.concat([Buffer.from(`skello-workforce/v3\0${scope}\0`), buffer]));
   return { ...parsed, fingerprint };
 }
 
@@ -82,33 +90,49 @@ function readChoices(rawChoices, people) {
   }
   const choices = new Map();
   for (const entry of entries) {
-    const { order, destination, keepExisting = false } = entry || {};
+    const { order, destination, keepExisting = false, creationReviewed = false } = entry || {};
     if (!Number.isInteger(order) || order < 1 || order > people.length || choices.has(order) ||
-        typeof keepExisting !== "boolean" || typeof destination !== "string" ||
+        typeof keepExisting !== "boolean" || typeof creationReviewed !== "boolean" || typeof destination !== "string" ||
         (!["create", "skip"].includes(destination) && !/^[a-f\d]{24}$/.test(destination))) {
       throw new SkelloImportError("Rapprochement invalide.", 400);
     }
-    choices.set(order, { destination, keepExisting });
+    choices.set(order, { destination, keepExisting, creationReviewed });
   }
   return people.map(({ order }) => choices.get(order));
 }
 
 function reconcile(people, roster, choices) {
   const destinations = new Set();
+  const nameCounts = new Map();
+  for (const { identity } of people) {
+    const name = nameKey(identity);
+    nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+  }
   return people.map((person, index) => {
     const destination = choices?.[index].destination;
     const code = normalizeSkelloIdentity(person.identity.payrollCode);
-    const names = roster.filter((entry) => nameKey(entry) === nameKey(person.identity));
+    const name = nameKey(person.identity);
+    const sourceNameKey = hash(name);
+    const names = roster.filter((entry) => entry.sourceNameKey === sourceNameKey || nameKey(entry) === name);
     const codes = code ? roster.filter((entry) => [entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)].includes(code)) : [];
-    const candidates = roster.filter((entry) => !entry.erased && (entry.active || (entry.archivedAt && codes.includes(entry))) &&
-      (codes.length ? codes.includes(entry) : names.includes(entry)) &&
-      (!entry.sourceCode || !code || entry.sourceCode === code));
-    const canCreate = Boolean(code && !codes.length && names.every((entry) =>
-      (entry.sourceCode || normalizeSkelloIdentity(entry.payrollCode)) && ![entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)].includes(code)));
+    const conflictingIdentity = codes.length > 0 && names.length > 0 && !codes.some((entry) => names.includes(entry));
+    const candidates = (conflictingIdentity ? [] : codes.length ? codes : names).filter((entry) => entry.profile && !entry.erased &&
+      (entry.active || entry.archivedAt) &&
+      (!code || [entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)]
+        .filter(Boolean).every((existing) => existing === code)));
+    const canCreate = code ? !codes.length && names.every((entry) => entry.sourceCode || normalizeSkelloIdentity(entry.payrollCode))
+      : !names.length && nameCounts.get(name) === 1;
+    const creationBlockedReason = canCreate ? null : conflictingIdentity
+      ? "Le nom et le matricule renvoient à deux dossiers différents. Vérifiez les identités dans l’annuaire."
+      : !code && nameCounts.get(name) > 1
+      ? "Plusieurs lignes du classeur portent ce nom. Un matricule est nécessaire pour distinguer ces dossiers."
+      : "Un dossier correspondant existe déjà dans cet établissement. Vérifiez le rapprochement.";
     const target = candidates.find((entry) => entry.id === destination);
     let error = "";
     if (destination === "create" && !canCreate) {
-      error = "Création bloquée. Vérifiez le matricule et les dossiers actifs ou archivés.";
+      error = creationBlockedReason;
+    } else if (destination === "create" && !choices[index].creationReviewed) {
+      error = "Confirmez la vérification de l’identité et du contrat avant de créer le dossier.";
     } else if (destination && !["create", "skip"].includes(destination) && (!target || destinations.has(destination))) {
       error = "Rattachement ambigu, déjà choisi ou indisponible dans ce restaurant.";
     }
@@ -117,7 +141,8 @@ function reconcile(people, roster, choices) {
     return {
       order: person.order, firstname, lastname, payrollCode, post: person.post, type: person.type, volume: person.volume,
       start: person.start, end: person.inputs.find(({ kind }) => kind === "contract")?.values.contractEnd,
-      canCreate, candidates: candidates.map(({ id, firstname, lastname, payrollCode, archivedAt }) => ({ id, firstname, lastname, payrollCode, archived: Boolean(archivedAt) })),
+      canCreate, creationBlockedReason,
+      candidates: candidates.map(({ id, firstname, lastname, payrollCode, archivedAt }) => ({ id, firstname, lastname, payrollCode, archived: Boolean(archivedAt) })),
       error,
     };
   });
@@ -127,7 +152,9 @@ async function reviewHistory(people, roster, choices, rows, restaurant, preview,
   if (!choices || rows.some(({ error }) => error)) return [];
   const rosterById = new Map(roster.map((entry) => [entry.id, entry]));
   const selected = choices.map(({ destination }) => rosterById.get(destination));
-  const context = await readHistoryContext(restaurant, selected.filter(Boolean), preview.period, preview.monthly, session);
+  const balanceDates = people.flatMap(({ inputs }, index) => choices[index].destination === "skip" ? [] :
+    inputs.filter(({ kind }) => kind === "leave").map(({ date }) => date));
+  const context = await readHistoryContext(restaurant, selected.filter(Boolean), preview.period, preview.monthly, balanceDates, session);
   return choices.map(({ destination }, index) => destination === "skip" ? null :
     planHistory(people[index], selected[index], restaurant, preview.monthly, context));
 }
@@ -156,7 +183,10 @@ async function previewSkelloEmployees({ restaurantId, actor, buffer, scope, choi
   const rows = reconcile(people, roster, choices);
   const history = existing ? [] : await reviewHistory(people, roster, choices, rows, restaurant._id, preview);
   for (const [index, plan] of history.entries()) {
-    if (plan) rows[index].history = { counts: plan.counts, conflicts: plan.conflicts };
+    if (plan) {
+      rows[index].history = { counts: plan.counts, conflicts: plan.conflicts };
+      rows[index].individual = plan.individual;
+    }
   }
   const token = choices?.some(({ destination }) => destination !== "skip") && !existing && !rows.some(({ error }) => error) && canApplyHistory(choices, history)
     ? jwt.sign({ ...claimsFor(restaurant, actor, fingerprint, scope, choices), roster: rosterSignature(roster), history: planHash(history) }, signingKey(),
@@ -207,17 +237,25 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
           continue;
         }
         const code = normalizeSkelloIdentity(row.payrollCode);
+        const sourceName = hash(nameKey(row));
+        const plan = history[index];
+        const profileFields = { ...plan.profileFields };
+        if (profileFields["snapshot.dateOnPost"]) {
+          profileFields["snapshot.dateOnPost"] = DateTime.fromISO(profileFields["snapshot.dateOnPost"], { zone }).toJSDate();
+        }
         let employeeId = destination;
         let profileId;
         if (destination === "create") {
-          const { firstname, lastname, payrollCode, post, type, volume, start, end } = row;
-          const snapshot = { firstname, lastname, post, ...(start && { dateOnPost: DateTime.fromISO(start, { zone }).toJSDate() }) };
+          const { firstname, lastname, end } = row;
+          const extract = (prefix) => Object.fromEntries(Object.entries(profileFields)
+            .filter(([path]) => path.startsWith(prefix)).map(([path, value]) => [path.slice(prefix.length), value]));
+          const snapshot = { firstname, lastname, ...extract("snapshot.") };
           const archived = end && end < toLocalDateKey(new Date());
           const [employee] = await Employee.create([{
-            ...snapshot, phone: "Non renseigné", restaurants: archived ? [] : [targetId],
-            restaurantProfiles: [{ restaurant: targetId, snapshot, skelloPayrollCode: code,
+            ...snapshot, restaurants: archived ? [] : [targetId],
+            restaurantProfiles: [{ restaurant: targetId, snapshot, skelloNameKey: sourceName, ...(code && { skelloPayrollCode: code }),
               ...(archived && { archivedAt: DateTime.fromISO(end, { zone }).endOf("day").toJSDate() }),
-              employment: { payrollCode, contractType: type, contractualValue: volume, contractualUnit: "week" } }],
+              employment: extract("employment.") }],
           }], { session });
           employeeId = employee._id;
           profileId = employee.restaurantProfiles[0]._id;
@@ -229,20 +267,22 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
             _id: destination, restaurantProfiles: { $elemMatch: { _id: profileId, restaurant: targetId, "erasure.at": null } },
           }, {
             $inc: { __v: 1 },
-            ...(code && { $set: { "restaurantProfiles.$[profile].skelloPayrollCode": code } }),
-          }, { session, ...(code && { arrayFilters: [{ "profile._id": profileId }] }) });
+            $set: { [`${profilePath}skelloNameKey`]: roster.find(({ id }) => id === destination).sourceNameKey || sourceName,
+              ...(code && { [`${profilePath}skelloPayrollCode`]: code }),
+              ...Object.fromEntries(Object.entries(profileFields).map(([path, value]) => [`${profilePath}${path}`, value])) },
+          }, { session, arrayFilters: [{ "profile._id": profileId }] });
           if (!updated.matchedCount) throw new SkelloImportError(recheck, 409);
           counts.linked++;
         }
-        const plan = history[index];
         for (const [key, count] of Object.entries(plan.counts)) historyCounts[key] = (historyCounts[key] || 0) + count;
         const inputs = [];
-        for (const { kind, date, suffix, values, revision } of plan.writes) {
+        for (const { kind, date, suffix, values, revision, skelloEffectiveDates } of plan.writes) {
           const _id = dayId(targetId, profileId, kind, suffix);
           inputs.push(_id);
+          const fields = { values, ...(skelloEffectiveDates && { skelloEffectiveDates }), updatedBy: actor };
           operations.push(revision === undefined ? { insertOne: { document: { _id, restaurant: targetId,
-            employee: employeeId, profile: profileId, kind, date, values, source: "skello", revision: 1, updatedBy: actor } } } :
-            { updateOne: { filter: { _id, revision }, update: { $set: { values, updatedBy: actor }, $inc: { revision: 1 } } } });
+            employee: employeeId, profile: profileId, kind, date, source: "skello", revision: 1, ...fields } } } :
+            { updateOne: { filter: { _id, revision }, update: { $set: fields, $inc: { revision: 1 } } } });
         }
         links.push({ order: row.order, employee: employeeId, profile: profileId, action: destination === "create" ? "create" : "link", inputs });
       }

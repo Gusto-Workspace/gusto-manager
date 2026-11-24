@@ -370,7 +370,7 @@ async function sendPersonnelReport(req, res, excel) {
       { kind: "meals", date: { $gte: from, $lte: to } },
       { kind: "historicalLate", date: { $gte: from, $lte: to } },
       { kind: "leave", date: { $lte: to } },
-    ] }).select("kind profile date values source").lean(),
+    ] }).select("kind profile date values source skelloEffectiveDates").lean(),
   ]);
   const firstDate = ledgerStart(filters, inputs);
   const firstLedgerWeek = listWeeks(firstDate, firstDate)[0];
@@ -487,6 +487,11 @@ async function reportInputHandler(req, res, next) {
     }
     const id = `${restaurantId}:${profile || "restaurant"}:${kind}:${date}`;
     if (req.method === "GET") {
+      if (kind === "leave" && req.query.latest === "true") {
+        const latest = await PersonnelReportInput.findOne({ restaurant: restaurantId, employee: employeeId, profile, kind })
+          .sort({ date: -1 }).select("date").lean();
+        return res.json({ date: latest?.date || null });
+      }
       const item = await PersonnelReportInput.findById(id).select("values revision").lean();
       if (item) return res.json({ values: item.values, revision: item.revision });
       const previous = restaurantInput && await PersonnelReportInput.findOne({ restaurant: restaurantId, kind, date: { $lt: date } })
@@ -511,6 +516,13 @@ async function reportInputHandler(req, res, next) {
       ...(kind === "leave" && { $unset: { source: 1 } }),
       ...(kind === "hoursEntry" && { $push: { "values.entries": { ...values, at: new Date() } } }),
     };
+    if (kind === "contract" && revision > 0) {
+      const existing = await PersonnelReportInput.findOne({ _id: id, revision }).select("values skelloEffectiveDates").lean();
+      if (existing?.skelloEffectiveDates) {
+        update.$set.skelloEffectiveDates = Object.fromEntries(Object.entries(existing.skelloEffectiveDates)
+          .filter(([key]) => values[key] === existing.values[key]));
+      }
+    }
     const saveInput = (session) => PersonnelReportInput.findOneAndUpdate({ _id: id, revision }, update,
       { upsert: revision === 0, new: true, setDefaultsOnInsert: false, session }).select("values revision").lean();
     const saved = employeeId ? await EmployeeModel.db.transaction(async (session) => {

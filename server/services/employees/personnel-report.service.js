@@ -462,13 +462,36 @@ function sourceTotals(history, from, to, columns) {
   }
   for (const [key, label] of Object.entries(sourceHours)) add(key, label, (entry) => entry[key], "minutes");
   for (const [key, label] of Object.entries(sourceMeals)) add(key, label, (entry) => entry[key], "number");
+  const absences = history.absenceShifts.filter(({ start }) => {
+    const date = toLocalDateKey(start);
+    return date >= from && date <= to;
+  });
+  for (const [key, label, type] of [
+    ["employerPaidAbsence", "Absences indemnisées par l’employeur", "minutes"],
+    ["thirdPartyPaidAbsence", "Absences indemnisées par un tiers", "minutes"],
+    ["unpaidAbsence", "Absences non indemnisées", "minutes"],
+    ["absenceMealsDue", "Repas dus sur absence", "number"],
+  ]) {
+    const amount = sumKnown(absences.map((entry) => entry[key]));
+    if (amount === null) continue;
+    const id = `skello:${key}`;
+    values[id] = amount;
+    columns.set(id, sumColumn(id, `${label} · Skello`, type));
+  }
   const premiums = new Set([...summaries.flatMap(({ summary }) => Object.keys(summary.premiums || {})),
     ...visible.flatMap(([, services]) => services.flatMap((entry) => Object.keys(entry.premiums || {})))]);
   for (const key of premiums) add(`premium:${key}`, premiumLabel(key), (entry) => entry.premiums?.[key], "minutes");
-  const contract = summaries.reduce((latest, entry) => !latest || entry.period.to > latest.period.to ? entry : latest, null)?.summary.contract;
+  const latest = summaries.reduce((current, entry) => !current || entry.period.to > current.period.to ? entry : current, null)?.summary;
+  const contract = latest?.contract;
   if (contract?.weeklyHours != null) {
     values["skello:weeklyHours"] = contract.weeklyHours;
     columns.set("skello:weeklyHours", column("skello:weeklyHours", "Volume horaire hebdomadaire · Skello", "hours"));
+  }
+  const average = latest?.averageHourlyRate ??
+    (!latest?.baseHourlyRateExplicit && contract?.hourlyRate > 0 ? contract.hourlyRate : null);
+  if (average != null) {
+    values["skello:averageHourlyRate"] = average;
+    columns.set("skello:averageHourlyRate", column("skello:averageHourlyRate", "Taux horaire brut moyen (€) · Skello", "number"));
   }
   return values;
 }
@@ -541,10 +564,13 @@ function buildPersonnelReport({ restaurant, restaurantId, employees, sessions, a
     const days = registerDays.filter((day) => day.date >= from && day.date <= to);
     const reportProfile = { ...profile, shifts: [...(profile.shifts || []), ...imported.absenceShifts] };
     const amendments = payrollInput?.amendment || [];
-    const sourceContract = imported.summaries.filter(({ period }) => period.from <= to && period.to >= from)
-      .sort((left, right) => right.period.to.localeCompare(left.period.to))[0]?.summary.contract || {};
-    const contract = { ...payrollInput?.contract };
+    const sourceSummary = imported.summaries.filter(({ period }) => period.from <= from && period.to >= to)
+      .sort((left, right) => right.period.to.localeCompare(left.period.to))[0]?.summary;
+    const sourceContract = sourceSummary?.contract || {};
+    const contract = Object.fromEntries(Object.entries(payrollInput?.contract || {}).filter(([key]) =>
+      !payrollInput.contractEffectiveDates?.[key] || payrollInput.contractEffectiveDates[key] <= from));
     for (const [key, value] of Object.entries(sourceContract)) {
+      if (key === "hourlyRate" && !sourceSummary.baseHourlyRateExplicit) continue;
       if (!["start", "type", "weeklyHours"].includes(key) && value != null && contract[key] == null) contract[key] = value;
     }
     const scopedStart = profile.snapshot?.dateOnPost;

@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const cloudinary = require("cloudinary").v2;
 const Brevo = require("sib-api-v3-sdk");
 const axios = require("axios");
+const PersonnelReportInput = require("../../models/personnel-report-input.model");
 
 const testUri = process.env.GUSTO_HR_TEST_MONGO_URI;
 const leaveNotifications = [];
@@ -710,11 +711,11 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal((await f.request("post", `${archivePath}/:employeeId/reactivate`)).code, 409);
     assert.equal((await f.request("delete", employeePath)).code, 200);
     assert.equal(assets.mock.callCount(), 0);
-    const { revision, shared, documents } = (await f.request("get", erasePath)).body;
+    const { revision, shared, documents, minimumRetentionDate } = (await f.request("get", erasePath)).body;
     assert.equal(shared, true);
     assert.equal(documents.length, 2);
     const erase = { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [optionalPiece], ...retention };
-    assert.deepEqual((await call(employees, "get", erasePath, supportOwner, params)).body, { revision, shared, documents });
+    assert.deepEqual((await call(employees, "get", erasePath, supportOwner, params)).body, { revision, shared, documents, minimumRetentionDate });
     assert.equal((await call(employees, "post", erasePath, supportOwner, params, { ...erase, confirmation: "" })).code, 400);
     assert.equal((await f.request("post", erasePath, 0, { ...erase, confirmation: "" })).code, 400);
     assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionReviewed: false })).code, 400);
@@ -876,6 +877,45 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     for (const field of ["email", "password", "address", "emergencyContact"]) assert.equal(employee[field], undefined);
     assert.equal(employee.restaurantProfiles[0].snapshot.firstname, "Ancien membre");
     assert.equal((await f.request("post", "/restaurants/:restaurantId/employees/archived/:employeeId/reactivate")).code, 409);
+  });
+
+  await t.test("an inclusive retention date erases only the archived duplicate and preserves payroll records", async () => {
+    const f = await fixture();
+    const [restaurant] = f.restaurantIds;
+    const path = "/restaurants/:restaurantId/employees/archived/:employeeId/erasure";
+    const [archivedProfile] = (await f.read()).restaurantProfiles;
+    const active = new ObjectId();
+    const activeProfile = new ObjectId();
+    await Employee.collection.insertOne({ _id: active, firstname: "Ari", lastname: "Test", restaurants: [restaurant],
+      restaurantProfiles: [{ _id: activeProfile, restaurant, snapshot: { firstname: "Ari", lastname: "Test" },
+        documents: archivedProfile.documents }] });
+    await Restaurant.updateOne({ _id: restaurant }, { $addToSet: { employees: active } });
+    const record = { restaurant, kind: "contract", date: "-", values: { grossSalary: 1200 }, revision: 1, updatedBy: "fixture" };
+    const retained = await PersonnelReportInput.create({ ...record, _id: `${restaurant}:${archivedProfile._id}:contract:-`,
+      employee: f.employeeId, profile: archivedProfile._id });
+    const date = "2026-11-18";
+    const clock = await TimeClockSession.create({ restaurant, employee: active, businessDate: date, status: "closed",
+      clockInAt: new Date(`${date}T08:00:00Z`), clockOutAt: new Date(`${date}T12:00:00Z`),
+      employeeSnapshot: { firstname: "Ari", lastname: "Test" } });
+    const before = await Employee.collection.findOne({ _id: active });
+    assert.equal((await f.request("delete", employeePath)).code, 200);
+    const { revision, minimumRetentionDate } = (await f.request("get", path)).body;
+    const payload = { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [], retentionReason: "DOUBLON" };
+    const malformed = await f.request("post", path, 0, { ...payload, retentionUntil: "31/02/2026" });
+    assert.equal(malformed.code, 400);
+    assert.match(malformed.body.message, /date.*invalide/);
+    const expired = await f.request("post", path, 0, { ...payload, retentionUntil: "2000-01-01" });
+    assert.equal(expired.code, 400);
+    assert.match(expired.body.message, /aujourd’hui/);
+    const result = await f.request("post", path, 0, { ...payload, retentionUntil: minimumRetentionDate });
+    assert.equal(result.code, 200);
+    assert.equal(result.body.retentionUntil, minimumRetentionDate);
+    assert.deepEqual(await Employee.collection.findOne({ _id: active }), before);
+    assert.deepEqual((await Restaurant.findById(restaurant).lean()).employees, [active]);
+    assert.equal((await TimeClockSession.findById(clock._id).lean()).employeeSnapshot.firstname, "Ari");
+    assert.equal((await PersonnelReportInput.findById(retained._id).lean()).values.grossSalary, 1200);
+    assert.deepEqual((await f.read()).restaurantProfiles[0].documents.map(({ public_id }) => public_id),
+      archivedProfile.documents.map(({ public_id }) => public_id));
   });
 
   await t.test("a running service blocks archival and a failed PIN revocation rolls back the membership change", async (st) => {

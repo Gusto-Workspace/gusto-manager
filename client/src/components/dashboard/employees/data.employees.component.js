@@ -32,7 +32,8 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
     { key: "firstname", label: t("labels.firstname"), value: value("firstname"), required: true },
     { key: "lastname", label: t("labels.lastname"), value: value("lastname"), required: true },
     { key: "email", label: t("labels.email"), value: value("email"), type: "email", required: isAccountant },
-    { key: "phone", label: t("labels.phone"), value: value("phone"), type: "tel", required: true },
+    { key: "phone", label: t("labels.phone"), value: value("phone"), type: "tel",
+      required: isAccountant || Boolean(value("phone") || value("email")) },
     ...(!isAccountant ? [
       { key: "secuNumber", label: t("labels.secuNumber"), value: value("secuNumber") },
       { key: "address", label: t("labels.address"), value: value("address") },
