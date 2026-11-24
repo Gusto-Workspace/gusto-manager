@@ -77,12 +77,17 @@ function readHrConfiguration(value) {
   for (const [kind, rule] of Object.entries(rules)) {
     const keys = ["status", "origin", "values", "note"];
     if (record(rule) && Object.hasOwn(rule, "review")) keys.push("review");
+    const preserveUnspecified = record(rule) && Object.hasOwn(rule, "preserveUnspecified");
+    if (preserveUnspecified) keys.push("preserveUnspecified");
     if (!Object.hasOwn(definitions, kind) || !exactKeys(rule, keys) ||
         !statuses.includes(rule.status) || !origin(rule.origin) || rule.origin.consultedOn > metadata.collectedOn ||
         !optionalText(rule.note, 800) || (rule.status !== "confirmed" && rule.note === null) ||
         (Object.hasOwn(rule, "review") && (rule.status !== "confirmed" || !exactKeys(rule.review, ["on", "reason"]) ||
           !dateKey(rule.review.on) || !text(rule.review.reason, 500))) ||
-        (rule.values === null ? rule.status === "confirmed" : rule.status === "unavailable" || !strictValues(kind, rule.values))) {
+        (rule.values === null ? rule.status === "confirmed" : rule.status === "unavailable" || !strictValues(kind, rule.values)) ||
+        (preserveUnspecified && (rule.preserveUnspecified !== true ||
+          (kind === "absenceRules" ? !Object.keys(rule.values?.categories || {}).length :
+            kind !== "rules" || !["combined", "indemnities", "tickets"].includes(rule.values?.mode))))) {
       throw new HrConfigurationError(`Famille RH invalide ou incomplète (${Object.hasOwn(definitions, kind) ? kind : "inconnue"}).`);
     }
   }

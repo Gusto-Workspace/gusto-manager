@@ -102,7 +102,13 @@ function compareRules(configuration, effects, records) {
     const exact = date !== null && current?.date === date ? current : null;
     const later = date && date !== "-" && records.findLast((item) => item.kind === kind && item.date > date);
     const previous = describeValues(kind, current);
-    if (kind === "absenceRules" && rule.origin.path === "Assistant de configuration RH Gusto" &&
+    const financialReview = kind === "rules" && rule.values?.amount != null && !rule.review;
+    const hasExistingMealAmount = kind === "rules" && rule.preserveUnspecified && rule.values?.amount === null && previous?.amount != null;
+    const conflictingMealMode = hasExistingMealAmount && previous.mode !== rule.values.mode;
+    if (hasExistingMealAmount && !conflictingMealMode) {
+      rule = { ...rule, values: { ...rule.values, amount: previous.amount } };
+    }
+    if (kind === "absenceRules" && (rule.preserveUnspecified || rule.origin.path === "Assistant de configuration RH Gusto") &&
         rule.values && Object.keys(rule.values.categories).length) {
       const categories = { ...previous?.categories };
       for (const [type, proposed] of Object.entries(rule.values.categories)) {
@@ -113,7 +119,9 @@ function compareRules(configuration, effects, records) {
     }
     let action = "apply";
     let reason = later ? `Un autre réglage prendra ensuite effet à la date ${later.date}.` : null;
-    const financialReview = kind === "rules" && rule.values?.amount != null && !rule.review;
+    if (hasExistingMealAmount && !conflictingMealMode) {
+      reason = ["Le montant unitaire déjà enregistré dans Gusto est conservé.", reason].filter(Boolean).join(" ");
+    }
     const changingCounter = kind === "hoursRules" && rule.origin.path === "Assistant de configuration RH Gusto" && rule.values?.start;
     const changesCounterOpening = changingCounter && previous?.start && previous.start !== rule.values.start;
     const reopensCounter = changingCounter && !previous?.start && records.some((item) =>
@@ -133,6 +141,9 @@ function compareRules(configuration, effects, records) {
     } else if (reopensCounter) {
       action = "blocked";
       reason = "Un compteur a déjà été utilisé. Vérifiez les soldes d’ouverture dans le Rapport RH avant de reprendre le suivi.";
+    } else if (conflictingMealMode) {
+      action = "blocked";
+      reason = "Le mode de repas change et un montant existe dans Gusto. Vérifiez ce montant dans le Rapport RH avant de relancer l’aperçu.";
     } else if (financialReview) {
       action = "blocked";
       reason = "Confirmez la valeur financière pour le restaurant de destination.";
