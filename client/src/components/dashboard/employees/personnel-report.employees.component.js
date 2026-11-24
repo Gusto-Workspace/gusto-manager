@@ -383,7 +383,7 @@ export default function PersonnelReport({ restaurantId }) {
           </div>
         }
       />
-      {request?.report?.canConfigure && <HrQuestionnaire restaurantId={restaurantId} onApplied={() => setRetry((value) => value + 1)} />}
+      {request?.report?.canConfigure && <HrQuestionnaire key={restaurantId} restaurantId={restaurantId} onApplied={() => setRetry((value) => value + 1)} />}
       {payrollIssues.length > 0 && <aside role="status" className="rounded-xl border border-darkBlue/15 bg-white p-3 text-sm">
         <p className="font-semibold">{payrollOverlap ? "Export de paie en attente de correction" : "Paramètre à confirmer"}</p>
         <p>{payrollOverlap ? "Traitez les points ci-dessous avant d’exporter cette période en Excel."

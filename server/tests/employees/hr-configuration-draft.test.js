@@ -59,7 +59,8 @@ test("owners and admins share resumable drafts, dated import, history and applic
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
   await Promise.all([Draft.init(), Input.init(), Session.init(), Audit.init()]);
-  const [first, second, firstOwner, secondOwner, administrator, employee, profile] = Array.from({ length: 7 }, objectId);
+  const [first, second, firstOwner, secondOwner, administrator, employee, profile, importedEmployee, importedProfile] =
+    Array.from({ length: 9 }, objectId);
   const tomorrow = DateTime.now().setZone("Europe/Paris").plus({ days: 1 }).startOf("day");
   let opening = tomorrow.plus({ months: 1 }).startOf("month");
   while (opening.weekday !== 1) opening = opening.plus({ months: 1 });
@@ -70,7 +71,7 @@ test("owners and admins share resumable drafts, dated import, history and applic
     Owner.collection.insertMany([{ _id: firstOwner, firstname: "Propriétaire fictif A" }, { _id: secondOwner, firstname: "Propriétaire fictif B" }]),
     Restaurant.collection.insertMany([
       { _id: first, name: "Restaurant sans import fictif", owner_id: firstOwner, options: { employees: true }, employees: [employee] },
-      { _id: second, name: "Restaurant avec import fictif", owner_id: secondOwner, options: { employees: true }, employees: [] },
+      { _id: second, name: "Restaurant avec import fictif", owner_id: secondOwner, options: { employees: true }, employees: [importedEmployee] },
     ]),
     Employee.collection.insertOne({ _id: employee, firstname: "Camille", lastname: "Fictif", restaurants: [first], accountType: "employee",
       restaurantProfiles: [{ _id: profile, restaurant: first, snapshot: { dateOnPost: new Date(earlier + "T00:00:00Z") },
@@ -78,6 +79,14 @@ test("owners and admins share resumable drafts, dated import, history and applic
           _id: objectId(), start: new Date(hours(current, 9)), end: new Date(hours(current, 17)), breakMinutes: 30,
         })) }] }),
   ]);
+  await Employee.collection.insertOne({ _id: importedEmployee, firstname: "Morgan", lastname: "Fictif",
+    restaurants: [second], accountType: "employee", restaurantProfiles: [{
+      _id: importedProfile, restaurant: second, snapshot: { dateOnPost: new Date(earlier + "T00:00:00Z") },
+      employment: { contractualUnit: "week", contractualValue: 35, contractType: "CDI" },
+      shifts: [tomorrow, opening].map((current) => ({
+        _id: objectId(), start: new Date(hours(current, 9)), end: new Date(hours(current, 17)), breakMinutes: 30,
+      })),
+    }] });
   const ownerBase = (id) => `/restaurants/${id}/hr-configuration`;
   const adminBase = (id) => `/admin/restaurants/${id}/hr-configuration`;
   const auth = (role, id, restaurantId) => jwt.sign({ role, id: String(id), restaurantId: String(restaurantId) }, process.env.JWT_SECRET, { expiresIn: "1h" });
@@ -199,14 +208,67 @@ test("owners and admins share resumable drafts, dated import, history and applic
   caseSkello.rules.clockRules.values.earlyIn = "clocked";
   const later = opening.plus({ days: 7 }).toISODate();
   assert.equal((await importSkello(first, later, caseSkello)).batch.kinds[0], "clockRules");
-  assert.deepEqual((await json(`${base}/draft`)).families, complete);
-  await importSkello(second, day);
-  const afterSkello = await put({ families: { clockRules: { mode: "unknown", answers: {} }, rules: complete.rules }, step: 6, revision: 0 }, ownerBase(second), secondToken);
+  const afterLaterImport = await json(`${base}/draft`);
+  assert.deepEqual(afterLaterImport.families, complete);
+  assert.deepEqual(afterLaterImport.scheduled.clockRules.map(({ date }) => date), [day, later]);
+  assert.equal(afterLaterImport.planned.clockRules.date, day);
+  assert.equal(afterLaterImport.needsSetup, false);
+
+  assert.deepEqual((await importSkello(second, day, example)).batch.kinds, ["clockRules", "rules", "absenceRules", "hoursRules"]);
   const overSecond = `${ownerBase(second)}/draft`;
+  async function reportForImport(date) {
+    const query = new URLSearchParams({ from: date, to: date, employeeId: String(importedEmployee) });
+    return json(`/restaurants/${second}/employees/reports?${query}`, "GET", null, secondToken);
+  }
+  const beforeEffect = await reportForImport(tomorrowDay);
+  assert.equal(beforeEffect.canConfigure, true);
+  assert.notEqual(beforeEffect.rows[0].values.mealsDue, 2);
+  assert.equal((await reportForImport(day)).rows[0].values.mealsDue, 2);
+  const imported = await json(overSecond, "GET", null, secondToken);
+  assert.deepEqual(imported.missingKinds, ["overtime", "leaveRules"]);
+  assert.deepEqual(imported.active, {});
+  assert.deepEqual(imported.families, {});
+  assert.equal(imported.revision, 0);
+  assert.equal(await Draft.exists({ _id: second }), null);
+  for (const [kind, version] of Object.entries(imported.planned)) {
+    assert.deepEqual(version.values, example.rules[kind].values);
+    assert.equal(version.date, day);
+  }
+  assert.deepEqual(imported.prefill.clockRules, family(clockValues));
+  assert.deepEqual(imported.prefill.rules, family({ mode: "combined", basis: "days", quantity: 2, amount: null }));
+  assert.equal(imported.prefill.hoursRules.mode, "off");
+  assert.deepEqual(imported.prefill.absenceRules.answers.categories.value, example.rules.absenceRules.values.categories);
+
+  const existingDraft = { clockRules: family({ ...clockValues, earlyIn: "clocked" }),
+    rules: family({ mode: "combined", basis: "days", quantity: 9, amount: 4 }),
+    overtime: { ...complete.overtime, answers: { ...complete.overtime.answers, source: yes("hybrid") } } };
+  const importedInputs = await Input.find({ restaurant: second }).sort({ _id: 1 }).lean();
+  const afterSkello = await put({ families: existingDraft, step: 6, revision: 0 }, ownerBase(second), secondToken);
+  assert.deepEqual(afterSkello.families, existingDraft);
+  assert.deepEqual(afterSkello.prefill, imported.prefill);
+  assert.deepEqual((await Draft.findById(second).lean()).intents, { overtime: tomorrowDay });
+  assert.deepEqual(await Input.find({ restaurant: second }).sort({ _id: 1 }).lean(), importedInputs);
+
   const supplement = await json(`${overSecond}/preview`, "POST", { revision: afterSkello.revision, effects }, secondToken);
+  assert.deepEqual(supplement.rules.filter(({ preserved }) => preserved).map(({ kind }) => kind),
+    ["clockRules", "rules", "absenceRules", "hoursRules"]);
+  assert.deepEqual(supplement.rules.filter(({ action }) => action === "apply").map(({ kind }) => kind), ["overtime"]);
+  const explicit = await json(`${overSecond}/preview`, "POST", { revision: afterSkello.revision, effects, editableKinds: ["rules"] }, secondToken);
+  assert.match(explicit.rules.find(({ kind }) => kind === "rules").reason, /sera remplacée après confirmation/);
+  assert.equal((await call(`${overSecond}/apply`, "POST",
+    { revision: afterSkello.revision, effects, token: supplement.token, confirmed: true, editableKinds: ["rules"] }, secondToken)).status, 409);
   const add = await json(`${overSecond}/apply`, "POST", { revision: afterSkello.revision, effects, token: supplement.token, confirmed: true }, secondToken);
-  assert.deepEqual(add.batch.kinds, ["rules"]);
-  assert.equal(await Input.countDocuments({ restaurant: second, kind: "clockRules" }), 1);
+  assert.deepEqual(add.batch.kinds, ["overtime"]);
+  assert.deepEqual(await Input.find({ restaurant: second, kind: { $ne: "overtime" } }).sort({ _id: 1 }).lean(), importedInputs);
+  assert.deepEqual((await json(overSecond, "GET", null, secondToken)).missingKinds, ["leaveRules"]);
+  assert.equal((await reportForImport(day)).rows[0].values.mealsDue, 2);
+  const currentMonth = tomorrow.minus({ days: 1 }).toFormat("yyyy-MM");
+  await Input.create({ _id: `${second}:restaurant:rules:${currentMonth}`, restaurant: second, kind: "rules", date: currentMonth,
+    values: { ...example.rules.rules.values, quantity: 1 }, revision: 1, updatedBy: String(administrator) });
+  const withActiveMeals = await json(overSecond, "GET", null, secondToken);
+  assert.deepEqual([withActiveMeals.active.rules.date, withActiveMeals.active.rules.values.quantity], [`${currentMonth}-01`, 1]);
+  assert.deepEqual([withActiveMeals.planned.rules.date, withActiveMeals.planned.rules.values.quantity], [day, 2]);
+  assert.equal(withActiveMeals.prefill.rules.answers.quantity.value, 2);
   assert.equal((await json(`${base}/${batch.id}/restore`, "POST", { confirmed: true })).batch.canRestore, false);
   assert.equal(await Input.countDocuments({ restaurant: first }), 1);
 });

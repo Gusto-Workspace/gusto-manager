@@ -13,6 +13,26 @@ export const hrSteps = [
     "Le restaurant prévoit-il des repas, des indemnités, des titres-restaurant ou une prime panier ?"],
 ];
 
+export function prefillFamily(kind, saved, prefill) {
+  if (!saved || !prefill) return saved || prefill;
+  const mode = saved.mode ?? prefill.mode;
+  if (mode !== "on" || prefill.mode !== "on") return { ...saved, mode };
+  const inherited = { ...prefill.answers };
+  const changed = (key) => Object.hasOwn(saved.answers, key) && saved.answers[key].value !== inherited[key]?.value;
+  if (kind === "rules") {
+    if (changed("mode")) {
+      delete inherited.basis;
+      delete inherited.amount;
+    }
+    if (!inherited.basis || changed("basis")) {
+      delete inherited.quantity;
+      delete inherited.criteria;
+    }
+  }
+  if (kind === "absenceRules" && Object.hasOwn(saved.answers, "categories")) delete inherited.reviewCategories;
+  return { mode, answers: { ...inherited, ...saved.answers } };
+}
+
 const option = (value, label) => ({ value, label });
 const yesNo = [option(true, "Oui"), option(false, "Non")];
 const source = [option("planned", "L’heure prévue au planning"), option("clocked", "L’heure pointée")];
@@ -102,7 +122,7 @@ export function questionsFor(kind, answers) {
     if (key === "basis") return mode && mode !== "basket";
     if (key === "quantity") return mode !== "basket" && ["days", "monthly"].includes(basis);
     if (key === "criteria") return mode !== "basket" && basis === "criteria";
-    return ["combined", "basket"].includes(mode);
+    return Boolean(mode);
   }).map((question) => kind === "rules" && mode === "basket" && question.key === "amount"
     ? { ...question, input: "number" }
     : question);

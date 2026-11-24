@@ -52,6 +52,15 @@ function display(value, field) {
   return Object.hasOwn(names, value) ? names[value] : String(value);
 }
 
+export function RuleValues({ values }) {
+  return <dl className="grid gap-2 text-sm mobile:grid-cols-2">
+    {Object.entries(values).map(([key, value]) => <div key={key}>
+      <dt className="font-semibold">{fields[key]}</dt>
+      <dd>{display(value, key)}</dd>
+    </div>)}
+  </dl>;
+}
+
 const ignore = () => {};
 export function compatibleDate(kind, day) {
   const date = new Date(`${day}T12:00:00Z`);
@@ -63,8 +72,8 @@ export function compatibleDate(kind, day) {
 export function Comparison({ preview, minimum, busy, onDate, onReview }) {
   return <section aria-label="Comparaison des règles RH" className="min-w-0 space-y-3 max-midTablet:[overflow-wrap:anywhere]">
     <p className="text-sm"><strong>{preview.metadata.establishment}</strong> → <strong>{preview.target.name}</strong></p>
-    {preview.rules.map(({ kind, effect, previous, previousDate, rule, action, reason, financialReview }) => {
-      const keys = [...new Set([...Object.keys(previous || {}), ...Object.keys(rule.values || {})])];
+    {preview.rules.map(({ kind, effect, previous, previousDate, rule, action, reason, financialReview, preserved }) => {
+      const keys = preserved ? [] : [...new Set([...Object.keys(previous || {}), ...Object.keys(rule.values || {})])];
       const source = preview.metadata.source === "skello" ? preview.sourceRules?.[kind] : null;
       const mobileKeys = [...new Set([...keys, ...Object.keys(source?.values || {})])];
       const currentLabel = previousDate && previousDate !== "-" ? `Gusto (${previousDate})` : "Gusto actuel";
@@ -77,11 +86,11 @@ export function Comparison({ preview, minimum, busy, onDate, onReview }) {
         {rule.review && <p className="mt-1 text-sm">Validé pour Gusto le {rule.review.on} · {rule.review.reason}</p>}
         {rule.note && <p className="mt-1 text-sm">{rule.note}</p>}
         {reason && <p className="mt-1 text-sm">{reason}</p>}
-        <label className="mt-2 grid gap-1 text-sm">Date d’effet · {families[kind]}
+        {!preserved && <label className="mt-2 grid gap-1 text-sm">Date d’effet · {families[kind]}
           <input type="date" min={minimum} disabled={busy} value={effect} className="w-fit rounded-lg border border-darkBlue/20 px-2 py-1"
             onChange={(event) => { if (event.target.value && event.target.validity.valid) onDate(kind, event.target.value); }} />
           <span className="text-xs text-darkBlue/70">{help.date}</span>
-        </label>
+        </label>}
         {mobileKeys.length > 0 && <dl className="mt-2 space-y-2 text-sm midTablet:hidden">
           {mobileKeys.map((field) => <div key={field} className={`rounded-lg border border-darkBlue/10 p-3 ${changed(field) ? "bg-blue/5" : ""}`}>
             <dt className="font-semibold">{fields[field]}</dt>

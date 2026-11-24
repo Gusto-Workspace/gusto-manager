@@ -17,7 +17,7 @@ function handle(action) {
         restaurantId: req.params.id, batchId: req.params.batchId, actor: String(req.user.id),
         ownerId: req.hrOwner,
         configuration: req.body?.configuration, effect: req.body?.effect, effects: req.body?.effects, token: req.body?.token, confirmed: req.body?.confirmed,
-        review: req.body?.review, draft: req.body?.draft, revision: req.body?.revision,
+        review: req.body?.review, draft: req.body?.draft, revision: req.body?.revision, editableKinds: req.body?.editableKinds,
       }));
     } catch (error) {
       if (error instanceof HrConfigurationError) return res.status(error.status).json({ message: error.message });
