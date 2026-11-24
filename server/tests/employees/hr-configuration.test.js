@@ -25,6 +25,9 @@ const lesArtistes = require("../../docs/configurations-rh/les-artistes-limoges.j
 test("the Skello file preserves individual observations and rejects extra or ambiguous data", () => {
   assert.equal(readHrConfiguration(lesArtistes).rules.clockRules.values.pause, "plannedFallback");
   assert.equal(lesArtistes.observations.find(({ id }) => id === "gusto-break").origin.system, "gusto");
+  const cycle = lesArtistes.observations.find(({ id }) => id === "paid-leave-cycle");
+  assert.deepEqual([cycle.status, cycle.value, cycle.gusto], ["confirmed", 6, "leaveRules.referenceMonth"]);
+  assert.equal(lesArtistes.rules.leaveRules.values, null);
   for (const change of [
     (file) => { file.version = 2; },
     (file) => { file.metadata.restaurantId = "012345678901234567890123"; },
@@ -33,7 +36,11 @@ test("the Skello file preserves individual observations and rejects extra or amb
     (file) => { file.rules.clockRules.values.pause = "fallback"; },
     (file) => { delete file.rules.clockRules.values.earlyOut; },
     (file) => { file.rules.overtime.status = "confirmed"; },
+    (file) => { file.rules.leaveRules.values = { referenceMonth: 6, unit: "businessDays" }; },
     (file) => { file.rules.rules.values.criteria = [{ start: "11:30", end: "14:00", minimum: null, maximum: null, salary: 2000 }]; },
+    (file) => { file.rules.clockRules.preserveUnspecified = true; },
+    (file) => { file.rules.absenceRules.values.categories = {}; },
+    (file) => { file.rules.rules.preserveUnspecified = false; },
     (file) => { file.observations.push(file.observations[0]); },
   ]) {
     const copy = structuredClone(lesArtistes);
@@ -159,9 +166,11 @@ test("RH configuration previews, applies, reports and restores only in the selec
   assert.equal((await apply(preview.token, {}, endpoint(source))).status, 409);
   assert.equal((await apply(preview.token, { effects: { ...effects, clockRules: opening.plus({ days: 7 }).toISODate() } })).status, 409);
   assert.equal((await request(`${base}/apply`, { ...payload, confirmed: true, token: preview.token }, { user: new ObjectId() })).status, 409);
-  assert.equal((await request(`${base}/review`, { configuration: lesArtistes, review: {
+  const pendingMeal = structuredClone(lesArtistes);
+  pendingMeal.rules.rules.status = "to_confirm";
+  assert.equal((await request(`${base}/review`, { configuration: pendingMeal, review: {
     kind: "rules", values: { ...meals, amount: 4 }, reason: "", confirmed: true } })).status, 400);
-  const reviewed = await request(`${base}/review`, { configuration: lesArtistes, review: {
+  const reviewed = await request(`${base}/review`, { configuration: pendingMeal, review: {
     kind: "rules", values: { ...meals, amount: 4 }, reason: "Montant confirmé dans cette recette fictive.", confirmed: true } });
   assert.equal(reviewed.status, 200);
   assert.equal((await reviewed.json()).rules.rules.review.reason, "Montant confirmé dans cette recette fictive.");
@@ -255,17 +264,108 @@ test("RH configuration previews, applies, reports and restores only in the selec
   assert.deepEqual((await current("rules", date.slice(0, 7))).values, futureMeal.values);
   assert.equal((await request(path, { confirmed: true })).status, 409);
   assert.equal((await (await targets(date)).json()).targets[String(employee)].hasCounter, false);
+
+  const previousAbsences = { sick_leave: { payer: "thirdParty", meal: 2 } };
+  await Input.insertMany([
+    row(target, "absenceRules", "-", { categories: previousAbsences }),
+    row(target, "hoursRules", "-", { start: old.toISODate(), enhanced: true }),
+  ]);
+  assert.equal((await (await targets(date)).json()).targets[String(employee)].hasCounter, true);
+  const sample = { configuration: lesArtistes, effects: { ...effects, clockRules: tomorrow, absenceRules: date } };
+  const fresh = await inspect(sample);
+  assert.deepEqual(fresh.rules.filter(({ action }) => action === "skipped").map(({ kind }) => kind), ["overtime", "leaveRules"]);
+  assert.equal(fresh.rules.find(({ kind }) => kind === "rules").rule.values.amount, null);
+
+  const mealDate = date.slice(0, 7);
+  await Input.updateOne({ _id: futureMeal._id }, { $set: { values: { mode: "basket", amount: 5 } } });
+  const blocked = await inspect(sample);
+  assert.equal(blocked.rules.find(({ kind }) => kind === "rules").action, "blocked");
+  await Input.updateOne({ _id: futureMeal._id }, { $set: { values: { ...futureMeal.values, amount: 5 } } });
+  const selective = await inspect(sample);
+  const imported = await request(`${base}/apply`, { ...sample, confirmed: true, token: selective.token });
+  assert.equal(imported.status, 200);
+  assert.deepEqual((await imported.json()).batch.kinds, ["clockRules", "rules", "absenceRules", "hoursRules"]);
+  assert.deepEqual((await current("clockRules", tomorrow)).values, lesArtistes.rules.clockRules.values);
+  assert.deepEqual((await current("rules", mealDate)).values, { ...lesArtistes.rules.rules.values, amount: 5 });
+  assert.deepEqual((await current("absenceRules", date)).values.categories,
+    { ...previousAbsences, ...lesArtistes.rules.absenceRules.values.categories });
+  assert.deepEqual((await current("hoursRules", date)).values, { start: null, enhanced: false });
+  assert.equal(await Input.countDocuments({ restaurant: target, kind: { $in: ["overtime", "leaveRules"] } }), 0);
+  assert.equal((await (await targets(date)).json()).targets[String(employee)].hasCounter, false);
+  const repeated = await inspect(sample);
+  assert.equal(repeated.token, null);
+  assert.deepEqual(repeated.rules.map(({ action }) => action), ["unchanged", "skipped", "unchanged", "skipped", "unchanged", "unchanged"]);
+  assert.equal((await request(`${base}/apply`, { ...sample, confirmed: true, token: selective.token })).status, 409);
+
+  const absence = opening.plus({ days: 1 });
+  await Employee.updateOne({ _id: employee }, { $push: { "restaurantProfiles.0.shifts": {
+    _id: new ObjectId(), start: new Date(absence.set({ hour: 9 }).toISO()), end: new Date(absence.set({ hour: 17 }).toISO()),
+    isLeave: true, absenceType: "paid_leave", absenceDuration: "full",
+  } } });
+  const reportRange = new URLSearchParams({ from: date, to: opening.plus({ days: 6 }).toISODate(), employeeId: String(employee) });
+  const importedReport = (await (await ownerCall(`${report}?${reportRange}`)).json()).rows[0];
+  assert.equal(importedReport.mealDays.find(({ date: day }) => day === date).due, 2);
+  assert.equal(importedReport.mealDays.find(({ date: day }) => day === absence.toISODate()).protectedMeals, 1);
+  assert.ok(Object.values(importedReport.weeklyHours).some(({ paidAbsences }) => paidAbsences?.employer === 420));
+
   const profile = (await Employee.findById(employee).lean()).restaurantProfiles[0]._id;
   await Input.create({ _id: `${target}:${profile}:annual:${date}`, restaurant: target, employee, profile, date, kind: "annual",
     values: { initialized: date, opening: 0, target: 1600, includeSunday: true }, revision: 1, updatedBy: String(admin) });
   assert.equal((await (await targets(date)).json()).targets[String(employee)].hasCounter, true);
 
-  const sample = { configuration: lesArtistes, effect: tomorrow };
-  const selective = await inspect(sample);
-  assert.equal(selective.rules.filter(({ action }) => action === "skipped").length, 5);
-  const imported = await request(`${base}/apply`, { ...sample, confirmed: true, token: selective.token });
-  assert.equal(imported.status, 200);
-  assert.deepEqual((await imported.json()).batch.kinds, ["clockRules"]);
-  assert.equal(await Input.countDocuments({ restaurant: target, kind: { $in: ["overtime", "hoursRules", "absenceRules", "leaveRules"] } }), 0);
   assert.equal(await Session.countDocuments({ restaurant: target }), 1);
+
+  const completed = structuredClone(sample);
+  const nextMonth = opening.plus({ months: 1 }).toISODate();
+  const nextMonday = opening.plus({ weeks: 1 }).toISODate();
+  completed.effects = { ...sample.effects, clockRules: nextMonday, rules: nextMonth,
+    overtime: nextMonday, leaveRules: nextMonth, hoursRules: nextMonday };
+  completed.configuration.rules.overtime = configuration.rules.overtime;
+  completed.configuration.rules.leaveRules = configuration.rules.leaveRules;
+  completed.configuration.rules.absenceRules.values.categories = {
+    family_event: { payer: "employer", meal: 1 }, paid_leave: { payer: null, meal: 0 },
+  };
+  const previewCompleted = await inspect(completed);
+  assert.deepEqual(previewCompleted.rules.map(({ kind, action }) => [kind, action]), [
+    ["clockRules", "unchanged"], ["overtime", "apply"], ["rules", "unchanged"],
+    ["leaveRules", "apply"], ["absenceRules", "apply"], ["hoursRules", "unchanged"],
+  ]);
+  assert.equal(previewCompleted.rules.find(({ kind }) => kind === "rules").rule.values.amount, 5);
+  const priorInputs = await targetInputs();
+  const completedResult = await request(`${base}/apply`, { ...completed, confirmed: true, token: previewCompleted.token });
+  assert.equal(completedResult.status, 200);
+  assert.deepEqual((await completedResult.json()).batch.kinds, ["overtime", "leaveRules", "absenceRules"]);
+  const absenceId = id(target, "absenceRules", date);
+  const afterCompletion = await targetInputs();
+  const previousIds = new Set(priorInputs.map(({ _id }) => _id));
+  assert.deepEqual(afterCompletion.filter(({ _id }) => !previousIds.has(_id)).map(({ _id }) => _id).sort(),
+    [id(target, "overtime", nextMonday), id(target, "leaveRules", nextMonth)].sort());
+  assert.deepEqual(afterCompletion.filter(({ _id }) => previousIds.has(_id) && _id !== absenceId),
+    priorInputs.filter(({ _id }) => _id !== absenceId));
+  assert.deepEqual((await current("absenceRules", date)).values.categories, {
+    ...previousAbsences, ...lesArtistes.rules.absenceRules.values.categories,
+    family_event: { payer: "employer", meal: 1 }, paid_leave: { payer: "employer", meal: 0 },
+  });
+  const completedAgain = await inspect(completed);
+  assert.equal(completedAgain.token, null);
+  assert.ok(completedAgain.rules.every(({ action }) => action === "unchanged"));
+
+  const otherConfiguration = structuredClone(configuration);
+  otherConfiguration.rules = {
+    rules: { ...otherConfiguration.rules.rules, preserveUnspecified: true, values: { ...meals, quantity: 3 } },
+    absenceRules: { ...otherConfiguration.rules.absenceRules, preserveUnspecified: true,
+      values: { categories: { paid_leave: { payer: null, meal: 0 } } } },
+  };
+  const otherPayload = { configuration: otherConfiguration, effect: date };
+  const otherBase = endpoint(source);
+  const otherPreview = await request(`${otherBase}/preview`, otherPayload);
+  assert.equal(otherPreview.status, 200);
+  const otherToken = (await otherPreview.json()).token;
+  assert.ok(otherToken);
+  const otherImport = await request(`${otherBase}/apply`, { ...otherPayload, token: otherToken, confirmed: true });
+  assert.equal(otherImport.status, 200);
+  assert.deepEqual((await otherImport.json()).batch.kinds, ["rules", "absenceRules"]);
+  assert.deepEqual((await Input.findById(id(source, "rules", mealDate)).lean()).values, { ...meals, quantity: 3 });
+  assert.deepEqual((await Input.findById(id(source, "absenceRules", date)).lean()).values.categories.paid_leave,
+    { payer: "employer", meal: 0 });
 });

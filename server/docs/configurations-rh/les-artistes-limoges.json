@@ -4,7 +4,7 @@
   "metadata": {
     "source": "skello",
     "establishment": "Les Artistes Limoges",
-    "collectedOn": "2026-11-22"
+    "collectedOn": "2026-11-24"
   },
   "rules": {
     "clockRules": {
@@ -30,17 +30,17 @@
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "values": null,
-      "note": "Les intitulés affichent des taux mais les seuils, assiettes, cumuls et accords applicables ne sont pas confirmés."
+      "note": "Rapports de mai et novembre vérifiés. En mai, deux colonnes distinctes affichent les volumes du 1er mai et de la journée de solidarité. Règles du rapport est absent pour la session Planificateur avancé. Les seuils effectifs, les fenêtres, les assiettes, le traitement de minuit et des pauses, les cumuls et les modalités des jours particuliers restent à confirmer."
     },
     "rules": {
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Règles → Repas",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "values": {
         "mode": "combined",
@@ -49,156 +49,137 @@
         "amount": null,
         "criteria": null
       },
-      "note": "Mode et quantité observés. Le montant et les droits en cas d’absence restent à confirmer. La famille entière reste en attente."
+      "note": "Deux repas dus par jour travaillé, mode mixte. Le montant unitaire n’est pas affiché dans Skello. Le montant Gusto du même mode est conservé s’il existe. Les créneaux des repas pris restent des observations.",
+      "preserveUnspecified": true
     },
     "leaveRules": {
       "status": "to_confirm",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "values": null,
-      "note": "Unité et acquisition affichées. Le cycle, le mois de reprise, les reliquats et les absences assimilées restent à confirmer."
+      "note": "Compteur actif, 2,5 jours ouvrables par mois, cycle de juin à mai et échéance N−1 affichée au 31 mai dans le détail salarié. L’acquisition par motif est relevée. Les jours décomptés, les fériés, le reliquat au-delà de l’échéance, l’équivalence des assimilations et le mois de reprise Gusto restent à établir. Les soldes d’ouverture sont individuels."
     },
     "absenceRules": {
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Absences",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "values": null,
-      "note": "Le catalogue présente les rubriques de payeur. La politique complète par catégorie reste à confirmer."
+      "values": {
+        "categories": {
+          "paid_leave": {
+            "payer": "employer",
+            "meal": 1
+          },
+          "apprenticeship": {
+            "payer": "employer",
+            "meal": 0
+          },
+          "training": {
+            "payer": "employer",
+            "meal": 1
+          },
+          "public_holiday": {
+            "payer": "employer",
+            "meal": 1
+          },
+          "compensatory_rest": {
+            "payer": "employer",
+            "meal": 1
+          },
+          "rtt": {
+            "payer": "employer",
+            "meal": 1
+          },
+          "commuting_accident": {
+            "payer": "thirdParty",
+            "meal": 1
+          },
+          "work_accident": {
+            "payer": "thirdParty",
+            "meal": 1
+          },
+          "adoption_leave": {
+            "payer": "thirdParty",
+            "meal": 1
+          },
+          "maternity_leave": {
+            "payer": "thirdParty",
+            "meal": 1
+          },
+          "paternity_leave": {
+            "payer": "thirdParty",
+            "meal": 1
+          },
+          "authorized_absence": {
+            "payer": "unpaid",
+            "meal": 0
+          },
+          "unauthorized_absence": {
+            "payer": "unpaid",
+            "meal": 0
+          },
+          "parental_leave": {
+            "payer": "unpaid",
+            "meal": 0
+          },
+          "child_sick_leave": {
+            "payer": "unpaid",
+            "meal": 0
+          },
+          "unpaid_leave": {
+            "payer": "unpaid",
+            "meal": 0
+          }
+        }
+      },
+      "note": "Seize motifs sont transposables pour le payeur et le réglage repas. Les 66 lignes Skello ont été vérifiées, dont 64 actives et deux désactivées. L’activation, la possibilité de demande, l’acquisition des congés et le traitement des heures figurent dans le relevé de chaque motif. Les autres catégories Gusto sont conservées.",
+      "preserveUnspecified": true
     },
     "hoursRules": {
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "values": null,
-      "note": "Compteurs Skello désactivés, hors CP. Le compteur Gusto et les dispositifs individuels ont des périmètres distincts."
+      "values": {
+        "start": null,
+        "enhanced": false
+      },
+      "note": "La modulation, le RCR, l’annualisation, les RTT forfait jours et le compteur fériés sont désactivés. Le RTT forfait heures affiche un bouton Activer indisponible. Cette règle ferme le compteur collectif Gusto à la date d’effet. Les mouvements et dispositifs individuels suivent leur propre parcours."
     }
   },
   "observations": [
     {
-      "id": "early-in",
-      "label": "Arrivée en avance",
+      "id": "clock-times",
+      "label": "Bornes retenues et arrondi",
       "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "value": "Heure prévue",
-      "gusto": "clockRules.earlyIn = planned",
+      "value": "Arrivée en avance ou en retard : prévue. Départ anticipé ou tardif : badgé. Arrondi désactivé (sélecteur inactif : 5 min).",
+      "gusto": "clockRules",
       "note": null
     },
     {
-      "id": "late-in",
-      "label": "Arrivée en retard",
+      "id": "clock-pause",
+      "label": "Pauses de la Badgeuse",
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
+        "path": "Paramètres → Paramètres Badgeuse",
+        "consultedOn": "2026-11-24"
       },
-      "value": "Heure prévue",
-      "gusto": "clockRules.lateIn = planned",
-      "note": null
-    },
-    {
-      "id": "early-out",
-      "label": "Départ anticipé",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
-      },
-      "value": "Heure badgée",
-      "gusto": "clockRules.earlyOut = clocked",
-      "note": null
-    },
-    {
-      "id": "late-out",
-      "label": "Départ tardif",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
-      },
-      "value": "Heure badgée",
-      "gusto": "clockRules.lateOut = clocked",
-      "note": null
-    },
-    {
-      "id": "rounding",
-      "label": "Arrondi des horaires badgés",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
-      },
-      "value": false,
-      "gusto": "clockRules.roundMinutes = 0",
-      "note": "Le sélecteur inactif affiche 5 min."
-    },
-    {
-      "id": "minimum-break",
-      "label": "Minimum de pause prévue",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
-      },
-      "value": false,
-      "gusto": "Modes de pause du Rapport RH",
-      "note": null
-    },
-    {
-      "id": "tablet-break",
-      "label": "Badge de pause sur tablette",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Badgeuse tablette",
-        "consultedOn": "2026-11-22"
-      },
-      "value": true,
-      "gusto": "Début et fin de pause dans la Pointeuse",
-      "note": null
-    },
-    {
-      "id": "mobile-break",
-      "label": "Badge de pause sur mobile",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Badgeuse mobile",
-        "consultedOn": "2026-11-22"
-      },
-      "value": false,
-      "gusto": null,
-      "note": null
-    },
-    {
-      "id": "missing-break",
-      "label": "Pause oubliée ou nulle dans Skello",
-      "status": "unavailable",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Paramètres Badgeuse → Règles de mise au réel",
-        "consultedOn": "2026-11-22"
-      },
-      "value": null,
-      "gusto": "Modes de pause du Rapport RH",
-      "note": "Le minimum désactivé ne suffit pas à identifier le repli en cas d’oubli."
+      "value": "Minimum de pause prévue désactivé. Badge de pause tablette actif et mobile inactif. Pauses non rémunérées dans Règles.",
+      "gusto": "clockRules.pause",
+      "note": "Le minimum désactivé ne démontre pas le traitement Skello d’une pause oubliée ou nulle."
     },
     {
       "id": "gusto-break",
@@ -214,43 +195,30 @@
       "note": "Choix Gusto. Si aucune pause n’est mesurée ou prévue, le responsable peut corriger avec motif."
     },
     {
-      "id": "paid-break",
-      "label": "Rémunération des pauses",
+      "id": "clock-device",
+      "label": "Site, créneaux et appareils",
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Règles et compteurs → Règles",
-        "consultedOn": "2026-11-22"
+        "path": "Paramètres → Paramètres Badgeuse",
+        "consultedOn": "2026-11-24"
       },
-      "value": false,
-      "gusto": "Pause déduite dans la Pointeuse",
-      "note": null
-    },
-    {
-      "id": "break-threshold",
-      "label": "Déclenchement de pause affiché",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Règles et compteurs → Règles",
-        "consultedOn": "2026-11-22"
-      },
-      "value": 360,
+      "value": "Badge affecté au site où il est effectué. Badge au début et à la fin de chaque shift. Multi-appareil désactivé. Mobile autorisé, 0 salarié sélectionné.",
       "gusto": null,
-      "note": "Le déclenchement automatique à 6 h ne correspond pas à un réglage de paie importable."
+      "note": "Options d’appareil, de multisite et affectations individuelles hors de l’import collectif."
     },
     {
-      "id": "deduct-lateness",
-      "label": "Déduire le retard du salaire",
+      "id": "clock-proof",
+      "label": "Preuve de badge et retard",
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Règles et compteurs → Règles",
-        "consultedOn": "2026-11-22"
+        "path": "Paramètres → Paramètres Badgeuse",
+        "consultedOn": "2026-11-24"
       },
-      "value": false,
-      "gusto": "L’arrivée reste au prévu, le badge conserve le retard",
-      "note": null
+      "value": "Signature tablette active. Photo et SMS de retard désactivés. Seuil SMS inactif : 5 min. Aucun planificateur sélectionné.",
+      "gusto": null,
+      "note": "Les réglages de preuve et de notification ne sont pas migrés."
     },
     {
       "id": "review",
@@ -266,78 +234,65 @@
       "note": "Mécanisme documenté en mission 16. Le choix de la source des majorations Gusto reste à confirmer."
     },
     {
-      "id": "collective-agreement",
-      "label": "Convention collective affichée",
+      "id": "base-rules",
+      "label": "Convention et réglages collectifs",
       "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Règles",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "value": "HCR · IDCC 1979",
-      "gusto": null,
-      "note": "La convention seule ne renseigne pas la grille effectivement appliquée."
-    },
-    {
-      "id": "reference-week",
-      "label": "Jours de référence",
-      "status": "confirmed",
-      "origin": {
-        "system": "skello",
-        "path": "Paramètres → Règles et compteurs → Règles",
-        "consultedOn": "2026-11-22"
-      },
-      "value": 5,
-      "gusto": "overtime.workdays",
-      "note": "Affichage confirmé. Son usage par famille de majoration reste à confirmer."
+      "value": "HCR IDCC 1979. Horaires de travail 00:00–00:00. Déclenchement de pause : 6 h. Retard déduit du salaire : non. Charges patronales : 17 %. Référence : 5 jours/semaine.",
+      "gusto": "overtime.workdays (5 jours affichés)",
+      "note": "La convention, le taux de charges et les alertes ne définissent pas à eux seuls la grille de paie Gusto."
     },
     {
       "id": "extra-hours",
       "label": "Heures supplémentaires",
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "value": "Colonnes à 10 %, 20 % et 50 %",
+      "value": "Exceptionnelles et structurelles : colonnes à 10 %, 20 % et 50 %.",
       "gusto": "overtime",
-      "note": "Confirmer seuils, mensualisation et accords particuliers."
+      "note": "Taux des en-têtes vérifiés. Les seuils, l’application des heures structurelles et les accords particuliers ne sont pas affichés."
     },
     {
       "id": "complementary-hours",
       "label": "Heures complémentaires",
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": "Colonnes à 10 % et 25 %",
       "gusto": "overtime",
-      "note": "Confirmer seuils, dérogations et volumes par contrat."
+      "note": "Taux des en-têtes vérifiés. Le plafond de l’alerte de planning ne précise pas la limite de chaque tranche ni les dérogations."
     },
     {
       "id": "night",
       "label": "Nuit",
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": "Colonne à 0 %",
       "gusto": "overtime.nightRate et fenêtre",
-      "note": "Confirmer la plage de nuit et la déduction des pauses."
+      "note": "Taux affiché dans le rapport. La plage 22 h–7 h apparaît dans l’alerte de repos de nuit. Elle ne détermine pas à elle seule l’assiette de paie ou la déduction des pauses."
     },
     {
       "id": "sunday",
       "label": "Dimanche",
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": "Colonne à 50 %",
       "gusto": "overtime.sundayRate",
@@ -346,28 +301,67 @@
     {
       "id": "holidays",
       "label": "Jours fériés",
-      "status": "to_confirm",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
         "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": "Colonne de volume",
       "gusto": "overtime.countHolidays et overtime.holidayRate",
-      "note": "Confirmer taux et cumuls."
+      "note": "Le rapport affiche un volume en heures, sans taux dans l’en-tête. Le compteur de jours fériés désactivé ne détermine pas la majoration du rapport."
     },
     {
-      "id": "may-day",
-      "label": "Premier mai",
+      "id": "majoration-configuration",
+      "label": "Réglage détaillé des majorations et de la source horaire",
       "status": "unavailable",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
-        "consultedOn": "2026-11-22"
+        "path": "Paramètres de l’établissement / Rapport → Heures majorées et Options d’exports",
+        "consultedOn": "2026-11-24"
+      },
+      "value": null,
+      "gusto": "overtime",
+      "note": "Le rôle Planificateur avancé est confirmé dans la fiche. Le menu utilisateur ne donne pas accès aux paramètres généraux. Le rapport propose des actions d’export. Règles du rapport est absent des paramètres de l’établissement. Skello documente une activation spécifique de l’onglet. Cette session ne permet de vérifier ni les droits détaillés ni le statut d’activation."
+    },
+    {
+      "id": "may-day",
+      "label": "Volume d’heures du 1er mai",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Mai 2026 → Heures majorées",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Colonne dédiée « Heures 1er Mai » en heures, distincte des autres fériés.",
+      "gusto": null,
+      "note": "Taux, assiette et traitement de paie non affichés. Le format Gusto dispose d’une règle commune pour les jours fériés."
+    },
+    {
+      "id": "solidarity-day",
+      "label": "Volume d’heures de la journée de solidarité",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Rapport → Mai 2026 → Heures majorées",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Colonne dédiée « Heures Journée de solidarité » en heures.",
+      "gusto": null,
+      "note": "La date configurée, l’assiette et le traitement de paie ne sont pas affichés. Le format Gusto ne prévoit pas de règle dédiée."
+    },
+    {
+      "id": "special-contracts",
+      "label": "Contrats particuliers",
+      "status": "unavailable",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs",
+        "consultedOn": "2026-11-24"
       },
       "value": null,
       "gusto": null,
-      "note": "Le taux et le traitement du premier mai ne sont pas prouvés sur cet écran. Aucun équivalent Gusto séparé."
+      "note": "La fiche contractuelle expose le type de contrat, le volume horaire et les avenants. Les règles de paie propres aux contrats et les accords n’apparaissent pas comme paramètres collectifs. Les valeurs contractuelles se reprennent par salarié."
     },
     {
       "id": "paid-leave",
@@ -376,24 +370,50 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": "Compteur actif · 2,5 jours ouvrables par mois",
       "gusto": "leaveRules",
-      "note": "Cycle, exclusions et mois de reprise à confirmer."
+      "note": "L’écran collectif affiche l’activation, l’unité et 2,5 jours par mois. Les soldes, dates d’initialisation et corrections du détail salarié sont individuels."
     },
     {
-      "id": "absences",
-      "label": "Absences et payeurs",
-      "status": "to_confirm",
+      "id": "paid-leave-cycle",
+      "label": "Mois de début du cycle des congés payés",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Absences",
-        "consultedOn": "2026-11-22"
+        "path": "Employés → Historique / Compteurs → Compteur de Congés Payés",
+        "consultedOn": "2026-11-24"
       },
-      "value": "Employeur, tiers et non indemnisé",
-      "gusto": "absenceRules.categories",
-      "note": "Confirmer la politique de chaque catégorie et l’assimilation en paie."
+      "value": 6,
+      "gusto": "leaveRules.referenceMonth",
+      "note": "Le détail indique une période de référence du 1er juin au 31 mai. Le tableau visible commence en juin et se termine en mai."
+    },
+    {
+      "id": "paid-leave-opening",
+      "label": "Reprise, jours fériés et reliquats des congés payés",
+      "status": "unavailable",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Compteurs / Employés → Historique et Compteur de Congés Payés",
+        "consultedOn": "2026-11-24"
+      },
+      "value": null,
+      "gusto": "leaveRules.startMonth, excludeHolidays et preserveCarry",
+      "note": "La vue collective affiche l’unité et le rythme. Elle signale une erreur lors de la récupération des données des employés et une erreur serveur. Elle n’affiche ni le mois d’initialisation collectif, ni l’exclusion des fériés, ni la politique de report du reliquat N−1. Gusto exige un mois de reprise et des soldes individuels à la bascule."
+    },
+    {
+      "id": "paid-leave-availability",
+      "label": "Date de disponibilité du solde N−1",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Employés → Historique / Compteurs → Compteur de Congés Payés",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Dans le détail consulté, la période N−1 de juin 2025 à mai 2026 est affichée comme disponible jusqu’au 31 mai 2027.",
+      "gusto": null,
+      "note": "L’échéance affichée renseigne la fenêtre de disponibilité. Le compteur ne précise pas si une exception ou une correction peut reporter le reliquat au-delà."
     },
     {
       "id": "meals",
@@ -402,11 +422,24 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Règles → Repas",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
-      "value": "Deux repas dus par jour travaillé",
+      "value": "Mode mixte actif, 15 employés affichés, deux repas dus par jour travaillé.",
       "gusto": "rules.mode, rules.basis et rules.quantity",
-      "note": "Valeur unitaire et maintien pendant une absence à confirmer."
+      "note": "Mode mixte actif. Quantité applicable aux repas dus. Aucun montant unitaire affiché."
+    },
+    {
+      "id": "meals-taken",
+      "label": "Critères de repas pris",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Règles → Repas pris",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Un repas pour 11:30–14:30 et un repas pour 18:45–21:15, selon les horaires travaillés.",
+      "gusto": null,
+      "note": "Gusto comptabilise les repas pris saisis ou repris de l’historique. Ses critères de repas dus ne peuvent pas remplacer ces critères de repas pris."
     },
     {
       "id": "modulation",
@@ -415,10 +448,10 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": false,
-      "gusto": "Compteur d’heures, selon le dispositif",
+      "gusto": "hoursRules.start = null ; hoursRules.enhanced = false",
       "note": null
     },
     {
@@ -428,7 +461,7 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": false,
       "gusto": "Mouvements de récupération du Rapport RH",
@@ -441,7 +474,7 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": false,
       "gusto": "Annualisation individuelle hors de cet import",
@@ -454,11 +487,24 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": false,
       "gusto": null,
       "note": null
+    },
+    {
+      "id": "rtt-hours",
+      "label": "Compteur RTT forfait heures",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Règles et compteurs → Compteurs",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non activé. Le bouton « Activer » est grisé.",
+      "gusto": null,
+      "note": "Ce compteur est distinct du RTT forfait jours et de l’absence RTT. Le JSON Gusto ne configure pas un compteur RTT séparé."
     },
     {
       "id": "holiday-counter",
@@ -467,32 +513,953 @@
       "origin": {
         "system": "skello",
         "path": "Paramètres → Règles et compteurs → Compteurs",
-        "consultedOn": "2026-11-22"
+        "consultedOn": "2026-11-24"
       },
       "value": false,
       "gusto": null,
       "note": "Ce compteur est distinct de l’assiette d’une majoration fériée."
     },
     {
-      "id": "special-contracts",
-      "label": "Contrats particuliers",
-      "status": "unavailable",
+      "id": "alerts",
+      "label": "Alertes du planning",
+      "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Règles et compteurs",
-        "consultedOn": "2026-11-22"
+        "path": "Paramètres → Alertes",
+        "consultedOn": "2026-11-24"
       },
-      "value": null,
+      "value": "16 alertes actives : repos, jours consécutifs, amplitude, contrat, minimum et maximum horaires, absences, pause, coupure, nuit, fériés, conflit, complémentaires et modification tardive.",
       "gusto": null,
-      "note": "Périmètre individuel exclu. Les accords et règles propres aux contrats restent à établir."
+      "note": "Les neuf options Bloquante affichées sont décochées. Les seuils et blocages Skello ne sont pas des règles paie importables."
+    },
+    {
+      "id": "alerts-rest",
+      "label": "Seuils affichés dans les alertes de planning",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Alertes",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "6 jours consécutifs ; repos quotidien de 11 h, 12 h ou 14 h selon l’âge ; amplitude de 13 h ; 1 jour de repos hebdomadaire ; minimum de 2 h consécutives pour le travail à temps partiel ; maximum journalier de 11,5 h et hebdomadaire de 48 h ou 46 h en moyenne sur 12 semaines.",
+      "gusto": null,
+      "note": "Seuils affichés dans les alertes de planning. Aucun réglage de paie n’est déduit de ces textes."
+    },
+    {
+      "id": "alerts-other",
+      "label": "Autres seuils affichés dans les alertes",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Alertes",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Pause de 20 min après 6 h ; coupure de 5 h max. à temps partiel ; repos de nuit affiché de 1 % entre 22 h et 7 h ; ancienneté de 3 mois pour les fériés chômés ; plafond complémentaires de 33,33 % ; modification de planning à 3 jours calendaires.",
+      "gusto": null,
+      "note": "Le repos de nuit et la limite de complémentaires sont des alertes. Ils ne prouvent ni le taux de paie de nuit ni les tranches effectivement appliquées par le rapport."
+    },
+    {
+      "id": "posts",
+      "label": "Postes et pauses par poste",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Postes",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "30 min : Direction, Chef de rang, Commis de cuisine, Manager, Chef de partie, Serveur (2 lignes), Plongeur, Barman, Chef Cuisinier, Apprenti mineur cuisine, Apprenti mineur salle, Apprenti majeur, Dessert Plonge. 0 min : POSTE SALADE et SECOND.",
+      "gusto": null,
+      "note": "Le planning Gusto porte sa durée de pause par service. La reprise des postes depuis le rapport XLSX concerne les dossiers et horaires."
+    },
+    {
+      "id": "organization",
+      "label": "Missions et équipes",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Missions / Équipes",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Missions désactivées. Équipes affichées : Cuisine (7 affectations) et Salle (10 affectations).",
+      "gusto": null,
+      "note": "Les libellés, appartenances et permissions ne sont pas repris par ce JSON."
+    },
+    {
+      "id": "individual",
+      "label": "Contrat et compteurs individuels",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Employés → Données contractuelles & salariales / Dossier RH / Historique et compteurs",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Le dossier regroupe les données contractuelles et salariales, le volume et ses avenants, les permissions, les disponibilités, les documents, l’historique et les compteurs N et N−1.",
+      "gusto": null,
+      "note": "Le JSON ne contient aucune valeur ni aucun identifiant individuel."
+    },
+    {
+      "id": "absence-1",
+      "label": "Absence autorisée rémunérée",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "« Absence autorisée » Gusto correspond au motif Skello non indemnisé. Le réutiliser remplacerait son payeur par l’employeur."
+    },
+    {
+      "id": "absence-2",
+      "label": "Absence pour examens médicaux",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto pour les examens médicaux. La catégorie maladie désigne un arrêt et porte des droits repas différents."
+    },
+    {
+      "id": "absence-3",
+      "label": "Chômage technique",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié — · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto pour le chômage technique. Le rapprocher des heures d’activité partielle effacerait deux entrées dont les options de demande sont distinctes."
+    },
+    {
+      "id": "absence-4",
+      "label": "Congé d’ancienneté",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto de congé d’ancienneté. Le ranger en congé payé appliquerait la règle repas du congé payé."
+    },
+    {
+      "id": "absence-5",
+      "label": "Congé de deuil",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Correspondance large possible avec « Événement familial ». Dans Skello, ce congé de deuil ne maintient aucun repas, contrairement à plusieurs congés de décès spécifiques."
+    },
+    {
+      "id": "absence-6",
+      "label": "Congé de fractionnement",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "Aucun motif de fractionnement dédié dans Gusto. Le congé payé ordinaire Skello ouvre l’acquisition et maintient le repas, à la différence du fractionnement."
+    },
+    {
+      "id": "absence-7",
+      "label": "Congé décès d’un beau-père ou d’une belle-mère",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » n’identifie pas le décès d’un beau-parent. Son usage commun avec les autres congés de décès perdrait le lien de parenté et les écarts de repas."
+    },
+    {
+      "id": "absence-8",
+      "label": "Congé décès d’un descendant en ligne direct",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » n’identifie pas le décès d’un descendant direct. La catégorie ne peut pas distinguer ce motif du décès d’un enfant de moins de 25 ans, sans repas."
+    },
+    {
+      "id": "absence-9",
+      "label": "Congé décès d’un père ou d’une mère",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » n’identifie pas le décès d’un parent. Une règle commune perdrait les différences de payeur et de repas avec d’autres congés de décès."
+    },
+    {
+      "id": "absence-10",
+      "label": "Congé décès enfant",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » n’identifie pas le décès d’un enfant. Le motif Skello dédié aux enfants de moins de 25 ans porte un réglage repas différent."
+    },
+    {
+      "id": "absence-11",
+      "label": "Congé décès enfant <25 ans",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "Gusto ne distingue pas le décès d’un enfant de moins de 25 ans. Ce motif ne maintient aucun repas, contrairement au motif Skello « Congé décès enfant »."
+    },
+    {
+      "id": "absence-12",
+      "label": "Congé événementiel",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » est le rapprochement le plus proche mais couvre plusieurs événements Skello. Un réglage commun appliquerait le payeur et le repas de ce motif à des congés familiaux différents."
+    },
+    {
+      "id": "absence-13",
+      "label": "Congé individuel formation",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures majorées",
+      "gusto": null,
+      "note": "« Formation » correspond au motif homonyme, avec acquisition CP et repas. Le congé individuel de formation ne donne ni acquisition ni repas."
+    },
+    {
+      "id": "absence-14",
+      "label": "Congé mariage / PACS",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "« Événement familial » ne permet pas d’isoler mariage ou PACS. Une catégorie commune appliquerait son payeur et son repas à d’autres événements aux droits différents."
+    },
+    {
+      "id": "absence-15",
+      "label": "Congé naissance",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "« Événement familial » ne distingue pas le congé de naissance. Le motif est payé par l’employeur, sans repas, et se distingue aussi du congé supplémentaire de naissance payé par un tiers."
+    },
+    {
+      "id": "absence-16",
+      "label": "Congé payé",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": "absenceRules.categories.paid_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-17",
+      "label": "Congé temps d’habillage",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucune catégorie de congé pour le temps d’habillage dans Gusto. Une catégorie générique perdrait ce motif et ses règles propres."
+    },
+    {
+      "id": "absence-18",
+      "label": "Congé trimestriel",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun congé trimestriel dans le catalogue Gusto. Le congé payé ordinaire correspond à un autre motif et possède un réglage repas différent."
+    },
+    {
+      "id": "absence-19",
+      "label": "Délégation du personnel",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié non · Heures majorées",
+      "gusto": null,
+      "note": "Aucun motif de délégation du personnel. Un regroupement avec les réunions CSE/CSSCT effacerait notamment la désactivation de ces réunions."
+    },
+    {
+      "id": "absence-20",
+      "label": "École - CFA",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures majorées",
+      "gusto": "absenceRules.categories.apprenticeship",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-21",
+      "label": "Formation",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": "absenceRules.categories.training",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-22",
+      "label": "Heures d’activité partielle",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif d’heures d’activité partielle dans Gusto. Le chômage technique est une ligne Skello distincte avec un champ de demande différent."
+    },
+    {
+      "id": "absence-23",
+      "label": "Indemnité compensatrice de préavis",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures normales",
+      "gusto": null,
+      "note": "Aucune catégorie d’indemnité compensatrice de préavis dans les absences Gusto. Elle constitue une rubrique spécifique de fin de contrat."
+    },
+    {
+      "id": "absence-24",
+      "label": "Jour Férié",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié non · Heures normales",
+      "gusto": "absenceRules.categories.public_holiday",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-25",
+      "label": "Journée de défense citoyenneté",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucune catégorie Gusto pour la journée de défense et de citoyenneté. Ses droits d’acquisition la distinguent des congés payés."
+    },
+    {
+      "id": "absence-26",
+      "label": "Récupération JF",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "« Jour férié » correspond au jour lui-même avec repas maintenu. « Récupération JF » est un repos distinct et ne maintient aucun repas."
+    },
+    {
+      "id": "absence-27",
+      "label": "Repos compensateur",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": "absenceRules.categories.compensatory_rest",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-28",
+      "label": "Repos compensateur de nuit",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "« Repos compensateur » est le motif général. Gusto ne distingue pas le repos de nuit, traité en heures normales dans Skello alors que le motif général est réglé sur Majorées."
+    },
+    {
+      "id": "absence-29",
+      "label": "Repos forfait",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Pas de motif dédié au repos lié à un forfait. Le RTT existant reste distinct et maintient le repas."
+    },
+    {
+      "id": "absence-30",
+      "label": "Réunion",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif de réunion dans Gusto. Les réunions CSE/CSSCT sont une autre ligne Skello avec un statut, des droits et un traitement horaire différents."
+    },
+    {
+      "id": "absence-31",
+      "label": "Réunions CSE/CSSCT",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif non · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "Motif désactivé et absent du catalogue Gusto. Ses réglages restent lisibles, dont l’acquisition CP, l’indemnité repas et les heures majorées. L’import ne sait pas préserver son état inactif."
+    },
+    {
+      "id": "absence-32",
+      "label": "RTT",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.rtt",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-33",
+      "label": "Service militaire",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif non · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "Motif désactivé, sans catégorie militaire dans Gusto. Son état et ses options décochées restent documentés, même sans règle de paie correspondante."
+    },
+    {
+      "id": "absence-34",
+      "label": "Solde de tout compte",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif d’absence Gusto dédié au solde de tout compte. Une absence générique ne permet pas d’identifier cette opération de fin de contrat."
+    },
+    {
+      "id": "absence-35",
+      "label": "Télétravail",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
+      "gusto": null,
+      "note": "Aucun motif Gusto pour représenter le télétravail comme cette entrée Skello et préserver ses heures majorées. Un shift de travail et une règle d’absence ont des effets différents."
+    },
+    {
+      "id": "absence-36",
+      "label": "Accident de trajet",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.commuting_accident",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-37",
+      "label": "Accident du travail",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.work_accident",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-38",
+      "label": "Arrêt maladie",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Gusto possède un seul motif « Maladie ». L’arrêt ordinaire Skello maintient le repas, alors que l’arrêt prolongé ne le maintient pas."
+    },
+    {
+      "id": "absence-39",
+      "label": "Arrêt maladie prolongé",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Gusto possède un seul motif « Maladie ». L’arrêt prolongé Skello n’ouvre aucun repas, alors que l’arrêt ordinaire maintient le repas."
+    },
+    {
+      "id": "absence-40",
+      "label": "Congé adoption",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.adoption_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-41",
+      "label": "Congé de présence parentale",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Gusto ne distingue pas la présence parentale. Le congé parental Gusto correspond au motif Skello non indemnisé, avec un autre payeur."
+    },
+    {
+      "id": "absence-42",
+      "label": "Congé hospitalisation enfant",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Gusto ne distingue pas l’hospitalisation de l’enfant. « Enfant malade » correspond à un congé Skello non indemnisé, alors que celui-ci est indemnisé par un tiers."
+    },
+    {
+      "id": "absence-43",
+      "label": "Congé maternité",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.maternity_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-44",
+      "label": "Congé paternité",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": "absenceRules.categories.paternity_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-45",
+      "label": "Congé proche aidant",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto de congé de proche aidant. Les catégories parentales existantes décrivent d’autres motifs."
+    },
+    {
+      "id": "absence-46",
+      "label": "Congé supplémentaire de naissance",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto dédié au congé supplémentaire de naissance. Le congé de naissance Skello est payé par l’employeur, celui-ci par un tiers."
+    },
+    {
+      "id": "absence-47",
+      "label": "Invalidité permanente",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif d’invalidité permanente dans Gusto. Les catégories maladie et accident décrivent des motifs distincts."
+    },
+    {
+      "id": "absence-48",
+      "label": "Maladie professionnelle",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto de maladie professionnelle. « Accident du travail » est déjà mappé à un autre motif, et « Maladie » ne distingue pas l’origine professionnelle."
+    },
+    {
+      "id": "absence-49",
+      "label": "Temps partiel thérapeutique",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Tiers · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures normales",
+      "gusto": null,
+      "note": "Aucun motif Gusto de temps partiel thérapeutique. Il se distingue de l’arrêt maladie par son objet et par l’absence de repas et d’acquisition de congés."
+    },
+    {
+      "id": "absence-50",
+      "label": "Absence autorisée",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": "absenceRules.categories.authorized_absence",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-51",
+      "label": "Absence entrée sortie",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": null,
+      "note": "Aucun motif Gusto pour l’absence entrée sortie. Le classer comme absence autorisée ou sans solde modifierait sa qualification."
+    },
+    {
+      "id": "absence-52",
+      "label": "Absence injustifiée",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": "absenceRules.categories.unauthorized_absence",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-53",
+      "label": "Congé décès d’un grand-parent",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": null,
+      "note": "« Événement familial » est trop large. Ce deuil est non indemnisé et sans repas, alors que d’autres congés de décès sont payés par l’employeur avec repas."
+    },
+    {
+      "id": "absence-54",
+      "label": "Congé parental",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": "absenceRules.categories.parental_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-55",
+      "label": "Congé pour enfant malade",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": "absenceRules.categories.child_sick_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-56",
+      "label": "Congé pour garde d’enfant",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": null,
+      "note": "Aucun motif distinct de garde d’enfant dans Gusto. « Enfant malade » désigne un autre motif, même si les paramètres visibles sont identiques."
+    },
+    {
+      "id": "absence-57",
+      "label": "Congé sans solde",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": "absenceRules.categories.unpaid_leave",
+      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+    },
+    {
+      "id": "absence-58",
+      "label": "Départ anticipé",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": null,
+      "note": "Aucun type d’absence Gusto pour le seul départ anticipé. La correction d’une heure de départ dans la pointeuse relève d’un autre parcours."
+    },
+    {
+      "id": "absence-59",
+      "label": "Grève",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": null,
+      "note": "Aucun motif de grève dans Gusto. Le remplacer par « Absence injustifiée » perdrait la qualification du motif."
+    },
+    {
+      "id": "absence-60",
+      "label": "Mise à pied conservatoire",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures —",
+      "gusto": null,
+      "note": "Aucun motif disciplinaire distinct dans Gusto. La mise à pied conservatoire et la mise à pied disciplinaire sont deux lignes Skello."
+    },
+    {
+      "id": "absence-61",
+      "label": "Mise à pied disciplinaire",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures —",
+      "gusto": null,
+      "note": "Aucun motif disciplinaire distinct dans Gusto. Le motif de mise à pied disciplinaire perdrait sa distinction d’avec la mise à pied conservatoire."
+    },
+    {
+      "id": "absence-62",
+      "label": "Récupération",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP oui · Indemnité repas non · Demande salarié oui · Heures —",
+      "gusto": null,
+      "note": "Le mouvement de récupération Gusto concerne le compteur d’heures. Il ne représente pas cette absence Skello non indemnisée avec acquisition CP."
+    },
+    {
+      "id": "absence-63",
+      "label": "Suspension de contrat",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Non indemnisé · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures —",
+      "gusto": null,
+      "note": "Aucun motif de suspension de contrat. Les catégories d’absence sans solde existantes identifient d’autres motifs."
+    },
+    {
+      "id": "absence-64",
+      "label": "Astreinte",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Neutre · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": null,
+      "note": "Aucun type Gusto d’astreinte dans les absences et aucun payeur « Neutre » dans la règle d’import."
+    },
+    {
+      "id": "absence-65",
+      "label": "Pause",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Neutre · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié — · Heures —",
+      "gusto": null,
+      "note": "Gusto suit les pauses via le planning et la pointeuse. Il ne possède pas de motif d’absence « Pause » ni de payeur neutre."
+    },
+    {
+      "id": "absence-66",
+      "label": "Repos hebdomadaire",
+      "status": "confirmed",
+      "origin": {
+        "system": "skello",
+        "path": "Paramètres → Absences",
+        "consultedOn": "2026-11-24"
+      },
+      "value": "Neutre · Actif oui · Acquisition CP non · Indemnité repas non · Demande salarié non · Heures —",
+      "gusto": null,
+      "note": "« Repos hebdomadaire » existe dans le planning. Le formulaire Gusto de paie exclut ce motif et le format ne prévoit pas de payeur neutre."
     }
   ],
   "questions": [
-    "Confirmer les bandes d’heures supplémentaires et complémentaires, le traitement des absences assimilées, la source des heures et la mensualisation.",
-    "Confirmer la fenêtre de nuit, la base du dimanche autour de minuit, les règles des fériés et du premier mai, et les éventuels cumuls.",
-    "Faire valider les contrats particuliers et vérifier si un compteur Gusto ou une annualisation doit être mis en service.",
-    "Confirmer le cycle de congés payés, les exclusions, les catégories assimilées, les payeurs et la date de reprise.",
-    "Confirmer le montant unitaire du repas, les règles de prise et de maintien sur absence.",
-    "Désigner le responsable qui régularise les badges incomplets et confirme les corrections motivées."
+    "Majorations : obtenir la grille effective et les accords éventuels auprès de l’administrateur Skello ou de son référent. Vérifier seuils, source, pauses, coupure, fenêtres, assiettes et cumuls, le dimanche autour de minuit, les fériés, le 1er mai et la journée de solidarité.",
+    "Congés : établir les jours décomptés, le traitement des fériés et des reliquats après l’échéance N−1. Rapprocher les assimilations du catalogue Skello et les règles maladie Gusto, puis fixer le mois de reprise et obtenir les soldes individuels à la bascule.",
+    "Repas : le montant unitaire n’est pas exposé. Les règles de repas pris reposent sur deux créneaux distincts et ne doivent pas modifier les droits de repas dus.",
+    "Absences : chaque observation précise les écarts de reprise. L’activation par motif, les demandes et les assimilations complètes restent hors de la règle Gusto de payeur et de repas."
   ]
 }

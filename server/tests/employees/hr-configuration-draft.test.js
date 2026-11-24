@@ -189,12 +189,13 @@ test("owners and admins share resumable drafts, dated import, history and applic
   const detail = (await excel(day)).find((sheet) => sheet.name === "Détails");
   assert.equal(Math.round(detail.rows[1][detail.rows[0].indexOf("Heures Travaillées (h)")] * 60), 463);
 
-  async function importSkello(target, effect, configuration = example) {
+  const clockOnly = { ...example, rules: { clockRules: example.rules.clockRules } };
+  async function importSkello(target, effect, configuration = clockOnly) {
     const path = adminBase(target);
     const plan = await json(`${path}/preview`, "POST", { configuration, effect }, adminToken);
     return json(`${path}/apply`, "POST", { configuration, effect, token: plan.token, confirmed: true }, adminToken);
   }
-  const caseSkello = structuredClone(example);
+  const caseSkello = structuredClone(clockOnly);
   caseSkello.rules.clockRules.values.earlyIn = "clocked";
   const later = opening.plus({ days: 7 }).toISODate();
   assert.equal((await importSkello(first, later, caseSkello)).batch.kinds[0], "clockRules");
