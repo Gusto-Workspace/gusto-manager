@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import axios from "axios";
 import { Settings2, X } from "lucide-react";
 import { getAdminAuthConfig } from "../admin/_shared/utils/admin-auth.utils";
-import { Comparison, compatibleDate } from "../admin/restaurants/hr-configuration.admin.component";
+import { Comparison, compatibleDate, RuleValues } from "../admin/restaurants/hr-configuration.admin.component";
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 import useDialogBackdrop from "../_shared/use-dialog-backdrop";
 import { hrRuleHelp } from "./hr-rule-help.mjs";
-import { hrSteps, questionsFor } from "./hr-questionnaire.mjs";
+import { hrSteps, prefillFamily, questionsFor } from "./hr-questionnaire.mjs";
 import planning from "../../../../public/locales/fr/planning.json";
 
 const field = "min-h-10 w-full min-w-0 rounded-lg border border-darkBlue/20 bg-white px-3 py-1.5 text-sm";
@@ -22,6 +22,7 @@ const days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dima
 const emptyCriterion = { start: null, end: null, minimum: null, maximum: null };
 const confirmedAnswer = (value) => ({ status: "confirmed", value });
 const pendingAnswer = { status: "to_confirm" };
+const emptyFamily = { mode: null, answers: {} };
 const questionnaireCopy = {
   admin: {
     title: "Configurer les paramètres RH du restaurant",
@@ -180,6 +181,18 @@ function FamilyStep({ step, family, onMode, onAnswer, active, admin, copy }) {
   </section>;
 }
 
+function RecordedRules({ active, scheduled }) {
+  const versions = [
+    ...(active ? [{ ...active, label: active.date === "-" ? "En vigueur" : `En vigueur depuis le ${active.date}` }] : []),
+    ...scheduled.map((version) => ({ ...version, label: `Programmé le ${version.date}` })),
+  ];
+  return versions.map(({ date, label, values }, index) => <details open={index === 0} key={date}
+    className="grid gap-2 rounded-lg border border-darkBlue/10 p-3">
+    <summary className="cursor-pointer text-sm font-semibold">{label}</summary>
+    <div className="mt-2"><RuleValues values={values} /></div>
+  </details>);
+}
+
 export default function HrQuestionnaire({ restaurantId, admin = false, disabled, className, onApplied }) {
   const copy = admin ? questionnaireCopy.admin : questionnaireCopy.owner;
   const dialog = useRef(null);
@@ -199,6 +212,7 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
   const [result, setResult] = useState("");
   const [history, setHistory] = useState([]);
   const [restore, setRestore] = useState(null);
+  const [editableKinds, setEditableKinds] = useState([]);
   const base = `${process.env.NEXT_PUBLIC_API_URL}${admin ? "/admin" : ""}/restaurants/${restaurantId}/hr-configuration`;
   const auth = admin ? getAdminAuthConfig : getAuthConfig;
   const failureMessage = (failure) => failure.response?.data?.message || "Impossible de terminer l’opération. Réessayez.";
@@ -207,12 +221,15 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
     const { data } = await axios.get(`${base}/draft`, auth({ signal }));
     if (signal?.aborted) return;
     revision.current = data.revision;
-    working.current = { step: data.step, families: data.families, effects: data.effects };
+    const firstMissing = hrSteps.findIndex(([kind]) => data.missingKinds?.includes(kind));
+    const step = data.revision ? data.step : firstMissing < 0 ? hrSteps.length : firstMissing;
+    working.current = { step, families: data.families, effects: data.effects };
     queue.current = Promise.resolve(true);
     setOverview(data);
     setDraft(working.current);
     setConflict(false);
     setError("");
+    setEditableKinds([]);
   }, [base, auth]);
 
   useEffect(() => {
@@ -280,9 +297,23 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
   const backdrop = useDialogBackdrop(close);
   const step = draft?.step || 0;
   const kind = hrSteps[step]?.[0];
-  const family = draft?.families[kind] || { mode: null, answers: {} };
+  const family = draft?.families[kind] || emptyFamily;
+  const hasRule = (key) => Boolean(overview?.active[key] || overview?.planned[key]);
+  const editing = editableKinds.includes(kind);
   const edit = (next) => update({ ...working.current, families: { ...working.current.families, [kind]: next } });
   const go = (stepIndex) => update({ ...working.current, step: stepIndex });
+
+  function startEditing() {
+    const seeded = prefillFamily(kind, working.current.families[kind], overview.prefill?.[kind]);
+    setEditableKinds((current) => [...current, kind]);
+    edit(seeded || emptyFamily);
+  }
+
+  function keepRecorded() {
+    setEditableKinds((current) => current.filter((key) => key !== kind));
+    setPreview(null);
+    setConfirmed(false);
+  }
 
   function answer(key, value) {
     const answers = { ...(working.current.families[kind]?.answers || {}) };
@@ -294,14 +325,15 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
 
   async function previewAnswers(effects) {
     if (!await queue.current) return;
-    const { data } = await axios.post(`${base}/draft/preview`, { revision: revision.current, effects }, auth());
+    const { data } = await axios.post(`${base}/draft/preview`, { revision: revision.current, effects, editableKinds }, auth());
     setPreview(data);
     setConfirmed(false);
   }
 
   function compare() {
     const effective = Object.fromEntries(hrSteps.map(([key]) => {
-      const saved = working.current.effects[key];
+      const plannedDate = overview.planned[key]?.date;
+      const saved = working.current.effects[key] || plannedDate;
       return [key, saved && saved >= overview.minimumDate ? saved : compatibleDate(key, overview.minimumDate)];
     }));
     return perform(() => previewAnswers(effective));
@@ -317,7 +349,7 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
   function apply() {
     return perform(async () => {
       const { data } = await axios.post(`${base}/draft/apply`, {
-        revision: revision.current, token: preview.token, effects: preview.effects, confirmed,
+        revision: revision.current, token: preview.token, effects: preview.effects, confirmed, editableKinds,
       }, auth());
       setResult(`Paramètres programmés pour ${data.batch.kinds.length} famille(s). Consultez leurs dates dans l’historique.`);
       setPreview(null);
@@ -340,14 +372,21 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
     });
   }
 
-  const canCompare = Object.values(overview?.statuses || {}).some(({ status }) => ["confirmed", "not_applicable"].includes(status));
+  const canCompare = Object.entries(overview?.statuses || {}).some(([key, { status }]) =>
+    (!hasRule(key) || editableKinds.includes(key)) && ["confirmed", "not_applicable"].includes(status));
+  const missingTitles = hrSteps.filter(([key]) => overview?.missingKinds?.includes(key)).map(([, title]) => title);
+  const scheduledCount = Object.keys(overview?.planned || {}).length;
   const trigger = <button ref={opener} type="button" className={className || button} disabled={disabled} onClick={open}>
     {admin && <Settings2 size={16} className="shrink-0" aria-hidden="true" />} {admin ? "Configurer avec Gusto" : "Configurer mon restaurant"}
   </button>;
 
   return <>
     {admin ? trigger : <aside aria-label="Configuration RH" className="flex flex-wrap items-center gap-2">
-      {overview?.needsSetup && <span className="text-sm text-darkBlue/75">Votre configuration RH n’est pas encore terminée.</span>}{trigger}
+      {missingTitles.length > 0 && <span className="text-sm text-darkBlue/75">À compléter · {missingTitles.join(", ")}</span>}
+      {scheduledCount > 0 && <span className="text-sm text-darkBlue/75">
+        {scheduledCount === 1 ? "1 famille programmée" : `${scheduledCount} familles programmées`}
+      </span>}
+      {trigger}
     </aside>}
     {typeof document !== "undefined" && createPortal(<dialog ref={dialog} aria-labelledby={titleId} {...backdrop}
       className="m-auto max-h-[88dvh] w-[calc(100%-1.25rem)] max-w-3xl rounded-2xl bg-white p-0 text-darkBlue shadow-xl backdrop:bg-darkBlue/40">
@@ -374,14 +413,26 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
         {draft && <>
           <nav aria-label="Étapes de configuration RH" className="flex flex-wrap gap-1.5">
             {hrSteps.map(([key, title], index) => <button key={key} type="button" className={button} disabled={busy}
-              aria-current={step === index ? "step" : undefined} onClick={() => go(index)}>{title}</button>)}
+              aria-current={step === index ? "step" : undefined} onClick={() => go(index)}>
+              {title} · {overview.planned[key] ? "Programmé" : overview.active[key] ? "En vigueur" : "À compléter"}
+            </button>)}
             <button type="button" className={button} disabled={busy} aria-current={step === hrSteps.length ? "step" : undefined}
               onClick={() => go(hrSteps.length)}>Récapitulatif</button>
           </nav>
           {step < hrSteps.length ? <>
-            <p className="text-sm text-darkBlue/75">{copy.intro}</p>
-            <FamilyStep step={step} family={family} active={overview?.active[kind]} admin={admin} copy={copy}
-              onMode={(mode) => edit({ mode, answers: family.answers })} onAnswer={answer} />
+            {hasRule(kind) && <section className="grid gap-2" aria-label="Réglages enregistrés">
+              {!editing && <h3 className="text-lg font-semibold">{hrSteps[step][1]}</h3>}
+              <RecordedRules active={overview.active[kind]} scheduled={overview.scheduled?.[kind] || [overview.planned[kind]].filter(Boolean)} />
+              {editing ? <button type="button" className={button} disabled={busy} onClick={keepRecorded}>Conserver le réglage enregistré</button>
+                : <button type="button" className={button} disabled={busy || pending > 0 || conflict} onClick={startEditing}>
+                  {draft.families[kind] ? "Reprendre le brouillon de modification" : "Modifier ce réglage"}
+                </button>}
+            </section>}
+            {(!hasRule(kind) || editing) && <>
+              <p className="text-sm text-darkBlue/75">{copy.intro}</p>
+              <FamilyStep step={step} family={family} active={overview.active[kind] || overview.planned[kind]} admin={admin} copy={copy}
+                onMode={(mode) => edit({ mode, answers: family.answers })} onAnswer={answer} />
+            </>}
           </> : <section className="grid gap-2" aria-label={copy.summary}>
             <h3 className="text-lg font-semibold">{copy.summary}</h3>
             <p className="text-sm text-darkBlue/75">{copy.schedule}</p>
@@ -390,15 +441,20 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
               return <button key={key} type="button" onClick={() => go(index)} disabled={busy}
                 className="grid gap-1 rounded-lg border border-darkBlue/10 p-3 text-left hover:bg-darkBlue/5 mobile:grid-cols-2">
                 <strong>{title}</strong>
-                <span className="text-sm">{labels[status.status]}
-                  {status.status === "to_confirm" && (status.invalid ? " · Vérifier les valeurs" : ` · ${status.missing} réponse(s) à confirmer`)}
-                  {overview.active[key] && " · Réglage en vigueur"}
-                  {overview.planned[key] && ` · Prévu le ${overview.planned[key].date}`}
+                <span className="text-sm">
+                  {overview.active[key] && "En vigueur"}
+                  {overview.active[key] && overview.planned[key] && " · "}
+                  {overview.planned[key] && `Programmé le ${overview.planned[key].date}`}
+                  {!hasRule(key) && "À compléter"}
+                  {(!hasRule(key) || editableKinds.includes(key)) && status.status !== "unconfigured" &&
+                    ` · Brouillon : ${labels[status.status]}`}
+                  {(!hasRule(key) || editableKinds.includes(key)) && status.status === "to_confirm" &&
+                    (status.invalid ? " · Vérifier les valeurs" : ` · ${status.missing} réponse(s) à confirmer`)}
                 </span>
               </button>;
             })}
             <button type="button" className={primary} disabled={busy || pending > 0 || conflict || !canCompare} onClick={compare}>
-              Vérifier et appliquer les paramètres confirmés
+              Vérifier les modifications
             </button>
           </section>}
           {preview && <Comparison preview={preview} minimum={overview.minimumDate} busy={busy} onDate={changeDate} />}

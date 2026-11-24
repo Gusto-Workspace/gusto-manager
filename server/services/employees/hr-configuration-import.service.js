@@ -94,14 +94,15 @@ async function exportBackup({ restaurantId, batchId }) {
 
 const dateHints = { rules: "Choisissez le premier du mois.", leaveRules: "Choisissez le premier du mois.",
   overtime: "Choisissez un lundi.", hoursRules: "Choisissez un lundi." };
-function compareRules(configuration, effects, records) {
+function compareRules(configuration, effects, records, questionnaireEdits) {
   return Object.entries(configuration.rules).map(([kind, rule]) => {
     const effect = effects[kind];
     const date = storageDate(kind, effect);
     const current = currentAt(records, kind, date ?? (kind === "rules" ? effect.slice(0, 7) : effect));
     const exact = date !== null && current?.date === date ? current : null;
-    const later = date && date !== "-" && records.findLast((item) => item.kind === kind && item.date > date);
+    const later = records.findLast((item) => item.kind === kind && item.date > (date ?? effect));
     const previous = describeValues(kind, current);
+    const preserved = Boolean(questionnaireEdits && !questionnaireEdits.includes(kind) && (current || later));
     const financialReview = kind === "rules" && rule.values?.amount != null && !rule.review;
     const hasExistingMealAmount = kind === "rules" && rule.preserveUnspecified && rule.values?.amount === null && previous?.amount != null;
     const conflictingMealMode = hasExistingMealAmount && previous.mode !== rule.values.mode;
@@ -126,7 +127,11 @@ function compareRules(configuration, effects, records) {
     const changesCounterOpening = changingCounter && previous?.start && previous.start !== rule.values.start;
     const reopensCounter = changingCounter && !previous?.start && records.some((item) =>
       item.kind === kind && item.date < date && item.values?.start);
-    if (rule.status !== "confirmed") {
+    if (preserved) {
+      action = "unchanged";
+      reason = "Le réglage enregistré est conservé. Ouvrez cette famille pour choisir de le modifier.";
+      rule = { ...rule, status: "confirmed", values: previous ?? describeValues(kind, later), note: null };
+    } else if (rule.status !== "confirmed") {
       action = "skipped";
       reason = rule.status === "to_confirm" ? "Confirmation métier requise avant activation." : "Valeur indisponible.";
     } else if (current && !previous) {
@@ -150,16 +155,19 @@ function compareRules(configuration, effects, records) {
     } else if (date === null) {
       action = "blocked";
       reason = dateHints[kind];
+    } else if (questionnaireEdits && exact) {
+      reason = [`La version enregistrée à cette date (${effect}) sera remplacée après confirmation.`, reason].filter(Boolean).join(" ");
     }
     return { kind, date, effect, previousDate: current?.date ?? null, previous, rule, action, reason, financialReview,
+      ...(preserved && { preserved }),
       snapshot: { current, later }, exact };
   });
 }
 
-function makePlan({ restaurant, configuration, effects, records }) {
-  const comparison = compareRules(configuration, effects, records);
+function makePlan({ restaurant, configuration, effects, records, questionnaireEdits }) {
+  const comparison = compareRules(configuration, effects, records, questionnaireEdits);
   const stamp = digest({ target: target(restaurant), revision: restaurant.hrConfigurationRevision ?? 0,
-    configuration, effects, state: comparison.map(({ snapshot, action }) => ({ snapshot, action })) });
+    configuration, effects, questionnaireEdits, state: comparison.map(({ snapshot, action }) => ({ snapshot, action })) });
   return { stamp, comparison };
 }
 
@@ -175,10 +183,10 @@ function inputFile(input, effect, dates) {
   return { configuration, effects };
 }
 
-async function previewImport({ restaurantId, actor, ownerId, configuration: input, effect, effects: dates }) {
+async function previewImport({ restaurantId, actor, ownerId, configuration: input, effect, effects: dates, questionnaireEdits }) {
   const { configuration, effects } = inputFile(input, effect, dates);
   const restaurant = await destination(restaurantId, undefined, ownerId);
-  const { stamp, comparison } = makePlan({ restaurant, configuration, effects, records: await settings(restaurant) });
+  const { stamp, comparison } = makePlan({ restaurant, configuration, effects, records: await settings(restaurant), questionnaireEdits });
   const token = comparison.some(({ action }) => action === "apply")
     ? jwt.sign({ restaurantId, actor, stamp }, secret(), { audience, expiresIn: "20m", algorithm: "HS256" }) : null;
   return { target: target(restaurant), effect, effects, token, metadata: configuration.metadata,
@@ -221,14 +229,14 @@ async function transaction(work) {
   }
 }
 
-async function applyImport({ restaurantId, actor, ownerId, beforeApply, configuration: input, effect, effects: dates, token, confirmed }) {
+async function applyImport({ restaurantId, actor, ownerId, beforeApply, configuration: input, effect, effects: dates, token, confirmed, questionnaireEdits }) {
   if (confirmed !== true) throw new HrConfigurationError("Confirmez explicitement l’import de cette configuration RH.");
   const { configuration, effects } = inputFile(input, effect, dates);
   const claims = checkedToken(token, restaurantId, actor);
   return transaction(async (session) => {
     inputFile(configuration, effect, effects);
     const restaurant = await destination(restaurantId, session, ownerId);
-    const { stamp, comparison } = makePlan({ restaurant, configuration, effects, records: await settings(restaurant, session) });
+    const { stamp, comparison } = makePlan({ restaurant, configuration, effects, records: await settings(restaurant, session), questionnaireEdits });
     if (stamp !== claims.stamp) throw stale();
     const pending = comparison.filter(({ action }) => action === "apply");
     if (!pending.length) throw stale();
@@ -280,4 +288,4 @@ async function restoreImport({ restaurantId, batchId, actor, ownerId, confirmed 
   });
 }
 
-module.exports = { listImports, exportConfiguration, exportBackup, previewImport, reviewRule, applyImport, restoreImport, destination, futureDate };
+module.exports = { listImports, exportConfiguration, exportBackup, previewImport, reviewRule, applyImport, restoreImport, destination, futureDate, settings };

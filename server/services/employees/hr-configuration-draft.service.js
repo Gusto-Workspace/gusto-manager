@@ -1,10 +1,9 @@
 const { isDeepStrictEqual } = require("node:util");
 const Draft = require("../../models/hr-configuration-draft.model");
-const Input = require("../../models/personnel-report-input.model");
 const { isValidDateKey, toLocalDateKey } = require("./time-clock.service");
 const { validAbsences } = require("./personnel-report-counters.service");
 const { FORMAT, VERSION, kinds, definitions, disabledRules, portableValues, HrConfigurationError } = require("./hr-configuration-format.service");
-const { destination, futureDate, previewImport, applyImport } = require("./hr-configuration-import.service");
+const { destination, futureDate, previewImport, applyImport, settings } = require("./hr-configuration-import.service");
 
 const originPath = "Assistant de configuration RH Gusto";
 const isRecord = (value) => value && Object.getPrototypeOf(value) === Object.prototype;
@@ -84,6 +83,7 @@ function questionnaireRule(kind, family) {
       if (answers.basis === "criteria") required.push("criteria");
     }
     values = Object.fromEntries(required.filter((key) => Object.hasOwn(answers, key)).map((key) => [key, answers[key]]));
+    if (Object.hasOwn(answers, "amount")) values.amount = answers.amount;
   }
   if (kind === "absenceRules") {
     required = ["categories", "reviewCategories"];
@@ -100,27 +100,40 @@ function assessment(draft) {
   return Object.fromEntries(kinds.map((kind) => [kind, questionnaireRule(kind, draft?.families[kind])]));
 }
 
+function answersFromRule(kind, values) {
+  if (isDeepStrictEqual(values, disabledRules[kind])) return { mode: "off", answers: {} };
+  const answers = Object.fromEntries(Object.entries(values).filter(([key, value]) => key !== "enabled" && validAnswer(key, value))
+    .map(([key, value]) => [key, { status: "confirmed", value }]));
+  if (kind === "absenceRules") answers.reviewCategories = { status: "confirmed", value: true };
+  return { mode: "on", answers };
+}
+
 async function draftOverview({ restaurantId, ownerId }) {
   const restaurant = await destination(restaurantId, undefined, ownerId);
   const [draft, records] = await Promise.all([
     Draft.findById(restaurant._id).lean(),
-    Input.find({ restaurant: restaurant._id, employee: null, profile: null, kind: { $in: kinds } })
-      .select("kind date values").sort({ date: -1 }).lean(),
+    settings(restaurant),
   ]);
   const active = {};
-  const planned = {};
+  const scheduled = {};
   const today = toLocalDateKey(new Date());
   for (const record of records) {
-    if (!portableValues(record.kind, record.values)) continue;
-    const cutoff = record.kind === "rules" ? today.slice(0, 7) : today;
-    const result = record.date <= cutoff ? active : planned;
-    if (!Object.hasOwn(result, record.kind)) result[record.kind] = { date: record.date, ...(record.kind === "hoursRules" &&
-      { start: record.values.start }) };
+    const { kind } = record;
+    const values = portableValues(kind, record.values);
+    if (!values) continue;
+    const date = kind === "rules" && record.date !== "-" ? `${record.date}-01` : record.date;
+    const version = { date, values, ...(kind === "hoursRules" && { start: values.start }) };
+    if (date <= today) active[kind] ??= version;
+    else (scheduled[kind] ??= []).unshift(version);
   }
+  const planned = Object.fromEntries(Object.entries(scheduled).map(([kind, versions]) => [kind, versions[0]]));
+  const prefill = Object.fromEntries(kinds.filter((kind) => planned[kind] || active[kind])
+    .map((kind) => [kind, answersFromRule(kind, (planned[kind] || active[kind]).values)]));
+  const missingKinds = kinds.filter((kind) => !active[kind] && !planned[kind]);
   return { target: { id: String(restaurant._id), name: restaurant.name }, minimumDate: futureDate(),
     revision: draft?.revision || 0, step: draft?.step || 0, families: draft?.families || {}, effects: draft?.effects || {},
     statuses: Object.fromEntries(Object.entries(assessment(draft)).map(([kind, { status, missing, invalid }]) => [kind, { status, missing, invalid }])),
-    active, planned, needsSetup: kinds.some((kind) => !active[kind] && !planned[kind]) };
+    active, planned, scheduled, prefill, missingKinds, needsSetup: missingKinds.length > 0 };
 }
 
 const staleDraft = () => new HrConfigurationError("Ce brouillon a changé dans une autre session. Rechargez-le avant de poursuivre.", 409);
@@ -130,8 +143,11 @@ async function saveDraft({ restaurantId, ownerId, draft }) {
   validateDraft(draft);
   const restaurant = await destination(restaurantId, undefined, ownerId);
   const previous = await Draft.findById(restaurant._id).select("intents").lean();
-  const intents = Object.fromEntries(Object.entries(draft.families).filter(([, item]) => item.mode === "on")
-    .map(([kind]) => [kind, previous?.intents?.[kind] || futureDate()]));
+  const enabled = Object.keys(draft.families).filter((kind) => draft.families[kind].mode === "on");
+  const configured = enabled.some((kind) => !previous?.intents?.[kind]) ? await settings(restaurant) : [];
+  const intents = Object.fromEntries(enabled.filter((kind) =>
+    previous?.intents?.[kind] || !configured.some((record) => record.kind === kind))
+    .map((kind) => [kind, previous?.intents?.[kind] || futureDate()]));
   try {
     const changed = await Draft.updateOne({ _id: restaurant._id, revision: draft.revision },
       { $set: { step: draft.step, families: draft.families, intents, effects: draft.effects || {} }, $inc: { revision: 1 } },
@@ -145,6 +161,11 @@ async function saveDraft({ restaurantId, ownerId, draft }) {
 }
 
 async function manualPlan(args) {
+  const { editableKinds = [] } = args;
+  if (!Array.isArray(editableKinds) || editableKinds.some((kind) => !kinds.includes(kind))) {
+    throw new HrConfigurationError("Familles de règles à modifier invalides.");
+  }
+  const questionnaireEdits = kinds.filter((kind) => editableKinds.includes(kind));
   const restaurant = await destination(args.restaurantId, undefined, args.ownerId);
   const draft = await Draft.findById(restaurant._id).lean();
   if (!draft || draft.revision !== args.revision) throw staleDraft();
@@ -157,7 +178,7 @@ async function manualPlan(args) {
         : confirmed ? "Choix confirmés dans le questionnaire." : "Réponses à compléter. Les réglages en vigueur seront conservés.",
       ...(confirmed && { review: { on: date, reason: "Choix explicites du restaurant dans le questionnaire." } }) }];
   }));
-  return { ...args, configuration: { format: FORMAT, version: VERSION, metadata: { source: "gusto", establishment: restaurant.name, collectedOn: date },
+  return { ...args, questionnaireEdits, configuration: { format: FORMAT, version: VERSION, metadata: { source: "gusto", establishment: restaurant.name, collectedOn: date },
     rules, observations: [], questions: [] } };
 }
 
