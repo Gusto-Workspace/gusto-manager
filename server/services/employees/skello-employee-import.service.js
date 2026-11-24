@@ -163,6 +163,22 @@ async function reviewHistory(people, roster, choices, rows, restaurant, preview,
 const rosterSignature = (roster) => planHash(roster.map(({ shifts: _shifts, leaveRequests: _leaveRequests, ...member }) => member));
 const canApplyHistory = (choices, history) => history.every((plan, index) => !plan?.conflicts.length || choices[index].keepExisting);
 
+function summarize(choices, history) {
+  const counts = { created: 0, linked: 0, skipped: 0 };
+  const historyCounts = {};
+  const individual = { imported: 0, preserved: 0, ignored: 0 };
+  for (const [index, { destination }] of choices.entries()) {
+    counts[destination === "create" ? "created" : destination === "skip" ? "skipped" : "linked"]++;
+    const plan = history[index];
+    if (!plan) continue;
+    for (const [key, value] of Object.entries(plan.counts)) historyCounts[key] = (historyCounts[key] || 0) + value;
+    for (const { field, status } of plan.individual) {
+      if (field !== "identity") individual[status]++;
+    }
+  }
+  return { counts, history: historyCounts, individual };
+}
+
 function claimsFor(restaurant, actor, fingerprint, scope, choices) {
   return { target: String(restaurant._id), database: mongoose.connection.name, actor, fingerprint, scope, choices: planHash(choices) };
 }
@@ -189,15 +205,18 @@ async function previewSkelloEmployees({ restaurantId, actor, buffer, scope, choi
       rows[index].individual = plan.individual;
     }
   }
-  const token = choices?.some(({ destination }) => destination !== "skip") && !existing && !rows.some(({ error }) => error) && canApplyHistory(choices, history)
+  const state = existing ? "alreadyImported" : !choices ? "choose" : rows.some(({ error }) => error) ? "blocked"
+    : choices.every(({ destination }) => destination === "skip") ? "empty" : "ready";
+  const token = state === "ready"
     ? jwt.sign({ ...claimsFor(restaurant, actor, fingerprint, scope, choices), roster: rosterSignature(roster), history: planHash(history) }, signingKey(),
       { expiresIn: "15m", audience, algorithm: "HS256" })
     : null;
   return { period: preview.period, monthly: preview.monthly, rows, token, issues: preview.issues,
-    unsupported: preview.unsupported, alreadyImported: Boolean(existing) };
+    unsupported: preview.unsupported, alreadyImported: Boolean(existing), state, batch: batchView(existing),
+    ...(token && { summary: summarize(choices, history), requiresProtectionConfirmation: !canApplyHistory(choices, history) }) };
 }
 
-async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choices: supplied, token, confirmed }) {
+async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choices: supplied, token, confirmed, acceptProtected }) {
   if (confirmed !== "true") throw new SkelloImportError("Confirmez le rapprochement et l’établissement.", 400);
   const restaurant = await readTarget(restaurantId);
   const { people, preview, fingerprint } = readWorkbook(buffer, scope);
@@ -224,19 +243,18 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
       if (claims.roster !== rosterSignature(roster) || rows.some(({ error }) => error)) throw new SkelloImportError(recheck, 409);
       await lockClockEmployees(targetId, choices.map(({ destination }) => destination).filter(mongoose.isObjectIdOrHexString), session);
       const history = await reviewHistory(people, roster, choices, rows, targetId, preview, session);
-      if (claims.history !== planHash(history) || !canApplyHistory(choices, history)) throw new SkelloImportError(recheck, 409);
+      if (claims.history !== planHash(history)) throw new SkelloImportError(recheck, 409);
+      if (acceptProtected !== "true" && !canApplyHistory(choices, history)) {
+        throw new SkelloImportError("Confirmez que les données Gusto seront conservées et que les éléments signalés seront écartés.", 400);
+      }
 
-      const counts = { created: 0, linked: 0, skipped: 0 };
-      const historyCounts = {};
+      const summary = summarize(choices, history);
       const created = [];
       const links = [];
       const operations = [];
       for (const [index, row] of rows.entries()) {
         const { destination } = choices[index];
-        if (destination === "skip") {
-          counts.skipped++;
-          continue;
-        }
+        if (destination === "skip") continue;
         const code = normalizeSkelloIdentity(row.payrollCode);
         const sourceName = hash(nameKey(row));
         const plan = history[index];
@@ -266,7 +284,6 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
             });
             created.push(employee._id);
           }
-          counts.created++;
         } else {
           profileId = roster.find(({ id }) => id === destination).profile;
           const updated = await Employee.updateOne({
@@ -278,9 +295,7 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
               ...Object.fromEntries(Object.entries(profileFields).map(([path, value]) => [`${profilePath}${path}`, value])) },
           }, { session, arrayFilters: [{ "profile._id": profileId }] });
           if (!updated.matchedCount) throw new SkelloImportError(recheck, 409);
-          counts.linked++;
         }
-        for (const [key, count] of Object.entries(plan.counts)) historyCounts[key] = (historyCounts[key] || 0) + count;
         const inputs = [];
         for (const { kind, date, suffix, values, revision, skelloEffectiveDates } of plan.writes) {
           const _id = dayId(targetId, profileId, kind, suffix);
@@ -301,7 +316,7 @@ async function applySkelloEmployees({ restaurantId, actor, buffer, scope, choice
       }
       const [batch] = await SkelloImport.create([{
         restaurant: targetId, fingerprint, mode, scope, ...preview.period, status: "complete", actor,
-        summary: { counts, history: historyCounts, issues: preview.issues, unsupported: preview.unsupported,
+        summary: { ...summary, issues: preview.issues, unsupported: preview.unsupported,
           historyConflicts: [...new Set(history.flatMap((plan) => plan?.conflicts.map(({ message }) => message) || []))] }, manifest: { links },
       }], { session });
       return { alreadyImported: false, batch: batchView(batch) };

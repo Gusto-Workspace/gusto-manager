@@ -16,7 +16,7 @@ const router = express.Router();
 const path = "/admin/restaurants/:id/skello-imports";
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 4, fieldSize: 32768 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, fieldSize: 32768 },
   fileFilter(_request, file, done) {
     done(/\.xlsx$/i.test(file.originalname || "") ? null : new Error("format"), true);
   },
@@ -72,6 +72,7 @@ function handler(action) {
         batchId: req.params.batchId,
         choices: req.body?.choices,
         confirmed: req.body?.confirmed,
+        acceptProtected: req.body?.acceptProtected,
       });
       return res.json(result);
     } catch (error) {

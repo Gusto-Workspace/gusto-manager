@@ -59,14 +59,20 @@ test("le parcours Skello exige une vérification manuelle et affiche les décisi
   const row = { order: 1, firstname: "Camille", lastname: "Exemple", canCreate: true, type: "CDI", volume: 35, candidates: [] };
   const preview = { period: { from: "2026-11-01", to: "2026-11-30" }, issues: [], rows: [row], token: null };
   const posted = [];
+  const completed = { id: "lot-fictif", period: preview.period, summary: {
+    counts: { created: 1, skipped: 0, linked: 0 }, history: { ignoredHistory: 1 },
+    individual: { imported: 1, preserved: 1, ignored: 1 }, issues: [], historyConflicts: ["Planning verrouillé."],
+  } };
   const importDialog = renderComponent("admin/restaurants/import-skello.admin.component.js", {
     axios: {
       get: async () => ({ data: { batches: [], target: { name: "Restaurant fictif" } } }),
-      post: async (_path, form) => {
+      post: async (path, form) => {
         const choices = form.get("choices");
         if (!choices) return { data: preview };
-        posted.push(JSON.parse(choices));
-        return { data: { ...preview, token: "fake-token", rows: [{ ...row, individual: [
+        posted.push(form);
+        if (!path.endsWith("/preview")) return { data: { batch: completed, alreadyImported: false } };
+        return { data: { ...preview, token: "fake-token", summary: completed.summary, requiresProtectionConfirmation: true,
+          rows: [{ ...row, history: { counts: { ignoredHistory: 1 }, conflicts: [{ date: "2026-11-10", message: "Planning verrouillé." }] }, individual: [
           { field: "transport", status: "imported", value: 0 },
           { field: "grossSalary", status: "preserved", value: 1800 },
           { field: "annual", status: "ignored", reason: "Cycle non documenté." },
@@ -87,11 +93,19 @@ test("le parcours Skello exige une vérification manuelle et affiche les décisi
   tree = importDialog.render();
   assert.equal(button(tree, "Vérifier le rapprochement").props.disabled, false);
   await button(tree, "Vérifier le rapprochement").props.onClick();
-  assert.deepEqual(posted, [[{ order: 1, destination: "create", keepExisting: false, creationReviewed: true }]]);
+  assert.deepEqual(JSON.parse(posted[0].get("choices")), [{ order: 1, destination: "create", creationReviewed: true }]);
   const html = renderToStaticMarkup(importDialog.render());
   for (const label of ["Repris", "Conservés", "Non repris", "Cycle non documenté", "PIN Pointeuse", "La connexion Gusto s’active depuis la fiche salarié"]) {
     assert.ok(html.includes(label), label);
   }
+  tree = importDialog.render();
+  assert.equal(button(tree, "Confirmer l’import").props.disabled, true);
+  const confirmation = find(tree, ({ props }) => props["aria-labelledby"] === "skello-review-heading");
+  input(confirmation, "checkbox").props.onChange({ target: { checked: true } });
+  await button(importDialog.render(), "Confirmer l’import").props.onClick();
+  assert.equal(posted[1].get("acceptProtected"), "true");
+  assert.equal(posted[1].get("confirmed"), "true");
+  assert.match(renderToStaticMarkup(importDialog.render()), /Import terminé.*Données individuelles conservées.*Planning verrouillé/s);
 });
 
 test("la fiche ouvre le solde enregistré à sa date réelle", async () => {
