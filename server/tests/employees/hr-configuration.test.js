@@ -305,7 +305,7 @@ test("RH configuration previews, applies, reports and restores only in the selec
   const reportRange = new URLSearchParams({ from: date, to: opening.plus({ days: 6 }).toISODate(), employeeId: String(employee) });
   const importedReport = (await (await ownerCall(`${report}?${reportRange}`)).json()).rows[0];
   assert.equal(importedReport.mealDays.find(({ date: day }) => day === date).due, 2);
-  assert.equal(importedReport.mealDays.find(({ date: day }) => day === absence.toISODate()).protectedMeals, 1);
+  assert.equal(importedReport.mealDays.find(({ date: day }) => day === absence.toISODate()).protectedMeals, 2);
   assert.ok(Object.values(importedReport.weeklyHours).some(({ paidAbsences }) => paidAbsences?.employer === 420));
 
   const profile = (await Employee.findById(employee).lean()).restaurantProfiles[0]._id;

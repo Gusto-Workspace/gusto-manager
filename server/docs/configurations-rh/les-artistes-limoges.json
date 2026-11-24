@@ -29,11 +29,11 @@
       "status": "to_confirm",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Rapports Skello → Export Excel novembre 2026 et rapport de mai",
         "consultedOn": "2026-11-24"
       },
       "values": null,
-      "note": "Rapports de mai et novembre vérifiés. En mai, deux colonnes distinctes affichent les volumes du 1er mai et de la journée de solidarité. Règles du rapport est absent pour la session Planificateur avancé. Les seuils effectifs, les fenêtres, les assiettes, le traitement de minuit et des pauses, les cumuls et les modalités des jours particuliers restent à confirmer."
+      "note": "Novembre confirme les seuils, taux et fenêtres des observations ci-dessous. Le moteur Gusto reproduit les 75 volumes hebdomadaires travaillés et les 205 tranches chiffrées. Les écarts dominicaux, les assimilations au seuil, la source effective après validation des badges et le traitement de la paie des fériés restent ouverts. Le format exige une famille complète avant l’activation."
     },
     "rules": {
       "status": "confirmed",
@@ -49,7 +49,7 @@
         "amount": null,
         "criteria": null
       },
-      "note": "Deux repas dus par jour travaillé, mode mixte. Le montant unitaire n’est pas affiché dans Skello. Le montant Gusto du même mode est conservé s’il existe. Les créneaux des repas pris restent des observations.",
+      "note": "Deux repas dus par jour travaillé en mode mixte. Le rapport valorise les repas pris à 44 € sans établir le montant de paie à reprendre. Le montant Gusto du même mode est conservé s’il existe.",
       "preserveUnspecified": true
     },
     "leaveRules": {
@@ -73,7 +73,7 @@
         "categories": {
           "paid_leave": {
             "payer": "employer",
-            "meal": 1
+            "meal": 2
           },
           "apprenticeship": {
             "payer": "employer",
@@ -137,7 +137,7 @@
           }
         }
       },
-      "note": "Seize motifs sont transposables pour le payeur et le réglage repas. Les 66 lignes Skello ont été vérifiées, dont 64 actives et deux désactivées. L’activation, la possibilité de demande, l’acquisition des congés et le traitement des heures figurent dans le relevé de chaque motif. Les autres catégories Gusto sont conservées.",
+      "note": "Seize motifs sont transposables pour le payeur et le réglage repas. Les 9 journées de congé payé de novembre portent chacune 2 repas dus. Les 66 motifs Skello sont documentés, dont 64 actifs et deux désactivés. Les autres catégories Gusto sont conservées.",
       "preserveUnspecified": true
     },
     "hoursRules": {
@@ -252,12 +252,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Export Excel Skello novembre 2026 → Synthèse, col. W:Y et AC:AE / Fiche employés, col. S:U",
         "consultedOn": "2026-11-24"
       },
-      "value": "Exceptionnelles et structurelles : colonnes à 10 %, 20 % et 50 %.",
-      "gusto": "overtime",
-      "note": "Taux des en-têtes vérifiés. Les seuils, l’application des heures structurelles et les accords particuliers ne sont pas affichés."
+      "value": "Exceptionnelles et structurelles : 35–39 h à 10 %, 39–43 h à 20 %, au-delà de 43 h à 50 %.",
+      "gusto": "overtime.ordinary, firstEnd, secondEnd, firstRate, secondRate, lastRate, structuralMonthly",
+      "note": "Les 165 cellules hebdomadaires chiffrées des trois tranches exceptionnelles concordent. Les volumes structurels mensuels des contrats de 39 h et 44 h correspondent à la mensualisation 52/12, soit 17 h 20 et 39 h."
     },
     {
       "id": "complementary-hours",
@@ -265,12 +265,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Export Excel Skello novembre 2026 → Synthèse, col. Z:AA / Fiche employés, col. V:W",
         "consultedOn": "2026-11-24"
       },
-      "value": "Colonnes à 10 % et 25 %",
-      "gusto": "overtime",
-      "note": "Taux des en-têtes vérifiés. Le plafond de l’alerte de planning ne précise pas la limite de chaque tranche ni les dérogations."
+      "value": "10 % pour la première tranche d’un dixième du contrat hebdomadaire et 25 % au-delà.",
+      "gusto": "overtime.complementBand, complementFirstRate et complementLastRate",
+      "note": "Les 40 cellules chiffrées concordent. Le plafond global, les accords et le cas où le temps partiel atteint le seuil temps plein restent à établir."
     },
     {
       "id": "night",
@@ -278,12 +278,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Export Excel Skello novembre 2026 → Détails, col. Z / Fiche employés, col. Y",
         "consultedOn": "2026-11-24"
       },
-      "value": "Colonne à 0 %",
-      "gusto": "overtime.nightRate et fenêtre",
-      "note": "Taux affiché dans le rapport. La plage 22 h–7 h apparaît dans l’alerte de repos de nuit. Elle ne détermine pas à elle seule l’assiette de paie ou la déduction des pauses."
+      "value": "Heures de nuit de 22:00 à 07:00, taux affiché 0 %.",
+      "gusto": "overtime.nightStart, nightEnd, nightRate et plannedNightGross",
+      "note": "Les 398 services du mois concordent avec le chevauchement horaire brut du planning. Les volumes de nuit des semaines de la fiche sont limités aux dates du mois. Ce rapprochement ne couvre pas les pauses badgées."
     },
     {
       "id": "sunday",
@@ -291,12 +291,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Export Excel Skello novembre 2026 → Détails, col. AA / Fiche employés, col. Z",
         "consultedOn": "2026-11-24"
       },
-      "value": "Colonne à 50 %",
+      "value": "Dimanche de 00:00 à 24:00, taux affiché 50 %.",
       "gusto": "overtime.sundayRate",
-      "note": "Assiette de part et d’autre de minuit à confirmer. Les 40 min historiques restent inexpliquées."
+      "note": "Le calcul civil Gusto concorde sur 397/398 services de novembre. Détails AA411 omet 10 min après minuit. Deux totaux hebdomadaires Fiche diffèrent du cumul Détails du mois. Le traitement de minuit, des corrections et des cumuls reste ouvert."
     },
     {
       "id": "holidays",
@@ -304,12 +304,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Rapport → Heures majorées",
+        "path": "Export Excel Skello novembre 2026 → Détails, col. Y",
         "consultedOn": "2026-11-24"
       },
       "value": "Colonne de volume",
       "gusto": "overtime.countHolidays et overtime.holidayRate",
-      "note": "Le rapport affiche un volume en heures, sans taux dans l’en-tête. Le compteur de jours fériés désactivé ne détermine pas la majoration du rapport."
+      "note": "Parité sur 398 services avec le calcul civil Gusto pour les 1er et 11 novembre. Le taux de paie reste absent. Le compteur de jours fériés est désactivé dans les paramètres Skello."
     },
     {
       "id": "majoration-configuration",
@@ -322,7 +322,7 @@
       },
       "value": null,
       "gusto": "overtime",
-      "note": "Le rôle Planificateur avancé est confirmé dans la fiche. Le menu utilisateur ne donne pas accès aux paramètres généraux. Le rapport propose des actions d’export. Règles du rapport est absent des paramètres de l’établissement. Skello documente une activation spécifique de l’onglet. Cette session ne permet de vérifier ni les droits détaillés ni le statut d’activation."
+      "note": "Le planificateur ne voit pas Règles du rapport ni ses droits détaillés. L’Excel identifie la source du calcul rejoué comme Détail Planning sur S44 à S48. Il ne contient pas les badges bruts ou validations permettant de choisir le mode Gusto de production, ni les assimilations et cumuls détaillés."
     },
     {
       "id": "may-day",
@@ -361,7 +361,7 @@
       },
       "value": null,
       "gusto": null,
-      "note": "La fiche contractuelle expose le type de contrat, le volume horaire et les avenants. Les règles de paie propres aux contrats et les accords n’apparaissent pas comme paramètres collectifs. Les valeurs contractuelles se reprennent par salarié."
+      "note": "La synthèse Excel expose les types, volumes, 15 taux horaires dont 8 zéros, et 7 salaires mensuels bruts. Ces valeurs sont individuelles. Les accords particuliers et les avenants datés restent à confirmer."
     },
     {
       "id": "paid-leave",
@@ -374,7 +374,7 @@
       },
       "value": "Compteur actif · 2,5 jours ouvrables par mois",
       "gusto": "leaveRules",
-      "note": "L’écran collectif affiche l’activation, l’unité et 2,5 jours par mois. Les soldes, dates d’initialisation et corrections du détail salarié sont individuels."
+      "note": "L’écran collectif indique 2,5 jours par mois. Les trois épisodes de congé dans l’onglet Absences Employés concordent avec la valorisation horaire du contrat sur 6 jours. Leur assimilation au seuil des majorations reste indéterminée."
     },
     {
       "id": "paid-leave-cycle",
@@ -400,7 +400,7 @@
       },
       "value": null,
       "gusto": "leaveRules.startMonth, excludeHolidays et preserveCarry",
-      "note": "La vue collective affiche l’unité et le rythme. Elle signale une erreur lors de la récupération des données des employés et une erreur serveur. Elle n’affiche ni le mois d’initialisation collectif, ni l’exclusion des fériés, ni la politique de report du reliquat N−1. Gusto exige un mois de reprise et des soldes individuels à la bascule."
+      "note": "La vue collective signalait une erreur serveur. L’onglet Solde Congés contient 15 soldes cohérents, datés par l’import au 30/11/2026. Ils constituent un état individuel de fin de période. Le mois de reprise, l’exclusion des fériés et la politique de reliquat restent à confirmer."
     },
     {
       "id": "paid-leave-availability",
@@ -426,7 +426,7 @@
       },
       "value": "Mode mixte actif, 15 employés affichés, deux repas dus par jour travaillé.",
       "gusto": "rules.mode, rules.basis et rules.quantity",
-      "note": "Mode mixte actif. Quantité applicable aux repas dus. Aucun montant unitaire affiché."
+      "note": "Excel novembre : 240 journées travaillées donnent 480 repas, auxquels s’ajoutent 18 repas dus pendant les congés payés. La synthèse donne 498 dus, 397 pris et 101 compensations."
     },
     {
       "id": "meals-taken",
@@ -434,12 +434,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Règles et compteurs → Règles → Repas pris",
+        "path": "Paramètres → Règles et compteurs → Repas pris / Export Excel novembre 2026 → Détails, col. AB:AC",
         "consultedOn": "2026-11-24"
       },
       "value": "Un repas pour 11:30–14:30 et un repas pour 18:45–21:15, selon les horaires travaillés.",
       "gusto": null,
-      "note": "Gusto comptabilise les repas pris saisis ou repris de l’historique. Ses critères de repas dus ne peuvent pas remplacer ces critères de repas pris."
+      "note": "Dans Détails AB:AC (novembre), chaque montant est égal à 44 € multipliés par les repas pris, soit 17 468 € pour 397 repas. Le rapport chiffre un montant d’export dont l’usage en paie reste à confirmer. Gusto conserve les prises historiques."
     },
     {
       "id": "modulation",
@@ -798,12 +798,12 @@
       "status": "confirmed",
       "origin": {
         "system": "skello",
-        "path": "Paramètres → Absences",
+        "path": "Paramètres → Absences / Export Excel novembre 2026 → Détails, col. T et AD",
         "consultedOn": "2026-11-24"
       },
       "value": "Employeur · Actif oui · Acquisition CP oui · Indemnité repas oui · Demande salarié oui · Heures majorées",
       "gusto": "absenceRules.categories.paid_leave",
-      "note": "Le payeur et le maintien d’un repas sont transposables. L’activation, les demandes et les indicateurs CP/majoration ne font pas partie de la règle d’absence Gusto."
+      "note": "Dans Détails (novembre), les 9 lignes de congé payé portent chacune 2 repas dus et aucune prise. Gusto peut appliquer 2 repas maintenus par jour. L’activation, les demandes et les indicateurs CP/majoration restent des observations."
     },
     {
       "id": "absence-17",
@@ -1457,9 +1457,9 @@
     }
   ],
   "questions": [
-    "Majorations : obtenir la grille effective et les accords éventuels auprès de l’administrateur Skello ou de son référent. Vérifier seuils, source, pauses, coupure, fenêtres, assiettes et cumuls, le dimanche autour de minuit, les fériés, le 1er mai et la journée de solidarité.",
+    "Majorations : valider la source effective et les assimilations au seuil, les cas dominicaux autour de minuit, les taux fériés, les cumuls et les accords. Les tranches, la nuit et les volumes observés figurent dans le relevé.",
     "Congés : établir les jours décomptés, le traitement des fériés et des reliquats après l’échéance N−1. Rapprocher les assimilations du catalogue Skello et les règles maladie Gusto, puis fixer le mois de reprise et obtenir les soldes individuels à la bascule.",
-    "Repas : le montant unitaire n’est pas exposé. Les règles de repas pris reposent sur deux créneaux distincts et ne doivent pas modifier les droits de repas dus.",
+    "Repas : faire confirmer la valeur de paie des avantages en nature et indemnités. Les 44 € par repas pris de l’export ne sont pas repris dans le réglage collectif.",
     "Absences : chaque observation précise les écarts de reprise. L’activation par motif, les demandes et les assimilations complètes restent hors de la règle Gusto de payeur et de repas."
   ]
 }
