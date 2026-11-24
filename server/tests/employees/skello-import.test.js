@@ -33,7 +33,7 @@ const work = (date, start, end, name = "Source Démo", code = "-") => [
   end.includes("T") ? makeExcelDate(end) : makeExcelDate(`${date}T${end}`), 0.5, "Note confidentielle", 1, 1,
 ];
 
-function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026-10-31", history = false } = {}) {
+function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026-10-31", history = false, individual, days = false } = {}) {
   const sheet = (name, rows) => ({ name, rows });
   const first = DateTime.fromISO(from);
   const last = DateTime.fromISO(to);
@@ -53,12 +53,17 @@ function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026
     sheet(`${first.toFormat("dd-MM")} - ${last.toFormat("dd-MM")}`, [
       ["Nom", "Prénom", "Matricule de paie", "Type de Contrat", "Volume Horaire Hebdomadaire (h)*", "Intitulé Poste",
         "Date de début de contrat", "Salaire Mensuel Brut (€)", "Note d’archivage", "Heures Travaillées (h)",
-        "Heures rémunérées (h)", "Heures du dimanche 50% (h)"],
+        "Heures rémunérées (h)", "Heures du dimanche 50% (h)", "Volume Horaire Mensuel (h)", "Taux Horaire Brut Moyen (€)",
+        "Taux Horaire Brut (€)", "Coût Transport Employeur (€)", "Primes (€)", "Description des Primes", "Avances (€)",
+        "Description des Avances", "Date de fin de Contrat"],
       ["Source Démo", "Prénom confidentiel", homonym ? "TEST-01" : "-", "CDI", 35, "Cuisinier", "01/09/26", 1800, change,
         history ? (from === "2026-10-01" ? 6 : from === "2026-11-01" ? 7 : 9.5) : 6.5,
         history ? (from === "2026-10-01" ? 6 : from === "2026-11-01" ? 7.25 : 10) : null,
-        history ? (from === "2026-10-01" ? 2 : from === "2026-11-01" ? 3.5 : 5.5) : null],
+        history ? (from === "2026-10-01" ? 2 : from === "2026-11-01" ? 3.5 : 5.5) : null,
+        ...(individual ? [151.67, individual.average, individual.rate, 0, 15, "Prime fictive", -25, "Avance fictive", individual.end] : [])],
       ...(homonym ? [["Source Démo", "Prénom confidentiel", "TEST-02", "CDI", 35]] : []),
+      ...(days ? [["FORFAITS JOUR"], ["Nom", "Prénom", "Nombre de jour contrat (j)", "Matricule de paie", "Type de contrat", "Intitulé Poste"],
+        ["Forfait", "Salarié fictif", 218, "-", "CDI", "Cuisine"]] : []),
     ]),
     sheet("Fiche employés", [
       [null, null, null, null, null, null, "Détail Planning", "Détail Planning", "Détail Planning"],
@@ -89,8 +94,11 @@ function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026
       ["Source Démo", "Prénom confidentiel", "-", "Retard", "01/10/26", "01/10/26", 0.42, 1],
     ]),
     sheet("Solde Congés", [
-      ["Nom", "Prénom", "Matricule de paie", "N : Solde de congés payés", "Congés disponibles"],
-      ["Source Démo", "Prénom confidentiel", homonym ? "TEST-01" : "-", 2, 2],
+      ["Nom", "Prénom", "Matricule de paie", "N : Solde de congés payés", "Congés disponibles",
+        "N-1 : Congés payés acquis", "N-1 : Congés payés posés", "N-1 : Solde de congés payés",
+        "N : Congés payés acquis", "N : Congés payés posés", "Date du solde"],
+      ["Source Démo", "Prénom confidentiel", homonym ? "TEST-01" : "-", 2, individual ? 4 : 2,
+        ...(individual ? [8, 6, 2, 5, 3, individual.balanceDate] : [])],
     ]),
   ];
   return packageWorkbook(sheets, ({ rows }) => `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${
@@ -133,6 +141,17 @@ test("homonyms require a source identifier and spreadsheet formulas are refused"
   assert.throws(() => analyzeSkelloWorkbook(Buffer.from(zipSync(archive))), /Classeur XLSX/);
 });
 
+test("un forfait en jours laisse le volume en heures indéterminé", () => {
+  const { people } = analyzeSkelloWorkbook(fixture({ days: true }), "month", { workforce: true });
+  assert.equal(people.length, 2);
+  const [, employee] = people;
+  assert.equal(employee.identity.lastname, "Forfait");
+  assert.equal(employee.type, "CDI");
+  assert.equal(employee.post, "Cuisine");
+  assert.equal(employee.volume, null);
+  assert.match(employee.fieldIssues.weeklyHours, /en jours/);
+});
+
 const testUri = process.env.GUSTO_CLOCK_TEST_MONGO_URI;
 test("admin preview, atomic import, report, retry and guarded removal on an isolated MongoDB replica set", {
   skip: testUri ? false : "Configure a dedicated loopback replica set with GUSTO_CLOCK_TEST_MONGO_URI",
@@ -150,12 +169,13 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
   await Promise.all([SkelloImport.init(), PersonnelInput.init(), Employee.init()]);
-  const [restaurant, other, owner, existing, admin] = Array.from({ length: 5 }, () => new mongoose.Types.ObjectId());
+  const [restaurant, other, owner, existing, admin, otherOwner] = Array.from({ length: 6 }, () => new mongoose.Types.ObjectId());
   await Admin.collection.insertOne({ _id: admin, role: "admin" });
   await Owner.collection.insertOne({ _id: owner, firstname: "Responsable fictif", restaurants: [restaurant] });
+  await Owner.collection.insertOne({ _id: otherOwner, firstname: "Responsable fictif 2", restaurants: [other] });
   await Restaurant.collection.insertMany([
     { _id: restaurant, owner_id: owner, name: "Recette Skello", options: { employees: true }, employees: [existing] },
-    { _id: other, name: "Autre établissement", options: { employees: true }, employees: [] },
+    { _id: other, owner_id: otherOwner, name: "Autre établissement", options: { employees: true }, employees: [] },
   ]);
   await Employee.collection.insertOne({ _id: existing, firstname: "Existant", lastname: "Fictif", restaurants: [restaurant],
     restaurantProfiles: [{ restaurant }] });
@@ -164,7 +184,9 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   await once(listener, "listening");
   t.after(() => listener.close());
   function request(path, options = {}, role = "admin") {
-    const token = jwt.sign({ role, id: String(role === "owner" ? owner : admin), restaurantId: String(restaurant) }, process.env.JWT_SECRET);
+    const token = jwt.sign({ role: role === "otherOwner" ? "owner" : role,
+      id: String(role === "otherOwner" ? otherOwner : role === "owner" ? owner : admin),
+      restaurantId: String(role === "otherOwner" ? other : restaurant) }, process.env.JWT_SECRET);
     return fetch(`http://127.0.0.1:${listener.address().port}${path}`, {
       ...options, headers: { ...(options.headers || {}), ...(role && { Authorization: `Bearer ${token}` }) },
     });
@@ -284,7 +306,7 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
       _id: rosterProfile, restaurant, employment: { payrollCode: "TEST-01", contractType: "CDD", contractualValue: 28 },
     }] } });
     const realFile = fixture({ homonym: true, history: true });
-    const plan = [{ order: 1, destination: String(existing) }, { order: 2, destination: "create" }];
+    const plan = [{ order: 1, destination: String(existing) }, { order: 2, destination: "create", creationReviewed: true }];
     function sendReal(where, { choices, token, confirmed, buffer = realFile } = {}) {
       const data = new FormData();
       data.set("file", new Blob([buffer]), "rapport.xlsx");
@@ -348,8 +370,8 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     const next = await (await sendReal(`${realPath}/preview`, { buffer: november, choices: nextPlan })).json();
     assert.ok(next.token);
     const nextApply = { buffer: november, choices: nextPlan, token: next.token, confirmed: true };
-    const balance = await PersonnelInput.create({ _id: `${restaurant}:${rosterProfile}:leave:2026-10-01`, restaurant,
-      employee: existing, profile: rosterProfile, kind: "leave", date: "2026-10-01", revision: 1,
+    const balance = await PersonnelInput.create({ _id: `${restaurant}:${rosterProfile}:leave:2026-12-01`, restaurant,
+      employee: existing, profile: rosterProfile, kind: "leave", date: "2026-12-01", revision: 1,
       updatedBy: String(owner), values: { leaveAvailable: 9 } });
     const inputsBeforeFailure = await PersonnelInput.countDocuments();
     const writeBatch = SkelloImport.create;
@@ -377,7 +399,10 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal(await Session.countDocuments(), 0);
     assert.deepEqual((await PersonnelInput.findById(balance._id).lean()).values, { leaveAvailable: 9 });
     const preserved = await Employee.findById(existing).lean();
-    assert.deepEqual(preserved.restaurantProfiles[0].employment, current.restaurantProfiles[0].employment);
+    assert.deepEqual(preserved.restaurantProfiles[0].employment, {
+      ...current.restaurantProfiles[0].employment,
+      ...(DateTime.now().setZone("Europe/Paris").toFormat("yyyy-MM") === "2026-11" && { primaryEstablishment: "Site source" }),
+    });
     assert.deepEqual(preserved.restaurantProfiles[0].shifts, current.restaurantProfiles[0].shifts);
     const overlapping = fixture({ homonym: true, history: true, from: "2026-10-26", to: "2026-11-08" });
     const overlapPreview = await (await sendReal(`${realPath}/preview`, { buffer: overlapping, choices: nextPlan })).json();
@@ -425,5 +450,109 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     await checkReport("2026-10-01", "2026-10-31", 360, 360, 120, 1);
     const nov = await checkReport("2026-11-01", "2026-11-30", 420, 435, 210, 2);
     assert.equal(nov.weeklyHours["2026-W44"].historicalWeek, 360);
+  });
+  await t.test("a file without payroll IDs creates an access-free profile, fills canonical fields and matches it again", async () => {
+    const now = DateTime.now().setZone("Europe/Paris");
+    const current = { from: now.startOf("month").toISODate(), to: now.endOf("month").toISODate() };
+    const next = now.plus({ months: 1 });
+    const previous = now.minus({ months: 1 });
+    const createPlan = [{ order: 1, destination: "create", creationReviewed: true }];
+    const date = now.startOf("month").plus({ days: 13 }).toISODate();
+    const file = fixture({ ...current, history: true, individual: { average: 14.87, rate: 0, balanceDate: date } });
+    const url = `${otherRealPath}/preview`;
+    async function send(where, options = {}) {
+      const body = new FormData();
+      body.set("file", new Blob([options.file || file]), "rapport.xlsx");
+      body.set("scope", "month");
+      if (options.choices) body.set("choices", JSON.stringify(options.choices));
+      if (options.token) {
+        body.set("token", options.token);
+        body.set("confirmed", "true");
+      }
+      return request(where, { method: "POST", body });
+    }
+    assert.equal((await (await send(url)).json()).rows[0].canCreate, true);
+    const unreviewed = await (await send(url, { choices: [{ order: 1, destination: "create" }] })).json();
+    assert.match(unreviewed.rows[0].error, /vérification/);
+    assert.equal(unreviewed.token, null);
+    const reviewed = await (await send(url, { choices: createPlan })).json();
+    const fields = Object.fromEntries(reviewed.rows[0].individual.map((entry) => [entry.field, entry]));
+    assert.equal(fields.payrollCode.status, "ignored");
+    assert.equal(fields.hourlyRate.status, "ignored");
+    assert.match(fields.hourlyRate.reason, /nul/);
+    assert.equal(fields.transport.value, 0);
+    assert.equal(fields.grossSalary.value, 1800);
+    assert.equal(fields.leave.date, date);
+    assert.equal(fields.leave.value.previousUsed, 6);
+    assert.equal(fields.annual.status, "ignored");
+    const concurrent = await Promise.all([send(otherRealPath, { token: reviewed.token, choices: createPlan }),
+      send(otherRealPath, { token: reviewed.token, choices: createPlan })]);
+    assert.deepEqual(concurrent.map(({ status }) => status), [200, 200]);
+    const [id] = (await Restaurant.findById(other).lean()).employees;
+    const employee = await Employee.findById(id).select("+password +restaurantProfiles.skelloNameKey").lean();
+    const profile = employee.restaurantProfiles[0]._id;
+    assert.ok(employee.restaurantProfiles[0].skelloNameKey);
+    assert.equal(employee.phone, undefined);
+    assert.equal(employee.email, undefined);
+    assert.equal(employee.password, undefined);
+    assert.equal(await TimeClockPin.countDocuments({ employee: id }), 0);
+    assert.equal(await Notification.countDocuments(), 0);
+    assert.deepEqual((await PersonnelInput.findById(`${other}:${profile}:contract:-`).lean()).values,
+      { monthlyContractHours: 151.67, grossSalary: 1800, transport: 0 });
+    const balance = await PersonnelInput.findById(`${other}:${profile}:leave:${date}`).lean();
+    assert.deepEqual(balance.values, { previousAcquired: 8, previousUsed: 6, previousBalance: 2,
+      currentAcquired: 5, currentUsed: 3, currentBalance: 2, leaveAvailable: 4 });
+    assert.equal(await PersonnelInput.countDocuments({ employee: id, kind: { $in: ["annual", "hoursEntry", "amendment"] } }), 0);
+    assert.deepEqual((await PersonnelInput.findById(`${other}:${profile}:variables:${current.from.slice(0, 7)}`).lean()).values,
+      { bonus: 15, bonusLabel: "Prime fictive", advance: -25, advanceLabel: "Avance fictive" });
+    const pathname = `/restaurants/${other}/employees/reports`;
+    const getReport = async (from, to) => (await request(`${pathname}?from=${from}&to=${to}&employeeId=${id}`, {}, "otherOwner")).json();
+    const report = await getReport(current.from, current.to);
+    assert.equal(report.rows[0].values["skello:averageHourlyRate"], 14.87);
+    assert.equal(report.rows[0].values.grossSalary, 1800);
+    const payroll = `${pathname}/inputs/${id}`;
+    assert.deepEqual(await (await request(`${payroll}/leave/${current.to}?latest=true`, {}, "otherOwner")).json(), { date });
+    const contract = await (await request(`${payroll}/contract/-`, {}, "otherOwner")).json();
+    assert.equal((await request(`${payroll}/contract/-`,
+      json({ revision: contract.revision, values: { ...contract.values, grossSalary: 2300 } }, "PUT"), "otherOwner")).status, 200);
+    assert.equal((await request(`${payroll}/leave/${date}`, json({ revision: balance.revision,
+      values: { ...balance.values, currentBalance: 10, leaveAvailable: 12 } }, "PUT"), "otherOwner")).status, 200);
+    await Employee.updateOne({ _id: id }, { $set: { firstname: "Identité vérifiée", phone: "0600000000",
+      email: "dossier-sans-acces@example.test", "restaurantProfiles.0.snapshot.firstname": "Identité vérifiée" } });
+    assert.equal((await request("/auth/send-reset-code", json({ email: "dossier-sans-acces@example.test" }), null)).status, 404);
+    const choice = [{ order: 1, destination: String(id) }];
+    const historicalFile = fixture({ from: previous.startOf("month").toISODate(), to: previous.endOf("month").toISODate(),
+      history: true, individual: { rate: 19.25, balanceDate: "31/02/2026" } });
+    const old = await (await send(url, { file: historicalFile, choices: choice })).json();
+    assert.equal(old.rows[0].canCreate, false);
+    assert.equal(old.rows[0].candidates[0].id, String(id));
+    assert.match(old.rows[0].individual.find(({ field }) => field === "hourlyRate").reason, /Période/);
+    assert.match(old.rows[0].individual.find(({ field }) => field === "leave").reason, /invalide/);
+    assert.equal((await send(otherRealPath, { file: historicalFile, token: old.token, choices: choice })).status, 200);
+    const followingMonth = fixture({ from: next.startOf("month").toISODate(), to: next.endOf("month").toISODate(),
+      history: true, individual: { rate: 12.25, balanceDate: next.endOf("month").toISODate() } });
+    const following = await (await send(url, { file: followingMonth, choices: choice })).json();
+    assert.equal(following.rows[0].canCreate, false);
+    assert.ok(following.rows[0].individual.some(({ field, status }) => field === "leave" && status === "preserved"));
+    assert.equal((await send(otherRealPath, { file: followingMonth, token: following.token, choices: choice })).status, 200);
+    assert.equal(await Employee.countDocuments({ restaurants: other }), 1);
+    assert.equal(await PersonnelInput.countDocuments({ employee: id, kind: "leave" }), 1);
+    assert.equal((await PersonnelInput.findById(balance._id).lean()).values.currentBalance, 10);
+    const latestContract = await PersonnelInput.findById(`${other}:${profile}:contract:-`).lean();
+    assert.equal(latestContract.values.grossSalary, 2300);
+    assert.equal(latestContract.values.hourlyRate, null);
+    assert.equal(latestContract.skelloEffectiveDates?.grossSalary, undefined);
+    assert.equal(latestContract.skelloEffectiveDates.transport, current.from);
+    const completedFile = fixture({ ...current, history: true, individual: { average: 14.87, rate: 12.25, balanceDate: date } });
+    const completed = await (await send(url, { file: completedFile, choices: choice })).json();
+    assert.ok(completed.token);
+    assert.ok(completed.rows[0].individual.some(({ field, status }) => field === "grossSalary" && status === "preserved"));
+    assert.ok(completed.rows[0].individual.some(({ field, status }) => field === "hourlyRate" && status === "imported"));
+    assert.equal((await send(otherRealPath, { file: completedFile, token: completed.token, choices: choice })).status, 200);
+    const complement = await PersonnelInput.findById(latestContract._id).lean();
+    assert.equal(complement.values.hourlyRate, 12.25);
+    assert.equal(complement.values.grossSalary, 2300);
+    const historical = await getReport(previous.startOf("month").toISODate(), previous.endOf("month").toISODate());
+    assert.equal(historical.rows[0].values.hourlyRate, 19.25);
   });
 });

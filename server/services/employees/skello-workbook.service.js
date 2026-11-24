@@ -185,12 +185,18 @@ function translateAbsence(label, start, end, date) {
 }
 
 function leaveValues(read, row) {
-  return validateValues("leave", Object.fromEntries([
+  const currentBalance = validNumber(read(row, "n : solde des conges payes"))
+    ? "n : solde des conges payes" : "n : solde de conges payes";
+  return Object.fromEntries([
     ["previousAcquired", "n-1 : conges payes acquis"], ["previousUsed", "n-1 : conges payes poses"],
     ["previousBalance", "n-1 : solde de conges payes"], ["currentAcquired", "n : conges payes acquis"],
-    ["currentUsed", "n : conges payes poses"], ["currentBalance", "n : solde des conges payes"],
+    ["currentUsed", "n : conges payes poses"], ["currentBalance", currentBalance],
     ["leaveAvailable", "conges disponibles"],
-  ].map(([name, source]) => [name, validNumber(read(row, source)) ? rounded(read(row, source)) : null])));
+  ].map(([name, source]) => {
+    const raw = read(row, source);
+    const checked = validNumber(raw) && validateValues("leave", { [name]: rounded(raw) });
+    return [name, checked ? checked[name] : null];
+  }));
 }
 
 function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = {}) {
@@ -210,6 +216,19 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
   const period = scope === "month" ? monthly : complete;
   const evidence = clockEvidence(fiche.rows, complete.from, complete.to);
   const roster = findHeader(summary.rows, ["prenom", "nom", "type de contrat", "volume horaire hebdomadaire (h)*"]);
+  const daySections = workforce ? summary.rows.flatMap((row, index) =>
+    row.some((cell) => key(cell) === "nombre de jour contrat (j)") &&
+      ["prenom", "nom", "type de contrat"].every((label) => row.some((cell) => key(cell) === label)) ? [index] : []) : [];
+  const rosterRows = [
+    ...roster.rows.slice(0, daySections.length ? daySections[0] - roster.firstRow + 1 : roster.rows.length)
+      .map((row, index) => ({ row, read: roster.read, header: roster.header, rowNumber: roster.firstRow + index, inDays: false })),
+    ...daySections.flatMap((headerIndex, index) => {
+      const header = summary.rows[headerIndex];
+      const read = schemaFor(header);
+      return summary.rows.slice(headerIndex + 1, daySections[index + 1])
+        .map((row, offset) => ({ row, read, header, rowNumber: headerIndex + offset + 2, inDays: true }));
+    }),
+  ];
   const detail = findHeader(details.rows, ["prenom", "nom", "date", "travail / absence", "debut", "fin", "pause (h)"]);
   const monthlyAbsences = sheet("absences employes");
   const balances = sheet("solde conges");
@@ -244,26 +263,27 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
     return names.length === 1 && (!source.code || !names[0].source.code) ? names[0] : null;
   }
   const monthlyTotals = { worked: 0, pause: 0, days: 0 };
-  for (const [index, row] of roster.rows.entries()) {
-    const read = roster.read;
+  for (const { row, read, header, rowNumber, inDays } of rosterRows) {
     const type = contracts.get(key(read(row, "type de contrat")));
-    const volume = read(row, "volume horaire hebdomadaire (h)*");
+    const volume = inDays ? null : read(row, "volume horaire hebdomadaire (h)*");
     const source = identity(read(row, "prenom"), read(row, "nom"), read(row, "matricule de paie"));
-    if (!source || !type || !validNumber(volume) || volume <= 0 || volume > 168) {
-      if (source && validNumber(volume)) note("Contrat ou volume hors du format reconnu", roster.firstRow + index, true);
+    if (!source || !type || (!inDays && (!validNumber(volume) || volume <= 0 || volume > 168))) {
+      if (source && (type || present(volume))) note("Contrat ou volume hors du format reconnu", rowNumber, true);
       continue;
     }
     if (source.code && byCode.has(source.code)) {
-      note("Matricule en double dans la synthèse", roster.firstRow + index, true);
+      note("Matricule en double dans la synthèse", rowNumber, true);
       continue;
     }
     const number = (name) => validNumber(read(row, name)) ? rounded(read(row, name)) : null;
     const start = dateOnly(read(row, "date de debut de contrat"));
     const end = dateOnly(read(row, "date de fin de contrat"));
-    const contract = validateValues("contract", { contractEnd: end, monthlyContractHours: number("volume horaire mensuel (h)"),
-      hourlyRate: number("taux horaire brut moyen (€)"), grossSalary: number("salaire mensuel brut (€)") });
+    const contract = validateValues("contract", { contractEnd: end,
+      monthlyContractHours: workforce ? null : number("volume horaire mensuel (h)"),
+      hourlyRate: workforce ? null : number("taux horaire brut moyen (€)"),
+      grossSalary: workforce ? null : number("salaire mensuel brut (€)") });
     if (!contract || (start && end && end < start)) {
-      note("Données contractuelles incompatibles", roster.firstRow + index, true);
+      note("Données contractuelles incompatibles", rowNumber, true);
       continue;
     }
     const person = { source, order: people.length + 1, type, volume, start,
@@ -279,9 +299,69 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
       }
       person.identity = { firstname, lastname, payrollCode };
       person.history = [];
+      person.fieldIssues = {};
+      if (inDays) person.fieldIssues.weeklyHours = "Contrat exprimé en jours, sans équivalent en heures dans Gusto.";
+      person.establishments = new Set();
+      for (const [field, column] of Object.entries({
+        monthlyContractHours: "volume horaire mensuel (h)", hourlyRate: "taux horaire brut moyen (€)",
+        grossSalary: "salaire mensuel brut (€)", transport: "cout transport employeur (€)", archiveNote: "note d archivage",
+      })) {
+        const raw = read(row, column);
+        if (!present(raw)) continue;
+        // The export labels this as an average. It does not prove the contractual base rate.
+        if (field === "hourlyRate" && validNumber(raw) && raw > 0) {
+          const checked = validateValues("contract", { hourlyRate: rounded(raw) });
+          if (checked?.hourlyRate > 0) {
+            person.historicalHourlyRate = checked.hourlyRate;
+            person.fieldIssues[field] = "Taux moyen repris dans la synthèse source. Le taux contractuel reste à vérifier.";
+            continue;
+          }
+        }
+        const value = field === "archiveNote" ? text(raw) : validNumber(raw) ? rounded(raw) : null;
+        const checked = value !== null && validateValues("contract", { [field]: value });
+        if (checked && (field === "transport" || field === "archiveNote" || checked[field] > 0)) contract[field] = checked[field];
+        else person.fieldIssues[field] = raw === 0
+          ? "Zéro écarté pour cette donnée de rémunération."
+          : "Valeur source hors du format accepté.";
+      }
+      const baseRate = read(row, "taux horaire brut (€)");
+      if (present(baseRate)) {
+        const checked = validNumber(baseRate) && baseRate > 0 && validateValues("contract", { hourlyRate: rounded(baseRate) });
+        if (checked?.hourlyRate > 0) {
+          contract.hourlyRate = checked.hourlyRate;
+          delete person.fieldIssues.hourlyRate;
+        } else person.fieldIssues.hourlyRate = "Taux horaire explicite invalide ou nul.";
+      }
+      if (present(read(row, "date de debut de contrat")) && !start) person.fieldIssues.dateOnPost = "Date de début invalide.";
+      if (present(read(row, "date de fin de contrat")) && !end) person.fieldIssues.contractEnd = "Date de fin invalide.";
+      const startOfMonth = DateTime.fromISO(monthly.from, { zone }).startOf("month");
+      const fullMonth = monthly.from === startOfMonth.toISODate() && monthly.to === startOfMonth.endOf("month").toISODate();
+      person.variables = {};
+      for (const [field, amount, description] of [["bonus", "primes (€)", "description des primes"],
+        ["advance", "avances (€)", "description des avances"]]) {
+        const raw = read(row, amount);
+        if (!present(raw) || raw === 0) continue;
+        const value = validNumber(raw) ? rounded(raw) : null;
+        const checked = value !== null && value !== 0 && validateValues("variables", { [field]: value });
+        const label = `${field}Label`;
+        if (!fullMonth || !checked) {
+          person.fieldIssues[field] = !fullMonth ? "La période ne couvre pas un mois de paie complet."
+            : "Montant ou signe source incompatible avec le champ Gusto.";
+          continue;
+        }
+        person.variables[field] = checked[field];
+        const rawLabel = read(row, description);
+        if (present(rawLabel)) {
+          const checkedLabel = typeof rawLabel === "string" && validateValues("variables", { [label]: rawLabel });
+          if (checkedLabel?.[label]) person.variables[label] = checkedLabel[label];
+          else person.fieldIssues[label] = "Libellé hors du format accepté.";
+        }
+      }
       person.summary = {
         contract: { ...contract, start, type, weeklyHours: volume },
-        premiums: sourcePremiums(read, row, roster.header),
+        ...(person.historicalHourlyRate != null && { averageHourlyRate: person.historicalHourlyRate }),
+        ...(contract.hourlyRate != null && { baseHourlyRateExplicit: true }),
+        premiums: sourcePremiums(read, row, header),
         worked: sourceNumber(read, row, ["heures travaillees retenues (h)", "heures travaillees (h)"], 1512, 60),
         paid: sourceNumber(read, row, ["heures remunerees (h)", "heures payees (h)"], 1512, 60),
         mealsDue: sourceNumber(read, row, ["repas dus"], 1000),
@@ -316,6 +396,10 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
       note("Date ou semaine ISO incompatible avec le classeur", rowNumber, true);
       continue;
     }
+    const person = findPerson(read, row);
+    if (workforce && person && present(read(row, "etablissement principal"))) {
+      person.establishments.add(text(read(row, "etablissement principal")));
+    }
     if (date < period.from || date > period.to) {
       counts.outside++;
       continue;
@@ -330,7 +414,6 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
     } else if (kind === "absence") {
       counts.sourceAbsences++;
     }
-    const person = findPerson(read, row);
     if (!person) {
       note("Salarié absent ou rapprochement ambigu", rowNumber, true);
       continue;
@@ -345,7 +428,12 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
         continue;
       }
       person.shifts.push({ ...shift, sourceRow: rowNumber });
-      if (workforce) person.history.push({ ...shift, date, row: rowNumber });
+      if (workforce) person.history.push({ ...shift, date, row: rowNumber,
+        employerPaidAbsence: sourceNumber(read, row, ["absences indemnisees par l employeur (h)"], 24, 60),
+        thirdPartyPaidAbsence: sourceNumber(read, row, ["absences indemnisees par un tiers (h)"], 24, 60),
+        unpaidAbsence: sourceNumber(read, row, ["absences non indemnisees (h)"], 24, 60),
+        absenceMealsDue: sourceNumber(read, row, ["repas dus"], 10),
+      });
       continue;
     }
     if (kind !== "travail") {
@@ -408,6 +496,15 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
   }
   if (venues.size > 1) throw new SkelloImportError("Ce classeur mélange plusieurs établissements. Utilisez un export par établissement.");
   for (const person of people) {
+    if (workforce) {
+      const [establishment] = person.establishments;
+      if (person.establishments.size === 1 && establishment.length <= 120 && !/\p{Cc}/u.test(establishment)) {
+        person.primaryEstablishment = establishment;
+      } else if (person.establishments.size) {
+        person.fieldIssues.primaryEstablishment = "Établissement principal contradictoire ou hors du format accepté.";
+      }
+      delete person.establishments;
+    }
     person.shifts.sort((a, b) => a.start - b.start);
     const ignored = new Set();
     const lateByDate = new Map();
@@ -473,17 +570,30 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
   }
   if (balances) {
     const balance = findHeader(balances.rows, ["nom", "prenom", "conges disponibles"]);
-    const already = new Set();
+    const pending = new Map();
     for (const row of balance.rows) {
       if (!present(balance.read(row, "prenom"))) continue;
       const person = findPerson(balance.read, row);
       const values = leaveValues(balance.read, row);
-      if (!person || !values || !Object.values(values).some((value) => value != null) || already.has(person.order)) {
+      const rawDate = ["date du solde", "date de solde", "solde au"].map((column) => balance.read(row, column)).find(present);
+      const date = workforce && rawDate !== undefined ? dateOnly(rawDate) : monthly.to;
+      if (!person || !date || !values || !Object.values(values).some((value) => value != null)) {
         note("Solde de congés non rapproché ou incompatible");
+        if (workforce && person) person.fieldIssues.leave = !date ? "Date du solde source invalide." : "Solde hors du format accepté.";
         continue;
       }
-      person.inputs.push({ kind: "leave", date: monthly.to, values });
-      already.add(person.order);
+      const id = `${person.order}:${date}`;
+      const previous = pending.get(id);
+      if (!previous) pending.set(id, { person, date, values, conflict: false });
+      else if (workforce && JSON.stringify(previous.values) !== JSON.stringify(values)) {
+        previous.conflict = true;
+        person.fieldIssues.leave = "Plusieurs soldes différents figurent à la même date.";
+        note("Soldes de congés contradictoires à la même date");
+      }
+    }
+    for (const { person, date, values, conflict } of pending.values()) {
+      if (conflict) continue;
+      person.inputs.push({ kind: "leave", date, values });
       counts.leaveBalances++;
     }
   }
@@ -505,7 +615,8 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
       "Badgeuse et signatures Gusto : le rapport mensuel ne contient pas les événements natifs. Les heures rémunérées sont reprises uniquement si elles sont chiffrées explicitement.",
       "Les ventilations de synthèse restent attachées à la période source. Une valeur absente ne peut pas être déduite de la synthèse.",
       "Les absences sont reprises depuis Détails. L’onglet Absences Employés sert au contrôle, pour éviter les doublons.",
-      "Avenants non datés, notes, coordonnées, justificatifs, taux non identifiés et montants sans colonne reconnue.",
+      "L’annualisation, le compteur d’heures et les avenants exigent des données individuelles datées et complètes. Les totaux de période et les compteurs en jours ne constituent pas des mouvements en heures.",
+      "Les coordonnées, données administratives et justificatifs absents restent à compléter. Les notes libres de service et le montant indicatif par repas ne sont pas des champs de paie.",
     ] : [
       "Badgeuse : arrivées, départs, pauses badgées, horaires payés et corrections séparées.",
       "Synthèses, majorations et indemnités calculées : conservées pour comparaison seulement.",

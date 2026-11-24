@@ -76,6 +76,8 @@ function stripEmployeeDocumentsFromSerializedValue(_document, value) {
     delete profile.planningBatches;
     delete profile.planningFiles;
     delete profile.erasure;
+    delete profile.skelloPayrollCode;
+    delete profile.skelloNameKey;
   }
   delete value?.documents;
   delete value?.rhArchiveIdentities;
@@ -200,6 +202,7 @@ const restaurantProfileSchema = new mongoose.Schema(
     },
     archivedAt: Date,
     skelloPayrollCode: { type: String, select: false },
+    skelloNameKey: { type: String, select: false },
     erasure: {
       at: Date,
       actor: String,
@@ -250,7 +253,7 @@ const employeeSchema = new mongoose.Schema({
   lastname: { type: String, required: true },
   email: { type: String }, // normalisé côté routes
   password: { type: String, select: false },
-  phone: { type: String, required: true },
+  phone: { type: String, required() { return Boolean(this.email || this.password || this.accountType === "accountant"); } },
   secuNumber: { type: String },
   address: { type: String },
   emergencyContact: { type: String },

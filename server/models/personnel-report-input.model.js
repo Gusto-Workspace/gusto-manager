@@ -10,6 +10,7 @@ const schema = new mongoose.Schema({
   date: { type: String, required: true },
   values: { type: mongoose.Schema.Types.Mixed, required: true },
   source: { type: String, enum: ["skello"] },
+  skelloEffectiveDates: { type: mongoose.Schema.Types.Mixed },
   revision: { type: Number, required: true },
   updatedBy: { type: String, required: true },
 }, { timestamps: true });

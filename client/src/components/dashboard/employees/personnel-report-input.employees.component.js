@@ -452,7 +452,9 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
   const monthInput = kind === "rules" || kind === "variables" || kind === "leaveRules";
   const newDated = ["absenceRules", "hoursRules", "leaveRules"].includes(kind);
   const fixed = fixedKinds.includes(kind);
-  const [date, setDate] = useState(initialDate || (fixed ? "-" : monthInput ? today.slice(0, 7) : today));
+  const findLatestBalance = initialKind === "leave" && !initialDate;
+  const [date, setDate] = useState(initialDate || (findLatestBalance ? "" : fixed ? "-" : monthInput ? today.slice(0, 7) : today));
+  const [balanceLookup, setBalanceLookup] = useState(findLatestBalance ? "pending" : "done");
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   function canLeave() {
@@ -466,6 +468,18 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
     dialog.showModal();
     return () => dialog.close();
   }, []);
+  useEffect(() => {
+    if (!findLatestBalance) return;
+    const controller = new AbortController();
+    axios.get(`${baseUrl}/leave/${today}`, { params: { latest: true }, signal: controller.signal }).then(({ data }) => {
+      if (controller.signal.aborted) return;
+      setDate(data.date || today);
+      setBalanceLookup("done");
+    }).catch(() => {
+      if (!controller.signal.aborted) setBalanceLookup("failed");
+    });
+    return () => controller.abort();
+  }, [baseUrl, findLatestBalance, today]);
 
   const editableDays = mealDays?.filter((entry) => entry.mode === "combined" && entry.date <= today) || [];
   const meal = editableDays.find((entry) => entry.date === date);
@@ -511,12 +525,15 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
           <label className={`grid min-w-0 gap-1 text-sm font-medium ${settings ? "rounded-xl bg-darkBlue/5 p-3" : ""}`}>{["rules", "leaveRules"].includes(kind) ? "Mois de prise d’effet" :
             ["overtime", "hoursRules"].includes(kind) ? "Date d’effet (lundi)" : ["clockRules", "absenceRules"].includes(kind) ? "Date d’effet" : monthInput ? "Mois de paie" :
               kind === "amendment" ? "Date d’effet" : kind === "annual" ? "Début du cycle annuel" : kind === "hoursEntry" ? "Date du mouvement" : "Solde au"}
-            <input className={`${control} ${settings ? "max-w-64" : ""}`} disabled={busy} type={monthInput ? "month" : "date"} value={date}
+            <input className={`${control} ${settings ? "max-w-64" : ""}`} disabled={busy || balanceLookup === "pending"} type={monthInput ? "month" : "date"} value={date}
               min={kind === "variables" ? from.slice(0, 7) : undefined} max={kind === "variables" ? to.slice(0, 7) : undefined}
               onChange={(event) => { if (canLeave()) { setDirty(false); setDate(event.target.value); } }} />
             {hrRuleHelp[kind]?.date && <span className="text-xs font-normal text-darkBlue/70">{hrRuleHelp[kind].date}</span>}
           </label>
         )}
+        {balanceLookup === "pending" && <p role="status" className="text-sm">Recherche du dernier solde enregistré…</p>}
+        {balanceLookup === "failed" && <p role="alert" className="text-sm text-red">Impossible de trouver le dernier solde. Sélectionnez une date pour consulter un solde.</p>}
+        {kind === "leave" && date > today && <p role="status" className="text-sm text-darkBlue/70">Solde programmé au {formatReportValue(date, "date")}.</p>}
         {["overtime", "hoursRules"].includes(kind) && date && date !== weekMonday(date) && <p role="status" className="text-sm text-darkBlue/70">Choisissez le lundi de la première semaine concernée.</p>}
         {valid && newDated && inputDate <= today && <p className="text-sm text-darkBlue/70">Consultation uniquement. Choisissez une date future pour enregistrer une modification.</p>}
         {valid && <InputFields key={`${kind}:${date}`} url={`${baseUrl}/${kind}/${inputDate}`} kind={kind} date={inputDate} meal={meal} nextMeal={nextMeal}

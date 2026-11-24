@@ -265,9 +265,11 @@ async function findAdminByEmail(email) {
 
 async function findUserByEmail(email) {
   const normalized = normalizeEmail(email);
+  if (!normalized) return null;
   const [owner, employee] = await Promise.all([
     OwnerModel.findOne({ email: normalized }).select("+sessionVersion"),
-    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false }, "restaurants.0": { $exists: true } }).select("+sessionVersion"),
+    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false }, "restaurants.0": { $exists: true },
+      password: { $type: "string", $ne: "" } }).select("+sessionVersion"),
   ]);
   return owner || employee || null;
 }

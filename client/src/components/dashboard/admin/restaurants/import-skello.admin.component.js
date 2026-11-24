@@ -19,6 +19,46 @@ const historyLabels = [
   ["duplicateHistory", "Lignes déjà importées"], ["leaveBalances", "Soldes de congés datés"],
   ["monthlySummaries", "Synthèses source ajoutées"], ["ignoredHistory", "Éléments protégés ou en conflit"],
 ];
+const individualLabels = {
+  identity: "Identité", payrollCode: "Matricule de paie", post: "Poste", dateOnPost: "Début de contrat",
+  contractType: "Type de contrat", weeklyHours: "Volume hebdomadaire", primaryEstablishment: "Établissement principal",
+  contractEnd: "Fin de contrat", archiveNote: "Note d’archivage", hourlyRate: "Taux horaire brut",
+  grossSalary: "Salaire mensuel brut", monthlyContractHours: "Volume mensuel", transport: "Transport mensuel",
+  bonus: "Primes du mois", bonusLabel: "Description des primes", advance: "Avances du mois", advanceLabel: "Description des avances",
+  leave: "Solde de congés", annual: "Annualisation", hoursEntry: "Compteur d’heures", amendment: "Avenants horaires",
+  administrative: "Données administratives",
+};
+const leaveLabels = {
+  previousAcquired: "N−1 acquis", previousUsed: "N−1 posés", previousBalance: "N−1 solde",
+  currentAcquired: "N acquis", currentUsed: "N posés", currentBalance: "N solde", leaveAvailable: "Disponibles",
+};
+const outcomeLabels = { imported: "Repris", preserved: "Conservés", ignored: "Non repris" };
+const displayValue = new Intl.NumberFormat("fr-FR");
+
+function IndividualPreview({ fields }) {
+  return <details className="rounded-lg border border-darkBlue/10 p-3">
+    <summary>Données de la fiche salarié</summary>
+    {Object.entries(outcomeLabels).map(([status, label]) => {
+      const entries = fields.filter((entry) => entry.status === status);
+      if (!entries.length) return null;
+      return <div key={status} className="mt-3">
+        <p className="font-semibold">{label} ({entries.length})</p>
+        <ul className="list-disc space-y-1 pl-5">
+          {entries.map(({ field, date, value, reason }, index) => <li key={`${field}:${date || index}`}>
+            {individualLabels[field]}{date && ` · ${date.split("-").reverse().join("/")}`}
+            {value != null && typeof value !== "object" && ` · ${typeof value === "number" ? displayValue.format(value) : value}`}
+            {reason && `. ${reason}`}
+            {field === "leave" && value && <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              {Object.entries(leaveLabels).map(([key, name]) => <div key={key} className="flex gap-1">
+                <dt>{name}</dt><dd>{value[key] == null ? "non fourni" : displayValue.format(value[key])}</dd>
+              </div>)}
+            </dl>}
+          </li>)}
+        </ul>
+      </div>;
+    })}
+  </details>;
+}
 
 function periodLabel(period) {
   const format = (value) => value.split("-").reverse().join("/");
@@ -46,6 +86,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
   const [error, setError] = useState("");
   const [choices, setChoices] = useState({});
   const [protectedChoices, setProtectedChoices] = useState({});
+  const [reviewedCreations, setReviewedCreations] = useState({});
   const [confirmed, setConfirmed] = useState(false);
   const base = `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}/skello-imports`;
 
@@ -69,6 +110,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     setBatches([]);
     setChoices({});
     setProtectedChoices({});
+    setReviewedCreations({});
     setConfirmed(false);
     dialogRef.current.showModal();
     await perform(async () => {
@@ -90,6 +132,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     data.append("scope", scope);
     if (review || token) data.append("choices", JSON.stringify(preview.rows.map(({ order }) => ({
       order, destination: choices[order], keepExisting: Boolean(protectedChoices[order]),
+      creationReviewed: Boolean(reviewedCreations[order]),
     }))));
     if (token) {
       data.append("token", token);
@@ -104,6 +147,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     setPreview(null);
     setChoices({});
     setProtectedChoices({});
+    setReviewedCreations({});
     setConfirmed(false);
     await perform(async () => {
       const { data } = await axios.post(`${base}/preview`, uploadData(), getAdminAuthConfig());
@@ -133,9 +177,10 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
   function changeChoice(order, destination) {
     setChoices((current) => ({ ...current, [order]: destination }));
     setProtectedChoices((current) => ({ ...current, [order]: false }));
+    setReviewedCreations((current) => ({ ...current, [order]: false }));
     setConfirmed(false);
     setPreview((current) => ({ ...current, token: null, rows: current.rows.map((row) =>
-      row.order === order ? { ...row, history: null, error: "" } : row) }));
+      row.order === order ? { ...row, history: null, individual: null, error: "" } : row) }));
   }
 
   return (
@@ -217,7 +262,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                   {preview.rows.map((row) => <div key={row.order} className="grid gap-2 rounded-xl border border-darkBlue/10 p-3 text-sm">
                     <div>
                       <p className="font-semibold">{row.firstname} {row.lastname}{row.payrollCode && ` · ${row.payrollCode}`}</p>
-                      <p className="text-darkBlue/70">{[row.post, row.type, `${row.volume} h/semaine`, row.start && `du ${row.start}`, row.end && `au ${row.end}`].filter(Boolean).join(" · ")}</p>
+                      <p className="text-darkBlue/70">{[row.post, row.type, row.volume != null && `${row.volume} h/semaine`, row.start && `du ${row.start}`, row.end && `au ${row.end}`].filter(Boolean).join(" · ")}</p>
                     </div>
                     <label className="grid gap-1">
                       Action pour {row.firstname} {row.lastname}
@@ -231,8 +276,21 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                         <option value="skip">Ignorer cette ligne</option>
                       </select>
                     </label>
-                    {!row.canCreate && !row.candidates.length && <p className="text-darkBlue/65">Vérifiez le matricule ou préparez le dossier dans l’annuaire avant le rapprochement.</p>}
+                    {!row.canCreate && <p className="text-darkBlue/65">{row.creationBlockedReason}</p>}
+                    {choices[row.order] === "create" && <label className="flex items-start gap-2">
+                      <input type="checkbox" checked={Boolean(reviewedCreations[row.order])} disabled={loading} onChange={(event) => {
+                        setReviewedCreations((current) => ({ ...current, [row.order]: event.target.checked }));
+                        setPreview((current) => ({ ...current, token: null }));
+                        setConfirmed(false);
+                      }} />
+                      <span>
+                        J’ai vérifié l’identité et les informations contractuelles disponibles. Le dossier sera créé sans accès ni invitation.
+                        {!row.payrollCode && " Matricule absent."}{!row.start && " Date de début non fournie."}
+                        {row.volume == null && " Volume en heures non fourni."}
+                      </span>
+                    </label>}
                     {row.error && <p role="alert" className="text-red">{row.error}</p>}
+                    {row.individual && <IndividualPreview fields={row.individual} />}
                     {row.history && <Counts counts={row.history.counts} labels={historyLabels} />}
                     {row.history?.conflicts.length > 0 && <>
                       <ul className="list-disc space-y-1 pl-5">{row.history.conflicts.map(({ date, message }, index) =>
@@ -249,14 +307,15 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                     </>}
                   </div>)}
                   <button type="button" className={outline} onClick={review}
-                    disabled={loading || preview.rows.some(({ order }) => !choices[order]) || preview.rows.every(({ order }) => choices[order] === "skip")}>
+                    disabled={loading || preview.rows.some(({ order }) => !choices[order] ||
+                      (choices[order] === "create" && !reviewedCreations[order])) || preview.rows.every(({ order }) => choices[order] === "skip")}>
                     Vérifier le rapprochement
                   </button>
                 </>}
                 {preview.token && <div className="grid gap-3 rounded-xl border border-darkBlue/10 p-3">
                   <label className="flex items-start gap-2 text-sm">
                     <input type="checkbox" checked={confirmed} disabled={loading} onChange={(event) => setConfirmed(event.target.checked)} />
-                    Je confirme le rapprochement, les historiques retenus et le restaurant {target.name}.
+                    Je confirme le rapprochement, les données individuelles et historiques retenues et le restaurant {target.name}.
                   </label>
                   <button type="button" className={primary} onClick={confirm} disabled={loading || !confirmed}>Appliquer l’import</button>
                 </div>}

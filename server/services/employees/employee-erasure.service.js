@@ -17,7 +17,9 @@ async function archivedRecord(restaurantId, employeeId, session) {
   const employee = await Employee.collection.findOne({ _id: new Types.ObjectId(employeeId) }, {
     projection: { restaurants: 1, restaurantProfiles: 1, firstname: 1, lastname: 1, profilePicture: 1, __v: 1 }, session,
   });
-  const profile = employee?.restaurantProfiles?.find((entry) => String(entry.restaurant) === restaurantId);
+  const profiles = (employee?.restaurantProfiles || []).filter((entry) => String(entry.restaurant) === restaurantId);
+  if (profiles.length > 1) throw fail("Plusieurs profils partagent ce compte dans cet établissement. La suppression est bloquée.", 409);
+  const [profile] = profiles;
   if (!profile) throw fail("Membre introuvable dans cet établissement.", 404);
   if (!profile._id || !profile.archivedAt || employee.restaurants?.some((entry) => String(entry) === restaurantId) ||
       await Restaurant.exists({ _id: restaurant, employees: employee._id }).session(session)) {
@@ -39,7 +41,7 @@ async function previewEmployeeErasure(restaurantId, employeeId) {
     const pending = await EmployeeAssetDeletion.exists({ _id: { $in: profile.erasure.assetJobs || [] } });
     return { result: publicResult(profile.erasure, Boolean(pending)) };
   }
-  return { revision: employee.__v ?? 0, shared, documents: (profile.documents || []).map((document) => ({
+  return { revision: employee.__v ?? 0, shared, minimumRetentionDate: toLocalDateKey(new Date()), documents: (profile.documents || []).map((document) => ({
     id: document.public_id, title: document.title || document.filename, eligible: eligibleDocument(document),
   })) };
 }
@@ -65,9 +67,15 @@ async function eraseArchivedEmployee({ restaurantId, employeeId, actor, authMeth
     await lockClockEmployees(restaurantId, [employeeId], session);
     const { employee, profile, restaurant, shared } = await archivedRecord(restaurantId, employeeId, session);
     if (profile.erasure?.at) return profile.erasure;
-    if (typeof retentionUntil !== "string" || !isValidDateKey(retentionUntil) || retentionUntil <= toLocalDateKey(new Date()) ||
-        typeof retentionReason !== "string" || !retentionReason.trim() || retentionReason.length > 500) {
-      throw fail("Renseignez le motif et la date de fin de conservation de l’identité RH.", 400);
+    if (!retentionUntil) throw fail("Renseignez la date de fin de conservation de l’identité RH.", 400);
+    if (typeof retentionUntil !== "string" || !isValidDateKey(retentionUntil)) {
+      throw fail("La date de fin de conservation est invalide.", 400);
+    }
+    if (retentionUntil < toLocalDateKey(new Date())) {
+      throw fail("Le dernier jour de conservation doit être aujourd’hui ou une date ultérieure, en heure de Paris.", 400);
+    }
+    if (typeof retentionReason !== "string" || !retentionReason.trim() || retentionReason.length > 500) {
+      throw fail("Renseignez un motif de conservation de 500 caractères maximum.", 400);
     }
     if ((employee.__v ?? 0) !== revision) throw fail("Le dossier a changé. Rouvrez la confirmation.", 409);
 
@@ -108,11 +116,11 @@ async function eraseArchivedEmployee({ restaurantId, employeeId, actor, authMeth
         [`${scoped}.snapshot`]: { post: profile.snapshot?.post ?? "", dateOnPost: profile.snapshot?.dateOnPost, ...pseudonym },
         [`${scoped}.documents`]: retained,
         [`${scoped}.options`]: {},
-        ...(!shared && { ...pseudonym, phone: "Non renseigné" }),
+        ...(!shared && pseudonym),
       },
       $inc: { __v: 1, ...(!shared && { sessionVersion: 1 }) },
-      ...(!shared && { $unset: { email: "", password: "", secuNumber: "", address: "", emergencyContact: "",
-        resetCode: "", resetCodeExpires: "", profilePicture: "" } }),
+      $unset: { [`${scoped}.skelloNameKey`]: "", ...(!shared && { email: "", password: "", phone: "", secuNumber: "", address: "", emergencyContact: "",
+        resetCode: "", resetCodeExpires: "", profilePicture: "" }) },
     }, { session, arrayFilters: [{ "profile._id": profile._id }] });
     await TimeClockSession.updateMany({ restaurant, employee: employee._id }, {
       $set: { "employeeSnapshot.firstname": pseudonym.firstname, "employeeSnapshot.lastname": pseudonym.lastname },

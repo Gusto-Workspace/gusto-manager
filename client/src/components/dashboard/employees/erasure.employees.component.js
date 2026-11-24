@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import axios from "axios";
 import EmployeeDocumentsList, { DocumentDialog, documentButton } from "../_shared/employee-documents.dashboard.component";
 
@@ -23,6 +23,9 @@ export function EmployeeErasure({ endpoint, member, onClose, onErased }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dateErrorId = useId();
+  const minimumDate = preview?.minimumRetentionDate;
+  const expiredDate = Boolean(retentionUntil && minimumDate && retentionUntil < minimumDate);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,7 +40,7 @@ export function EmployeeErasure({ endpoint, member, onClose, onErased }) {
 
   async function erase(event) {
     event.preventDefault();
-    if (busy || !preview || !reviewed || !retentionUntil || !retentionReason.trim() || confirmation !== "SUPPRIMER") return;
+    if (busy || !preview || !reviewed || !retentionUntil || expiredDate || !retentionReason.trim() || confirmation !== "SUPPRIMER") return;
     setBusy(true);
     setError("");
     try {
@@ -66,8 +69,13 @@ export function EmployeeErasure({ endpoint, member, onClose, onErased }) {
             className="rounded-lg border border-darkBlue/20 px-3 py-2" />
         </label>
         <label className="grid gap-1 text-sm">Dernier jour de conservation justifiée
-          <input type="date" required value={retentionUntil} disabled={busy} onChange={(event) => setRetentionUntil(event.target.value)}
+          <input type="date" required min={minimumDate} value={retentionUntil} disabled={busy}
+            aria-invalid={expiredDate} aria-describedby={expiredDate ? dateErrorId : undefined}
+            onChange={(event) => setRetentionUntil(event.target.value)}
             className="rounded-lg border border-darkBlue/20 px-3 py-2" />
+          {expiredDate && <span id={dateErrorId} role="alert" className="text-red">
+            Choisissez le {minimumDate.split("-").reverse().join("/")} ou une date ultérieure.
+          </span>}
         </label>
         <p className="text-sm">Après cette date, les rapports affichent un pseudonyme. Une demande d’effacement intégral ou la purge des données à échéance se traite séparément.</p>
         {preview.documents.length > 0 && <fieldset disabled={busy} className="grid max-h-44 gap-2 overflow-auto rounded-lg border border-darkBlue/10 p-3 text-sm">
@@ -94,7 +102,7 @@ export function EmployeeErasure({ endpoint, member, onClose, onErased }) {
       {error && <p role="alert" className="text-sm text-red">{error}</p>}
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className={documentButton} disabled={busy} onClick={onClose}>Annuler</button>
-        <button type="submit" disabled={busy || !preview || !reviewed || !retentionUntil || !retentionReason.trim() || confirmation !== "SUPPRIMER"}
+        <button type="submit" disabled={busy || !preview || !reviewed || !retentionUntil || expiredDate || !retentionReason.trim() || confirmation !== "SUPPRIMER"}
           className="min-h-10 rounded-lg bg-red px-3 text-sm font-semibold text-white disabled:opacity-50">
           {busy ? "Suppression en cours…" : "Supprimer le profil opérationnel"}
         </button>
