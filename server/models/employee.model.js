@@ -81,6 +81,8 @@ function stripEmployeeDocumentsFromSerializedValue(_document, value) {
   }
   delete value?.documents;
   delete value?.rhArchiveIdentities;
+  delete value?.loginDelivery;
+  delete value?.password;
   return value;
 }
 
@@ -253,6 +255,16 @@ const employeeSchema = new mongoose.Schema({
   lastname: { type: String, required: true },
   email: { type: String }, // normalisé côté routes
   password: { type: String, select: false },
+  loginDelivery: {
+    type: new mongoose.Schema({
+      nonce: String,
+      restaurant: mongoose.Schema.Types.ObjectId,
+      email: String,
+      resendAfter: Date,
+      delivery: { type: String, enum: ["sending", "sent", "failed"] },
+    }, { _id: false }),
+    select: false,
+  },
   phone: { type: String, required() { return Boolean(this.email || this.password || this.accountType === "accountant"); } },
   secuNumber: { type: String },
   address: { type: String },
@@ -313,6 +325,10 @@ employeeSchema.pre("save", async function (next) {
 
   try {
     if (this.password) {
+      if (!this.isModified("loginDelivery")) {
+        this.loginDelivery = undefined;
+        this.markModified("loginDelivery");
+      }
       const salt = await bcrypt.genSalt(13);
       this.password = await bcrypt.hash(this.password, salt);
     }

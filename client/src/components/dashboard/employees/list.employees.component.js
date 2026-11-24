@@ -250,6 +250,9 @@ export default function ListEmployeesComponent() {
                       <td className={cell}>{entry.contract || "—"}</td>
                       <td className={cell}>
                         <span className="whitespace-nowrap rounded-md bg-blue/10 px-2 py-1 text-xs font-semibold text-blue">{entry.accountType === "accountant" ? "Comptable" : "Salarié"}</span>
+                        {entry.loginStatus && <span className={`mt-1 block whitespace-nowrap text-xs font-medium ${entry.loginStatus.active ? "text-[#146144]" : "text-[#85491d]"}`}>
+                          {entry.loginStatus.active ? "Compte actif" : "Compte non activé"}
+                        </span>}
                         {!entry.email && <span className="mt-1 block whitespace-nowrap text-xs text-darkBlue/60">Sans e-mail</span>}
                       </td>
                       <td className={`${cell} max-w-0`}>

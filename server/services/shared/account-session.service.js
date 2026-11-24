@@ -101,6 +101,7 @@ async function rotatePasswordSession({
     {
       $set: { password: passwordHash },
       $inc: { sessionVersion: 1 },
+      ...(AccountModel === EmployeeModel && { $unset: { loginDelivery: 1 } }),
     },
     { new: true, runValidators: true },
   ).select("+sessionVersion");

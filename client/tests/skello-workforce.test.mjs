@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { transformSync } = require("next/dist/build/swc");
 const dashboard = new URL("../src/components/dashboard/", import.meta.url);
 
-function renderComponent(path, mocks, props) {
+function renderComponent(path, mocks, props, globals = {}) {
   const states = [];
   const effects = [];
   const element = { showModal() {}, close() {}, focus() {} };
@@ -36,7 +36,7 @@ function renderComponent(path, mocks, props) {
   const module = { exports: {} };
   const imports = { react, "react-dom": { createPortal: (child) => child }, ...mocks };
   runInNewContext(source, { exports: module.exports, module, document: { body: {} }, process: { env: { NEXT_PUBLIC_API_URL: "/api" } },
-    FormData, AbortController, require: (name) => Object.hasOwn(imports, name) ? imports[name] : require(name) });
+    FormData, AbortController, ...globals, require: (name) => Object.hasOwn(imports, name) ? imports[name] : require(name) });
   return {
     effects,
     render() {
@@ -89,7 +89,7 @@ test("le parcours Skello exige une vérification manuelle et affiche les décisi
   await button(tree, "Vérifier le rapprochement").props.onClick();
   assert.deepEqual(posted, [[{ order: 1, destination: "create", keepExisting: false, creationReviewed: true }]]);
   const html = renderToStaticMarkup(importDialog.render());
-  for (const label of ["Repris", "Conservés", "Non repris", "Cycle non documenté", "sans accès ni invitation"]) {
+  for (const label of ["Repris", "Conservés", "Non repris", "Cycle non documenté", "PIN Pointeuse", "La connexion Gusto s’active depuis la fiche salarié"]) {
     assert.ok(html.includes(label), label);
   }
 });
@@ -112,4 +112,35 @@ test("la fiche ouvre le solde enregistré à sa date réelle", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(input(endBalance.render(), "date").props.value, date);
   assert.ok(find(endBalance.render(), ({ props }) => props.url === `/api/test/inputs/employee/leave/${date}`));
+});
+
+test("l’activation confirme le destinataire et propose le renvoi des mêmes identifiants après un échec", async () => {
+  const entry = { name: "Camille Exemple", email: "camille@example.test", phone: "0100000000",
+    loginStatus: { active: false, hasPassword: false, delivery: null } };
+  const requests = [];
+  let confirmed = false;
+  const card = renderComponent("employees/account-activation.employees.component.js", {
+    axios: { post: async (url, body) => {
+      requests.push({ url, body: { ...body } });
+      return { data: { delivery: body.resend ? "sent" : "failed" } };
+    } },
+  }, {
+    entry, endpoint: "/employees/fictif/account-activation", canActivate: true,
+    onDelivery(delivery) { entry.loginStatus = { active: true, hasPassword: true, delivery }; },
+  }, { window: { confirm(message) {
+    assert.match(message, /camille@example\.test/);
+    return confirmed;
+  } } });
+  assert.match(renderToStaticMarkup(card.render()), /Compte non activé/);
+  await button(card.render(), "Activer le compte employé").props.onClick();
+  assert.equal(requests.length, 0);
+  confirmed = true;
+  await button(card.render(), "Activer le compte employé").props.onClick();
+  assert.match(renderToStaticMarkup(card.render()), /Compte actif.*L’envoi a échoué/);
+  await button(card.render(), "Renvoyer les identifiants").props.onClick();
+  assert.match(renderToStaticMarkup(card.render()), /Les identifiants ont été envoyés/);
+  assert.deepEqual(requests.map(({ body }) => body), [
+    { confirmed: true, email: entry.email, resend: false },
+    { confirmed: true, email: entry.email, resend: true },
+  ]);
 });

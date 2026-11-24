@@ -12,7 +12,7 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
   const { t } = useTranslation("employees");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
-  const { register, handleSubmit, reset, formState: { dirtyFields, errors, isDirty, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, watch, formState: { dirtyFields, errors, isDirty, isSubmitting } } = useForm();
   const isEmployment = section === "employment";
   const isAccountant = employee.accountType === "accountant";
   const snapshot = profile?.snapshot || {};
@@ -20,6 +20,7 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
   const title = isEmployment ? "Emploi et contrat" : t("labels.personalInformation", "Informations personnelles");
   const value = (key) => snapshot[key] ?? employee[key] ?? "";
   const date = snapshot.dateOnPost === null ? null : value("dateOnPost");
+  const emailEntered = Boolean(String(watch("email") ?? value("email")).trim());
 
   const fields = isEmployment ? [
     { key: "post", label: t("labels.post"), value: value("post"), required: true },
@@ -33,7 +34,8 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
     { key: "lastname", label: t("labels.lastname"), value: value("lastname"), required: true },
     { key: "email", label: t("labels.email"), value: value("email"), type: "email", required: isAccountant },
     { key: "phone", label: t("labels.phone"), value: value("phone"), type: "tel",
-      required: isAccountant || Boolean(value("phone") || value("email")) },
+      required: isAccountant || emailEntered,
+      requiredMessage: "Le téléphone est obligatoire lorsqu’une adresse e-mail est renseignée." },
     ...(!isAccountant ? [
       { key: "secuNumber", label: t("labels.secuNumber"), value: value("secuNumber") },
       { key: "address", label: t("labels.address"), value: value("address") },
@@ -67,13 +69,13 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
 
   function renderField(field) {
     const binding = register(field.key, {
-      required: field.required ? "Ce champ est requis." : false,
+      required: field.required ? field.requiredMessage || "Ce champ est requis." : false,
       validate: field.type === "email" ? (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Saisissez une adresse e-mail valide." : undefined,
       min: field.type === "number" ? { value: 0, message: "Le volume horaire doit être positif." } : undefined,
     });
     return (
       <label key={field.key} className="grid min-w-0 content-start gap-1.5 text-sm font-medium">
-        <span>{field.label}</span>
+        <span>{field.label}{field.required && " (obligatoire)"}</span>
         {field.options ? (
           <select {...binding} disabled={isSubmitting} className={input}>
             <option value="">Non renseigné</option>
@@ -81,7 +83,8 @@ export default function DataEmployeesComponent({ section, employee, profile, onS
             {field.options.map((option) => <option key={option} value={option}>{contractUnits[option] || option}</option>)}
           </select>
         ) : (
-          <input {...binding} type={field.type || "text"} aria-invalid={Boolean(errors[field.key])} disabled={isSubmitting}
+          <input {...binding} type={field.type || "text"} aria-required={Boolean(field.required)}
+            aria-invalid={Boolean(errors[field.key])} disabled={isSubmitting}
             maxLength={field.maxLength} {...(field.type === "number" && { min: 0, step: "any" })} className={input} />
         )}
         {errors[field.key] && <span role="alert" className="text-xs text-red">{errors[field.key].message}</span>}

@@ -29,6 +29,7 @@ export function employeeDirectoryEntry(employee, restaurantId) {
     post: snapshot.post ?? employee.post ?? "",
     contract: profile?.employment?.contractType || "",
     accountType: employee.accountType === "accountant" ? "accountant" : "employee",
+    loginStatus: employee.loginStatus,
   };
 }
 

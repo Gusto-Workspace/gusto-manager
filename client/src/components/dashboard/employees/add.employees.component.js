@@ -552,7 +552,7 @@ export default function AddEmployeesComponent() {
               )}
               {renderFields(accountFields)}
               <p className="text-sm text-darkBlue/70">{linkedEmployee ? "Le salarié utilise son compte Gusto existant." :
-                "Le mot de passe temporaire est envoyé à cette adresse lors de la création du compte."}</p>
+                "Les identifiants de connexion sont envoyés à cette adresse lors de la création du compte."}</p>
             </section>
           </div>
           {employeeAccount && <div hidden={step !== 2}>

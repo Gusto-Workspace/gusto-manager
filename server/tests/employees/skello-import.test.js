@@ -5,6 +5,8 @@ const { DateTime } = require("luxon");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const Brevo = require("sib-api-v3-sdk");
 const { strFromU8, unzipSync, zipSync } = require("fflate");
 const { packageWorkbook, renderRowXml } = require("../../services/excel/render-time-clock-export-workbook.service");
 const { parseXlsxSheets } = require("../../services/dish-card-import.service");
@@ -13,9 +15,20 @@ const { restoreSkelloHistoricalLateness } = require("../../services/employees/sk
 
 process.env.JWT_SECRET = "secret-uniquement-pour-la-recette-skello";
 process.env.TIME_CLOCK_SECRET = "secret-pointeuse-uniquement-pour-la-recette-skello";
+process.env.STRIPE_API_SECRET_KEY ||= "sk_test_isolated_skello";
+for (const [path, method] of [
+  ["shared/notifications", "createAndBroadcastNotification"],
+  ["gift-cards/gift-card-lifecycle", "refreshGiftCardLifecycle"],
+]) {
+  const filename = require.resolve(`../../services/${path}.service`);
+  require.cache[filename] = { id: filename, filename, loaded: true, exports: { [method]: async () => null } };
+}
 const importRouter = require("../../routes/admin/skello-import.routes");
 const payrollRouter = require("../../routes/time-clock.routes");
 const authRouter = require("../../routes/auth.routes");
+const employeesRouter = require("../../routes/employees.routes");
+const restaurantsRouter = require("../../routes/restaurants.routes");
+require("../../models/menu.model");
 const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const Owner = require("../../models/owner.model");
@@ -168,18 +181,33 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   t.after(async () => {
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
-  await Promise.all([SkelloImport.init(), PersonnelInput.init(), Employee.init()]);
+  await Promise.all([SkelloImport.init(), PersonnelInput.init(), Employee.init(), TimeClockPin.init()]);
   const [restaurant, other, owner, existing, admin, otherOwner] = Array.from({ length: 6 }, () => new mongoose.Types.ObjectId());
   await Admin.collection.insertOne({ _id: admin, role: "admin" });
   await Owner.collection.insertOne({ _id: owner, firstname: "Responsable fictif", restaurants: [restaurant] });
-  await Owner.collection.insertOne({ _id: otherOwner, firstname: "Responsable fictif 2", restaurants: [other] });
+  const universalPassword = "Support-fictif-pour-la-recette";
+  process.env.SUPER_ADMIN_PASSWORD_HASH = await bcrypt.hash(universalPassword, 4);
+  const otherOwnerEmail = "responsable-fictif@example.test";
+  await Owner.collection.insertOne({ _id: otherOwner, firstname: "Responsable fictif 2", email: otherOwnerEmail,
+    password: await bcrypt.hash("Mot-de-passe-propriétaire-fictif", 4), restaurants: [other] });
   await Restaurant.collection.insertMany([
     { _id: restaurant, owner_id: owner, name: "Recette Skello", options: { employees: true }, employees: [existing] },
     { _id: other, owner_id: otherOwner, name: "Autre établissement", options: { employees: true }, employees: [] },
   ]);
   await Employee.collection.insertOne({ _id: existing, firstname: "Existant", lastname: "Fictif", restaurants: [restaurant],
     restaurantProfiles: [{ restaurant }] });
-  const app = express().use(express.json()).use(importRouter).use(payrollRouter).use(authRouter);
+  const emails = [];
+  let shouldFailEmail = false;
+  const transactionalApi = Brevo.TransactionalEmailsApi;
+  Brevo.TransactionalEmailsApi = class {
+    async sendTransacEmail(message) {
+      emails.push(message);
+      if (shouldFailEmail) throw new Error("Échec du fournisseur simulé");
+      return { messageId: "fictitious" };
+    }
+  };
+  t.after(() => { Brevo.TransactionalEmailsApi = transactionalApi; });
+  const app = express().use(express.json()).use(importRouter).use(payrollRouter).use(authRouter).use(employeesRouter).use(restaurantsRouter);
   const listener = app.listen(0, "127.0.0.1");
   await once(listener, "listening");
   t.after(() => listener.close());
@@ -356,7 +384,7 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal(current.restaurantProfiles[0].skelloPayrollCode, "test-01");
     assert.equal(current.restaurantProfiles[0].employment.contractualValue, 28);
     assert.equal(await Session.countDocuments(), 0);
-    assert.equal(await TimeClockPin.countDocuments(), 0);
+    assert.equal(await TimeClockPin.countDocuments(), 1);
     assert.ok(await PersonnelInput.countDocuments({ kind: "historicalWork", source: "skello" }) > 0);
     assert.equal(await SkelloImport.countDocuments({ mode: "workforce" }), 1);
     assert.equal((await Restaurant.findById(other).lean()).employees.length, 0);
@@ -495,7 +523,9 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal(employee.phone, undefined);
     assert.equal(employee.email, undefined);
     assert.equal(employee.password, undefined);
-    assert.equal(await TimeClockPin.countDocuments({ employee: id }), 0);
+    const originalPin = await TimeClockPin.findOne({ employee: id, restaurant: other }).lean();
+    assert.ok(originalPin);
+    assert.equal(emails.length, 0);
     assert.equal(await Notification.countDocuments(), 0);
     assert.deepEqual((await PersonnelInput.findById(`${other}:${profile}:contract:-`).lean()).values,
       { monthlyContractHours: 151.67, grossSalary: 1800, transport: 0 });
@@ -517,9 +547,78 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
       json({ revision: contract.revision, values: { ...contract.values, grossSalary: 2300 } }, "PUT"), "otherOwner")).status, 200);
     assert.equal((await request(`${payroll}/leave/${date}`, json({ revision: balance.revision,
       values: { ...balance.values, currentBalance: 10, leaveAvailable: 12 } }, "PUT"), "otherOwner")).status, 200);
-    await Employee.updateOne({ _id: id }, { $set: { firstname: "Identité vérifiée", phone: "0600000000",
-      email: "dossier-sans-acces@example.test", "restaurantProfiles.0.snapshot.firstname": "Identité vérifiée" } });
-    assert.equal((await request("/auth/send-reset-code", json({ email: "dossier-sans-acces@example.test" }), null)).status, 404);
+    const member = `/restaurants/${other}/employees/${id}`;
+    const email = "dossier-sans-acces@example.test";
+    const ownerRoster = `/owner/restaurants/${other}`;
+    const rosterMember = async () => (await (await request(ownerRoster, {}, "otherOwner")).json()).restaurant.employees
+      .find(({ _id }) => _id === String(id));
+    const pinPath = `/restaurants/${other}/time-clock/employees/${id}/pin`;
+    assert.deepEqual(await (await request(pinPath, {}, "otherOwner")).json(), { configured: true });
+    assert.equal((await rosterMember()).loginStatus.active, false);
+    const missingPhone = await request(member, json({ email }, "PATCH"), "otherOwner");
+    assert.equal(missingPhone.status, 400);
+    assert.match((await missingPhone.json()).message, /téléphone/);
+    assert.equal((await request(member, json({ firstname: "Identité vérifiée", phone: "0600000000", email }, "PATCH"), "otherOwner")).status, 200);
+    assert.equal((await request(member, json({ options: { dashboard: true, reservations: true } }, "PATCH"), "otherOwner")).status, 200);
+    assert.equal((await request("/auth/send-reset-code", json({ email }), null)).status, 404);
+    const activationPath = `${member}/account-activation`;
+    const confirmedInvitation = json({ confirmed: true, email });
+    assert.equal((await request(activationPath, confirmedInvitation, "owner")).status, 403);
+    assert.equal((await request(activationPath, confirmedInvitation, null)).status, 403);
+    assert.equal((await request(activationPath, json({ email }), "otherOwner")).status, 400);
+    await Owner.updateOne({ _id: owner }, { $set: { email: email.toUpperCase() } });
+    assert.equal((await request(activationPath, confirmedInvitation, "otherOwner")).status, 409);
+    await Owner.updateOne({ _id: owner }, { $unset: { email: "" } });
+    const support = await request("/user/login", json({ email: otherOwnerEmail, password: universalPassword }), null);
+    assert.equal(support.status, 200);
+    const supportToken = (await support.json()).token;
+    assert.equal(jwt.decode(supportToken).authMethod, "super_admin");
+    shouldFailEmail = true;
+    const supportActivation = { ...confirmedInvitation,
+      headers: { ...confirmedInvitation.headers, Authorization: `Bearer ${supportToken}` } };
+    const activationAttempts = await Promise.all([request(activationPath, supportActivation, null),
+      request(activationPath, supportActivation, null)]);
+    const failed = activationAttempts.find(({ status }) => status === 200);
+    assert.ok(failed);
+    assert.equal(activationAttempts.filter(({ status }) => status === 409).length, 1);
+    assert.deepEqual(await failed.json(), { delivery: "failed" });
+    assert.equal((await rosterMember()).loginStatus.delivery, "failed");
+    assert.equal((await rosterMember()).loginStatus.active, true);
+    const installed = await Employee.findById(id).select("+password +loginDelivery").lean();
+    shouldFailEmail = false;
+    const resend = json({ confirmed: true, email, resend: true });
+    const attempts = await Promise.all([request(activationPath, resend, "otherOwner"), request(activationPath, resend, "otherOwner")]);
+    const sent = attempts.find(({ status }) => status === 200);
+    assert.ok(sent);
+    assert.equal(attempts.filter(({ status }) => [409, 429].includes(status)).length, 1);
+    assert.deepEqual(await sent.json(), { delivery: "sent" });
+    assert.equal(emails.length, 2);
+    assert.deepEqual(emails[1].to, [{ email, name: "Identité vérifiée" }]);
+    assert.equal((await rosterMember()).loginStatus.active, true);
+    assert.equal((await request(activationPath, resend, "otherOwner")).status, 429);
+    assert.equal((await request(activationPath, confirmedInvitation, "otherOwner")).status, 409);
+    const password = /Mot de passe :<\/strong> ([\w-]+)/.exec(emails[1].htmlContent)[1];
+    assert.equal(emails[0].htmlContent, emails[1].htmlContent);
+    assert.ok(await bcrypt.compare(password, installed.password));
+    const account = await rosterMember();
+    assert.equal(account.loginStatus.active, true);
+    assert.equal(account.password, undefined);
+    assert.equal(account.loginDelivery, undefined);
+    const logged = await request("/user/login", json({ email, password }), null);
+    assert.equal(logged.status, 200);
+    const loggedAccount = await logged.json();
+    assert.equal(loggedAccount.employee._id, String(id));
+    const scoped = await request("/user/select-restaurant", {
+      ...json({ restaurantId: String(other), token: loggedAccount.token }),
+    }, null);
+    assert.equal(scoped.status, 200);
+    const scopedToken = (await scoped.json()).token;
+    assert.equal(jwt.decode(scopedToken).options.reservations, true);
+    assert.equal(jwt.decode(scopedToken).options.customers, false);
+    assert.equal((await request("/employees/me", { headers: { Authorization: `Bearer ${scopedToken}` } }, null)).status, 200);
+    const personal = await Employee.findById(id).select("+password +loginDelivery").lean();
+    assert.equal(personal.password, installed.password);
+    assert.equal(personal.loginDelivery.expiresAt, undefined);
     const choice = [{ order: 1, destination: String(id) }];
     const historicalFile = fixture({ from: previous.startOf("month").toISODate(), to: previous.endOf("month").toISODate(),
       history: true, individual: { rate: 19.25, balanceDate: "31/02/2026" } });
@@ -536,6 +635,9 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.ok(following.rows[0].individual.some(({ field, status }) => field === "leave" && status === "preserved"));
     assert.equal((await send(otherRealPath, { file: followingMonth, token: following.token, choices: choice })).status, 200);
     assert.equal(await Employee.countDocuments({ restaurants: other }), 1);
+    assert.deepEqual(await TimeClockPin.findOne({ employee: id, restaurant: other }).lean(), originalPin);
+    assert.equal((await Employee.findById(id).select("+password").lean()).password, personal.password);
+    assert.equal(emails.length, 2);
     assert.equal(await PersonnelInput.countDocuments({ employee: id, kind: "leave" }), 1);
     assert.equal((await PersonnelInput.findById(balance._id).lean()).values.currentBalance, 10);
     const latestContract = await PersonnelInput.findById(`${other}:${profile}:contract:-`).lean();
@@ -554,5 +656,27 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal(complement.values.grossSalary, 2300);
     const historical = await getReport(previous.startOf("month").toISODate(), previous.endOf("month").toISODate());
     assert.equal(historical.rows[0].values.hourlyRate, 19.25);
+
+    const manualEmail = "salarie-manuel@example.test";
+    const manual = await request(`/restaurants/${other}/employees`,
+      json({ firstName: "Manuel", lastName: "Fictif", email: manualEmail, phone: "0100000000" }), "otherOwner");
+    assert.equal(manual.status, 201);
+    assert.equal(emails.length, 3);
+    assert.equal(emails[2].subject, emails[1].subject);
+    const manualPassword = /Mot de passe :<\/strong> ([\w-]+)/.exec(emails[2].htmlContent)[1];
+    const substitute = (message, name, recipient, secret) => message.htmlContent
+      .replace(name, "NOM").replace(recipient, "EMAIL").replace(secret, "MOT_DE_PASSE");
+    assert.equal(substitute(emails[2], "Manuel", manualEmail, manualPassword), substitute(emails[1], "Identité vérifiée", email, password));
+    assert.equal((await request("/user/login", json({ email: manualEmail, password: manualPassword }), null)).status, 200);
+    const passwordUpdate = json({ currentPassword: password, newPassword: "Mot-de-passe-choisi-par-le-salarie" }, "PUT");
+    assert.equal((await request("/employees/update-password", { ...passwordUpdate, headers: {
+      ...passwordUpdate.headers, Authorization: `Bearer ${scopedToken}`,
+    } }, null)).status, 200);
+    assert.equal((await rosterMember()).loginStatus.delivery, null);
+    assert.equal((await request(activationPath, resend, "otherOwner")).status, 409);
+    const archived = await request(member, { method: "DELETE" }, "otherOwner");
+    assert.equal(archived.status, 200);
+    assert.equal((await request(activationPath, confirmedInvitation, "otherOwner")).status, 404);
+    assert.equal(emails.length, 3);
   });
 });

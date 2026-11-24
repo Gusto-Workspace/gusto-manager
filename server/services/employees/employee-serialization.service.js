@@ -59,7 +59,7 @@ function publicEmployeeDirectoryEntry(employee) {
 function decorateEmployeeForRestaurant(
   employee,
   restaurantId,
-  { safe = false, includeDocuments = false } = {},
+  { safe = false, includeDocuments = false, includeLoginStatus = false } = {},
 ) {
   const plainEmployee = toPlainObject(employee);
   if (!plainEmployee) return null;
@@ -84,6 +84,18 @@ function decorateEmployeeForRestaurant(
         : serializeEmployeeDocuments(profileView?.documents),
     restaurantProfiles: profileView ? [profileView] : [],
   };
+  delete next.password;
+  delete next.loginDelivery;
+  if (includeLoginStatus && !safe) {
+    const hasPassword = Boolean(plainEmployee.password);
+    const delivery = plainEmployee.loginDelivery;
+    const canResend = hasPassword && delivery?.email === plainEmployee.email && String(delivery?.restaurant) === String(restaurantId);
+    next.loginStatus = {
+      active: hasPassword && Boolean(plainEmployee.email),
+      hasPassword,
+      delivery: canResend ? delivery.delivery : null,
+    };
+  }
 
   if (safe) {
     delete next.email;
@@ -107,6 +119,8 @@ function decorateEmployeeForRestaurant(
 function sanitizeEmployeeForRestaurants(employee, restaurantIds = []) {
   const plainEmployee = toPlainObject(employee);
   if (!plainEmployee) return null;
+  delete plainEmployee.password;
+  delete plainEmployee.loginDelivery;
 
   const allowedRestaurantIds = new Set(
     (restaurantIds || []).map((restaurantId) => String(restaurantId)),
