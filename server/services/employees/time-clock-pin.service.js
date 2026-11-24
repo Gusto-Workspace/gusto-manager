@@ -112,7 +112,7 @@ async function provisionMissingClockPin({ restaurant, employee, profile, changed
   return "assigned";
 }
 
-async function rotateClockPin({ restaurant, changedBy, actorRole, findMember }) {
+async function rotateClockPin({ restaurant, changedBy, actorRole, authMethod, superAdminSessionId, findMember }) {
   return withClockPinTransaction(async (session) => {
     const member = await findMember(session);
     if (!member) return { found: false };
@@ -125,7 +125,7 @@ async function rotateClockPin({ restaurant, changedBy, actorRole, findMember }) 
     });
     if (rotated) {
       await TimeClockPinAudit.create([{
-        restaurant, employee: member.id, actor: changedBy, actorRole, action: "reset", at: now,
+        restaurant, employee: member.id, actor: changedBy, actorRole, authMethod, superAdminSessionId, action: "reset", at: now,
       }], { session });
     }
     return { found: true, rotated };

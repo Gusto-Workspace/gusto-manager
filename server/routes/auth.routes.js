@@ -11,6 +11,7 @@ const EmployeeModel = require("../models/employee.model");
 const RestaurantModel = require("../models/restaurant.model");
 const limitLogin = require("../middleware/limit-login");
 const {
+  accountAuditContext,
   createSuperAdminSessionClaims,
   getSessionVersion,
   incrementSessionVersion,
@@ -78,6 +79,7 @@ router.post("/user/login", limitLogin, async (req, res) => {
       if (!isMatch && !isSuperAdminLogin) {
         return res.status(401).json({ message: "errors.incorrect" });
       }
+      const supportClaims = isSuperAdminLogin ? createSuperAdminSessionClaims() : {};
       const token = signAccountToken({
         id: owner._id,
         firstname: owner.firstname,
@@ -87,11 +89,17 @@ router.post("/user/login", limitLogin, async (req, res) => {
         stripeCustomerId: owner.stripeCustomerId,
         profilePictureUrl: owner.profilePicture?.url || null,
         sessionVersion: getSessionVersion(owner),
-        ...(isSuperAdminLogin ? createSuperAdminSessionClaims() : {}),
+        ...supportClaims,
       });
       const plainOwner = owner.toObject();
       delete plainOwner.password;
       delete plainOwner.sessionVersion;
+      if (isSuperAdminLogin) {
+        console.info("[support-audit]", {
+          ...accountAuditContext(supportClaims),
+          actor: String(owner._id), method: "POST", route: "/user/login", status: 200,
+        });
+      }
       return res.json({ token, owner: plainOwner });
     }
 

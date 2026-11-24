@@ -19,6 +19,7 @@ export default function GeneralFormSettingsComponent({
     handleSubmit,
     formState: { errors },
     reset,
+    resetField,
     setError,
     watch,
   } = useForm({
@@ -165,6 +166,7 @@ export default function GeneralFormSettingsComponent({
 
     if (isOwner) {
       formData.append("phoneNumber", data.phoneNumber || "");
+      if (changesOwnerEmail) formData.append("currentPassword", data.currentPassword);
     } else {
       // employee → le back attend "phone"
       formData.append("phone", data.phoneNumber || "");
@@ -194,22 +196,32 @@ export default function GeneralFormSettingsComponent({
         fetchUserData();
       })
       .catch((error) => {
-        if (error.response?.status === 409) {
+        const status = error.response?.status;
+        if (changesOwnerEmail && error.response?.data?.field === "currentPassword") {
+          setError("email", { type: "manual", message: t("form.errors.required", "Le mot de passe actuel est requis.") });
+        } else if (changesOwnerEmail && status === 401) {
+          setError("email", { type: "manual", message: t("form.errors.current") });
+        } else if (status === 409) {
           setError("email", {
             type: "manual",
             message: "Cet email est déjà utilisé.",
           });
         } else {
-          console.error("Erreur lors de la mise à jour :", error);
+          setError("root", { type: "manual", message: status === 429
+            ? "Trop de tentatives. Réessayez plus tard."
+            : "Impossible d’enregistrer les modifications." });
         }
       })
       .finally(() => {
+        if (changesOwnerEmail) resetField("currentPassword");
         setIsSubmitting(false);
       });
   }
 
   // ---------- Détection des changements (form + photo) ----------
   const currentValues = watch();
+  const normalizeEmail = (value = "") => value.trim().toLowerCase();
+  const changesOwnerEmail = role === "owner" && normalizeEmail(currentValues.email) !== normalizeEmail(userData?.email || "");
 
   let hasBaseChanges = false;
   if (initialValuesRef.current) {
@@ -305,6 +317,19 @@ export default function GeneralFormSettingsComponent({
                 <p className={errorTextCls}>{errors.email.message}</p>
               )}
             </div>
+
+            {changesOwnerEmail && (
+              <div className={fieldWrap}>
+                <label className={labelCls} htmlFor="owner-email-password">{t("form.password.current")}</label>
+                <input id="owner-email-password" type="password" autoComplete="current-password"
+                  {...register("currentPassword", {
+                    required: t("form.errors.required", "Le mot de passe actuel est requis."),
+                    shouldUnregister: true,
+                  })}
+                  className={inputCls} />
+                {errors.currentPassword && <p role="alert" className={errorTextCls}>{errors.currentPassword.message}</p>}
+              </div>
+            )}
 
             {/* Téléphone */}
             <div className={fieldWrap}>
@@ -430,6 +455,7 @@ export default function GeneralFormSettingsComponent({
             </div>
           )}
 
+          {errors.root && <p role="alert" className={errorTextCls}>{errors.root.message}</p>}
           <div className="pt-1 flex flex-col gap-2 tablet:flex-row tablet:items-center tablet:justify-between">
             <button
               type="submit"

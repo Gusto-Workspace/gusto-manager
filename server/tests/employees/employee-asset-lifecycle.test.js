@@ -642,10 +642,11 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     function readClock(method, path, body, query) {
       return call(timeClock, method, path, scopedOwner, params, body, { query });
     }
-    async function historicalData() {
-      const report = await readClock("get", reportPath, null, range);
+    const supportOwner = { ...scopedOwner, superAdmin: true, authMethod: "super_admin", superAdminSessionId: randomUUID() };
+    async function historicalData(viewer = scopedOwner) {
+      const report = await call(timeClock, "get", reportPath, viewer, params, null, { query: range });
       assert.equal(report.code, 200);
-      const history = await readClock("get", `${clockPath}/register`, null, { ...range, view: "history" });
+      const history = await call(timeClock, "get", `${clockPath}/register`, viewer, params, null, { query: { ...range, view: "history" } });
       assert.equal(history.body.history.length, 1);
       const sheets = [];
       for (const [router, path] of [
@@ -653,12 +654,12 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
         [timeClock, `${clockPath}/export/excel`],
         [employees, `${planningPath}/export/excel`],
       ]) {
-        const result = await call(router, "post", path, scopedOwner, params, range);
+        const result = await call(router, "post", path, viewer, params, range);
         assert.equal(result.code, 200);
         sheets.push(workbookSheets(result.body));
       }
       for (const [router, path] of [[timeClock, clockPath], [employees, planningPath]]) {
-        const result = await call(router, "post", `${path}/export/pdf`, scopedOwner, params, range);
+        const result = await call(router, "post", `${path}/export/pdf`, viewer, params, range);
         assert.equal(result.code, 200);
         assert.equal(result.body.subarray(0, 4).toString(), "%PDF");
       }
@@ -713,7 +714,8 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(shared, true);
     assert.equal(documents.length, 2);
     const erase = { revision, confirmation: "SUPPRIMER", retentionReviewed: true, documentIds: [optionalPiece], ...retention };
-    assert.equal((await call(employees, "post", erasePath, { ...scopedOwner, superAdmin: true }, params, erase)).code, 403);
+    assert.deepEqual((await call(employees, "get", erasePath, supportOwner, params)).body, { revision, shared, documents });
+    assert.equal((await call(employees, "post", erasePath, supportOwner, params, { ...erase, confirmation: "" })).code, 400);
     assert.equal((await f.request("post", erasePath, 0, { ...erase, confirmation: "" })).code, 400);
     assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionReviewed: false })).code, 400);
     assert.equal((await f.request("post", erasePath, 0, { ...erase, retentionUntil: "2020-01-01" })).code, 400);
@@ -733,7 +735,8 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(await EmployeeAssetDeletion.exists({ public_id: optionalPiece }), null);
     assert.equal(assets.mock.callCount(), 0);
     assets.mock.mockImplementation(async () => ({ result: "unavailable" }));
-    const [removed, replay] = await Promise.all([f.request("post", erasePath, 0, erase), f.request("post", erasePath, 0, erase)]);
+    const eraseAsSupport = () => call(employees, "post", erasePath, supportOwner, params, erase);
+    const [removed, replay] = await Promise.all([eraseAsSupport(), eraseAsSupport()]);
     assert.equal(removed.code, 200);
     assert.equal(replay.code, 200);
     assert.deepEqual(removed.body, replay.body);
@@ -743,6 +746,8 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(removed.body.assetCleanupPending, true);
     assert.equal(assets.mock.callCount(), 1);
     const erased = await f.read();
+    assert.equal(erased.restaurantProfiles[0].erasure.authMethod, "super_admin");
+    assert.equal(erased.restaurantProfiles[0].erasure.superAdminSessionId, supportOwner.superAdminSessionId);
     const pseudonym = erased.restaurantProfiles[0].snapshot;
     assert.equal(pseudonym.firstname, "Ancien membre");
     assert.equal(pseudonym.email, undefined);
@@ -758,7 +763,7 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.equal(archive.historical[0].retainedDocuments, 1);
     assert.equal(archive.historical[0].firstname, "Ari");
     assert.equal(archive.historical[0].lastname, "Test");
-    assert.deepEqual((await call(employees, "get", archivePath, { ...scopedOwner, superAdmin: true }, params)).body.historical, []);
+    assert.deepEqual((await call(employees, "get", archivePath, supportOwner, params)).body, archive);
     assert.deepEqual((await f.request("get", `${employeePath}/documents`)).body.documents.map(({ title }) => title), ["Contrat"]);
     const after = await historicalData();
     assert.deepEqual(after.values, before.values);
@@ -767,8 +772,7 @@ test("employee attachment lifecycle on a dedicated loopback MongoDB replica set"
     assert.doesNotMatch(after.sheets.flat().join(""), /@example\.test|0600000000/);
     assert.deepEqual(after.sheets, withoutContact);
     assert.equal(after.history[0].employee.firstname, "Ari");
-    const indirect = await call(timeClock, "get", reportPath, { ...scopedOwner, superAdmin: true }, params, null, { query: range });
-    assert.equal(indirect.body.rows[0].employee.firstname, "Ancien membre");
+    assert.deepEqual(await historicalData(supportOwner), after);
     assert.equal(after.history[0].at.toISOString(), before.history[0].at.toISOString());
     assert.ok(await PlanningDay.exists({ restaurant, date, lockedAt: { $ne: null } }));
     const queued = await EmployeeAssetDeletion.findOne({ public_id: optionalPiece }).lean();

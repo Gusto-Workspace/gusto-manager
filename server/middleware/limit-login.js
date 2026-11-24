@@ -32,12 +32,12 @@ function pruneExpiredAttempts(now) {
   }
 }
 
-function limitLogin(req, res, next) {
+function allowPasswordAttempt(req, res, accountEmail) {
   const now = Date.now();
   pruneExpiredAttempts(now);
 
   const source = String(req.ip || req.socket?.remoteAddress || "unknown");
-  const email = normalizeEmail(req.body?.email);
+  const email = normalizeEmail(accountEmail);
   const sourceAttempt = consumeAttempt(
     `source:${source}`,
     MAX_ATTEMPTS_PER_SOURCE,
@@ -49,14 +49,19 @@ function limitLogin(req, res, next) {
     now,
   );
 
-  if (sourceAttempt.allowed && accountAttempt.allowed) return next();
+  if (sourceAttempt.allowed && accountAttempt.allowed) return true;
 
   const resetAt = Math.max(sourceAttempt.resetAt, accountAttempt.resetAt);
   const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - now) / 1000));
   res.set("Retry-After", String(retryAfterSeconds));
-  return res
+  res
     .status(429)
     .json({ message: "Trop de tentatives. Réessayez plus tard." });
+  return false;
+}
+
+function limitLogin(req, res, next) {
+  if (allowPasswordAttempt(req, res, req.body?.email)) return next();
 }
 
 function resetLoginLimiterForTests() {
@@ -64,4 +69,5 @@ function resetLoginLimiterForTests() {
 }
 
 module.exports = limitLogin;
+module.exports.allowPasswordAttempt = allowPasswordAttempt;
 module.exports.resetLoginLimiterForTests = resetLoginLimiterForTests;

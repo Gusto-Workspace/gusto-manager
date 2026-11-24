@@ -1,7 +1,9 @@
 const assert = require("node:assert/strict");
 const { createHmac, generateKeyPairSync, privateDecrypt, randomUUID, sign } = require("node:crypto");
+const { once } = require("node:events");
 const { test } = require("node:test");
 const { inflateSync } = require("node:zlib");
+const express = require("express");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 
@@ -353,7 +355,8 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
       setHeader(key, value) { result.headers[key] = value; return this; },
       json(value) { result.data = value; return this; },
       send(value) { result.data = value; return this; },
-      end() { return this; },
+      type(value) { result.headers["Content-Type"] = value; return this; },
+      end(value) { if (value && result.headers["Content-Type"] === "json") result.data = JSON.parse(value); return this; },
     };
     let index = 0;
     const next = (error) => { if (error) throw error; return handlers[index++].handle(request, response, next); };
@@ -709,18 +712,27 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   assert.deepEqual((await revealAsOwner(bob)).data, { configured: false });
   assert.equal((await revealAsOwner(alice, { authorization: auth(alice, "employee") })).status, 403);
   assert.equal((await revealAsOwner(alice, { authorization: auth(accountant, "accountant") })).status, 403);
-  const support = "Bearer " + jwt.sign({
-    id: String(owner), role: "owner", superAdmin: true, authMethod: "super_admin", superAdminSessionId: randomUUID(),
+  const supportSessionId = randomUUID();
+  const supportToken = (id) => "Bearer " + jwt.sign({
+    id: String(id), role: "owner", superAdmin: true, authMethod: "super_admin", superAdminSessionId: supportSessionId,
   }, process.env.JWT_SECRET);
-  assert.equal((await revealAsOwner(alice, { authorization: support })).status, 403);
+  const support = supportToken(owner);
+  assert.deepEqual((await revealAsOwner(alice, { authorization: support })).data, ownerView.data);
+  assert.deepEqual(await TimeClockPin.findById(storedPin._id).lean(), storedPin);
   assert.equal((await revealAsOwner(outside)).status, 404);
   assert.deepEqual((await revealAsOwner(alice, { restaurantId: other })).data, { configured: false });
   const unrelatedOwner = await Owner.collection.insertOne({ firstname: "Autre propriétaire fictif" });
   assert.equal((await revealAsOwner(alice, { authorization: auth(unrelatedOwner.insertedId, "owner") })).status, 403);
+  const unrelatedSupport = supportToken(unrelatedOwner.insertedId);
+  assert.equal((await revealAsOwner(alice, { authorization: unrelatedSupport })).status, 403);
+  assert.equal((await call("post", statusPath + "/regenerate", { employeeId: String(alice), authorization: unrelatedSupport })).status, 403);
+  assert.equal((await call("post", statusPath + "/regenerate", { employeeId: String(bob), authorization: auth(alice, "employee") })).status, 403);
+  assert.equal((await call("post", statusPath + "/regenerate", { employeeId: String(outside), authorization: support })).status, 404);
   const viewed = await TimeClockPinAudit.find({ action: "viewed" }).lean();
-  assert.equal(viewed.length, 1);
-  assert.equal(String(viewed[0].actor), String(owner));
-  assert.equal(String(viewed[0].employee), String(alice));
+  assert.equal(viewed.length, 2);
+  assert.ok(viewed.every((entry) => String(entry.actor) === String(owner) && String(entry.employee) === String(alice)));
+  assert.equal(viewed.find(({ authMethod }) => authMethod === "password").superAdminSessionId, undefined);
+  assert.equal(viewed.find(({ authMethod }) => authMethod === "super_admin").superAdminSessionId, supportSessionId);
   assert.doesNotMatch(JSON.stringify(viewed), /"0042"|sealedPin|lookup|revision/);
   const self = await call("get", pinPath, { authorization: auth(alice, "employee") });
   assert.deepEqual(self.data, { configured: true });
@@ -729,6 +741,34 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   assert.match(alicePin, /^\d{4}$/);
   assert.notEqual(storedPin.sealedPin, alicePin);
   assert.equal(revealed.headers["Cache-Control"], "private, no-store");
+  await t.test("a revealed PIN is sent without cache validators", async () => {
+    const logs = [];
+    const auditLog = t.mock.method(console, "info", (label, values) => logs.push({ label, values }));
+    const listener = express().use(router).listen(0, "127.0.0.1");
+    try {
+      await once(listener, "listening");
+      const origin = `http://127.0.0.1:${listener.address().port}/restaurants/${restaurant}/time-clock`;
+      const requests = [
+        [`/employees/${alice}/pin/reveal`, manager],
+        [`/employees/${alice}/pin/reveal?private=fixture-query`, support],
+        ["/me/pin?reveal=true", auth(alice, "employee")],
+      ];
+      for (const [path, authorization] of requests) {
+        const response = await fetch(origin + path, { headers: { authorization } });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("cache-control"), "private, no-store");
+        assert.equal(response.headers.get("etag"), null);
+        assert.deepEqual(await response.json(), { configured: true, pin: "0042" });
+      }
+      assert.deepEqual(logs, [{ label: "[support-audit]", values: {
+        authMethod: "super_admin", superAdminSessionId: supportSessionId, actor: String(owner),
+        method: "GET", route: ownerPinPath, status: 200,
+      } }]);
+    } finally {
+      auditLog.mock.restore();
+      await new Promise((resolve) => listener.close(resolve));
+    }
+  });
   // A PIN provisioned by the previous version can already be used and revealed.
   await TimeClockPin.collection.updateOne({ _id: storedPin._id }, { $set: { initial: true } });
   assert.equal((await reveal(alice)).data.pin, alicePin);
@@ -1206,6 +1246,15 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   });
   assert.deepEqual(managerPin.data, { configured: true });
   assert.notEqual((await reveal(newMembers[0]._id, other)).data.pin, initialCodes[0]);
+  const supportReset = await call("post", statusPath + "/regenerate", {
+    restaurantId: other, employeeId: String(newMembers[1]._id), authorization: support,
+  });
+  assert.deepEqual(supportReset.data, { configured: true });
+  assert.notEqual((await reveal(newMembers[1]._id, other)).data.pin, initialCodes[1]);
+  const supportResetAudit = await TimeClockPinAudit.findOne({ employee: newMembers[1]._id, action: "reset" }).lean();
+  assert.equal(supportResetAudit.authMethod, "super_admin");
+  assert.equal(supportResetAudit.superAdminSessionId, supportSessionId);
+  assert.doesNotMatch(JSON.stringify(supportResetAudit), /pin\x22|sealedPin|lookup/i);
 
   // This historical member predates both per-restaurant profiles and PINs.
   await Employee.collection.updateOne({ _id: outside }, { $set: { restaurantProfiles: [] } });
@@ -1218,6 +1267,8 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   const migratedPin = (await reveal(outside, other)).data.pin;
   assert.match(migratedPin, /^\d{4}$/);
   assert.deepEqual((await revealAsOwner(outside, { restaurantId: other })).data, { configured: true, pin: migratedPin });
+  assert.deepEqual((await revealAsOwner(outside, { restaurantId: other, authorization: support })).data,
+    { configured: true, pin: migratedPin });
   assert.equal((await call("get", statusPath, { employeeId: String(outside) })).status, 404);
 
   const newLink = await call("post", base + "/devices", { restaurantId: other, body: { name: "Tablette recette historique" } });
@@ -1251,8 +1302,9 @@ test("Pointeuse endpoints on an isolated loopback MongoDB database", {
   const audit = await TimeClockPinAudit.find({ employee: outside, restaurant: other, action: "reset" }).lean();
   assert.equal(audit.length, 1);
   assert.equal(audit[0].actorRole, "owner");
+  assert.equal(audit[0].authMethod, "password");
   assert.deepEqual(Object.keys(audit[0]).filter((key) => !["_id", "__v"].includes(key)).sort(),
-    ["action", "actor", "actorRole", "at", "employee", "restaurant"]);
+    ["action", "actor", "actorRole", "at", "authMethod", "employee", "restaurant"]);
   const identifyPin = (pin) => call("post", deviceBase + "/identify", { restaurantId: other, authorization: tabletAuth, body: { pin } });
   assert.equal((await identifyPin(migratedPin)).status, 401);
   assert.equal((await identifyPin(resetPin)).data.kiosk.employee.id, String(outside));

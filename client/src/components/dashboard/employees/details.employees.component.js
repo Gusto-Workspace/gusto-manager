@@ -266,14 +266,16 @@ export default function DetailsEmployeesComponent({ employeeId }) {
       {workforce && <>
         <div {...panel("employment")}><div className="grid gap-4">
           <DataEmployeesComponent section="employment" employee={employee} profile={profile} onSave={save} />
-          {selected === "employment" && viewer?.superAdmin !== true &&
+          {selected === "employment" &&
             <EmployeePayroll restaurantId={restaurantId} employeeId={employeeId} employeeName={entry.name} />}
         </div></div>
         <div {...panel("access")}>
           <div className="grid gap-4">
             <AccessRightsEmployeesComponent options={profile?.options} onSave={save} hasEmail={Boolean(entry.email)} />
-            {selected === "access" && viewer?.superAdmin !== true && (
-              <EmployeePin restaurantId={restaurantId} employeeId={employeeId} canReveal={viewer?.role === "owner"} />
+            {selected === "access" && (viewer?.role === "owner" || viewer?.role === "employee") && (
+              <EmployeePin key={`${viewer.id}:${viewer.role}:${viewer.superAdminSessionId || ""}`}
+                restaurantId={restaurantId} employeeId={employeeId}
+                canReveal={viewer.role === "owner"} />
             )}
           </div>
         </div>
