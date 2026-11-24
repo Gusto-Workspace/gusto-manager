@@ -335,13 +335,14 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     }] } });
     const realFile = fixture({ homonym: true, history: true });
     const plan = [{ order: 1, destination: String(existing) }, { order: 2, destination: "create", creationReviewed: true }];
-    function sendReal(where, { choices, token, confirmed, buffer = realFile } = {}) {
+    function sendReal(where, { choices, token, confirmed, acceptProtected, buffer = realFile } = {}) {
       const data = new FormData();
       data.set("file", new Blob([buffer]), "rapport.xlsx");
       data.set("scope", "weeks");
       if (choices) data.set("choices", JSON.stringify(choices));
       if (token) data.set("token", token);
       if (confirmed) data.set("confirmed", "true");
+      if (acceptProtected) data.set("acceptProtected", "true");
       return request(where, { method: "POST", body: data });
     }
     const preview = await (await sendReal(`${realPath}/preview`)).json();
@@ -440,12 +441,25 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal((await sendReal(realPath, { buffer: overlapping, choices: nextPlan, token: overlapPreview.token, confirmed: true })).status, 200);
     const conflicting = fixture({ homonym: true, history: true, change: "conflit horaire" });
     const conflict = await (await sendReal(`${realPath}/preview`, { buffer: conflicting, choices: nextPlan })).json();
-    assert.equal(conflict.token, null);
+    assert.ok(conflict.token);
+    assert.equal(conflict.state, "ready");
+    assert.equal(conflict.requiresProtectionConfirmation, true);
     assert.ok(conflict.rows[0].history.conflicts.some(({ date }) => date === "2026-10-31"));
-    const kept = [{ ...nextPlan[0], keepExisting: true }, nextPlan[1]];
-    const reviewedConflict = await (await sendReal(`${realPath}/preview`, { buffer: conflicting, choices: kept })).json();
-    assert.ok(reviewedConflict.token);
-    assert.equal((await sendReal(realPath, { buffer: conflicting, choices: kept, token: reviewedConflict.token, confirmed: true })).status, 200);
+    const finalChoice = { buffer: conflicting, choices: nextPlan, token: conflict.token, confirmed: true };
+    const missingProtection = await sendReal(realPath, finalChoice);
+    assert.equal(missingProtection.status, 400);
+    assert.match((await missingProtection.json()).message, /données Gusto seront conservées/);
+    assert.equal(await SkelloImport.countDocuments({ mode: "workforce" }), 3);
+    const appliedConflict = await sendReal(realPath, { ...finalChoice, acceptProtected: true });
+    assert.equal(appliedConflict.status, 200);
+    const { batch: protectedBatch } = await appliedConflict.json();
+    assert.deepEqual(protectedBatch.summary.individual, conflict.summary.individual);
+    assert.equal(protectedBatch.summary.history.ignoredHistory, conflict.summary.history.ignoredHistory);
+    assert.ok(protectedBatch.summary.historyConflicts.length);
+    const duplicate = await (await sendReal(`${realPath}/preview`, { buffer: conflicting })).json();
+    assert.equal(duplicate.state, "alreadyImported");
+    assert.equal(duplicate.token, null);
+    assert.equal(duplicate.batch.id, protectedBatch.id);
     const timeline = await (await request(realPath)).json();
     assert.equal(timeline.batches.length, 4);
     assert.ok(timeline.batches.every(({ actor }) => actor === String(admin)));

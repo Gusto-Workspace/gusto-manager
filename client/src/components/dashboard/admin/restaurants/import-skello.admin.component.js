@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { FileSpreadsheet, Upload, X } from "lucide-react";
@@ -18,6 +18,13 @@ const historyLabels = [
   ["shifts", "Services historiques ajoutés ou complétés"], ["absences", "Absences historiques ajoutées"],
   ["duplicateHistory", "Lignes déjà importées"], ["leaveBalances", "Soldes de congés datés"],
   ["monthlySummaries", "Synthèses source ajoutées"], ["ignoredHistory", "Éléments protégés ou en conflit"],
+];
+const plannedLabels = [
+  ["created", "Salariés à créer"], ["linked", "Salariés à rapprocher"], ["skipped", "Lignes à ignorer"],
+];
+const individualCountLabels = [
+  ["imported", "Données individuelles reprises"], ["preserved", "Données individuelles conservées"],
+  ["ignored", "Données individuelles non reprises"],
 ];
 const individualLabels = {
   identity: "Identité", payrollCode: "Matricule de paie", post: "Poste", dateOnPost: "Début de contrat",
@@ -73,9 +80,20 @@ function Counts({ counts, labels = countLabels }) {
   </dl>;
 }
 
+function ImportSummary({ summary, planned = false }) {
+  return <>
+    <Counts counts={summary.counts} labels={planned ? plannedLabels : countLabels} />
+    {summary.history && <Counts counts={summary.history} labels={historyLabels} />}
+    {summary.individual && <Counts counts={summary.individual} labels={individualCountLabels} />}
+  </>;
+}
+
 export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
   const dialogRef = useRef(null);
   const openerRef = useRef(null);
+  const reviewRef = useRef(null);
+  const resultRef = useRef(null);
+  const errorRef = useRef(null);
   const [file, setFile] = useState(null);
   const [scope, setScope] = useState("weeks");
   const [loading, setLoading] = useState(false);
@@ -85,10 +103,16 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
   const [target, setTarget] = useState(null);
   const [error, setError] = useState("");
   const [choices, setChoices] = useState({});
-  const [protectedChoices, setProtectedChoices] = useState({});
   const [reviewedCreations, setReviewedCreations] = useState({});
   const [confirmed, setConfirmed] = useState(false);
   const base = `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants/${restaurantId}/skello-imports`;
+  const reviewed = Boolean(preview?.token || preview?.state === "blocked" || preview?.state === "empty");
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+    else if (result) resultRef.current?.focus();
+    else if (reviewed) reviewRef.current?.focus();
+  }, [error, preview, result, reviewed]);
 
   async function perform(action) {
     setLoading(true);
@@ -109,7 +133,6 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     setTarget(null);
     setBatches([]);
     setChoices({});
-    setProtectedChoices({});
     setReviewedCreations({});
     setConfirmed(false);
     dialogRef.current.showModal();
@@ -131,12 +154,13 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     data.append("file", file);
     data.append("scope", scope);
     if (review || token) data.append("choices", JSON.stringify(preview.rows.map(({ order }) => ({
-      order, destination: choices[order], keepExisting: Boolean(protectedChoices[order]),
+      order, destination: choices[order],
       creationReviewed: Boolean(reviewedCreations[order]),
     }))));
     if (token) {
       data.append("token", token);
       data.append("confirmed", String(confirmed));
+      if (preview.requiresProtectionConfirmation) data.append("acceptProtected", String(confirmed));
     }
     return data;
   }
@@ -146,12 +170,14 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
     setResult(null);
     setPreview(null);
     setChoices({});
-    setProtectedChoices({});
     setReviewedCreations({});
     setConfirmed(false);
     await perform(async () => {
       const { data } = await axios.post(`${base}/preview`, uploadData(), getAdminAuthConfig());
-      setPreview(data);
+      if (data.alreadyImported && data.batch) {
+        setResult({ alreadyImported: true, batch: data.batch });
+        setFile(null);
+      } else setPreview(data);
     });
   }
 
@@ -164,9 +190,18 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
   }
 
   async function confirm() {
-    if (!preview?.token || !file || !confirmed) return;
+    if (!preview?.token || !file || !confirmed || loading) return;
     await perform(async () => {
-      const { data } = await axios.post(base, uploadData({ token: preview.token }), getAdminAuthConfig());
+      let data;
+      try {
+        ({ data } = await axios.post(base, uploadData({ token: preview.token }), getAdminAuthConfig()));
+      } catch (failure) {
+        if (failure.response?.status === 409) {
+          setPreview((current) => ({ ...current, state: "choose", token: null }));
+          setConfirmed(false);
+        }
+        throw failure;
+      }
       setResult(data);
       setPreview(null);
       setFile(null);
@@ -176,10 +211,9 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
 
   function changeChoice(order, destination) {
     setChoices((current) => ({ ...current, [order]: destination }));
-    setProtectedChoices((current) => ({ ...current, [order]: false }));
     setReviewedCreations((current) => ({ ...current, [order]: false }));
     setConfirmed(false);
-    setPreview((current) => ({ ...current, token: null, rows: current.rows.map((row) =>
+    setPreview((current) => ({ ...current, state: "choose", token: null, rows: current.rows.map((row) =>
       row.order === order ? { ...row, history: null, individual: null, error: "" } : row) }));
   }
 
@@ -225,7 +259,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
               </button>
             </header>
             <div className="space-y-4 p-5" aria-busy={loading}>
-              {error && <p role="alert" className="rounded-xl bg-red/10 px-3 py-2 text-sm text-red">{error}</p>}
+              {error && <p ref={errorRef} tabIndex={-1} role="alert" className="scroll-mt-24 rounded-xl bg-red/10 px-3 py-2 text-sm text-red">{error}</p>}
               {target && <>
                 <p className="text-sm text-darkBlue/75">Utilisez un classeur par établissement. Les données reconnues rejoignent le Rapport RH avec la mention Skello. Les horaires, contrats et soldes Gusto existants sont protégés.</p>
                 <div className="grid gap-3 mobile:grid-cols-2">
@@ -258,6 +292,12 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                   <ul className="mt-2 list-disc pl-5">{preview.issues.map(({ reason, count }) => <li key={reason}>{reason} ({count})</li>)}</ul>
                 </details>}
                 {preview.alreadyImported && <p role="status" className="text-sm">Ce fichier a déjà été importé dans ce restaurant.</p>}
+                {preview.state === "blocked" && <p ref={reviewRef} tabIndex={-1} role="alert" className="scroll-mt-24 rounded-lg bg-red/10 p-3 text-sm">
+                  Corrigez les rapprochements signalés ou ignorez les lignes concernées, puis vérifiez à nouveau.
+                </p>}
+                {preview.state === "empty" && <p ref={reviewRef} tabIndex={-1} role="status" className="scroll-mt-24 text-sm">
+                  Sélectionnez au moins un dossier à créer ou à rapprocher.
+                </p>}
                 {!preview.alreadyImported && <>
                   {preview.rows.map((row) => <div key={row.order} className="grid gap-2 rounded-xl border border-darkBlue/10 p-3 text-sm">
                     <div>
@@ -280,7 +320,7 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                     {choices[row.order] === "create" && <label className="flex items-start gap-2">
                       <input type="checkbox" checked={Boolean(reviewedCreations[row.order])} disabled={loading} onChange={(event) => {
                         setReviewedCreations((current) => ({ ...current, [row.order]: event.target.checked }));
-                        setPreview((current) => ({ ...current, token: null }));
+                        setPreview((current) => ({ ...current, state: "choose", token: null }));
                         setConfirmed(false);
                       }} />
                       <span>
@@ -292,44 +332,43 @@ export default function ImportSkelloAdminComponent({ restaurantId, disabled }) {
                     {row.error && <p role="alert" className="text-red">{row.error}</p>}
                     {row.individual && <IndividualPreview fields={row.individual} />}
                     {row.history && <Counts counts={row.history.counts} labels={historyLabels} />}
-                    {row.history?.conflicts.length > 0 && <>
+                    {row.history?.conflicts.length > 0 && <details className="rounded-lg border border-darkBlue/10 p-2">
+                      <summary>Éléments historiques écartés ou protégés ({row.history.counts.ignoredHistory})</summary>
                       <ul className="list-disc space-y-1 pl-5">{row.history.conflicts.map(({ date, message }, index) =>
                         <li key={`${date}:${index}`}>{date.split("-").reverse().join("/")} · {message}</li>)}</ul>
-                      <label className="flex items-start gap-2">
-                        <input type="checkbox" checked={Boolean(protectedChoices[row.order])} disabled={loading}
-                          onChange={(event) => {
-                            setProtectedChoices((current) => ({ ...current, [row.order]: event.target.checked }));
-                            setPreview((current) => ({ ...current, token: null }));
-                            setConfirmed(false);
-                          }} />
-                        Préserver les données existantes et ignorer les éléments en conflit de ce dossier.
-                      </label>
-                    </>}
+                    </details>}
                   </div>)}
                   <button type="button" className={outline} onClick={review}
                     disabled={loading || preview.rows.some(({ order }) => !choices[order] ||
-                      (choices[order] === "create" && !reviewedCreations[order])) || preview.rows.every(({ order }) => choices[order] === "skip")}>
+                      (choices[order] === "create" && !reviewedCreations[order]))}>
                     Vérifier le rapprochement
                   </button>
                 </>}
-                {preview.token && <div className="grid gap-3 rounded-xl border border-darkBlue/10 p-3">
+                {preview.token && <section aria-labelledby="skello-review-heading" className="grid gap-3 rounded-xl border border-darkBlue/10 p-3">
+                  <h4 id="skello-review-heading" ref={reviewRef} tabIndex={-1} className="scroll-mt-24 font-semibold">Récapitulatif et confirmation</h4>
+                  {preview.summary && <ImportSummary summary={preview.summary} planned />}
+                  {preview.requiresProtectionConfirmation && <p role="status" className="rounded-lg bg-amber-50 p-2 text-sm">
+                    Les données Gusto sont conservées. Les éléments historiques signalés seront écartés de l’import.
+                  </p>}
                   <label className="flex items-start gap-2 text-sm">
                     <input type="checkbox" checked={confirmed} disabled={loading} onChange={(event) => setConfirmed(event.target.checked)} />
-                    Je confirme le rapprochement, les données individuelles et historiques retenues et le restaurant {target.name}.
+                    <span>Je confirme l’import pour {target.name}.
+                      {preview.requiresProtectionConfirmation && " J’accepte de conserver les données Gusto et d’écarter les éléments historiques signalés."}
+                    </span>
                   </label>
-                  <button type="button" className={primary} onClick={confirm} disabled={loading || !confirmed}>Appliquer l’import</button>
-                </div>}
+                  <button type="button" className={primary} onClick={confirm} disabled={loading || !confirmed}>Confirmer l’import</button>
+                </section>}
               </section>}
 
               {result && <section role="status" className="space-y-3 rounded-xl border border-green-700/20 bg-green-50 p-3">
-                <h3 className="font-semibold">{result.alreadyImported ? "Lot déjà importé" : "Import terminé"}</h3>
+                <h3 ref={resultRef} tabIndex={-1} className="scroll-mt-24 font-semibold">{result.alreadyImported ? "Fichier déjà importé" : "Import terminé"}</h3>
                 <p className="text-sm">{periodLabel(result.batch.period)} · Lot {result.batch.id}</p>
-                <Counts counts={result.batch.summary.counts} />
-                {result.batch.summary.history && <Counts counts={result.batch.summary.history} labels={historyLabels} />}
-                {result.batch.summary.issues.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs">
+                {result.alreadyImported && <p className="text-sm">Les chiffres ci-dessous correspondent au lot enregistré lors du premier import.</p>}
+                <ImportSummary summary={result.batch.summary} />
+                {result.batch.summary.issues?.length > 0 && <ul aria-label="Observations sur le fichier" className="list-disc space-y-1 pl-5 text-xs">
                   {result.batch.summary.issues.map(({ reason, count }) => <li key={reason}>{reason} ({count})</li>)}
                 </ul>}
-                {result.batch.summary.historyConflicts?.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs">
+                {result.batch.summary.historyConflicts?.length > 0 && <ul aria-label="Éléments écartés ou protégés" className="list-disc space-y-1 pl-5 text-xs">
                   {result.batch.summary.historyConflicts.map((message) => <li key={message}>{message}</li>)}
                 </ul>}
                 {result.batch.summary.unsupported?.length > 0 && <details className="text-sm">
