@@ -6,7 +6,7 @@ const Employee = require("../../models/employee.model");
 const Restaurant = require("../../models/restaurant.model");
 const PersonnelInput = require("../../models/personnel-report-input.model");
 const SkelloImport = require("../../models/skello-import.model");
-const { analyzeSkelloWorkbook, normalizeSkelloIdentity, SkelloImportError } = require("./skello-workbook.service");
+const { analyzeSkelloWorkbook, nameKey, normalizeSkelloIdentity, SkelloImportError } = require("./skello-workbook.service");
 const { dayId, planHistory, readHistoryContext } = require("./skello-history.service");
 const { lockClockEmployees } = require("./time-clock-write.service");
 const { clockPinWriteProblem, provisionInitialClockPin, withClockPinTransaction } = require("./time-clock-pin.service");
@@ -18,7 +18,7 @@ const zone = "Europe/Paris";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const planHash = (value) => hash(JSON.stringify(value));
 const signingKey = () => createHmac("sha256", process.env.JWT_SECRET).update(audience).digest();
-const nameKey = ({ firstname, lastname }) => JSON.stringify([firstname, lastname].map(normalizeSkelloIdentity));
+const legacyNameKey = ({ firstname, lastname }) => JSON.stringify([firstname, lastname].map(normalizeSkelloIdentity));
 const recheck = "Le rapprochement a changé. Vérifiez un nouvel aperçu avant de confirmer.";
 const profilePath = "restaurantProfiles.$[profile].";
 
@@ -114,7 +114,8 @@ function reconcile(people, roster, choices) {
     const code = normalizeSkelloIdentity(person.identity.payrollCode);
     const name = nameKey(person.identity);
     const sourceNameKey = hash(name);
-    const names = roster.filter((entry) => entry.sourceNameKey === sourceNameKey || nameKey(entry) === name);
+    const legacySourceNameKey = hash(legacyNameKey(person.identity));
+    const names = roster.filter((entry) => [sourceNameKey, legacySourceNameKey].includes(entry.sourceNameKey) || nameKey(entry) === name);
     const codes = code ? roster.filter((entry) => [entry.sourceCode, normalizeSkelloIdentity(entry.payrollCode)].includes(code)) : [];
     const conflictingIdentity = codes.length > 0 && names.length > 0 && !codes.some((entry) => names.includes(entry));
     const candidates = (conflictingIdentity ? [] : codes.length ? codes : names).filter((entry) => entry.profile && !entry.erased &&

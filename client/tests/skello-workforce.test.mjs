@@ -33,15 +33,15 @@ function renderComponent(path, mocks, props, globals = {}) {
     jsc: { parser: { syntax: "ecmascript", jsx: true }, transform: { react: { runtime: "automatic" } } },
     module: { type: "commonjs" },
   }).code;
-  const module = { exports: {} };
+  const compiled = { exports: {} };
   const imports = { react, "react-dom": { createPortal: (child) => child }, ...mocks };
-  runInNewContext(source, { exports: module.exports, module, document: { body: {} }, process: { env: { NEXT_PUBLIC_API_URL: "/api" } },
+  runInNewContext(source, { exports: compiled.exports, module: compiled, document: { body: {} }, process: { env: { NEXT_PUBLIC_API_URL: "/api" } },
     FormData, AbortController, ...globals, require: (name) => Object.hasOwn(imports, name) ? imports[name] : require(name) });
   return {
     effects,
     render() {
       index = 0;
-      return module.exports.default(props);
+      return compiled.exports.default(props);
     },
   };
 }
@@ -120,12 +120,42 @@ test("la fiche ouvre le solde enregistré à sa date réelle", async () => {
     "./personnel-report.utils.mjs": { formatReportValue: (value) => value },
     "../../../../public/locales/fr/planning.json": {},
     "./hr-rule-help.mjs": { hrRuleHelp: {} },
+    "./hr-questionnaire.mjs": await import("../src/components/dashboard/employees/hr-questionnaire.mjs"),
+    "../time-clock/time-clock.utils": { getAuthConfig: (config) => config },
   }, { kind: "leave", employeeName: "Camille Exemple", baseUrl: "/api/test/inputs/employee" });
   assert.equal(input(endBalance.render(), "date").props.disabled, true);
   endBalance.effects.forEach((effect) => effect());
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(input(endBalance.render(), "date").props.value, date);
   assert.ok(find(endBalance.render(), ({ props }) => props.url === `/api/test/inputs/employee/leave/${date}`));
+});
+
+test("les paramètres RH ouvrent chaque version programmée en consultation à sa date exacte", async () => {
+  const active = { date: "2026-10-01", values: { mode: "indemnities" } };
+  const planned = { date: "2026-12-01", values: { mode: "tickets" } };
+  const dialog = renderComponent("employees/personnel-report-input.employees.component.js", {
+    axios: { get: async () => ({ data: { active: { rules: active }, planned: { rules: planned },
+      scheduled: { rules: [planned, { date: "2027-01-01", values: { mode: "basket" } }] }, missingKinds: ["overtime"] } }) },
+    "../_shared/use-dialog-backdrop": () => ({}),
+    "./planning-grid.utils.mjs": { parisPlanningDateKey: () => "2026-11-24" },
+    "./personnel-report.utils.mjs": {},
+    "../../../../public/locales/fr/planning.json": {},
+    "./hr-rule-help.mjs": { hrRuleHelp: {} },
+    "./hr-questionnaire.mjs": await import("../src/components/dashboard/employees/hr-questionnaire.mjs"),
+    "../time-clock/time-clock.utils": { getAuthConfig: (config) => config },
+  }, { kind: "settings", baseUrl: "/api/reports/inputs", overviewUrl: "/api/hr-configuration/draft",
+    from: "2026-11-01", initialDate: "2026-11" });
+  dialog.render();
+  dialog.effects.forEach((effect) => effect());
+  await new Promise((resolve) => setImmediate(resolve));
+  const tree = dialog.render();
+  assert.ok(button(tree, "En vigueur depuis le 2026-10-01"));
+  assert.ok(button(tree, "Programmé le 2026-12-01"));
+  button(tree, "Programmé le 2027-01-01").props.onClick();
+  const displayed = find(dialog.render(), ({ props }) => props.url === "/api/reports/inputs/rules/2027-01");
+  assert.equal(displayed.props.readOnly, true);
+  button(dialog.render(), "Heures majorées").props.onClick();
+  assert.equal(find(dialog.render(), ({ type, props }) => type === "p" && props.children === "À compléter. Aucune version enregistrée.").type, "p");
 });
 
 test("l’activation confirme le destinataire et propose le renvoi des mêmes identifiants après un échec", async () => {

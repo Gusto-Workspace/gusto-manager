@@ -10,7 +10,7 @@ const Brevo = require("sib-api-v3-sdk");
 const { strFromU8, unzipSync, zipSync } = require("fflate");
 const { packageWorkbook, renderRowXml } = require("../../services/excel/render-time-clock-export-workbook.service");
 const { parseXlsxSheets } = require("../../services/dish-card-import.service");
-const { analyzeSkelloWorkbook } = require("../../services/employees/skello-workbook.service");
+const { analyzeSkelloWorkbook, nameKey, normalizeSkelloIdentity } = require("../../services/employees/skello-workbook.service");
 const { restoreSkelloHistoricalLateness } = require("../../services/employees/skello-import.service");
 
 process.env.JWT_SECRET = "secret-uniquement-pour-la-recette-skello";
@@ -46,7 +46,7 @@ const work = (date, start, end, name = "Source Démo", code = "-") => [
   end.includes("T") ? makeExcelDate(end) : makeExcelDate(`${date}T${end}`), 0.5, "Note confidentielle", 1, 1,
 ];
 
-function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026-10-31", history = false, individual, days = false } = {}) {
+function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026-10-31", history = false, individual, days = false, alternateName = false } = {}) {
   const sheet = (name, rows) => ({ name, rows });
   const first = DateTime.fromISO(from);
   const last = DateTime.fromISO(to);
@@ -115,7 +115,8 @@ function fixture({ change = "", homonym = false, from = "2026-10-01", to = "2026
     ]),
   ];
   return packageWorkbook(sheets, ({ rows }) => `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${
-    rows.map((row, index) => renderRowXml(row.map((value) => typeof value === "number" ? { type: "Number", value } : value), index + 1)).join("")
+    rows.map((row, index) => renderRowXml(row.map((value) => typeof value === "number" ? { type: "Number", value } :
+      alternateName && value === "Source Démo" ? "  SOURCE\u00a0–\u00a0DEMO  " : value), index + 1)).join("")
   }</sheetData></worksheet>`, new Date("2026-11-20T12:00:00Z"));
 }
 
@@ -152,6 +153,12 @@ test("homonyms require a source identifier and spreadsheet formulas are refused"
   archive["xl/worksheets/sheet1.xml"] = Buffer.from(strFromU8(archive["xl/worksheets/sheet1.xml"])
     .replace("<v>1800</v>", "<f>1000+800</f><v>1800</v>"));
   assert.throws(() => analyzeSkelloWorkbook(Buffer.from(zipSync(archive))), /Classeur XLSX/);
+});
+
+test("les variantes d’espaces, tirets, casse et accents concernent uniquement les noms", () => {
+  assert.equal(nameKey({ firstname: "Jean‑Éric", lastname: "Martin Dupont" }),
+    nameKey({ firstname: " JEAN  ERIC ", lastname: "MARTIN–DUPONT" }));
+  assert.notEqual(normalizeSkelloIdentity("ABC-1"), normalizeSkelloIdentity("ABC 1"));
 });
 
 test("un forfait en jours laisse le volume en heures indéterminé", () => {
@@ -635,7 +642,7 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.equal(personal.loginDelivery.expiresAt, undefined);
     const choice = [{ order: 1, destination: String(id) }];
     const historicalFile = fixture({ from: previous.startOf("month").toISODate(), to: previous.endOf("month").toISODate(),
-      history: true, individual: { rate: 19.25, balanceDate: "31/02/2026" } });
+      history: true, alternateName: true, individual: { rate: 19.25, balanceDate: "31/02/2026" } });
     const old = await (await send(url, { file: historicalFile, choices: choice })).json();
     assert.equal(old.rows[0].canCreate, false);
     assert.equal(old.rows[0].candidates[0].id, String(id));

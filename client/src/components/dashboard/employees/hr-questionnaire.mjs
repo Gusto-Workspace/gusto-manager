@@ -13,6 +13,13 @@ export const hrSteps = [
     "Le restaurant prévoit-il des repas, des indemnités, des titres-restaurant ou une prime panier ?"],
 ];
 
+export function recordedRuleVersions(active, scheduled = []) {
+  return [
+    ...(active ? [{ ...active, label: active.date === "-" ? "En vigueur" : `En vigueur depuis le ${active.date}` }] : []),
+    ...scheduled.map((version) => ({ ...version, label: `Programmé le ${version.date}` })),
+  ];
+}
+
 export function prefillFamily(kind, saved, prefill) {
   if (!saved || !prefill) return saved || prefill;
   const mode = saved.mode ?? prefill.mode;

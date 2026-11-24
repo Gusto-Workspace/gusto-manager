@@ -251,11 +251,11 @@ function PeriodFields({ from, to, onChange }) {
     onChange({ from: start, to: end });
   }
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-      <label className="grid min-w-0 gap-1 text-xs font-semibold">Du
+    <form onSubmit={submit} className="flex min-w-0 flex-wrap items-center gap-2">
+      <label className="flex min-w-0 items-center gap-2 text-xs font-semibold">Du
         <input type="date" required value={start} onChange={(event) => setStart(event.target.value)} className={control} />
       </label>
-      <label className="grid min-w-0 gap-1 text-xs font-semibold">Au
+      <label className="flex min-w-0 items-center gap-2 text-xs font-semibold">Au
         <input type="date" required value={end} onChange={(event) => setEnd(event.target.value)} className={control} />
       </label>
       <button type="submit" className={button}>Appliquer</button>
@@ -383,7 +383,6 @@ export default function PersonnelReport({ restaurantId }) {
           </div>
         }
       />
-      {request?.report?.canConfigure && <HrQuestionnaire key={restaurantId} restaurantId={restaurantId} onApplied={() => setRetry((value) => value + 1)} />}
       {payrollIssues.length > 0 && <aside role="status" className="rounded-xl border border-darkBlue/15 bg-white p-3 text-sm">
         <p className="font-semibold">{payrollOverlap ? "Export de paie en attente de correction" : "Paramètre à confirmer"}</p>
         <p>{payrollOverlap ? "Traitez les points ci-dessous avant d’exporter cette période en Excel."
@@ -391,7 +390,7 @@ export default function PersonnelReport({ restaurantId }) {
         <ul className="list-disc pl-5">{payrollIssues.map(({ kind, message }) => <li key={kind}>{message}</li>)}</ul>
       </aside>}
       <div className="grid min-w-0 gap-3 rounded-xl border border-darkBlue/10 bg-white p-3 midTablet:p-4">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" aria-label="Période précédente" title="Période précédente" className={button}
               onClick={() => changePeriod(moveReportPeriod({ from, to }, -1))}><ChevronLeft size={16} aria-hidden="true" /></button>
@@ -401,6 +400,9 @@ export default function PersonnelReport({ restaurantId }) {
             <button type="button" className={button} onClick={() => changePeriod(reportMonth())}>Ce mois</button>
           </div>
           <PeriodFields key={`${from}:${to}`} from={from} to={to} onChange={changePeriod} />
+          {request?.report?.canConfigure && <HrQuestionnaire key={restaurantId} restaurantId={restaurantId}
+            placementClassName="ml-auto justify-end max-tablet:w-full max-tablet:justify-start"
+            onApplied={() => setRetry((value) => value + 1)} />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-[min(100%,14rem)] flex-1">
@@ -458,6 +460,7 @@ export default function PersonnelReport({ restaurantId }) {
         </details>
       )}
       {edit && <PersonnelReportInputDialog kind={edit.kind} baseUrl={personnelReportInputsUrl(restaurantId, edit.employee?.id)}
+        overviewUrl={edit.kind === "settings" ? `${process.env.NEXT_PUBLIC_API_URL}/restaurants/${restaurantId}/hr-configuration/draft` : undefined}
         employeeName={edit.employee && `${edit.employee.firstname} ${edit.employee.lastname}`}
         from={from} to={to} mealDays={edit.mealDays}
         initialDate={edit.kind === "meals" ? edit.mealDays.find((day) =>

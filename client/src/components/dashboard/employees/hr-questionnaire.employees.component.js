@@ -7,7 +7,7 @@ import { Comparison, compatibleDate, RuleValues } from "../admin/restaurants/hr-
 import { getAuthConfig } from "../time-clock/time-clock.utils";
 import useDialogBackdrop from "../_shared/use-dialog-backdrop";
 import { hrRuleHelp } from "./hr-rule-help.mjs";
-import { hrSteps, prefillFamily, questionsFor } from "./hr-questionnaire.mjs";
+import { hrSteps, prefillFamily, questionsFor, recordedRuleVersions } from "./hr-questionnaire.mjs";
 import planning from "../../../../public/locales/fr/planning.json";
 
 const field = "min-h-10 w-full min-w-0 rounded-lg border border-darkBlue/20 bg-white px-3 py-1.5 text-sm";
@@ -182,10 +182,7 @@ function FamilyStep({ step, family, onMode, onAnswer, active, admin, copy }) {
 }
 
 function RecordedRules({ active, scheduled }) {
-  const versions = [
-    ...(active ? [{ ...active, label: active.date === "-" ? "En vigueur" : `En vigueur depuis le ${active.date}` }] : []),
-    ...scheduled.map((version) => ({ ...version, label: `Programmé le ${version.date}` })),
-  ];
+  const versions = recordedRuleVersions(active, scheduled);
   return versions.map(({ date, label, values }, index) => <details open={index === 0} key={date}
     className="grid gap-2 rounded-lg border border-darkBlue/10 p-3">
     <summary className="cursor-pointer text-sm font-semibold">{label}</summary>
@@ -193,7 +190,7 @@ function RecordedRules({ active, scheduled }) {
   </details>);
 }
 
-export default function HrQuestionnaire({ restaurantId, admin = false, disabled, className, onApplied }) {
+export default function HrQuestionnaire({ restaurantId, admin = false, disabled, className, placementClassName, onApplied }) {
   const copy = admin ? questionnaireCopy.admin : questionnaireCopy.owner;
   const dialog = useRef(null);
   const opener = useRef(null);
@@ -381,7 +378,7 @@ export default function HrQuestionnaire({ restaurantId, admin = false, disabled,
   </button>;
 
   return <>
-    {admin ? trigger : <aside aria-label="Configuration RH" className="flex flex-wrap items-center gap-2">
+    {admin ? trigger : <aside aria-label="Configuration RH" className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 ${placementClassName || ""}`}>
       {missingTitles.length > 0 && <span className="text-sm text-darkBlue/75">À compléter · {missingTitles.join(", ")}</span>}
       {scheduledCount > 0 && <span className="text-sm text-darkBlue/75">
         {scheduledCount === 1 ? "1 famille programmée" : `${scheduledCount} familles programmées`}
