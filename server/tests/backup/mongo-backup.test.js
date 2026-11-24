@@ -124,38 +124,56 @@ async function modelCollections(directory) {
   return names;
 }
 
-test("cron schedule, timezone, MongoDB variable and RH retry are preserved", async () => {
+test("cron schedule, environment, MongoDB variable and RH retry", async (t) => {
   const source = await readFile(path.join(__dirname, "../../services/cron-job/backup.service.js"), "utf8");
-  let schedule;
-  let usedUri;
-  let retries = 0;
-  const ready = { readyState: 1 };
-  const cloudinary = { config() {} };
-  const dependencies = {
-    dotenv: { config() {} },
-    "node-cron": { schedule(...args) { schedule = args; } },
-    cloudinary: { v2: cloudinary },
-    mongoose: { connection: ready },
-    "../employees/employee-asset-deletion.service": {
-      async retryEmployeeAssetDeletions() { retries += 1; },
-    },
-    "./mongo-backup.service": {
-      async runMongoBackup(options) { usedUri = options.uri; assert.equal(options.cloudinary, cloudinary); },
-    },
-  };
-  runInNewContext(source, {
-    require: (name) => dependencies[name],
-    console: logger,
-    module: {},
-    process: { env: { CONNECTION_STRING: "fixture-backup-uri", CONNECTION_STRING_TEST: "fixture-app-uri" } },
-  });
-  assert.equal(schedule[0], "0 */4 * * *");
-  assert.equal(schedule[2].timezone, "Europe/Paris");
-  schedule[1]();
-  ready.readyState = 0;
-  schedule[1]();
-  assert.equal(usedUri, "fixture-backup-uri");
-  assert.equal(retries, 1);
+  for (const nodeEnv of ["development", "production", undefined]) {
+    await t.test(nodeEnv ?? "NODE_ENV absent", () => {
+      const env = { CONNECTION_STRING: "fixture-backup-uri", CONNECTION_STRING_TEST: "fixture-app-uri" };
+      const messages = [];
+      const backups = [];
+      let schedule;
+      let retries = 0;
+      const connection = { readyState: 1 };
+      const cloudinary = { config() {} };
+      const dependencies = {
+        dotenv: {
+          config() {
+            if (nodeEnv !== undefined) env.NODE_ENV = nodeEnv;
+          },
+        },
+        "node-cron": { schedule(...args) { schedule = args; } },
+        cloudinary: { v2: cloudinary },
+        mongoose: { connection },
+        "../employees/employee-asset-deletion.service": {
+          async retryEmployeeAssetDeletions() { retries += 1; },
+        },
+        "./mongo-backup.service": {
+          async runMongoBackup(options) { backups.push(options); },
+        },
+      };
+      runInNewContext(source, {
+        require: (name) => dependencies[name],
+        console: { ...logger, log: (message) => messages.push(message) },
+        module: {},
+        process: { env },
+      });
+      assert.equal(schedule[0], "0 */4 * * *");
+      assert.equal(schedule[2].timezone, "Europe/Paris");
+      assert.equal(backups.length, 0);
+      schedule[1]();
+      connection.readyState = 0;
+      schedule[1]();
+      assert.equal(retries, 1);
+      if (nodeEnv === "development") {
+        assert.equal(backups.length, 0);
+        assert.match(messages[0], /désactivée en développement/);
+      } else {
+        assert.equal(backups.length, 2);
+        assert.ok(backups.every((backup) => backup.uri === env.CONNECTION_STRING && backup.cloudinary === cloudinary));
+        assert.match(messages[0], /Backup programmé toutes les 4 heures/);
+      }
+    });
+  }
 });
 
 test("the Cloudinary SDK signs a temporary raw authenticated download without network access", () => {
