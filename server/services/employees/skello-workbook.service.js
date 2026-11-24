@@ -7,6 +7,8 @@ const zone = "Europe/Paris";
 const text = (value) => String(value ?? "").trim();
 const key = (value) => text(value).normalize("NFKD").replace(/\p{M}/gu, "")
   .toLowerCase().replace(/[’']/g, " ").replace(/\s+/g, " ");
+const nameKey = ({ firstname, lastname }) => JSON.stringify([firstname, lastname]
+  .map((name) => key(name).replace(/[\s\p{Pd}\u2212]+/gu, "")));
 const rounded = (value) => Math.round(value * 100) / 100;
 const validNumber = (value) => typeof value === "number" && Number.isFinite(value);
 const present = (value) => !["", "-", "—"].includes(text(value));
@@ -127,7 +129,7 @@ function findHeader(rows, required) {
 
 function identity(firstname, lastname, payrollCode) {
   if (!present(firstname) || !present(lastname)) return null;
-  return { name: JSON.stringify([key(firstname), key(lastname)]), code: present(payrollCode) ? key(payrollCode) : null };
+  return { name: nameKey({ firstname, lastname }), code: present(payrollCode) ? key(payrollCode) : null };
 }
 
 function clockEvidence(ficheRows, from, to) {
@@ -627,4 +629,4 @@ function analyzeSkelloWorkbook(buffer, scope = "weeks", { workforce = false } = 
   } };
 }
 
-module.exports = { SkelloImportError, analyzeSkelloWorkbook, normalizeSkelloIdentity: key, premiumLabel };
+module.exports = { SkelloImportError, analyzeSkelloWorkbook, normalizeSkelloIdentity: key, nameKey, premiumLabel };

@@ -6,6 +6,8 @@ import { parisPlanningDateKey } from "./planning-grid.utils.mjs";
 import { formatReportValue } from "./personnel-report.utils.mjs";
 import frenchPlanning from "../../../../public/locales/fr/planning.json";
 import { hrRuleHelp } from "./hr-rule-help.mjs";
+import { recordedRuleVersions } from "./hr-questionnaire.mjs";
+import { getAuthConfig } from "../time-clock/time-clock.utils";
 
 const control = "min-h-10 w-full min-w-0 rounded-lg border border-darkBlue/20 bg-white px-3 text-sm";
 const action = `${control} font-semibold hover:bg-lightGrey disabled:opacity-50`;
@@ -441,7 +443,7 @@ export function InputFields({ url, kind, meal, date, onSaved, nextMeal, onBusy, 
   );
 }
 
-export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl, employeeName, initialDate, from, to, mealDays, onClose, onSaved }) {
+export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl, overviewUrl, employeeName, initialDate, from, to, mealDays, onClose, onSaved }) {
   const ref = useRef(null);
   const titleId = useId();
   const helpId = useId();
@@ -457,6 +459,10 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
   const [balanceLookup, setBalanceLookup] = useState(findLatestBalance ? "pending" : "done");
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [overview, setOverview] = useState(null);
+  const [overviewError, setOverviewError] = useState(false);
+  const [overviewRevision, setOverviewRevision] = useState(0);
+  const [recordedDate, setRecordedDate] = useState(null);
   function canLeave() {
     return !busy && (!dirty || window.confirm("Abandonner les modifications non enregistrées ?"));
   }
@@ -468,6 +474,16 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
     dialog.showModal();
     return () => dialog.close();
   }, []);
+  useEffect(() => {
+    if (!settings || !overviewUrl) return undefined;
+    const controller = new AbortController();
+    axios.get(overviewUrl, getAuthConfig({ signal: controller.signal })).then(({ data }) => {
+      if (!controller.signal.aborted) setOverview(data);
+    }).catch(() => {
+      if (!controller.signal.aborted) setOverviewError(true);
+    });
+    return () => controller.abort();
+  }, [overviewUrl, overviewRevision, settings]);
   useEffect(() => {
     if (!findLatestBalance) return;
     const controller = new AbortController();
@@ -483,10 +499,11 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
 
   const editableDays = mealDays?.filter((entry) => entry.mode === "combined" && entry.date <= today) || [];
   const meal = editableDays.find((entry) => entry.date === date);
-  const valid = fixed || (kind === "meals" ? Boolean(meal) :
+  const valid = recordedDate !== null || fixed || (kind === "meals" ? Boolean(meal) :
     (monthInput ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(date)) &&
     (!["overtime", "hoursRules"].includes(kind) || date === weekMonday(date));
-  const inputDate = kind === "leaveRules" ? `${date}-01` : date;
+  const inputDate = recordedDate ?? (kind === "leaveRules" ? `${date}-01` : date);
+  const versions = recordedRuleVersions(overview?.active?.[kind], overview?.scheduled?.[kind] || [overview?.planned?.[kind]].filter(Boolean));
   const nextMeal = editableDays.find((entry) => entry.date > date && entry.taken == null && (entry.due || entry.works))?.date;
   return (
     <dialog ref={ref} aria-labelledby={titleId} aria-describedby={payrollHelp[kind] ? helpId : undefined}
@@ -506,12 +523,36 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
             aria-pressed={kind === item} disabled={busy} onClick={() => {
               if (item === kind || !canLeave()) return;
               setDirty(false);
+              setRecordedDate(null);
               setKind(item);
               setDate(fixedKinds.includes(item) ? "-" : ["clockRules", "absenceRules"].includes(item) ? today :
                 ["overtime", "hoursRules"].includes(item) ? weekMonday(from || today) : (from || today).slice(0, 7));
-            }}>{titles[item]}</button>)}
+            }}>{titles[item]}
+            {overview && <span className="block text-xs font-normal text-darkBlue/75">
+              {[overview.active?.[item] && "En vigueur", overview.planned?.[item] && "Programmé",
+                overview.missingKinds?.includes(item) && "À compléter"].filter(Boolean).join(" · ")}
+            </span>}
+          </button>)}
         </nav>}
         {settings && <p className="text-sm text-darkBlue/75">{hrRuleHelp[kind]?.intro}</p>}
+        {settings && overviewUrl && !overview && !overviewError && <p role="status" className="text-sm">Chargement des versions enregistrées…</p>}
+        {settings && overviewError && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+          <span>Impossible de charger les versions enregistrées.</span>
+          <button type="button" className={tab} onClick={() => { setOverviewError(false); setOverviewRevision((version) => version + 1); }}>Réessayer</button>
+        </div>}
+        {settings && overview && <section aria-label={`Versions de la famille ${titles[kind]}`} className="grid gap-2 text-sm">
+          {!overview.active?.[kind] && <p>{overview.missingKinds?.includes(kind) ? "À compléter. Aucune version enregistrée." : "Aucune version en vigueur actuellement."}</p>}
+          {versions.length > 0 && <div className="flex flex-wrap gap-2">
+            {versions.map(({ date: effect, label }) => <button key={effect} type="button" className={tab} disabled={busy}
+              aria-pressed={recordedDate === (kind === "rules" ? effect.slice(0, 7) : effect)} onClick={() => {
+                if (!canLeave()) return;
+                setDirty(false);
+                setRecordedDate(kind === "rules" ? effect.slice(0, 7) : effect);
+                setDate(effect === "-" ? "" : monthInput ? effect.slice(0, 7) : effect);
+              }}>{label}</button>)}
+          </div>}
+          {recordedDate !== null && <p role="status">Version enregistrée en consultation. Choisissez une date dans le champ ci-dessous pour reprendre la saisie.</p>}
+        </section>}
         {kind === "meals" ? (
           <label className="grid gap-1 text-sm font-medium">Jour du repas
             <select className={control} disabled={busy} value={meal ? date : ""} onChange={(event) => { if (canLeave()) { setDirty(false); setDate(event.target.value); } }}>
@@ -527,7 +568,7 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
               kind === "amendment" ? "Date d’effet" : kind === "annual" ? "Début du cycle annuel" : kind === "hoursEntry" ? "Date du mouvement" : "Solde au"}
             <input className={`${control} ${settings ? "max-w-64" : ""}`} disabled={busy || balanceLookup === "pending"} type={monthInput ? "month" : "date"} value={date}
               min={kind === "variables" ? from.slice(0, 7) : undefined} max={kind === "variables" ? to.slice(0, 7) : undefined}
-              onChange={(event) => { if (canLeave()) { setDirty(false); setDate(event.target.value); } }} />
+              onChange={(event) => { if (canLeave()) { setDirty(false); setRecordedDate(null); setDate(event.target.value); } }} />
             {hrRuleHelp[kind]?.date && <span className="text-xs font-normal text-darkBlue/70">{hrRuleHelp[kind].date}</span>}
           </label>
         )}
@@ -536,10 +577,11 @@ export default function PersonnelReportInputDialog({ kind: initialKind, baseUrl,
         {kind === "leave" && date > today && <p role="status" className="text-sm text-darkBlue/70">Solde programmé au {formatReportValue(date, "date")}.</p>}
         {["overtime", "hoursRules"].includes(kind) && date && date !== weekMonday(date) && <p role="status" className="text-sm text-darkBlue/70">Choisissez le lundi de la première semaine concernée.</p>}
         {valid && newDated && inputDate <= today && <p className="text-sm text-darkBlue/70">Consultation uniquement. Choisissez une date future pour enregistrer une modification.</p>}
-        {valid && <InputFields key={`${kind}:${date}`} url={`${baseUrl}/${kind}/${inputDate}`} kind={kind} date={inputDate} meal={meal} nextMeal={nextMeal}
-          readOnly={newDated && inputDate <= today} onBusy={setBusy} onDirty={setDirty}
+        {valid && <InputFields key={`${kind}:${inputDate}`} url={`${baseUrl}/${kind}/${inputDate}`} kind={kind} date={inputDate} meal={meal} nextMeal={nextMeal}
+          readOnly={recordedDate !== null || (newDated && inputDate <= today)} onBusy={setBusy} onDirty={setDirty}
           onSaved={(nextDate) => {
             if (nextDate) setDate(nextDate);
+            if (settings) setOverviewRevision((version) => version + 1);
             onSaved({ keepOpen: settings || Boolean(nextDate) });
           }} />}
       </div>

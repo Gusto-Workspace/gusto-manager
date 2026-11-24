@@ -7,6 +7,13 @@
   --accent: #3c4e9a;
 }
 
+.gridFrame {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  max-block-size: max(230px, var(--grid-available-height, calc(100dvh - 246px)));
+  min-width: 0;
+}
+
 .toolbar,
 .scroll {
   color: var(--ink);
@@ -160,11 +167,11 @@
   --employee-width: 198px;
   --total-width: 92px;
   --header-height: 46px;
-  max-height: max(280px, calc(100dvh - 246px));
   position: relative;
   overflow: auto;
   scrollbar-color: #aebad0 #f3f5fa;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   scroll-padding: var(--header-height) var(--total-width) 38px
     var(--employee-width);
 }
@@ -898,7 +905,7 @@
   align-items: center;
   font-size: 11px;
   color: #4a5a73;
-  padding: 0 2px;
+  padding: 8px 2px 2px;
 }
 .legend span {
   display: inline-flex;
@@ -909,6 +916,10 @@
   width: 9px;
   height: 9px;
   border-radius: 2px;
+}
+.legendNote svg {
+  flex: none;
+  color: #40589a;
 }
 .workSwatch {
   background: #4760a5;
@@ -953,7 +964,6 @@
   .scroll {
     --employee-width: 145px;
     --total-width: 82px;
-    max-height: max(280px, calc(100dvh - 290px));
     scroll-padding-right: 6px;
   }
   .table .total {

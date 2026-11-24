@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format, getISOWeek } from "date-fns";
 import { useTranslation } from "next-i18next";
 import { enGB, fr } from "date-fns/locale";
@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Download,
   Hourglass,
+  Info,
   Lock,
   LockOpen,
   Plus,
@@ -468,6 +469,27 @@ export function PlanningGrid({
   counters,
   targets,
 }) {
+  const frameRef = useRef(null);
+  useEffect(() => {
+    const frame = frameRef.current;
+    const viewport = window.visualViewport;
+    function resize() {
+      const top = frame.getBoundingClientRect().top + window.scrollY;
+      const height = (viewport?.height ?? window.innerHeight) - top - 24;
+      frame.style.setProperty("--grid-available-height", `${Math.floor(height)}px`);
+    }
+    resize();
+    const observer = new ResizeObserver(resize);
+    const main = frame.closest("main");
+    observer.observe(main || frame.parentElement);
+    window.addEventListener("resize", resize);
+    viewport?.addEventListener("resize", resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      viewport?.removeEventListener("resize", resize);
+    };
+  }, []);
   const { t, i18n } = useTranslation("employees");
   const locale = i18n.language?.startsWith("en") ? enGB : fr;
   const absenceLabels = (locale === enGB ? english : french).absenceTypes;
@@ -511,6 +533,7 @@ export function PlanningGrid({
 
   return (
     <>
+      <div ref={frameRef} className={styles.gridFrame}>
       <div
         className={styles.scroll}
         tabIndex={0}
@@ -756,20 +779,16 @@ export function PlanningGrid({
           </tfoot>
         </table>
       </div>
-      {commands?.enabled && <>
-        <ShiftContextMenu state={menuState} commands={commands} />
-        <DragPreview preview={drag.preview} ghost={drag.ghost} label={commands.label} time={parisPlanningTime} />
-      </>}
       <div className={styles.legend}>
         <span>
-          <i className={styles.workSwatch} />
+          <i className={styles.workSwatch} aria-hidden="true" />
           {label("shift")}
         </span>
         <span>
-          <i className={styles.leaveSwatch} />
+          <i className={styles.leaveSwatch} aria-hidden="true" />
           {label("leave")}
         </span>
-        <span>{label("totalRule")}</span>
+        <span className={styles.legendNote}><Info size={14} aria-hidden="true" />{label("totalRule")}</span>
         {data.carriedMinutes > 0 && (
           <span>
             {t("planning:grid.carryOver", {
@@ -778,6 +797,11 @@ export function PlanningGrid({
           </span>
         )}
       </div>
+      </div>
+      {commands?.enabled && <>
+        <ShiftContextMenu state={menuState} commands={commands} />
+        <DragPreview preview={drag.preview} ghost={drag.ghost} label={commands.label} time={parisPlanningTime} />
+      </>}
     </>
   );
 }
