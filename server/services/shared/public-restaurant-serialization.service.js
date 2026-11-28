@@ -1,34 +1,34 @@
-const PRIVATE_RESTAURANT_FIELDS = [
-  "stripeSecretKey",
-  "stripeCustomerId",
-  "owner_id",
-  "employees",
-  "purchasesGiftCards",
-  "giftCardSold",
-  "takeAwaySettings",
-  "takeAwayCatalog",
+const PUBLIC_RESTAURANT_FIELDS = [
+  "_id", "name", "address", "phone", "email", "website", "social_media",
+  "opening_hours", "exceptional_closures", "dish_categories",
+  "drink_categories", "wine_categories", "news", "menus", "giftCards",
+  "giftCardSettings",
 ];
 
-const PRIVATE_RESERVATION_SETTINGS_FIELDS = [
-  "email_templates",
-  "auto_finish_reservations",
-  "deletion_duration",
-  "deletion_duration_minutes",
-  "pending_duration_minutes",
-  "manual_service_full_until",
-  "notify_restaurant_on_new_public_reservation",
-  "smsReminder",
+const PUBLIC_RESERVATION_SETTINGS = [
+  "same_hours_as_restaurant", "auto_accept", "interval", "slot_cover_limits",
+  "max_covers_lunch", "max_covers_dinner", "bank_hold", "manage_disponibilities",
+  "tables", "table_occupancy_lunch_minutes", "table_occupancy_dinner_minutes",
+  "floorplan", "waitlist", "reservation_hours", "exceptional_openings",
+  "blocked_ranges", "table_blocked_ranges",
 ];
+
+function pick(record, fields) {
+  return Object.fromEntries(fields.filter((field) => Object.hasOwn(record, field))
+    .map((field) => [field, record[field]]));
+}
 
 function sanitizePublicRestaurantData(input = {}) {
-  const data = { ...input };
-  for (const field of PRIVATE_RESTAURANT_FIELDS) delete data[field];
-
-  if (data.reservationsSettings) {
-    data.reservationsSettings = { ...data.reservationsSettings };
-    for (const field of PRIVATE_RESERVATION_SETTINGS_FIELDS) {
-      delete data.reservationsSettings[field];
-    }
+  const data = pick(input, PUBLIC_RESTAURANT_FIELDS);
+  if (input.options) {
+    data.options = pick(input.options, ["reservations", "gift_card", "take_away"]);
+  }
+  if (input.reservationsSettings) {
+    data.reservationsSettings = pick(input.reservationsSettings, PUBLIC_RESERVATION_SETTINGS);
+  }
+  if (data.giftCardSettings) {
+    const { archive_used_after_months, ...publicSettings } = data.giftCardSettings;
+    data.giftCardSettings = publicSettings;
   }
   return data;
 }

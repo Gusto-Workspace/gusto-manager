@@ -24,7 +24,7 @@ export default function RestaurantPage(props) {
   const { restaurantContext } = useContext(GlobalContext);
 
   function handleUpdateData(updatedRestaurant) {
-    restaurantContext.setRestaurantData(updatedRestaurant);
+    restaurantContext.setRestaurantData((current) => ({ ...current, ...updatedRestaurant }));
   }
 
   let title;

@@ -5,6 +5,7 @@ const crypto = require("crypto");
 
 // MIDDLEWARE
 const authenticateAdmin = require("../../middleware/authenticate-admin");
+const { hasAdminBackofficeAccess, requireSuperAdmin } = authenticateAdmin;
 const RestaurantModel = require("../../models/restaurant.model");
 const DocumentModel = require("../../models/document.model");
 const {
@@ -46,6 +47,20 @@ const {
 } = require("../../services/contracts/contract-amendment.service");
 
 router.use("/admin", authenticateAdmin);
+
+async function billingContextForAdmin(req, options) {
+  if (req.user?.role === "super-admin") return ensureRestaurantStripeCustomer(options);
+
+  const { restaurant, owner } = options.restaurant && options.owner ? options :
+    await loadRestaurantBillingContext(options.restaurantId);
+  const stripeCustomerId = normalizeString(restaurant.stripeCustomerId);
+  if (!stripeCustomerId) {
+    throw Object.assign(new Error("Le super-admin doit d’abord préparer le client Stripe du restaurant."), { statusCode: 409 });
+  }
+  // A back-office admin may manage subscriptions attached to an existing
+  // Stripe customer. Creating, adopting or syncing that customer is privileged.
+  return ensureRestaurantStripeCustomer({ restaurant, owner, createIfMissing: false, syncExisting: false });
+}
 
 router.get(
   "/admin/restaurants/:restaurantId/contract-subscription-prefill",
@@ -1135,11 +1150,14 @@ router.post("/admin/create-setup-intent", async (req, res) => {
   const { stripeCustomerId, restaurantId } = req.body;
 
   try {
+    if (!restaurantId && req.user.role !== "super-admin") {
+      return res.status(400).json({ message: "Sélectionnez un restaurant pour créer le mandat." });
+    }
     let resolvedStripeCustomerId = stripeCustomerId;
 
     if (restaurantId) {
       const { stripeCustomerId: restaurantStripeCustomerId } =
-        await ensureRestaurantStripeCustomer({
+        await billingContextForAdmin(req, {
           restaurantId,
           createIfMissing: true,
         });
@@ -1191,6 +1209,10 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
     let resolvedSubscriptionOwner = null;
     let existingSubscription = null;
 
+    if (!restaurantId && req.user.role !== "super-admin") {
+      return res.status(400).json({ message: "Sélectionnez un restaurant pour créer l’abonnement." });
+    }
+
     if (restaurantId) {
       const subscriptionLookup = await findRestaurantSubscription({
         restaurantId,
@@ -1230,7 +1252,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
         stripeCustomerId: restaurantStripeCustomerId,
         restaurant,
         owner,
-      } = await ensureRestaurantStripeCustomer({
+      } = await billingContextForAdmin(req, {
         restaurantId,
         billingAddress,
         phone,
@@ -1269,7 +1291,7 @@ router.post("/admin/create-subscription-sepa", async (req, res) => {
       addonItems,
     });
     const stripeSelection = await materializeOfferedAddonPrices(selection);
-    if (selectionIncludesCallSense(stripeSelection) && String(req.user?.role || "").toLowerCase() !== "admin") return res.sendStatus(403);
+    if (selectionIncludesCallSense(stripeSelection) && !hasAdminBackofficeAccess(req.user)) return res.sendStatus(403);
     if (selectionIncludesCallSense(stripeSelection)) await assertCallSenseCustomer({ customerId: resolvedStripeCustomerId, restaurantId });
     const smsMeteredPriceId = getSmsMeteredPriceId(stripeSelection);
     const callSenseMeteredPriceId = getCallSenseMeteredPriceId(stripeSelection);
@@ -1577,8 +1599,7 @@ router.post("/admin/subscriptions/:subscriptionId/cancel", async (req, res) => {
 
     const cancellationIds = require("../../services/callsense/callsense-usage.service").offerIds();
     const hasCallSense = subscription.items?.data?.some((item) => [cancellationIds.fixed, cancellationIds.metered].includes(item.price?.id));
-    if (hasCallSense &&
-        String(req.user?.role || "").toLowerCase() !== "admin") return res.sendStatus(403);
+    if (hasCallSense && !hasAdminBackofficeAccess(req.user)) return res.sendStatus(403);
     const restaurantId = normalizeString(subscription.metadata?.restaurantId);
     const guardedUpdate = (mutate, action = "") => guardedCallSenseMutation({ restaurantId, kind: "update", action, expectedSubscription: subscription,
       actorId: String(req.user?._id || req.user?.id || ""), mutate,
@@ -1726,7 +1747,7 @@ router.get(
   },
 );
 
-router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
+router.post("/admin/update-subscription-payer-sepa", requireSuperAdmin, async (req, res) => {
   const { restaurantId, paymentMethodId, billingAddress, phone, language } =
     req.body;
 
@@ -1766,9 +1787,7 @@ router.post("/admin/update-subscription-payer-sepa", async (req, res) => {
     }
 
     await stripe.customers.update(stripeCustomerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
-      },
+      invoice_settings: { default_payment_method: paymentMethodId },
     });
 
     const updatedSubscription = await stripe.subscriptions.update(
@@ -1846,7 +1865,7 @@ router.post("/admin/update-subscription-configuration", async (req, res) => {
 
     const stripeSelection = await materializeOfferedAddonPrices(selection);
     const hasCallSense = selectionIncludesCallSense(stripeSelection) || currentSummary.addons.some((item) => item.code === "callsense");
-    if (hasCallSense && String(req.user?.role || "").toLowerCase() !== "admin") return res.sendStatus(403);
+    if (hasCallSense && !hasAdminBackofficeAccess(req.user)) return res.sendStatus(403);
     if (selectionIncludesCallSense(stripeSelection)) await assertCallSenseCustomer({ customerId: toStripeId(subscription.customer), restaurantId: normalizeString(subscription.metadata?.restaurantId), subscriptionId: subscription.id });
     else await assertCallSenseRemovalSafe(subscription);
     const subscriptionRestaurantId = normalizeString(

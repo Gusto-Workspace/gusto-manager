@@ -3,7 +3,7 @@ const twilio = require("twilio");
 const mongoose = require("mongoose");
 const authenticateToken = require("../middleware/authentificate-token");
 const authenticateAdmin = require("../middleware/authenticate-admin");
-const { requireAdminRole } = require("../middleware/authenticate-admin");
+const { requireAdminRole, requireSuperAdmin } = require("../middleware/authenticate-admin");
 const { authorizeRestaurantAccess, userCanAccessRestaurant } = require("../middleware/authorize-restaurant-access");
 const Config = require("../models/callsense/callsense-config.model");
 const Call = require("../models/callsense/callsense-call.model");
@@ -66,7 +66,7 @@ router.head("/callsense/voice", (_req, res) => res.sendStatus(204));
 // Token rotation is deliberately separate from configuration and never returns
 // the secret. The administrator supplies a Twilio token; no external mutation
 // or purchase is performed by this endpoint.
-router.put("/admin/restaurants/:restaurantId/callsense/auth-token", authenticateAdmin, requireAdminRole, async (req, res) => {
+router.put("/admin/restaurants/:restaurantId/callsense/auth-token", authenticateAdmin, requireSuperAdmin, async (req, res) => {
   try {
     const { restaurantId } = req.params;
     if (!mongoose.isValidObjectId(restaurantId) || typeof req.body.authToken !== "string" || !req.body.authToken.trim() || req.body.authToken.length > 256) return res.sendStatus(400);

@@ -1,0 +1,32 @@
+{
+  "nav": {
+    "label": "Espace commercial",
+    "toggle": "Ouvrir ou fermer le menu",
+    "logout": "Déconnexion",
+    "dashboard": "Tableau de bord",
+    "prospects": "Mes prospects",
+    "calendar": "Calendrier",
+    "quotes": "Mes devis",
+    "invoices": "Mes factures",
+    "contracts": "Mes contrats",
+    "commissions": "Mes commissions",
+    "resources": "Ressources",
+    "account": "Mon compte"
+  },
+  "period": {
+    "label": "Période",
+    "current": "Ce mois-ci",
+    "previous": "Mois dernier",
+    "year": "Cette année",
+    "custom": "Période personnalisée",
+    "from": "Du",
+    "to": "Au",
+    "apply": "Appliquer"
+  },
+  "commissions": {
+    "waitingCustomerPayment": "En attente du règlement client",
+    "toReceive": "À recevoir",
+    "toPay": "À payer",
+    "paid": "Réglée"
+  }
+}

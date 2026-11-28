@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import {
@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 import { GlobalContext } from "@/contexts/global.context";
+import InvoiceSettlement from "@/components/commercial/invoice-settlement";
+import { DocumentStatus, commercialDocumentState } from "@/components/commercial/commercial-ui";
 import {
   allowsCatalogProductOffered,
   formatCatalogProductLabel,
@@ -119,10 +121,6 @@ function authHeaders() {
   const token = getAdminToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
-function axiosCfg() {
-  return { headers: authHeaders() };
-}
-
 function parseOldPriceLabelToNumber(priceLabel) {
   const s = (priceLabel || "").toString().replace(",", ".").toLowerCase();
   const m = s.match(/(\d+(\.\d+)?)/);
@@ -297,6 +295,12 @@ function catalogProductMatchesModule(product, module) {
 export default function DetailsDocumentAdminPage(props) {
   const router = useRouter();
   const { adminContext } = useContext(GlobalContext);
+  const { salesOwnerId, commercialType, onBack } = props;
+  const DocumentHeading = onBack ? "h2" : "h1";
+  const axiosCfg = useCallback(() => ({
+    headers: authHeaders(), ...(salesOwnerId && { params: { salesOwnerId, commercialType } }),
+  }), [salesOwnerId, commercialType]);
+  const goBack = () => onBack ? onBack() : router.push("/dashboard/admin/documents");
 
   const [loading, setLoading] = useState(true);
 
@@ -577,7 +581,7 @@ export default function DetailsDocumentAdminPage(props) {
     return () => {
       canceled = true;
     };
-  }, [props.documentId]);
+  }, [props.documentId, axiosCfg]);
 
   useEffect(() => {
     const initialized = commercialInitializationRef.current;
@@ -635,9 +639,10 @@ export default function DetailsDocumentAdminPage(props) {
     return () => {
       canceled = true;
     };
-  }, [doc?._id, doc?.status, doc?.type]);
+  }, [doc?._id, doc?.status, doc?.type, axiosCfg]);
 
-  const isLocked = ["SENT", "SIGNED", "ACCEPTED"].includes(doc?.status);
+  const isLocked = Boolean(doc?.offerConditions) || ["SENT", "SIGNED", "ACCEPTED"].includes(doc?.status);
+  const needsDeliveryReview = ["UNCERTAIN", "HANDOFF", "PREPARING"].includes(doc?.commercialDelivery?.state);
   const isLegacyPhysicalSent =
     doc?.type === "CONTRACT" &&
     doc?.status === "SENT" &&
@@ -1103,7 +1108,7 @@ export default function DetailsDocumentAdminPage(props) {
   }
 
   // ✅ PDF PREVIEW
-  async function handlePreviewPdf() {
+  async function handlePreviewPdf(download = false) {
     if (!doc?._id) return;
 
     const token = getAdminToken();
@@ -1112,7 +1117,7 @@ export default function DetailsDocumentAdminPage(props) {
       return;
     }
 
-    const popup = window.open("about:blank", "_blank");
+    const popup = download ? null : window.open("about:blank", "_blank");
 
     setPdfLoading(true);
     setErrorMsg("");
@@ -1126,7 +1131,12 @@ export default function DetailsDocumentAdminPage(props) {
       const file = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(file);
 
-      if (popup) popup.location.href = url;
+      if (download || onBack && !popup) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${doc.docNumber}.pdf`;
+        link.click();
+      } else if (popup) popup.location.href = url;
       else window.location.href = url;
 
       setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
@@ -1181,7 +1191,7 @@ export default function DetailsDocumentAdminPage(props) {
         ),
       );
 
-      router.push("/dashboard/admin/documents");
+      goBack();
     } catch (err) {
       console.error(err);
       setErrorMsg("Erreur lors de l'envoi email.");
@@ -1206,7 +1216,7 @@ export default function DetailsDocumentAdminPage(props) {
     setRemoteActionLoading(true);
     setErrorMsg("");
     try {
-      if (doc.status === "DRAFT") {
+      if (doc.status === "DRAFT" && !doc.offerConditions) {
         const saved = await handleSave();
         if (!saved) return;
       }
@@ -1338,12 +1348,46 @@ export default function DetailsDocumentAdminPage(props) {
     }
   }
 
+  async function resolveCommercialDelivery(action) {
+    const confirmation = action === "delivered" ?
+      "Le destinataire ou l’historique d’envoi confirme-t-il la livraison ?" :
+      "Avez-vous vérifié que le document n’a pas été livré ?";
+    if (!window.confirm(confirmation)) return;
+    setRemoteActionLoading(true);
+    setErrorMsg("");
+    try {
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents/${doc._id}/resolve-delivery`,
+        { action }, axiosCfg(),
+      );
+      syncDocument(data.document);
+    } catch (error) {
+      setErrorMsg(error.response?.data?.message || "Impossible de régulariser cette livraison.");
+    } finally {
+      setRemoteActionLoading(false);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-4">
+      {needsDeliveryReview && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="basis-full">Vérifiez la livraison chez le prestataire ou auprès du destinataire avant de régulariser le document.</p>
+        {doc.commercialDelivery.state !== "PREPARING" && <button type="button" disabled={remoteActionLoading} onClick={() => resolveCommercialDelivery("delivered")} className="rounded-lg bg-white px-3 py-2">Confirmer la livraison</button>}
+        <button type="button" disabled={remoteActionLoading} onClick={() => resolveCommercialDelivery("reopen")} className="rounded-lg bg-white px-3 py-2">{doc.commercialDelivery.operation ? "Autoriser un nouveau renvoi" : "Remettre en brouillon"}</button>
+      </div>}
+      {!!doc?.deliveryHistory?.length && <details className="rounded-xl border border-darkBlue/10 p-3 text-sm">
+        <summary className="cursor-pointer font-semibold">Historique des renvois</summary>
+        <ul className="mt-2 grid gap-1">{doc.deliveryHistory.map(({ at, state }, index) => <li key={index}>
+          {new Date(at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })} · {
+            ({ PREPARING: "En préparation", HANDOFF: "Transmis au prestataire", SENT: "Envoyé", FAILED: "Échec",
+              UNCERTAIN: "Livraison incertaine", CONFIRMED: "Livraison confirmée", REOPENED: "Renvoi autorisé" })[state]
+          }
+        </li>)}</ul>
+      </details>}
       {/* Top bar */}
-      <div className="ml-16 mobile:ml-12 tablet:ml-0 px-4 flex items-center justify-between gap-3">
+      <div className={`${onBack ? "" : "ml-16 mobile:ml-12 tablet:ml-0"} px-4 flex flex-wrap items-center justify-between gap-3`}>
         <button
-          onClick={() => router.push("/dashboard/admin/documents")}
+          onClick={goBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-darkBlue hover:underline"
         >
           <ArrowLeft className="size-4" />
@@ -1375,7 +1419,7 @@ export default function DetailsDocumentAdminPage(props) {
           ) : null}
 
           <button
-            onClick={handlePreviewPdf}
+            onClick={() => handlePreviewPdf()}
             disabled={pdfLoading || loading}
             className="inline-flex items-center gap-2 rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold text-darkBlue hover:bg-darkBlue/5 disabled:opacity-60"
           >
@@ -1386,11 +1430,13 @@ export default function DetailsDocumentAdminPage(props) {
             )}
             <span className="hidden mobile:block">PDF</span>
           </button>
+          {onBack && <button type="button" onClick={() => handlePreviewPdf(true)} disabled={pdfLoading || loading}
+            className="rounded-xl border border-darkBlue/10 bg-white px-3 py-2 text-sm font-semibold">Télécharger le PDF</button>}
 
-          {doc?.type !== "CONTRACT" ? (
+          {doc?.type !== "CONTRACT" && !doc?.setupInvoice?.cancelledAt ? (
             <button
               onClick={() => setConfirmSendOpen(true)}
-              disabled={sendLoading || loading || doc?.status === "SIGNED"}
+              disabled={sendLoading || loading || doc?.status === "SIGNED" || needsDeliveryReview}
               className="inline-flex items-center gap-2 rounded-xl bg-blue px-3 py-2 text-white text-sm font-semibold shadow-sm hover:bg-blue/90 disabled:opacity-60"
             >
               {sendLoading ? (
@@ -1402,7 +1448,7 @@ export default function DetailsDocumentAdminPage(props) {
             </button>
           ) : null}
 
-          {doc?.type === "CONTRACT" &&
+          {doc?.type === "CONTRACT" && !doc.offerConditions &&
             (doc?.status === "DRAFT" || isLegacyPhysicalSent) && (
               <button
                 onClick={() =>
@@ -1439,7 +1485,7 @@ export default function DetailsDocumentAdminPage(props) {
             <button
               type="button"
               onClick={handleResendSignatureRequest}
-              disabled={remoteActionLoading || loading}
+              disabled={remoteActionLoading || loading || needsDeliveryReview}
               className="inline-flex items-center gap-2 rounded-xl bg-darkBlue px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-darkBlue/90 disabled:opacity-60"
             >
               {remoteActionLoading ? (
@@ -1477,20 +1523,30 @@ export default function DetailsDocumentAdminPage(props) {
 
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="text-lg font-semibold text-darkBlue">
+                  <DocumentHeading className="text-lg font-semibold text-darkBlue">
                     {documentTitle(doc)}{" "}
                     <span className="text-darkBlue/50 font-medium">
                       {doc?.docNumber ? `• ${doc.docNumber}` : ""}
                     </span>
-                  </h1>
+                  </DocumentHeading>
                   <p className="text-sm text-darkBlue/60 mt-1">
                     Statut :{" "}
                     <span className="font-semibold">
-                      {DOCUMENT_STATUS_LABELS[doc?.status] || "-"}
+                      {doc?.setupInvoice ? <DocumentStatus state={commercialDocumentState(doc)} /> : DOCUMENT_STATUS_LABELS[doc?.status] || "-"}
                     </span>
                   </p>
                 </div>
               </div>
+
+              {doc?.setupInvoice && doc.status === "SENT" && <section className="mt-5 grid gap-3 rounded-2xl border border-darkBlue/10 bg-white p-4">
+                <h2 className="font-semibold">Encaissement des frais de mise en service</h2>
+                <p className="text-sm">Montant de la facture · {euro(doc.offerConditions.setupCents / 100)} €</p>
+                {doc.setupInvoice.cancellationReason && <p className="text-sm">Motif d’annulation · {doc.setupInvoice.cancellationReason}</p>}
+                <InvoiceSettlement invoice={{
+                  id: doc._id, owner: salesOwnerId || doc.salesOwnerId, ...doc.setupInvoice,
+                  amountCents: doc.offerConditions.setupCents,
+                }} onSaved={setDoc} />
+              </section>}
 
               {doc?.type === "CONTRACT" ? (
                 <div className="mt-5 rounded-2xl border border-darkBlue/10 bg-white p-4">

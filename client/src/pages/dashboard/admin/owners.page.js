@@ -78,7 +78,7 @@ export default function OwnersPage(props) {
             owners={adminContext.ownersList}
             setOwners={adminContext.setOwnersList}
             loading={adminContext.ownersLoading}
-            isAdmin={adminContext.isAdmin}
+            isAdmin={adminContext.canManageClients}
           />
         </div>
 

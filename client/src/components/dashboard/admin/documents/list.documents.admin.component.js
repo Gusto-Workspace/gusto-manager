@@ -36,7 +36,9 @@ function formatType(type, contractKind) {
   return "Document";
 }
 
-function statusBadge(status, type, signatureRequest) {
+function statusBadge(status, type, signatureRequest, invoice) {
+  if (invoice?.cancelledAt) return { label: "Annulée", className: "bg-darkBlue/5 text-darkBlue/70" };
+  if (invoice?.paidAt) return { label: "Payée", className: "bg-green/10 text-green-700" };
   switch (status) {
     case "DRAFT":
       return {
@@ -50,9 +52,7 @@ function statusBadge(status, type, signatureRequest) {
           signatureRequest?.expiresAt &&
           new Date(signatureRequest.expiresAt).getTime() <= Date.now()
             ? "Lien expiré"
-            : type === "CONTRACT"
-              ? "Envoyé"
-              : "Envoyé",
+            : type === "INVOICE" ? "Envoyée" : "Envoyé",
         className: "bg-blue/10 text-blue",
       };
     case "SIGNED":
@@ -88,7 +88,8 @@ export default function ListDocumentsAdminComponent(props) {
 
     return documents.filter((doc) => {
       if (typeFilter !== "ALL" && doc?.type !== typeFilter) return false;
-      if (statusFilter !== "ALL" && doc?.status !== statusFilter) return false;
+      const status = doc.setupInvoice?.cancelledAt ? "CANCELLED" : doc.setupInvoice?.paidAt ? "PAID" : doc.status;
+      if (statusFilter !== "ALL" && status !== statusFilter) return false;
       if (!normalizedSearch) return true;
 
       const searchableValues = [
@@ -320,6 +321,8 @@ export default function ListDocumentsAdminComponent(props) {
             <option value="SENT">Envoyés</option>
             <option value="SIGNED">Signés</option>
             <option value="ACCEPTED">Acceptés électroniquement</option>
+            <option value="PAID">Factures payées</option>
+            <option value="CANCELLED">Factures annulées</option>
           </select>
         </div>
       ) : null}
@@ -358,7 +361,17 @@ export default function ListDocumentsAdminComponent(props) {
             </button>
           </div>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 midTablet:grid-cols-2 desktop:grid-cols-3">
+          <div className="overflow-hidden rounded-2xl border border-darkBlue/10 bg-white/75 shadow-sm">
+          <table className="block w-full text-left text-sm tablet:table tablet:table-fixed">
+            <thead className="sr-only bg-lightGrey/65 text-xs font-semibold text-darkBlue/75 tablet:not-sr-only tablet:table-header-group">
+              <tr>
+                <th scope="col" className="w-[24%] px-4 py-3">Document</th>
+                <th scope="col" className="w-[25%] px-4 py-3">Restaurant et contact</th>
+                <th scope="col" className="w-[13%] px-4 py-3">Statut</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="block divide-y divide-darkBlue/10 tablet:table-row-group">
             {filteredDocuments.map((doc) => {
               const isConfirming = docToDelete === doc._id;
 
@@ -370,6 +383,7 @@ export default function ListDocumentsAdminComponent(props) {
                 doc.status,
                 doc.type,
                 doc.signatureRequest,
+                doc.setupInvoice,
               );
 
               const isLegacyPhysicalSent =
@@ -380,43 +394,36 @@ export default function ListDocumentsAdminComponent(props) {
                 doc.type === "CONTRACT" &&
                 (doc.status === "DRAFT" || isLegacyPhysicalSent);
 
-              const canResend = doc.status === "SENT" && !isLegacyPhysicalSent;
-              const canDelete =
-                doc.type !== "CONTRACT" || doc.status === "DRAFT";
+              const canResend = doc.status === "SENT" && !isLegacyPhysicalSent && !doc.setupInvoice?.cancelledAt;
+              const canDelete = doc.status === "DRAFT" ? !doc.commercialDelivery?.state : doc.type !== "CONTRACT" && !doc.offerConditions;
 
               return (
-                <li
+                <tr
                   key={doc._id}
-                  className="relative group rounded-xl bg-white/50 border border-darkBlue/10 shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-3 hover:bg-lightGrey/50 tablet:table-row tablet:[&>td]:border-t tablet:[&>td]:border-darkBlue/10 tablet:[&>td]:px-4 tablet:[&>td]:py-3"
                 >
-                  {/* Header row */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <FileText className="size-4 text-darkBlue/50" />
-                        <h2 className="text-base font-semibold text-darkBlue truncate">
-                          {formatType(doc.type, doc.contractKind)}{" "}
-                          <span className="text-darkBlue/50 font-medium">
-                            {doc.docNumber ? `• ${doc.docNumber}` : ""}
-                          </span>
-                        </h2>
-                      </div>
-
-                      <p className="mt-0.5 text-xs text-darkBlue/70 truncate">
-                        {doc.party?.restaurantName || doc.restaurantName || "—"}
-                        {doc.party?.email || doc.email
-                          ? ` • ${doc.party?.email || doc.email}`
-                          : ""}
-                      </p>
-                    </div>
-
-                    {!isConfirming && (
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2 py-1 rounded-lg text-xs font-semibold ${badge.className}`}
-                        >
-                          {badge.label}
-                        </span>
+                  <td className="block min-w-0 tablet:table-cell">
+                    <button type="button" onClick={() => goToEdit(doc)} className="flex max-w-full items-center gap-2 text-left hover:text-blue">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-blue/10 text-blue">
+                        <FileText className="size-4" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-semibold">{formatType(doc.type, doc.contractKind)}</span>
+                        <span className="block break-words text-xs text-darkBlue/70">{doc.docNumber}</span>
+                        {doc.salesOwnerId && <span className="text-xs text-blue">Commercial</span>}
+                      </span>
+                    </button>
+                  </td>
+                  <td className="col-span-2 row-start-2 block min-w-0 tablet:table-cell">
+                    <span className="block break-words font-medium">{doc.party?.restaurantName || doc.restaurantName || "—"}</span>
+                    <span className="block break-words text-xs text-darkBlue/70">{doc.party?.email || doc.email}</span>
+                  </td>
+                  <td className="col-start-2 row-start-1 block justify-self-end tablet:table-cell">
+                    <span className={`inline-block rounded-lg px-2 py-1 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
+                  </td>
+                  <td className="col-span-2 block min-w-0 tablet:table-cell">
+                  <div className="flex flex-wrap items-center gap-2 tablet:justify-end">
+                    {!isConfirming && <>
 
                         <button
                           onClick={() => goToEdit(doc)}
@@ -441,13 +448,7 @@ export default function ListDocumentsAdminComponent(props) {
                             <Trash2 className="size-4 text-red" />
                           </button>
                         ) : null}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Quick actions */}
-                  <div className="flex flex-wrap gap-2">
-                    {/* ✅ PDF = preview (sans save) */}
+                    </>}
                     <button
                       onClick={() => previewPdf(doc._id)}
                       disabled={isPreviewLoading}
@@ -466,7 +467,6 @@ export default function ListDocumentsAdminComponent(props) {
                       )}
                     </button>
 
-                    {/* ✅ Pas de bouton Envoyer quand DRAFT */}
                     {canResend ? (
                       <button
                         onClick={() => resendDocument(doc)}
@@ -500,27 +500,8 @@ export default function ListDocumentsAdminComponent(props) {
                     )}
                   </div>
 
-                  {/* Overlay confirmation delete */}
-                  <div
-                    className={`
-                      absolute inset-0 z-10 transition-opacity duration-200
-                      ${
-                        isConfirming
-                          ? "opacity-100 pointer-events-auto"
-                          : "opacity-0 pointer-events-none"
-                      }
-                    `}
-                    onClick={() => {
-                      if (!isDeleting) setDocToDelete(null);
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
-
-                    <div
-                      className="absolute left-2 right-2 bottom-2 top-2 rounded-xl border border-red/20 bg-white/90
-                      shadow-[0_18px_45px_rgba(19,30,54,0.12)] p-3"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                  {isConfirming && (
+                    <div className="mt-2 rounded-xl border border-red/20 bg-white p-3" role="group" aria-label="Confirmation de suppression">
                       <p className="text-sm font-semibold text-darkBlue">
                         Supprimer ce document ?
                       </p>
@@ -553,11 +534,14 @@ export default function ListDocumentsAdminComponent(props) {
                         </button>
                       </div>
                     </div>
-                  </div>
-                </li>
+                  )}
+                  </td>
+                </tr>
               );
             })}
-          </ul>
+            </tbody>
+          </table>
+          </div>
         )}
       </div>
     </section>

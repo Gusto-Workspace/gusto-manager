@@ -11,6 +11,12 @@ const streamifier = require("streamifier");
 // MIDDLEWARE / MODELS
 const authenticateAdmin = require("../../middleware/authenticate-admin");
 const authenticateToken = authenticateAdmin;
+const { isObjectIdOrHexString } = require("mongoose");
+const { authenticateCommercial } = require("../../middleware/authenticate-commercial");
+const { getDocNumber } = require("../../services/contracts/document-number.service");
+const { uploadPrivateFile, readPrivateFile, removePrivateFile } = require("../../services/shared/private-files.service");
+const { problem, validatePromotionSignature, markProspectMilestone } = require("../../services/commercial/offers.service");
+const { recordCommercialSignature, validateCommercialDocumentSend } = require("../../services/commercial/sales.service");
 const DocumentModel = require("../../models/document.model");
 const RestaurantModel = require("../../models/restaurant.model");
 const {
@@ -49,9 +55,42 @@ const {
 } = require("../../services/pdf/render-contract.service");
 
 router.use("/admin", authenticateAdmin);
+router.use("/admin/documents/:id", (req, res, next) => {
+  const { salesOwnerId, commercialType } = req.query;
+  if (salesOwnerId == null) return next();
+  if (!isObjectIdOrHexString(salesOwnerId) || !["QUOTE", "INVOICE", "CONTRACT"].includes(commercialType)) {
+    return res.status(400).json({ message: "Périmètre commercial invalide." });
+  }
+  req.adminCommercialDocumentScope = { salesOwnerId, type: commercialType };
+  next();
+});
+
+function authorizeDocumentRequest(req, res, next) {
+  res.set("Cache-Control", "private, no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  return req.path.startsWith("/commercial/") ?
+    (req.commercialAccount ? next() : authenticateCommercial(req, res, next)) :
+    authenticateAdmin(req, res, next);
+}
+
+function commercialDocumentScope(req) {
+  return req.commercialAccount ? { salesOwnerId: req.commercialAccount._id, type: { $in: ["QUOTE", "INVOICE", "CONTRACT"] }, contractKind: { $ne: "AMENDMENT" } } : (req.adminCommercialDocumentScope || {});
+}
+
+function findDocumentForRequest(req) {
+  if (!req.commercialAccount && !req.adminCommercialDocumentScope) return DocumentModel.findById(req.params.id);
+  if (!isObjectIdOrHexString(req.params.id)) return DocumentModel.findOne({ _id: null });
+  return DocumentModel.findOne({ _id: req.params.id, ...commercialDocumentScope(req) });
+}
 
 function hashPdfBuffer(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function documentSignatureExpiry(conditions, now) {
+  const expiresAt = signatureRequestExpiresAt(now);
+  const offerEndsAt = conditions?.kind === "FETES_2026" && new Date(conditions.promoEndsAt);
+  return offerEndsAt && offerEndsAt < expiresAt ? offerEndsAt : expiresAt;
 }
 
 // ✅ dossier unique voulu
@@ -102,25 +141,21 @@ async function destroyPdfIfExists(publicId) {
   }
 }
 
-// ---------- DOC NUMBER (timestamp) ----------
-function prefixByType(type) {
-  if (type === "QUOTE") return "D";
-  if (type === "INVOICE") return "F";
-  if (type === "CONTRACT") return "C";
-  return "X";
+async function persistPdf(buffer, publicId, { privateFile = false, overwrite = true } = {}) {
+  if (privateFile) {
+    return uploadPrivateFile(buffer, "Gusto_Workspace/commercial/documents", publicId, "pdf");
+  }
+  const result = await uploadPdfFromBuffer(buffer, publicId, { overwrite });
+  return { url: result.secure_url, public_id: result.public_id };
 }
-function getDocNumber(type) {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
 
-  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-    now.getDate(),
-  )}`;
-  const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(
-    now.getSeconds(),
-  )}`;
+function storedPdfExists(file) {
+  return Boolean(file?.url || file?.delivery_type === "authenticated" && file?.public_id);
+}
 
-  return `WD-${prefixByType(type)}-${datePart}-${timePart}`;
+function removeStoredPdf(file) {
+  return file?.delivery_type === "authenticated" ?
+    removePrivateFile(file) : destroyPdfIfExists(file?.public_id);
 }
 
 // ---------- BREVO ----------
@@ -232,7 +267,15 @@ function buildEmailHtml(doc) {
 
 async function buildPdfBuffer(doc) {
   if (doc.type === "QUOTE" || doc.type === "INVOICE") {
-    return renderInvoiceLikePdf(doc.toObject(), EMITTER);
+    const data = doc.toObject();
+    if (doc.setupInvoice) {
+      if (!process.env.EMITTER_IBAN?.trim() || !process.env.EMITTER_BIC?.trim()) {
+        throw Object.assign(new Error("Les coordonnées bancaires de facturation sont indisponibles."), { statusCode: 503 });
+      }
+      data.setupInvoiceTaxLabel = data.offerConditions?.taxLabel;
+      delete data.offerConditions;
+    }
+    return renderInvoiceLikePdf(data, EMITTER);
   }
   const documentData = doc.toObject();
   if (doc.status === "DRAFT") {
@@ -271,9 +314,10 @@ function adminSignatureHistoryEntry(
   return {
     event,
     at,
-    actor: "ADMIN",
+    actor: req.commercialAccount ? "COMMERCIAL" : "ADMIN",
     actorId: String(
-      req.user?.id ||
+      req.commercialAccount?._id ||
+        req.user?.id ||
         req.user?._id ||
         req.user?.userId ||
         req.user?.email ||
@@ -400,7 +444,9 @@ async function prepareDraftContractSnapshot(doc) {
   return { snapshot, contentHash, commercialSnapshot };
 }
 
-async function downloadStoredPdf(url) {
+async function downloadStoredPdf(file) {
+  if (file?.delivery_type === "authenticated") return Buffer.from(await readPrivateFile(file));
+  const url = typeof file === "string" ? file : file?.url;
   if (!url) {
     const error = new Error("PDF enregistré introuvable.");
     error.statusCode = 404;
@@ -452,7 +498,7 @@ router.get("/admin/documents", authenticateToken, async (req, res) => {
 // ---------- GET ONE ----------
 router.get("/admin/documents/:id", authenticateToken, async (req, res) => {
   try {
-    const doc = await DocumentModel.findById(req.params.id);
+    const doc = await findDocumentForRequest(req);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
     res.status(200).json({ document: doc });
   } catch (e) {
@@ -518,11 +564,8 @@ router.post("/admin/documents", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Champs requis manquants" });
     }
 
-    const docNumber = getDocNumber(type);
-
-    const created = await DocumentModel.create({
+    const fields = {
       type,
-      docNumber,
       restaurantId: restaurant?._id || null,
       party: {
         restaurantName: resolvedParty.restaurantName,
@@ -533,7 +576,16 @@ router.post("/admin/documents", authenticateToken, async (req, res) => {
       },
       status: "DRAFT",
       engagementMonths: type === "CONTRACT" ? 24 : undefined,
-    });
+    };
+    let created;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        created = await DocumentModel.create({ ...fields, docNumber: getDocNumber(type, attempt) });
+        break;
+      } catch (error) {
+        if (error?.code !== 11000 || !error.keyPattern?.docNumber || attempt === 3) throw error;
+      }
+    }
 
     let commercialWarning = "";
     if (restaurant) {
@@ -574,10 +626,13 @@ router.post("/admin/documents", authenticateToken, async (req, res) => {
 // ---------- UPDATE ----------
 router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
   try {
-    const doc = await DocumentModel.findById(req.params.id);
+    const doc = await findDocumentForRequest(req);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
 
     const body = req.body || {};
+    if (doc.offerConditions) {
+      return res.status(409).json({ message: "Ce brouillon doit conserver les conditions de l’offre commerciale." });
+    }
 
     if (doc.status !== "DRAFT") {
       return res
@@ -962,8 +1017,11 @@ router.patch("/admin/documents/:id", authenticateToken, async (req, res) => {
 // ---------- DELETE (✅ Cloudinary + Mongo) ----------
 router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
   try {
-    const doc = await DocumentModel.findById(req.params.id);
+    const doc = await findDocumentForRequest(req);
     if (!doc) return res.status(404).json({ message: "Document introuvable" });
+    if (doc.offerConditions && (doc.status !== "DRAFT" || doc.commercialDelivery?.state)) {
+      return res.status(409).json({ message: "Un document commercial finalisé ou en cours de livraison doit être conservé." });
+    }
 
     if (doc.type === "CONTRACT" && doc.status !== "DRAFT") {
       return res.status(409).json({
@@ -980,6 +1038,7 @@ router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
     const deletionFilter = {
       _id: doc._id,
       ...unchangedDocumentFilter(doc),
+      ...(doc.offerConditions && { status: "DRAFT", "commercialDelivery.state": null }),
     };
     if (doc.type === "CONTRACT") {
       deletionFilter.status = "DRAFT";
@@ -994,8 +1053,17 @@ router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
       ];
     }
 
-    const deletedDocument =
-      await DocumentModel.findOneAndDelete(deletionFilter);
+    const deletedDocument = doc.offerConditions && doc.type !== "INVOICE"
+      ? await DocumentModel.db.transaction(async (session) => {
+        const derived = await DocumentModel.exists({
+          [doc.type === "QUOTE" ? "sourceQuoteId" : "sourceContractId"]: doc._id,
+        }).session(session);
+        if (derived) {
+          throw Object.assign(new Error("Le document source est lié à un document commercial et doit être conservé."), { statusCode: 409 });
+        }
+        return DocumentModel.findOneAndDelete(deletionFilter, { session });
+      })
+      : await DocumentModel.findOneAndDelete(deletionFilter);
     if (!deletedDocument) {
       return res.status(409).json({
         message: "Le document a été modifié ou verrouillé simultanément.",
@@ -1003,14 +1071,11 @@ router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
     }
 
     // ✅ supprime les fichiers seulement après le verrouillage atomique Mongo
-    const publicIds = [
-      deletedDocument?.pdf?.public_id,
-      deletedDocument?.signatureRequest?.previewPdf?.public_id,
-    ].filter(Boolean);
-    await Promise.all(publicIds.map(destroyPdfIfExists));
+    await Promise.all([deletedDocument?.pdf, deletedDocument?.signatureRequest?.previewPdf].map(removeStoredPdf));
 
     res.status(200).json({ message: "Deleted" });
   } catch (e) {
+    if (e.statusCode === 409) return res.status(409).json({ message: e.message });
     console.error(e);
     res.status(500).json({ message: "Erreur serveur" });
   }
@@ -1018,11 +1083,11 @@ router.delete("/admin/documents/:id", authenticateToken, async (req, res) => {
 
 // ✅ ---------- PDF PREVIEW (NO CLOUDINARY / NO BDD) ----------
 router.get(
-  "/admin/documents/:id/pdf/preview",
-  authenticateToken,
+  ["/admin/documents/:id/pdf/preview", "/commercial/documents/:id/pdf/preview"],
+  authorizeDocumentRequest,
   async (req, res) => {
     try {
-      const doc = await DocumentModel.findById(req.params.id);
+      const doc = await findDocumentForRequest(req);
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
 
@@ -1030,9 +1095,9 @@ router.get(
       if (
         doc.type === "CONTRACT" &&
         ["SIGNED", "ACCEPTED"].includes(doc.status) &&
-        doc?.pdf?.url
+        storedPdfExists(doc.pdf)
       ) {
-        const pdfBuffer = await downloadStoredPdf(doc.pdf.url);
+        const pdfBuffer = await downloadStoredPdf(doc.pdf);
         if (doc.pdf.sha256 && hashPdfBuffer(pdfBuffer) !== doc.pdf.sha256) {
           return res.status(409).json({
             message: "L'intégrité du PDF signé ne peut pas être vérifiée.",
@@ -1050,10 +1115,10 @@ router.get(
       if (
         doc.type === "CONTRACT" &&
         doc.status === "SENT" &&
-        doc?.signatureRequest?.previewPdf?.url
+        storedPdfExists(doc.signatureRequest?.previewPdf)
       ) {
         const pdfBuffer = await downloadStoredPdf(
-          doc.signatureRequest.previewPdf.url,
+          doc.signatureRequest.previewPdf,
         );
         if (
           doc.signatureRequest.previewPdf.sha256 &&
@@ -1068,6 +1133,17 @@ router.get(
           "Content-Disposition",
           `inline; filename="${contractPdfName(doc)}"`,
         );
+        return res.status(200).send(pdfBuffer);
+      }
+
+      if (doc.offerConditions && doc.status !== "DRAFT") {
+        if (!storedPdfExists(doc.pdf)) return res.status(404).json({ message: "PDF enregistré introuvable." });
+        const pdfBuffer = await downloadStoredPdf(doc.pdf);
+        if (!doc.pdf.sha256 || hashPdfBuffer(pdfBuffer) !== doc.pdf.sha256) {
+          return res.status(409).json({ message: "L'intégrité du PDF enregistré ne peut pas être vérifiée." });
+        }
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${doc.docNumber}.pdf"`);
         return res.status(200).send(pdfBuffer);
       }
 
@@ -1117,7 +1193,7 @@ router.get(
   authenticateToken,
   async (req, res) => {
     try {
-      const document = await DocumentModel.findById(req.params.id);
+      const document = await findDocumentForRequest(req);
       if (!document || document.type !== "CONTRACT") {
         return res.status(404).json({ message: "Contrat introuvable" });
       }
@@ -1214,7 +1290,7 @@ router.post(
   authenticateToken,
   async (req, res) => {
     try {
-      const document = await DocumentModel.findById(req.params.id);
+      const document = await findDocumentForRequest(req);
       if (!document || document.type !== "CONTRACT") {
         return res.status(404).json({ message: "Contrat introuvable" });
       }
@@ -1301,7 +1377,7 @@ router.post(
   authenticateToken,
   async (req, res) => {
     try {
-      const sourceDocument = await DocumentModel.findById(req.params.id);
+      const sourceDocument = await findDocumentForRequest(req);
       if (!sourceDocument || sourceDocument.type !== "CONTRACT") {
         return res.status(404).json({ message: "Contrat introuvable" });
       }
@@ -1423,12 +1499,12 @@ router.post(
 );
 
 router.post(
-  "/admin/documents/:id/send-for-signature",
-  authenticateToken,
+  ["/admin/documents/:id/send-for-signature", "/commercial/documents/:id/send-for-signature"],
+  authorizeDocumentRequest,
   async (req, res) => {
     let uploadedPdf = null;
     try {
-      const document = await DocumentModel.findById(req.params.id).select(
+      const document = await findDocumentForRequest(req).select(
         "+signatureRequest.tokenHash",
       );
       if (!document || document.type !== "CONTRACT") {
@@ -1447,41 +1523,45 @@ router.post(
 
       const { snapshot, contentHash, commercialSnapshot } =
         await prepareDraftContractSnapshot(document);
+      await validateCommercialDocumentSend(document);
+      const privateFile = Boolean(document.offerConditions);
       const previousSignatureRequest = plain(document.signatureRequest);
       const previousContractSnapshot = plain(document.contractSnapshot);
       const previousPresentedPdf = plain(document.presentedPdf);
       const previousContentHash = document.contentHash || "";
       const previousSentAt = document.sentAt || null;
-      const previousPreviewPublicId =
-        document.signatureRequest?.previewPdf?.public_id || "";
+      const previousPreview = document.signatureRequest?.previewPdf;
       const pdfBuffer = await renderContractPdf(snapshot, EMITTER, null);
       const presentedPdfHash = hashPdfBuffer(pdfBuffer);
       const token = createSignatureToken();
       const tokenHash = hashSignatureToken(token);
       const now = new Date();
-      const expiresAt = signatureRequestExpiresAt(now);
-      const signatureUrl = buildSignatureUrl(req, token);
+      const expiresAt = documentSignatureExpiry(snapshot.offerConditions, now);
+      const delivery = privateFile && { attemptId: crypto.randomUUID(), state: "HANDOFF", updatedAt: now };
+      const signatureUrl = buildSignatureUrl(token);
       const previewPublicId = `${publicIdForContract(
         document,
         contentHash,
         "unsigned",
       )}-${createSignatureToken().slice(-10)}`;
 
-      uploadedPdf = await uploadPdfFromBuffer(pdfBuffer, previewPublicId, {
+      uploadedPdf = await persistPdf(pdfBuffer, previewPublicId, {
+        privateFile,
         overwrite: false,
       });
       const previewPdf = {
-        url: uploadedPdf.secure_url,
-        public_id: uploadedPdf.public_id,
+        ...uploadedPdf,
         version: 1,
         generatedAt: now,
         sha256: presentedPdfHash,
         byteLength: pdfBuffer.length,
       };
 
+      if (privateFile) await validateCommercialDocumentSend(document);
       const updated = await DocumentModel.findOneAndUpdate(
         {
           _id: document._id,
+          ...commercialDocumentScope(req),
           status: "DRAFT",
           ...unchangedDocumentFilter(document),
         },
@@ -1507,6 +1587,7 @@ router.post(
             },
             "signature.processingAt": null,
             "signature.contentHash": "",
+            ...(delivery && { commercialDelivery: delivery }),
           },
           $push: {
             signatureHistory: adminSignatureHistoryEntry(
@@ -1521,7 +1602,8 @@ router.post(
       );
 
       if (!updated) {
-        await destroyPdfIfExists(uploadedPdf.public_id);
+        await removeStoredPdf(uploadedPdf);
+        uploadedPdf = null;
         return res.status(409).json({
           message: "Le contrat a été modifié ou envoyé simultanément.",
         });
@@ -1535,11 +1617,21 @@ router.post(
           html: buildRemoteSignatureEmailHtml(updated, signatureUrl, expiresAt),
         });
       } catch (error) {
+        if (privateFile && !isBrevoInvalidEmailError(error)) {
+          uploadedPdf = null;
+          const affected = await DocumentModel.updateOne(deliveryAttempt(updated._id, delivery), {
+            $set: { "commercialDelivery.state": "UNCERTAIN", "commercialDelivery.updatedAt": new Date() },
+          });
+          if (!affected.matchedCount) throw deliveryChanged();
+          return res.status(502).json({ message: "La livraison doit être vérifiée par l’administration avant un nouvel envoi." });
+        }
         const rollback = await DocumentModel.updateOne(
           {
             _id: updated._id,
             status: "SENT",
             "signatureRequest.tokenHash": tokenHash,
+            ...(delivery && deliveryAttempt(updated._id, delivery)),
+            ...(delivery && { "signatureRequest.status": "PENDING" }),
           },
           {
             $set: {
@@ -1551,10 +1643,11 @@ router.post(
               presentedPdf: previousPresentedPdf,
             },
             $pop: { signatureHistory: 1 },
+            ...(privateFile && { $unset: { commercialDelivery: 1 } }),
           },
         );
         if (rollback.matchedCount > 0) {
-          await destroyPdfIfExists(uploadedPdf.public_id);
+          await removeStoredPdf(uploadedPdf);
           uploadedPdf = null;
         } else {
           uploadedPdf = null;
@@ -1572,11 +1665,17 @@ router.post(
         throw error;
       }
 
-      if (
-        previousPreviewPublicId &&
-        previousPreviewPublicId !== uploadedPdf.public_id
-      ) {
-        await destroyPdfIfExists(previousPreviewPublicId);
+      if (!privateFile && previousPreview?.public_id && previousPreview.public_id !== uploadedPdf.public_id) {
+        await removeStoredPdf(previousPreview);
+      }
+      if (privateFile) {
+        uploadedPdf = null;
+        const affected = await DocumentModel.updateOne(deliveryAttempt(updated._id, delivery), {
+          $set: { firstSentAt: document.firstSentAt || now, "commercialDelivery.state": "SENT", "commercialDelivery.updatedAt": new Date() },
+        });
+        if (!affected.matchedCount) throw deliveryChanged();
+        await markProspectMilestone(updated, "contractSentAt", document.firstSentAt || now);
+        if (req.commercialAccount) return res.status(200).json({ message: "Contrat envoyé pour signature", status: "SENT" });
       }
 
       return res.status(200).json({
@@ -1589,30 +1688,37 @@ router.post(
     } catch (error) {
       logDocumentError("envoi pour signature", error);
       if (uploadedPdf?.public_id) {
-        await destroyPdfIfExists(uploadedPdf.public_id);
+        await removeStoredPdf(uploadedPdf);
       }
       return res.status(error?.statusCode || 500).json({
         message:
-          error?.message || "Impossible d'envoyer le contrat pour signature.",
+          req.commercialAccount && !error.statusCode ?
+            "Impossible d’envoyer le contrat pour signature." :
+            error?.message || "Impossible d'envoyer le contrat pour signature.",
       });
     }
   },
 );
 
 router.post(
-  "/admin/documents/:id/signature-request/resend",
-  authenticateToken,
+  ["/admin/documents/:id/signature-request/resend", "/commercial/documents/:id/signature-request/resend"],
+  authorizeDocumentRequest,
   async (req, res) => {
     try {
-      const document = await DocumentModel.findById(req.params.id).select(
+      const document = await findDocumentForRequest(req).select(
         "+signatureRequest.tokenHash",
       );
       if (!document || document.type !== "CONTRACT") {
         return res.status(404).json({ message: "Contrat introuvable" });
       }
+      if (req.commercialAccount && !document.offerConditions) return res.sendStatus(404);
+      if (document.offerConditions && ["HANDOFF", "UNCERTAIN"].includes(document.commercialDelivery?.state)) {
+        return res.status(409).json({ message: "Confirmez la livraison précédente avant un renvoi." });
+      }
+      await validateCommercialDocumentSend(document, { frozen: true });
       if (
         document.status !== "SENT" ||
-        !document.contractSnapshot ||
+        !document.contractSnapshot || (document.offerConditions && !storedPdfExists(document.signatureRequest?.previewPdf)) ||
         getRequestState(document) === "SIGNING"
       ) {
         return res.status(409).json({
@@ -1624,8 +1730,10 @@ router.post(
       const token = createSignatureToken();
       const tokenHash = hashSignatureToken(token);
       const now = new Date();
-      const expiresAt = signatureRequestExpiresAt(now);
-      const signatureUrl = buildSignatureUrl(req, token);
+      const attemptId = crypto.randomUUID();
+      const delivery = document.offerConditions && { operation: "REPLACE_LINK", attemptId, state: "HANDOFF", updatedAt: now };
+      const expiresAt = documentSignatureExpiry(document.contractSnapshot.offerConditions, now);
+      const signatureUrl = buildSignatureUrl(token);
       const updatedRequest = {
         ...previousRequest,
         tokenHash,
@@ -1639,13 +1747,16 @@ router.post(
       const updatedDocument = await DocumentModel.findOneAndUpdate(
         {
           _id: document._id,
+          ...commercialDocumentScope(req),
           status: "SENT",
+          ...unchangedDocumentFilter(document),
           "signatureRequest.tokenHash": previousRequest.tokenHash,
           "signatureRequest.status": {
             $in: ["PENDING", "EXPIRED", "REVOKED"],
           },
         },
-        { $set: { signatureRequest: updatedRequest } },
+        { $set: { signatureRequest: updatedRequest, ...(delivery && { commercialDelivery: delivery }) },
+          ...(delivery && { $push: { deliveryHistory: deliveryEvent(req, delivery) } }) },
         { new: true, runValidators: true },
       );
       if (!updatedDocument) {
@@ -1668,6 +1779,14 @@ router.post(
           ),
         });
       } catch (error) {
+        if (delivery && !isBrevoInvalidEmailError(error)) {
+          await finishCommercialResend(req, document, delivery, "UNCERTAIN");
+          return res.status(502).json({ message: "Le renvoi doit être vérifié par l’administration." });
+        }
+        if (delivery) {
+          await finishCommercialResend(req, document, delivery, "FAILED", { set: { signatureRequest: previousRequest } });
+          throw error;
+        }
         await DocumentModel.updateOne(
           {
             _id: document._id,
@@ -1679,24 +1798,21 @@ router.post(
         throw error;
       }
 
-      const finalDocument = await DocumentModel.findOneAndUpdate(
+      const linkHistory = adminSignatureHistoryEntry(req, "LINK_REPLACED", "REMOTE", now);
+      const finalDocument = delivery ? await finishCommercialResend(req, document, delivery, "SENT", {
+        push: { signatureHistory: linkHistory },
+      }) : await DocumentModel.findOneAndUpdate(
         {
           _id: updatedDocument._id,
           status: "SENT",
           "signatureRequest.tokenHash": tokenHash,
         },
         {
-          $push: {
-            signatureHistory: adminSignatureHistoryEntry(
-              req,
-              "LINK_REPLACED",
-              "REMOTE",
-              now,
-            ),
-          },
+          $push: { signatureHistory: linkHistory },
         },
         { new: true },
       );
+      if (req.commercialAccount) return res.json({ message: "Lien de signature remplacé et envoyé" });
 
       return res.status(200).json({
         message: "Lien de signature remplacé et envoyé",
@@ -1707,8 +1823,7 @@ router.post(
     } catch (error) {
       logDocumentError("remplacement lien", error);
       return res.status(error?.statusCode || 500).json({
-        message:
-          error?.message || "Impossible de renvoyer la demande de signature.",
+        message: error?.statusCode ? error.message : "Impossible de renvoyer la demande de signature.",
       });
     }
   },
@@ -1724,6 +1839,7 @@ router.post(
         {
           _id: req.params.id,
           type: "CONTRACT",
+          ...commercialDocumentScope(req),
           status: "SENT",
           "signatureRequest.status": { $in: ["PENDING", "EXPIRED"] },
         },
@@ -1750,11 +1866,7 @@ router.post(
           message: "Cette demande n'est plus révocable.",
         });
       }
-      const revokedPreviewPublicId =
-        document.signatureRequest?.previewPdf?.public_id || "";
-      const previewWasDeleted = await destroyPdfIfExists(
-        revokedPreviewPublicId,
-      );
+      const previewWasDeleted = await removeStoredPdf(document.signatureRequest?.previewPdf);
       const sanitizedDocument = previewWasDeleted
         ? await DocumentModel.findOneAndUpdate(
             {
@@ -1783,14 +1895,75 @@ router.post(
 );
 
 // ---------- SEND EMAIL (GENERATES + UPLOADS (overwrite) + SAVES PDF DEFINITIVE) ----------
+async function sendCommercialInvoiceOrQuote(req, res, doc) {
+  if (doc.status !== "DRAFT") return res.status(409).json({ message: "Ce document ne peut plus être envoyé." });
+  await validateCommercialDocumentSend(doc);
+  const now = new Date();
+  const attemptId = crypto.randomUUID();
+  const delivery = { attemptId, state: "PREPARING", updatedAt: now };
+  const locked = await DocumentModel.updateOne({
+    _id: doc._id, ...commercialDocumentScope(req), status: "DRAFT",
+    ...unchangedDocumentFilter(doc), "commercialDelivery.state": null,
+  }, { $set: { commercialDelivery: delivery } });
+  if (!locked.modifiedCount) return res.status(409).json({ message: "Ce document est déjà en cours de traitement." });
+
+  let file;
+  try {
+    const buffer = await buildPdfBuffer(doc);
+    file = await persistPdf(buffer, `${doc._id}-${attemptId}`, { privateFile: true, overwrite: false });
+    await validateCommercialDocumentSend(doc);
+    const marked = await DocumentModel.updateOne({ ...deliveryAttempt(doc._id, delivery), ...commercialDocumentScope(req) }, {
+      $set: {
+        pdf: { ...file, sha256: hashPdfBuffer(buffer), byteLength: buffer.length, version: 1, generatedAt: now },
+        "commercialDelivery.state": "HANDOFF",
+        "commercialDelivery.updatedAt": new Date(),
+      },
+    });
+    if (!marked.modifiedCount) throw Object.assign(new Error("Le dossier a changé pendant la préparation."), { statusCode: 409 });
+    delivery.state = "HANDOFF";
+    await sendDocEmail({
+      toEmail: doc.party.email, toName: doc.party.ownerName || doc.party.restaurantName,
+      subject: buildEmailSubject(doc), html: buildEmailHtml(doc),
+      attachmentBase64: buffer.toString("base64"), attachmentName: `${doc.docNumber}.pdf`,
+    });
+    const finished = await DocumentModel.updateOne(deliveryAttempt(doc._id, delivery), { $set: {
+      status: "SENT", sentAt: now, firstSentAt: doc.firstSentAt || now,
+      "commercialDelivery.state": "SENT", "commercialDelivery.updatedAt": new Date(),
+    } });
+    if (!finished.matchedCount) throw deliveryChanged();
+    if (doc.type === "QUOTE") await markProspectMilestone(doc, "quoteSentAt", now);
+    return res.json({ message: "Email envoyé", status: "SENT", sentAt: now });
+  } catch (error) {
+    if (delivery.state === "HANDOFF" && !isBrevoInvalidEmailError(error)) {
+      const affected = await DocumentModel.updateOne(deliveryAttempt(doc._id, delivery),
+        { $set: { "commercialDelivery.state": "UNCERTAIN", "commercialDelivery.updatedAt": new Date() } });
+      return affected.matchedCount
+        ? res.status(502).json({ message: "La livraison doit être vérifiée par l’administration avant un nouvel envoi." })
+        : res.status(409).json({ message: deliveryChanged().message });
+    }
+    const reset = await DocumentModel.updateOne(deliveryAttempt(doc._id, delivery), { $unset: { commercialDelivery: 1, pdf: 1 } });
+    if (file && (delivery.state === "PREPARING" || reset.matchedCount)) await removeStoredPdf(file);
+    if (!reset.matchedCount) return res.status(409).json({ message: deliveryChanged().message });
+    return res.status(error.statusCode || (isBrevoInvalidEmailError(error) ? 400 : 502)).json({
+      message: error.statusCode ? error.message : "Le document n’a pas pu être envoyé.",
+    });
+  }
+}
+
 router.post(
-  "/admin/documents/:id/send",
-  authenticateToken,
+  ["/admin/documents/:id/send", "/commercial/documents/:id/send"],
+  authorizeDocumentRequest,
   async (req, res) => {
     try {
-      const doc = await DocumentModel.findById(req.params.id);
+      const doc = await findDocumentForRequest(req);
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
+
+      if (doc.offerConditions) {
+        if (doc.type === "QUOTE" || doc.setupInvoice) return await sendCommercialInvoiceOrQuote(req, res, doc);
+        return res.status(409).json({ message: "Ce contrat doit être envoyé pour signature à distance." });
+      }
+      if (req.commercialAccount) return res.status(404).json({ message: "Document introuvable" });
 
       // =========================================================
       // ✅ QUOTE / INVOICE
@@ -2129,18 +2302,87 @@ router.post(
   },
 );
 
+function deliveryEvent(req, delivery, state = delivery.state) {
+  return { attemptId: delivery.attemptId, operation: delivery.operation, state,
+    actor: String(req.commercialAccount?._id || req.user?.id || "SYSTEM"), at: new Date() };
+}
+
+function deliveryAttempt(id, delivery) {
+  return { _id: id, "commercialDelivery.attemptId": delivery.attemptId ?? null, "commercialDelivery.state": delivery.state };
+}
+
+function deliveryChanged() {
+  return problem(409, "L’état de cette tentative a changé. Actualisez le document.");
+}
+
+async function finishCommercialResend(req, document, delivery, state, { set, push } = {}) {
+  const now = new Date();
+  const result = await DocumentModel.findOneAndUpdate(deliveryAttempt(document._id, delivery),
+    { $set: {
+      commercialDelivery: { ...delivery, state: state === "UNCERTAIN" ? "UNCERTAIN" : "SENT", updatedAt: now },
+      ...set,
+      ...(state === "SENT" && document.type !== "CONTRACT" && { sentAt: now }),
+      ...(state === "SENT" && document.status === "SIGNED" && {
+        "signature.emailStatus": "SENT", "signature.emailSentAt": now, "signature.emailError": "",
+      }),
+    }, $push: { ...push, deliveryHistory: deliveryEvent(req, delivery, state) } }, { new: true });
+  if (!result) throw deliveryChanged();
+  return result;
+}
+
+async function resendCommercialPdf(req, res, doc) {
+  const signed = doc.type === "CONTRACT" && doc.status === "SIGNED";
+  if (!(signed || (doc.type !== "CONTRACT" && doc.status === "SENT" && !doc.setupInvoice?.cancelledAt)) ||
+      !doc.pdf?.sha256 || !storedPdfExists(doc.pdf)) {
+    throw problem(409, "Ce document ne dispose pas d’une copie originale renvoyable.");
+  }
+  await validateCommercialDocumentSend(doc, { copy: true });
+  const delivery = { operation: "RESEND_PDF", attemptId: crypto.randomUUID(), state: "PREPARING", updatedAt: new Date() };
+  const locked = await DocumentModel.updateOne({
+    _id: doc._id, ...commercialDocumentScope(req), ...unchangedDocumentFilter(doc),
+    "commercialDelivery.state": { $in: [null, "SENT"] },
+  }, { $set: { commercialDelivery: delivery }, $push: { deliveryHistory: deliveryEvent(req, delivery) } });
+  if (!locked.modifiedCount) throw problem(409, "Un renvoi est en cours ou doit être vérifié.");
+  try {
+    const buffer = await downloadStoredPdf(doc.pdf);
+    if (hashPdfBuffer(buffer) !== doc.pdf.sha256) throw problem(409, "L’intégrité du PDF ne peut pas être vérifiée.");
+    await validateCommercialDocumentSend(doc, { copy: true });
+    const marked = await DocumentModel.updateOne({
+      ...deliveryAttempt(doc._id, delivery), ...commercialDocumentScope(req), "setupInvoice.cancelledAt": null,
+    }, { $set: { "commercialDelivery.state": "HANDOFF", "commercialDelivery.updatedAt": new Date() },
+      $push: { deliveryHistory: deliveryEvent(req, delivery, "HANDOFF") } });
+    if (!marked.modifiedCount) throw problem(409, "Le document a changé pendant la préparation.");
+    delivery.state = "HANDOFF";
+    if (signed) await sendSignedContractCopy(doc, buffer);
+    else await sendDocEmail({
+      toEmail: doc.party.email, toName: doc.party.ownerName || doc.party.restaurantName,
+      subject: buildEmailSubject(doc), html: buildEmailHtml(doc), attachmentBase64: buffer.toString("base64"), attachmentName: `${doc.docNumber}.pdf`,
+    });
+    await finishCommercialResend(req, doc, delivery, "SENT");
+    return res.json({ message: "Document renvoyé." });
+  } catch (error) {
+    if (error.statusCode === 409 && delivery.state === "HANDOFF") throw error;
+    const uncertain = delivery.state === "HANDOFF" && !isBrevoInvalidEmailError(error);
+    await finishCommercialResend(req, doc, delivery, uncertain ? "UNCERTAIN" : "FAILED");
+    if (uncertain) throw problem(502, "Le renvoi doit être vérifié par l’administration.");
+    if (error.statusCode) throw error;
+    throw problem(502, "Impossible de renvoyer le document.");
+  }
+}
+
 router.post(
   "/admin/documents/:id/signed-copy/resend",
   authenticateToken,
   async (req, res) => {
     let document = null;
     try {
-      document = await DocumentModel.findById(req.params.id);
+      document = await findDocumentForRequest(req);
+      if (document?.offerConditions) return await resendCommercialPdf(req, res, document);
       if (
         !document ||
         document.type !== "CONTRACT" ||
         document.status !== "SIGNED" ||
-        !document.pdf?.url
+        !storedPdfExists(document.pdf)
       ) {
         return res.status(409).json({
           message: "Aucun contrat signé ne peut être renvoyé.",
@@ -2152,7 +2394,7 @@ router.post(
         });
       }
 
-      const pdfBuffer = await downloadStoredPdf(document.pdf.url);
+      const pdfBuffer = await downloadStoredPdf(document.pdf);
       if (
         document.pdf.sha256 &&
         hashPdfBuffer(pdfBuffer) !== document.pdf.sha256
@@ -2173,6 +2415,9 @@ router.post(
       });
     } catch (error) {
       logDocumentError("renvoi copie signée", error);
+      if (document?.offerConditions) return res.status(error.statusCode || 500).json({
+        message: error.statusCode ? error.message : "Impossible de renvoyer la copie signée.",
+      });
       if (document?._id) {
         await DocumentModel.updateOne(
           { _id: document._id, status: "SIGNED" },
@@ -2195,13 +2440,15 @@ router.post(
 
 // ---------- RESEND EMAIL (SENT ONLY) : renvoie EXACTEMENT le même PDF (sans upload) ----------
 router.post(
-  "/admin/documents/:id/resend",
-  authenticateToken,
+  ["/admin/documents/:id/resend", "/commercial/documents/:id/resend"],
+  authorizeDocumentRequest,
   async (req, res) => {
     try {
-      const doc = await DocumentModel.findById(req.params.id);
+      const doc = await findDocumentForRequest(req);
       if (!doc)
         return res.status(404).json({ message: "Document introuvable" });
+      if (doc.offerConditions) return await resendCommercialPdf(req, res, doc);
+      if (req.commercialAccount) return res.status(404).json({ message: "Document introuvable." });
 
       if (doc.type === "CONTRACT") {
         return res.status(409).json({
@@ -2210,13 +2457,13 @@ router.post(
         });
       }
 
-      if (doc.status !== "SENT") {
+      if (doc.status !== "SENT" || doc.setupInvoice?.cancelledAt) {
         return res.status(400).json({
           message: "Renvoi autorisé uniquement si document envoyé",
         });
       }
 
-      if (!doc?.pdf?.url) {
+      if (!storedPdfExists(doc.pdf)) {
         return res.status(400).json({
           message:
             "Aucun PDF enregistré pour ce document. Ré-envoyez via /send.",
@@ -2224,10 +2471,8 @@ router.post(
       }
 
       // ✅ on retélécharge depuis Cloudinary => même binaire que le premier envoi
-      const pdfRes = await axios.get(doc.pdf.url, {
-        responseType: "arraybuffer",
-      });
-      const attachmentBase64 = Buffer.from(pdfRes.data).toString("base64");
+      const buffer = await downloadStoredPdf(doc.pdf);
+      const attachmentBase64 = buffer.toString("base64");
 
       await sendDocEmail({
         toEmail: doc.party.email,
@@ -2248,11 +2493,71 @@ router.post(
         sentAt: doc.sentAt,
       });
     } catch (e) {
-      console.error(e);
-      res.status(500).json({ message: "Erreur serveur" });
+      logDocumentError("renvoi du document", e);
+      res.status(e.statusCode || 500).json({ message: e.statusCode ? e.message : "Impossible de renvoyer le document." });
     }
   },
 );
+
+router.post("/admin/documents/:id/resolve-delivery", authenticateToken, async (req, res) => {
+  try {
+    const { action } = req.body || {};
+    if (!["delivered", "reopen"].includes(action)) return res.status(400).json({ message: "Décision invalide." });
+    const doc = await findDocumentForRequest(req);
+    if (!doc?.offerConditions) return res.status(404).json({ message: "Document introuvable." });
+    const delivery = doc.commercialDelivery;
+    const now = new Date();
+    const reviewable = delivery?.state === "UNCERTAIN" ||
+      ["PREPARING", "HANDOFF"].includes(delivery?.state) && now - delivery.updatedAt > 10 * 60000;
+    if (!reviewable || (!delivery.operation && doc.status === "SIGNED") || doc.signatureRequest?.status === "SIGNING" ||
+        (action === "delivered" && delivery.state === "PREPARING")) {
+      return res.status(409).json({ message: "Cette livraison ne peut pas être régularisée." });
+    }
+    const filter = { ...deliveryAttempt(doc._id, delivery), ...commercialDocumentScope(req), ...unchangedDocumentFilter(doc) };
+    const event = deliveryEvent(req, delivery, action === "delivered" ? "CONFIRMED" : "REOPENED");
+    if (delivery.operation) {
+      const changed = await DocumentModel.findOneAndUpdate(filter, {
+        $set: {
+          "commercialDelivery.state": "SENT", "commercialDelivery.updatedAt": now,
+          ...(action === "delivered" && doc.status === "SIGNED" && delivery.operation !== "REPLACE_LINK" &&
+            { "signature.emailStatus": "SENT", "signature.emailSentAt": now, "signature.emailError": "" }),
+          ...(action === "reopen" && delivery.operation === "REPLACE_LINK" && doc.status !== "SIGNED" &&
+            { "signatureRequest.status": "REVOKED", "signatureRequest.revokedAt": now }),
+        }, $push: { deliveryHistory: event },
+      }, { new: true });
+      if (!changed) return res.status(409).json({ message: "Le document a changé. Actualisez la page." });
+      return res.json({ document: changed });
+    }
+    const first = doc.firstSentAt || doc.sentAt || delivery.updatedAt;
+    const update = action === "delivered" ? {
+      $set: { status: "SENT", firstSentAt: first, sentAt: first, commercialDelivery: { state: "SENT", updatedAt: now } },
+    } : {
+      $set: { status: "DRAFT", sentAt: null, ...(doc.type === "CONTRACT" && { "signatureRequest.status": "REVOKED" }) },
+      $unset: { commercialDelivery: 1, pdf: 1 },
+    };
+    const original = doc.type === "CONTRACT" ? doc.presentedPdf : doc.pdf;
+    if (action === "reopen" && storedPdfExists(original)) event.pdf = plain(original);
+    const changed = await DocumentModel.findOneAndUpdate(filter, {
+      ...update, $push: { deliveryHistory: event },
+    }, { new: true });
+    if (!changed) return res.status(409).json({ message: "Le document a changé. Actualisez la page." });
+    if (action === "delivered" && doc.type !== "INVOICE") {
+      await markProspectMilestone(doc, doc.type === "QUOTE" ? "quoteSentAt" : "contractSentAt", first);
+    }
+    console.info("[commercial-delivery]", { documentId: String(doc._id), actor: String(req.user.id), action });
+    return res.json({ document: changed });
+  } catch (error) {
+    logDocumentError("régularisation livraison", error);
+    return res.status(500).json({ message: "Impossible de régulariser la livraison." });
+  }
+});
+
+router.use("/public/contract-signatures", (_req, res, next) => {
+  res.set("Cache-Control", "private, no-store");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("X-Content-Type-Options", "nosniff");
+  next();
+});
 
 router.get("/public/contract-signatures/:token", async (req, res) => {
   try {
@@ -2323,7 +2628,7 @@ router.get("/public/contract-signatures/:token/pdf", async (req, res) => {
 
     const pdfInfo =
       state === "SIGNED" ? document.pdf : document.signatureRequest?.previewPdf;
-    const pdfBuffer = await downloadStoredPdf(pdfInfo?.url);
+    const pdfBuffer = await downloadStoredPdf(pdfInfo);
     const computedPdfHash = hashPdfBuffer(pdfBuffer);
     const presentedHashMismatch =
       state === "PENDING" && document.presentedPdf?.sha256 !== pdfInfo?.sha256;
@@ -2348,8 +2653,9 @@ router.get("/public/contract-signatures/:token/pdf", async (req, res) => {
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     logDocumentError("proxy PDF public", error);
-    return res.status(error?.statusCode || 500).json({
-      message: error?.message || "Impossible de charger le PDF.",
+    const status = error?.statusCode === 409 ? 409 : 500;
+    return res.status(status).json({
+      message: status === 409 ? "L’intégrité du document ne peut pas être vérifiée." : "Impossible de charger le PDF.",
     });
   }
 });
@@ -2461,9 +2767,9 @@ router.post("/public/contract-signatures/:token/sign", async (req, res) => {
       });
     }
 
-    const presentedPdfBuffer = await downloadStoredPdf(
-      lockedDocument.signatureRequest?.previewPdf?.url,
-    );
+    const offerConditions = snapshot.offerConditions;
+    if (offerConditions) await validatePromotionSignature(offerConditions, now);
+    const presentedPdfBuffer = await downloadStoredPdf(lockedDocument.signatureRequest?.previewPdf);
     const presentedPdfHash = hashPdfBuffer(presentedPdfBuffer);
     if (
       !lockedDocument.signatureRequest?.previewPdf?.sha256 ||
@@ -2514,69 +2820,86 @@ router.post("/public/contract-signatures/:token/sign", async (req, res) => {
       signatureBuffer,
     );
     const signedPdfHash = hashPdfBuffer(pdfBuffer);
-    uploadedPdf = await uploadPdfFromBuffer(
+    uploadedPdf = await persistPdf(
       pdfBuffer,
       `${publicIdForContract(lockedDocument, computedHash, "signed")}-${createSignatureToken().slice(-10)}`,
-      { overwrite: false },
+      { privateFile: Boolean(offerConditions), overwrite: false },
     );
     const finalPdf = {
-      url: uploadedPdf.secure_url,
-      public_id: uploadedPdf.public_id,
+      ...uploadedPdf,
       version: 1,
       generatedAt: now,
       sha256: signedPdfHash,
       byteLength: pdfBuffer.length,
     };
+    const copyDelivery = offerConditions && {
+      operation: "SIGNED_COPY", attemptId: crypto.randomUUID(), state: "HANDOFF", updatedAt: new Date(),
+    };
 
-    const signedDocument = await DocumentModel.findOneAndUpdate(
-      {
-        _id: lockedDocument._id,
-        status: "SENT",
-        contentHash: computedHash,
-        "signatureRequest.tokenHash": tokenHash,
-        "signatureRequest.status": "SIGNING",
-      },
-      {
-        $set: {
-          status: "SIGNED",
-          placeOfSignature,
-          pdf: finalPdf,
-          signatureSnapshot,
-          "signatureRequest.status": "SIGNED",
-          "signatureRequest.usedAt": now,
-          "signatureRequest.processingAt": null,
-          signature: {
-            signedAt: now,
-            acceptedAt: now,
-            signerName,
-            signerEmail: lockedDocument.party?.email || "",
-            signerIp: req.ip || "",
-            userAgent: String(req.get("user-agent") || "").slice(0, 500),
-            method: "REMOTE",
-            contentHash: proofHash,
-            signatureImageHash,
-            presentedPdfHash,
-            signedPdfHash,
-            proofHash,
-            processingAt: null,
-            emailStatus: "NOT_SENT",
+    const finalizeSignature = async (session) => {
+      if (offerConditions) await validatePromotionSignature(offerConditions, new Date(), session);
+      const signed = await DocumentModel.findOneAndUpdate(
+        {
+          _id: lockedDocument._id,
+          status: "SENT",
+          contentHash: computedHash,
+          "signatureRequest.tokenHash": tokenHash,
+          "signatureRequest.status": "SIGNING",
+          "signatureRequest.processingAt": now,
+        },
+        {
+          $set: {
+            status: "SIGNED",
+            placeOfSignature,
+            pdf: finalPdf,
+            signatureSnapshot,
+            "signatureRequest.status": "SIGNED",
+            "signatureRequest.usedAt": now,
+            "signatureRequest.processingAt": null,
+            ...(offerConditions && {
+              "signatureRequest.signedCopyExpiresAt": new Date(now.getTime() + Number(offerConditions.signedCopyHours || 0) * 3600000),
+              firstSentAt: lockedDocument.firstSentAt || lockedDocument.sentAt || now,
+              commercialDelivery: copyDelivery,
+            }),
+            signature: {
+              signedAt: now,
+              acceptedAt: now,
+              signerName,
+              signerEmail: lockedDocument.party?.email || "",
+              signerIp: req.ip || "",
+              userAgent: String(req.get("user-agent") || "").slice(0, 500),
+              method: "REMOTE",
+              contentHash: proofHash,
+              signatureImageHash,
+              presentedPdfHash,
+              signedPdfHash,
+              proofHash,
+              processingAt: null,
+              emailStatus: "NOT_SENT",
+            },
+          },
+          $push: {
+            ...(copyDelivery && { deliveryHistory: deliveryEvent(req, copyDelivery) }),
+            signatureHistory: {
+              event: "SIGNED",
+              at: now,
+              actor: "SIGNER",
+              actorName: signerName,
+              method: "REMOTE",
+            },
           },
         },
-        $push: {
-          signatureHistory: {
-            event: "SIGNED",
-            at: now,
-            actor: "SIGNER",
-            actorName: signerName,
-            method: "REMOTE",
-          },
-        },
-      },
-      { new: true, runValidators: true },
-    );
+        { new: true, runValidators: true, session },
+      );
+      if (signed && session) await recordCommercialSignature(signed, session);
+      return signed;
+    };
+    const signedDocument = offerConditions && lockedDocument.prospectId && lockedDocument.contractKind === "INITIAL"
+      ? await DocumentModel.db.transaction(finalizeSignature)
+      : await finalizeSignature();
 
     if (!signedDocument) {
-      await destroyPdfIfExists(uploadedPdf.public_id);
+      await removeStoredPdf(uploadedPdf);
       uploadedPdf = null;
       throw Object.assign(
         new Error("La signature n'a pas pu être finalisée."),
@@ -2586,7 +2909,24 @@ router.post("/public/contract-signatures/:token/sign", async (req, res) => {
       );
     }
 
+    uploadedPdf = null;
     let emailWarning = "";
+    if (copyDelivery) {
+      try {
+        await sendSignedContractCopy(signedDocument, pdfBuffer);
+        await finishCommercialResend(req, signedDocument, copyDelivery, "SENT");
+      } catch (error) {
+        emailWarning = "Votre document est bien signé. Gusto Manager conserve l’original et vérifiera la remise de sa copie.";
+        if (error.statusCode !== 409) {
+          try {
+            await finishCommercialResend(req, signedDocument, copyDelivery, "UNCERTAIN");
+          } catch (failure) {
+            logDocumentError("suivi de la copie signée", failure);
+          }
+        }
+      }
+      return res.json({ state: "SIGNED", signedAt: signedDocument.signature.signedAt, signerName, emailWarning });
+    }
     try {
       await sendSignedContractCopy(signedDocument, pdfBuffer);
       await DocumentModel.updateOne(
@@ -2624,26 +2964,32 @@ router.post("/public/contract-signatures/:token/sign", async (req, res) => {
   } catch (error) {
     logDocumentError("signature publique", error);
     if (uploadedPdf?.public_id) {
-      await destroyPdfIfExists(uploadedPdf.public_id);
+      await removeStoredPdf(uploadedPdf);
     }
     if (lockedDocument?._id) {
+      const expiredPromotion = error.code === "PROMOTION_UNAVAILABLE";
+      const at = new Date();
       await DocumentModel.updateOne(
         {
           _id: lockedDocument._id,
           status: "SENT",
           "signatureRequest.tokenHash": tokenHash,
           "signatureRequest.status": "SIGNING",
+          "signatureRequest.processingAt": lockedDocument.signatureRequest.processingAt,
         },
         {
           $set: {
-            "signatureRequest.status": "PENDING",
+            "signatureRequest.status": expiredPromotion ? "EXPIRED" : "PENDING",
             "signatureRequest.processingAt": null,
+            ...(expiredPromotion && { "signatureRequest.expiresAt": at }),
           },
+          ...(expiredPromotion && { $push: { signatureHistory: systemSignatureHistoryEntry("LINK_EXPIRED", at) } }),
         },
       );
     }
-    return res.status(error?.statusCode || 500).json({
-      message: error?.message || "Impossible de valider la signature.",
+    const status = [400, 409].includes(error?.statusCode) ? error.statusCode : 500;
+    return res.status(status).json({
+      message: status === 500 ? "Impossible de valider la signature." : error.message,
     });
   }
 });

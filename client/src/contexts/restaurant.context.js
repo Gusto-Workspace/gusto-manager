@@ -2527,6 +2527,7 @@ export default function RestaurantContext() {
       if (!url.startsWith("/dashboard")) return;
       if (url.startsWith("/dashboard/admin")) return;
       if (url.startsWith("/dashboard/login")) return;
+      if (/^\/dashboard\/seller(?:[/?#]|$)/.test(url)) return;
 
       if (!hasFetchedDashboardDataRef.current) {
         fetchRestaurantsList();
@@ -2546,6 +2547,7 @@ export default function RestaurantContext() {
     if (!path.startsWith("/dashboard")) return;
     if (path.startsWith("/dashboard/admin")) return;
     if (path.startsWith("/dashboard/login")) return;
+    if (/^\/dashboard\/seller(?:\/|$)/.test(path)) return;
 
     if (!hasFetchedDashboardDataRef.current) {
       fetchRestaurantsList();

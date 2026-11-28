@@ -200,6 +200,7 @@ export default function PublicContractSignaturePage() {
       <Head>
         <title>Signature de votre document | Gusto Manager</title>
         <meta name="robots" content="noindex,nofollow,noarchive" />
+        <meta name="referrer" content="no-referrer" />
       </Head>
 
       <main className="min-h-screen bg-lightGrey px-4 py-6 text-darkBlue mobile:py-10">
@@ -485,6 +486,9 @@ export default function PublicContractSignaturePage() {
                         Effacer
                       </button>
                     </div>
+                    <p className="mt-1 text-sm text-darkBlue/70">
+                      Si vous utilisez uniquement le clavier, <a className="underline" href="mailto:contact@gusto-manager.com">contactez Gusto Manager</a> pour convenir d’un mode de signature adapté.
+                    </p>
                     <div
                       ref={signatureContainerRef}
                       className="mt-2 h-[180px] overflow-hidden rounded-xl border border-darkBlue/15 bg-white"
@@ -519,7 +523,7 @@ export default function PublicContractSignaturePage() {
                   </label>
 
                   {error ? (
-                    <p className="rounded-xl border border-red/20 bg-red/5 p-3 text-sm text-red">
+                    <p role="alert" className="rounded-xl border border-red/20 bg-red/5 p-3 text-sm text-red">
                       {error}
                     </p>
                   ) : null}
@@ -552,7 +556,9 @@ export default function PublicContractSignaturePage() {
   );
 }
 
-export async function getServerSideProps({ locale }) {
+export async function getServerSideProps({ locale, res }) {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "private, no-store");
   return {
     props: {
       ...(await serverSideTranslations(locale, ["common"])),

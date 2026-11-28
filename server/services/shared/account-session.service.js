@@ -139,7 +139,7 @@ function validatePasswordChangeInput(currentPassword, newPassword) {
 async function isAccountSessionValid(user) {
   if (!hasValidSuperAdminMetadata(user)) return false;
 
-  const role = String(user?.role || "").toLowerCase();
+  const role = user?.role;
   let account = null;
   const sessionProjection = { _id: 1, sessionVersion: 1 };
 
@@ -156,7 +156,7 @@ async function isAccountSessionValid(user) {
       account?.accountType === "accountant" ? "accountant" : "employee";
     if (actualRole !== role) return false;
   } else {
-    return true;
+    return false;
   }
 
   if (!account) return false;

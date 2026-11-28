@@ -1,0 +1,32 @@
+{
+  "nav": {
+    "label": "Sales workspace",
+    "toggle": "Toggle navigation",
+    "logout": "Sign out",
+    "dashboard": "Dashboard",
+    "prospects": "My prospects",
+    "calendar": "Calendar",
+    "quotes": "My quotes",
+    "invoices": "My invoices",
+    "contracts": "My contracts",
+    "commissions": "My commissions",
+    "resources": "Resources",
+    "account": "My account"
+  },
+  "period": {
+    "label": "Period",
+    "current": "This month",
+    "previous": "Last month",
+    "year": "This year",
+    "custom": "Custom period",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply"
+  },
+  "commissions": {
+    "waitingCustomerPayment": "Awaiting customer payment",
+    "toReceive": "To receive",
+    "toPay": "Awaiting payment",
+    "paid": "Paid"
+  }
+}

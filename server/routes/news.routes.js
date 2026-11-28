@@ -1,5 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const authenticateToken = require("../middleware/authentificate-token");
+const { authorizeRestaurantAccess } = require("../middleware/authorize-restaurant-access");
+
+const contentAccess = authorizeRestaurantAccess({ requiredOption: "news", paramName: "id" });
+router.use("/restaurants/:id/news", authenticateToken, contentAccess);
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const streamifier = require("streamifier");

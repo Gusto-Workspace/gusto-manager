@@ -5,7 +5,8 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
 const authenticateAdmin = require("../../middleware/authenticate-admin");
-const { requireAdminRole } = require("../../middleware/authenticate-admin");
+const { requireSuperAdmin } = require("../../middleware/authenticate-admin");
+const { saveRestaurantWithEstablishment } = require("../../services/commercial/establishments.service");
 
 // MODELS
 const RestaurantModel = require("../../models/restaurant.model");
@@ -126,7 +127,7 @@ async function assertRestaurantTransferBillingIsSafe(restaurant) {
 }
 
 // GET STRIPE KEY FOR A SPECIFIC RESTAURANT
-router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
+router.get("/admin/restaurants/:id/stripe-key", requireSuperAdmin, async (req, res) => {
   const restaurantId = req.params.id;
 
   try {
@@ -156,7 +157,7 @@ router.get("/admin/restaurants/:id/stripe-key", async (req, res) => {
 // GET ALL RESTAURANTS
 router.get("/admin/restaurants", async (req, res) => {
   try {
-    const restaurants = await RestaurantModel.find().populate(
+    const restaurants = await RestaurantModel.find().select("-stripeSecretKey").populate(
       "owner_id",
       "firstname lastname phoneNumber email",
     );
@@ -171,7 +172,7 @@ router.get("/admin/restaurants", async (req, res) => {
 // REPLACE A RESTAURANT DISH CARD FROM AN XLSX FILE
 router.post(
   "/admin/restaurants/:id/dishes/import",
-  requireAdminRole,
+  requireSuperAdmin,
   uploadDishCard,
   async (req, res) => {
     try {
@@ -213,7 +214,7 @@ router.post(
 );
 
 // ADD RESTAURANT
-router.post("/admin/add-restaurant", async (req, res) => {
+router.post("/admin/add-restaurant", requireSuperAdmin, async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
     req.body;
 
@@ -300,7 +301,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
       news: [],
     });
 
-    await newRestaurant.save();
+    await saveRestaurantWithEstablishment(newRestaurant);
 
     owner.restaurants.push(newRestaurant._id);
     await owner.save();
@@ -335,7 +336,7 @@ router.post("/admin/add-restaurant", async (req, res) => {
 });
 
 // UPDATE RESTAURANT
-router.put("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
+router.put("/admin/restaurants/:id", requireSuperAdmin, async (req, res) => {
   const { restaurantData, ownerData, existingOwnerId, stripeSecretKey } =
     req.body;
 
@@ -481,7 +482,7 @@ router.put("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
       }
     }
 
-    await restaurant.save();
+    await saveRestaurantWithEstablishment(restaurant);
 
     if (shouldEnsureRestaurantCustomer && currentOwner) {
       try {
@@ -586,7 +587,7 @@ router.put("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
 });
 
 // DELETE RESTAURANT
-router.delete("/admin/restaurants/:id", requireAdminRole, async (req, res) => {
+router.delete("/admin/restaurants/:id", requireSuperAdmin, async (req, res) => {
   try {
     // Trouver le restaurant à supprimer
     const restaurant = await RestaurantModel.findById(req.params.id);

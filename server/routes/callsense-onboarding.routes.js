@@ -2,7 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const mongoose = require("mongoose");
 const authenticateAdmin = require("../middleware/authenticate-admin");
-const { requireAdminRole } = require("../middleware/authenticate-admin");
+const { requireAdminRole, requireSuperAdmin } = require("../middleware/authenticate-admin");
 const Restaurant = require("../models/restaurant.model");
 const Config = require("../models/callsense/callsense-config.model");
 const Draft = require("../models/callsense/callsense-onboarding.model");
@@ -410,7 +410,7 @@ router.post(`${base}/sip-reconcile`, async (req, res) => {
   try { res.json(await provisioning.reconcileSip(req.params.restaurantId, String(req.user.id), { confirm: req.body.confirm })); }
   catch (err) { failure(res, err); }
 });
-router.post(`${base}/sip-secret`, (req, res, next) => { res.set("Cache-Control", "private, no-store, max-age=0"); res.set("Pragma", "no-cache"); res.set("X-Content-Type-Options", "nosniff"); next(); }, limitSipSecret, async (req, res) => {
+router.post(`${base}/sip-secret`, requireSuperAdmin, (req, res, next) => { res.set("Cache-Control", "private, no-store, max-age=0"); res.set("Pragma", "no-cache"); res.set("X-Content-Type-Options", "nosniff"); next(); }, limitSipSecret, async (req, res) => {
   try {
     if (req.body.confirm !== true) return res.sendStatus(400);
     res.json(await provisioning.revealSip(req.params.restaurantId, String(req.user.id)));

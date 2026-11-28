@@ -5,6 +5,8 @@ const { DateTime } = require("luxon");
 const express = require("express");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
+const { signAdminToken } = require("../../middleware/authenticate-admin");
+const Admin = require("../../models/admin.model");
 
 process.env.JWT_SECRET = "synthetic-hr-questionnaire";
 process.env.TIME_CLOCK_SECRET = "synthetic-clock-questionnaire";
@@ -68,6 +70,7 @@ test("owners and admins share resumable drafts, dated import, history and applic
   const earlier = tomorrow.minus({ days: 3 }).toISODate();
   const hours = (current, hour, minute = 0) => current.set({ hour, minute }).toISO();
   await Promise.all([
+    Admin.collection.insertOne({ _id: administrator, role: "admin" }),
     Owner.collection.insertMany([{ _id: firstOwner, firstname: "Propriétaire fictif A" }, { _id: secondOwner, firstname: "Propriétaire fictif B" }]),
     Restaurant.collection.insertMany([
       { _id: first, name: "Restaurant sans import fictif", owner_id: firstOwner, options: { employees: true }, employees: [employee] },
@@ -92,7 +95,7 @@ test("owners and admins share resumable drafts, dated import, history and applic
   const auth = (role, id, restaurantId) => jwt.sign({ role, id: String(id), restaurantId: String(restaurantId) }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const firstToken = auth("owner", firstOwner, first);
   const secondToken = auth("owner", secondOwner, second);
-  const adminToken = auth("admin", administrator, first);
+  const adminToken = signAdminToken({ _id: administrator, role: "admin" });
   const call = (path, method = "GET", body, token = firstToken) => fetch(`http://127.0.0.1:${listener.address().port}${path}`, {
     method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, ...(body && { body: JSON.stringify(body) }),
   });

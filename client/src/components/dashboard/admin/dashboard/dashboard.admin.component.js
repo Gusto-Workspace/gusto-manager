@@ -24,22 +24,32 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
-function MetricCard({ icon: Icon, title, value, hint }) {
+export function MetricCard({ icon: Icon, title, value, hint, compact = false }) {
   return (
-    <div className="rounded-2xl border border-darkBlue/10 bg-white/60 p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-darkBlue/45">
+    <div className={`rounded-2xl border border-darkBlue/10 shadow-sm ${compact ? "bg-white p-3 mobile:p-4" : "bg-white/60 p-4"}`}>
+      <div className={compact
+        ? "grid h-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(2.25rem,auto)_auto_1fr] items-start gap-x-2"
+        : "flex items-start justify-between gap-3"}>
+        <div className={compact ? "contents" : undefined}>
+          <p className={compact
+            ? "col-start-1 row-start-1 self-center text-sm font-semibold leading-tight text-darkBlue"
+            : "text-xs font-semibold uppercase tracking-wide text-darkBlue/45"}>
             {title}
           </p>
-          <p className="mt-2 text-2xl font-semibold text-darkBlue">{value}</p>
+          <p className={compact
+            ? "col-span-2 col-start-1 row-start-2 mt-2 text-3xl font-bold leading-none tracking-tight text-darkBlue tabular-nums"
+            : "mt-2 text-2xl font-semibold text-darkBlue"}>{value}</p>
           {hint ? (
-            <p className="mt-1 text-xs text-darkBlue/55">{hint}</p>
+            <p className={compact
+              ? "col-span-2 col-start-1 row-start-3 mt-1.5 text-xs leading-snug text-darkBlue/75"
+              : "mt-1 text-xs text-darkBlue/55"}>{hint}</p>
           ) : null}
         </div>
 
-        <div className="inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white">
-          <Icon className="size-5 text-darkBlue/70" />
+        <div aria-hidden="true" className={compact
+          ? "col-start-2 row-start-1 inline-flex size-7 items-center justify-center self-center rounded-lg bg-[#f0ebfc] text-[#634fd2] mobile:size-8"
+          : "inline-flex size-10 items-center justify-center rounded-2xl border border-darkBlue/10 bg-white text-darkBlue/70"}>
+          <Icon className={compact ? "size-4" : "size-5"} />
         </div>
       </div>
     </div>

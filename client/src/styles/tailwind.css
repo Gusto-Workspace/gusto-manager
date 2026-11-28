@@ -2,6 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .input-commercial {
+    @apply min-h-11 min-w-0 rounded-xl border border-darkBlue/20 bg-white px-3 py-2 text-base text-darkBlue outline-none transition-colors focus:border-violet focus:ring-2 focus:ring-violet/20;
+  }
+  .button-commercial {
+    @apply min-h-11 rounded-xl bg-violet px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5241b5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:opacity-50;
+  }
+  .commercial-queue-action {
+    @apply col-start-2 row-start-1 flex max-w-[8.5rem] flex-wrap items-center justify-end gap-1.5 mobile:max-w-none;
+  }
+  .commercial-queue-button {
+    @apply inline-flex min-h-9 items-center justify-center rounded-lg border border-violet/20 bg-[#f6f3ff] px-2.5 py-1.5 text-center text-xs font-semibold text-[#4d399e] hover:border-violet/40 hover:bg-[#eee8ff] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet;
+  }
+}
+
+.commercial-workspace {
+  background: #f5f4f9;
+}
+
+.commercial-page-header {
+  background: linear-gradient(165deg, #edf1fd, #fff 77%);
+}
+
+@media (width < 1024px) {
+  .commercial-seller-header {
+    @apply min-h-[57px] rounded-none border-0 bg-none py-0 pl-14 pr-0;
+  }
+
+  .commercial-seller-header .button-commercial {
+    @apply size-11 shrink-0 justify-center p-0;
+  }
+
+  .commercial-seller-header .commercial-header-action-label {
+    display: none;
+  }
+}
+
+.commercial-access-card {
+  background: radial-gradient(ellipse at 93% 0%, #e6e3fb 0%, transparent 49%), linear-gradient(118deg, #fff 10%, #f3f0ff 100%);
+  box-shadow: 0 12px 28px rgba(42, 34, 86, 0.06);
+}
+
+.commercial-tabs {
+  scrollbar-width: thin;
+}
+
+.commercial-panel {
+  box-shadow: 0 3px 14px rgba(31, 26, 62, 0.035);
+}
+
+.secondary-commercial:hover {
+  @apply border-violet/40 bg-[#f7f5ff] text-[#4d399e];
+}
+
+.commercial-table th,
+.commercial-table td {
+  padding: 0.75rem clamp(0.5rem, 1.4vw, 1.15rem);
+  vertical-align: middle;
+}
+
+.commercial-table thead {
+  @apply border-b border-darkBlue/10 bg-[#f7f6fb] text-xs font-semibold text-darkBlue/75;
+}
+
+.commercial-table tbody tr + tr {
+  @apply border-t border-darkBlue/10;
+}
+
+.commercial-table tbody tr:hover,
+.commercial-table tbody tr:focus-within {
+  @apply bg-[#f9f7ff];
+}
+
+.commercial-timeline-item {
+  position: relative;
+  margin-left: 0.25rem;
+  padding-left: 1rem;
+  border-left: 1px solid #ded6f3;
+}
+
+.commercial-timeline-item::before {
+  position: absolute;
+  left: -0.28rem;
+  top: 0.9rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 100%;
+  background: #634fd2;
+  content: "";
+}
+
 @keyframes reservation-commentary-pulse {
   0%,
   100% {
@@ -23,4 +114,27 @@
   .reservation-commentary-attention {
     animation: none;
   }
+}
+.commercial-calendar .rbc-event {
+  border: 0;
+  border-left: 3px solid currentColor;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.commercial-calendar .rbc-today {
+  @apply bg-[#f7f2ff];
+}
+
+.commercial-calendar .rbc-show-more {
+  @apply text-blue;
+}
+
+.commercial-calendar .rbc-header {
+  @apply bg-[#f7f5fc] py-2.5 text-xs font-semibold text-darkBlue/80;
+}
+
+.commercial-calendar .rbc-off-range-bg {
+  @apply bg-[#f8f8fc];
 }

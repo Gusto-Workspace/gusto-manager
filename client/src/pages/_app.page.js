@@ -1,5 +1,6 @@
 // STYLES
 import "@/styles/style.scss";
+import "react-big-calendar/lib/css/react-big-calendar.css";
 import "@/styles/tailwind.css";
 import "@/styles/custom/_index.scss";
 
@@ -33,6 +34,7 @@ import {
 import PushRestaurantGuard from "@/components/_shared/notifications/push-restaurant-guard";
 import CallSensePanel from "@/components/_shared/callsense/callsense-panel";
 import { CallSenseProvider } from "@/components/_shared/callsense/callsense-context";
+import { isSellerPath } from "@/components/commercial/commercial-api";
 
 function PushWindowBridge() {
   const router = useRouter();
@@ -479,10 +481,13 @@ function App({ Component, pageProps }) {
     return "/manifest.webmanifest?v=2";
   }, [router.pathname]);
 
+  const isCommercial = isSellerPath(router.pathname);
   const isManagerApp =
+    !isCommercial &&
     router.pathname.startsWith("/dashboard") &&
     manifestHref === "/manifest.webmanifest?v=2";
   const isClockDevice = router.pathname === "/dashboard/webapp/time-clock";
+  const isContractSignature = router.pathname.startsWith("/signature/");
 
   useEffect(() => {
     const scrollToTopEverywhere = () => {
@@ -597,7 +602,7 @@ function App({ Component, pageProps }) {
         <meta name="theme-color" content="#131E36" />
       </Head>
 
-      {isClockDevice ? <Component {...pageProps} /> : <GlobalProvider>
+      {isClockDevice || isCommercial ? <Component {...pageProps} /> : <GlobalProvider>
         <CallSenseProvider>
         <PushWindowBridge />
         <PushRestaurantGuard>
@@ -614,7 +619,7 @@ function App({ Component, pageProps }) {
         </PushRestaurantGuard>
         </CallSenseProvider>
       </GlobalProvider>}
-      {!isClockDevice && <Analytics />}
+      {!isClockDevice && !isCommercial && !isContractSignature && <Analytics />}
     </>
   );
 }

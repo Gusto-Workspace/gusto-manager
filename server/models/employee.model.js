@@ -296,8 +296,9 @@ const employeeSchema = new mongoose.Schema({
     { type: mongoose.Schema.Types.ObjectId, ref: "TrainingSession" },
   ],
 
-  resetCode: String,
-  resetCodeExpires: Date,
+  resetCode: { type: String, select: false },
+  resetCodeExpires: { type: Date, select: false },
+  passwordResetHash: { type: String, select: false },
   sessionVersion: { type: Number, default: 0, select: false },
 });
 

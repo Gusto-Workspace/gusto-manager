@@ -1,5 +1,6 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // I18N
 import { i18n } from "next-i18next";
@@ -15,6 +16,7 @@ import AddRestaurantModal from "@/components/dashboard/admin/restaurants/add-res
 
 export default function RestaurantsPage(props) {
   const { adminContext } = useContext(GlobalContext);
+  const router = useRouter();
 
   let title;
   let description;
@@ -33,6 +35,13 @@ export default function RestaurantsPage(props) {
 
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
   const [isExistingOwner, setIsExistingOwner] = useState(true);
+
+  useEffect(() => {
+    if (!router.isReady || router.query.create !== "1" || !adminContext.canManageClients) return;
+    setIsExistingOwner(false);
+    setIsModalOpen(true);
+    router.replace("/dashboard/admin/restaurants", undefined, { shallow: true });
+  }, [router, adminContext.canManageClients]);
 
   if (!adminContext.isAuth) return null;
 
@@ -85,7 +94,7 @@ export default function RestaurantsPage(props) {
             restaurants={adminContext.restaurantsList}
             setRestaurants={adminContext.setRestaurantsList}
             loading={adminContext.restaurantsLoading}
-            isAdmin={adminContext.isAdmin}
+            isAdmin={adminContext.canManageClients}
           />
         </div>
 

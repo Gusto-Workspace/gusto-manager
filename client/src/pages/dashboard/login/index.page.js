@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { jwtDecode } from "jwt-decode";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import FormLoginComponent from "@/components/dashboard/login/form.login.component";
+import { isSellerPath } from "@/components/commercial/commercial-api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function LoginPage() {
       if (!decoded.startsWith("/dashboard")) return null;
 
       // ✅ IMPORTANT: on refuse toute redirection vers la page login
-      if (decoded.startsWith("/dashboard/login")) return null;
+      if (decoded.startsWith("/dashboard/login") || isSellerPath(decoded.split(/[?#]/)[0])) return null;
 
       return decoded;
     } catch {

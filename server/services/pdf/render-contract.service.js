@@ -4,6 +4,8 @@ const path = require("path");
 const { renderAmendmentPdf } = require("./render-amendment.service");
 const {
   buildContractDurationCopy,
+  commercialDeliveryCopy,
+  commercialConditionsCopy,
   formatMonthsWithNumber,
   hasWebsiteOwnershipTerms,
 } = require("../contracts/contract-terms.service");
@@ -587,7 +589,8 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
 
     paragraph("Délais de livraison :", { size: 10, after: 0.2 });
     bullet(
-      "Le site sera livré sous 14 jours ouvrés à compter de la signature du contrat et de la réception du paiement.",
+      documentData.offerConditions ? commercialDeliveryCopy(documentData.offerConditions) :
+        "Le site sera livré sous 14 jours ouvrés à compter de la signature du contrat et de la réception du paiement.",
       { after: 0.5 },
     );
 
@@ -747,6 +750,9 @@ async function renderContractPdf(documentData, emitter, signatureImageBuffer) {
     `Prix de l’abonnement : ${recurringPrice(documentData?.subscription, subPrice)}${subscriptionQuantity > 1 ? ` × ${subscriptionQuantity}, soit ${recurringPrice(documentData?.subscription, subPrice * subscriptionQuantity)}` : ""}`,
   );
   bullet(contractDurationCopy.financialDurationText);
+  if (documentData.offerConditions) {
+    for (const condition of commercialConditionsCopy(documentData.offerConditions)) bullet(condition);
+  }
   if (compatibleRecurringTotal) {
     bullet(
       `${recurringTotalLabel} : ${recurringPrice(compatibleRecurringTotal, compatibleRecurringTotal.amount)}`,

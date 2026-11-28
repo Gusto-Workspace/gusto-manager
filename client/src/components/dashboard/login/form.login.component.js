@@ -64,7 +64,8 @@ export default function FormLoginComponent() {
       if (!decoded.startsWith("/dashboard")) return null;
 
       // ✅ IMPORTANT: on refuse toute redirection vers la page login
-      if (decoded.startsWith("/dashboard/login")) return null;
+      if (decoded.startsWith("/dashboard/login") ||
+          /^\/dashboard\/seller(?:[/?#]|$)/.test(decoded)) return null;
 
       return decoded;
     } catch {

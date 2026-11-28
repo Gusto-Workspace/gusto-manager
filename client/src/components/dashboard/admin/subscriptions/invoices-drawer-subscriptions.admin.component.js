@@ -606,7 +606,7 @@ export default function InvoicesDrawerSubscriptionsComponent({
                   {t("subscriptions.list.edit", "Modifier l'abonnement")}
                 </button>
 
-                {sub.payerChangeRequired && sub.restaurantId ? (
+                {sub.payerChangeRequired && sub.restaurantId && onChangePayer ? (
                   <button
                     type="button"
                     onClick={() => onChangePayer?.(sub.restaurantId)}
