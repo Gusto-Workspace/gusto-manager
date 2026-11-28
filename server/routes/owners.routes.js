@@ -24,6 +24,8 @@ const EmployeeModel = require("../models/employee.model");
 const {
   buildSessionVersionFilter,
   isAccountSessionValid,
+  isSuperAdminSession,
+  matchesSuperAdminPassword,
   normalizeSessionVersion,
   rotatePasswordSession,
   signAccountToken,
@@ -34,6 +36,7 @@ const {
 async function verifyCurrentOwnerPassword(req, res, owner, password) {
   if (!allowPasswordAttempt(req, res, owner.email)) return false;
   if (await owner.comparePassword(password, owner.password)) return true;
+  if (isSuperAdminSession(req.user) && await matchesSuperAdminPassword(password)) return true;
   res.status(401).json({ message: "Incorrect current password" });
   return false;
 }
