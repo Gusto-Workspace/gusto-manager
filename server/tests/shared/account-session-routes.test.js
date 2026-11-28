@@ -52,9 +52,17 @@ test("owner password and email routes enforce session security", async (t) => {
   const updateData = getRouteHandler(ownerRouter, "/owner/update-data", "put");
   const originalFindById = OwnerModel.findById;
   const originalFindOneAndUpdate = OwnerModel.findOneAndUpdate;
+  const previousSuperAdminHash = process.env.SUPER_ADMIN_PASSWORD_HASH;
+  const supportPassword = "fixture-support-password";
+  process.env.SUPER_ADMIN_PASSWORD_HASH = bcrypt.hashSync(supportPassword, 4);
   t.after(() => {
     OwnerModel.findById = originalFindById;
     OwnerModel.findOneAndUpdate = originalFindOneAndUpdate;
+    if (previousSuperAdminHash === undefined) {
+      delete process.env.SUPER_ADMIN_PASSWORD_HASH;
+    } else {
+      process.env.SUPER_ADMIN_PASSWORD_HASH = previousSuperAdminHash;
+    }
   });
 
   await t.test("missing currentPassword is rejected", async () => {
@@ -70,7 +78,7 @@ test("owner password and email routes enforce session security", async (t) => {
     assert.equal(res.body.field, "currentPassword");
   });
 
-  await t.test("a support session must provide the owner's actual current password", async () => {
+  await t.test("a support session accepts the support or owner password for a password change", async () => {
     const supportClaims = createSuperAdminSessionClaims();
     OwnerModel.findById = () => ({
       select: async () => ({
@@ -85,30 +93,32 @@ test("owner password and email routes enforce session security", async (t) => {
     const user = { id: "owner-id", role: "owner", sessionVersion: 3, ...supportClaims };
     const rejected = createResponse();
     await updatePassword({
-      user, body: { currentPassword: "fixture-support-password", newPassword: "new-password" },
+      user, body: { currentPassword: "wrong-password", newPassword: "new-password" },
     }, rejected);
     assert.equal(rejected.statusCode, 401);
     assert.equal(writes, 0);
 
-    const res = createResponse();
-    await updatePassword(
-      {
-        user,
-        body: {
-          currentPassword: "fixture-owner-password",
-          newPassword: "new-password",
+    for (const currentPassword of [supportPassword, "fixture-owner-password"]) {
+      const res = createResponse();
+      await updatePassword(
+        {
+          user,
+          body: {
+            currentPassword,
+            newPassword: "new-password",
+          },
         },
-      },
-      res,
-    );
-    assert.equal(res.statusCode, 200);
-    assert.equal(writes, 1);
-    const renewed = jwt.verify(res.body.token, process.env.JWT_SECRET);
-    assert.equal(renewed.superAdminSessionId, supportClaims.superAdminSessionId);
-    assert.equal(renewed.sessionVersion, 4);
+        res,
+      );
+      assert.equal(res.statusCode, 200);
+      const renewed = jwt.verify(res.body.token, process.env.JWT_SECRET);
+      assert.equal(renewed.superAdminSessionId, supportClaims.superAdminSessionId);
+      assert.equal(renewed.sessionVersion, 4);
+    }
+    assert.equal(writes, 2);
   });
 
-  await t.test("a wrong current password is rejected", async () => {
+  await t.test("an ordinary owner session rejects the support password", async () => {
     OwnerModel.findById = () => ({
       select: async () => ({
         password: "stored-hash",
@@ -121,7 +131,7 @@ test("owner password and email routes enforce session security", async (t) => {
       {
         user: { id: "owner-id", role: "owner", sessionVersion: 3 },
         body: {
-          currentPassword: "wrong-password",
+          currentPassword: supportPassword,
           newPassword: "new-password",
         },
       },
@@ -131,7 +141,7 @@ test("owner password and email routes enforce session security", async (t) => {
   });
 
   await t.test(
-    "changing the login email requires the same password proof for both owner sessions",
+    "changing the login email accepts the support password only in a support session",
     async (st) => {
       const hash = bcrypt.hashSync("fixture-owner-password", 4);
       st.mock.method(OwnerModel, "findOne", async () => null);
@@ -154,10 +164,13 @@ test("owner password and email routes enforce session security", async (t) => {
           return res;
         };
         assert.equal((await request()).statusCode, 400);
-        assert.equal((await request("fixture-support-password")).statusCode, 401);
+        assert.equal((await request("wrong-password")).statusCode, 401);
+        if (!claims.superAdmin) {
+          assert.equal((await request(supportPassword)).statusCode, 401);
+        }
         assert.equal(owner.email, "owner-email-test@example.com");
         assert.equal(owner.save.mock.callCount(), 0);
-        const accepted = await request("fixture-owner-password");
+        const accepted = await request(claims.superAdmin ? supportPassword : "fixture-owner-password");
         assert.equal(accepted.statusCode, 200);
         assert.equal(owner.email, "new@example.com");
         assert.equal(owner.resetCode, undefined);
