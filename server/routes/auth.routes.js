@@ -2,7 +2,11 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const SibApiV3Sdk = require("sib-api-v3-sdk");
+const { randomInt, createHmac } = require("node:crypto");
+const { isObjectIdOrHexString } = require("mongoose");
+const { sendAccountEmail, isValidNewPassword } = require("../services/shared/account-email.service");
+const authenticateAdmin = require("../middleware/authenticate-admin");
+const { isActiveAdmin, signAdminToken } = authenticateAdmin;
 
 // MODELS
 const AdminModel = require("../models/admin.model");
@@ -14,10 +18,11 @@ const {
   accountAuditContext,
   createSuperAdminSessionClaims,
   getSessionVersion,
-  incrementSessionVersion,
+  buildSessionVersionFilter,
   isAccountSessionValid,
   matchesSuperAdminPassword,
   normalizeSessionVersion,
+  revokeAllAccountSessions,
   signAccountToken,
   stripJwtMetadata,
 } = require("../services/shared/account-session.service");
@@ -33,14 +38,15 @@ function normalizeEmail(email) {
 
 // ----------------- CONNEXION ADMIN -----------------
 
-router.post("/admin/login", async (req, res) => {
+router.post("/admin/login", limitLogin, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const email = normalizeEmail(req.body?.email);
   const password = req.body?.password;
   const invalidCredentialsMessage = "Identifiants non reconnus";
 
   try {
-    const admin = await AdminModel.findOne({ email });
-    if (!admin) {
+    const admin = await AdminModel.findOne({ email }).select("+password +sessionVersion").lean();
+    if (!isActiveAdmin(admin) || typeof password !== "string" || !admin.password) {
       return res.status(401).json({ message: invalidCredentialsMessage });
     }
 
@@ -49,11 +55,21 @@ router.post("/admin/login", async (req, res) => {
       return res.status(401).json({ message: invalidCredentialsMessage });
     }
 
-    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET);
+    const token = signAdminToken(admin);
 
     res.json({ token, role: admin.role });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/admin/session/revoke", authenticateAdmin, async (req, res) => {
+  try {
+    await revokeAllAccountSessions(AdminModel, req.user.id);
+    console.info("[admin-sessions] security event", { actor: req.user.id, action: "REVOKED" });
+    return res.sendStatus(204);
+  } catch {
+    return res.status(500).json({ message: "Impossible de révoquer les sessions." });
   }
 });
 
@@ -175,13 +191,16 @@ router.post("/user/select-restaurant", async (req, res) => {
   const { token, restaurantId } = req.body;
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (!(await isAccountSessionValid(decoded))) {
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    if (!isObjectIdOrHexString(restaurantId) || !(await isAccountSessionValid(decoded))) {
       return res.status(403).json({ message: "Session revoked" });
     }
 
     // OWNER : on ajoute juste restaurantId
     if (decoded.role === "owner") {
+      if (!(await RestaurantModel.exists({ _id: restaurantId, owner_id: decoded.id }))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const newPayload = { ...stripJwtMetadata(decoded), restaurantId };
       const newToken = signAccountToken(newPayload);
       return res.json({ token: newToken });
@@ -197,7 +216,7 @@ router.post("/user/select-restaurant", async (req, res) => {
       const worksHere = (employee.restaurants || []).some(
         (id) => String(id) === String(restaurantId),
       );
-      if (!worksHere) {
+      if (!worksHere || !(await RestaurantModel.exists({ _id: restaurantId, employees: employee._id }))) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -224,10 +243,7 @@ router.post("/user/select-restaurant", async (req, res) => {
       return res.json({ token: newToken });
     }
 
-    // fallback (au cas où)
-    const newPayload = { ...stripJwtMetadata(decoded), restaurantId };
-    const newToken = signAccountToken(newPayload);
-    return res.json({ token: newToken });
+    return res.status(403).json({ message: "Forbidden" });
   } catch (err) {
     console.error(err);
     const status =
@@ -240,181 +256,115 @@ router.post("/user/select-restaurant", async (req, res) => {
   }
 });
 
-// ----------------- FORGOT PASSWORD (identique, global) -----------------
-
-function instantiateClient() {
-  const defaultClient = SibApiV3Sdk.ApiClient.instance;
-  const apiKey = defaultClient.authentications["api-key"];
-  apiKey.apiKey = process.env.BREVO_API_KEY;
-  return defaultClient;
-}
-function sendTransactionalEmail({ to, subject, htmlContent }) {
-  instantiateClient();
-  const api = new SibApiV3Sdk.TransactionalEmailsApi();
-  const mail = new SibApiV3Sdk.SendSmtpEmail();
-  mail.sender = { email: "no-reply@gusto-manager.com", name: "Gusto Manager" };
-  mail.to = to;
-  mail.subject = subject;
-  mail.htmlContent = htmlContent;
-  return api.sendTransacEmail(mail);
-}
-
-async function findAdminByEmail(email) {
-  return AdminModel.findOne({ email: normalizeEmail(email) });
-}
+const resetFields = "+sessionVersion +passwordResetHash +resetCodeExpires";
 
 async function findUserByEmail(email) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return null;
-  const [owner, employee] = await Promise.all([
-    OwnerModel.findOne({ email: normalized }).select("+sessionVersion"),
-    EmployeeModel.findOne({ email: normalized, historicalImport: { $exists: false }, "restaurants.0": { $exists: true },
-      password: { $type: "string", $ne: "" } }).select("+sessionVersion"),
-  ]);
-  return owner || employee || null;
+  const owner = await OwnerModel.findOne({ email }).select(resetFields);
+  if (owner) return owner;
+  return EmployeeModel.findOne({
+    email,
+    historicalImport: { $exists: false },
+    "restaurants.0": { $exists: true },
+    password: { $type: "string", $ne: "" },
+  }).select(resetFields);
 }
 
-function buildResetCodeEmailHtml(code) {
-  return `<p>Votre code de réinitialisation est : <strong>${code}</strong></p>`;
+function hashResetCode(account, code) {
+  return createHmac("sha256", JWT_SECRET)
+    .update(`password-reset:${account.constructor.modelName}:${account._id}:${code}`)
+    .digest("hex");
 }
 
-function generateResetCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+function addPasswordResetRoutes(prefix, lookup) {
+  router.post(`${prefix}/send-reset-code`, limitLogin, async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    const email = normalizeEmail(req.body?.email);
+    try {
+      const account = email && await lookup(email);
+      if (account) {
+        const code = randomInt(100000, 1000000).toString();
+        const filter = buildSessionVersionFilter(account._id, getSessionVersion(account));
+        const result = await account.constructor.updateOne(filter, {
+          $set: {
+            passwordResetHash: hashResetCode(account, code),
+            resetCodeExpires: new Date(Date.now() + 10 * 60 * 1000),
+          },
+          $unset: { resetCode: 1 },
+        });
+        if (result.matchedCount) {
+          await sendAccountEmail({
+            email: account.email,
+            subject: "Réinitialisation du mot de passe Gusto Manager",
+            htmlContent: `<p>Votre code de réinitialisation est <strong>${code}</strong>.</p>`,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("[password-reset] send failed", error?.code || "unavailable");
+    }
+    return res.json({ message: "Si le compte est éligible, un code sera envoyé." });
+  });
+
+  async function checkReset(req, res) {
+    const { email, code } = req.body || {};
+    const account = typeof code === "string" && /^\d{6}$/.test(code) &&
+      await lookup(normalizeEmail(email));
+    if (!account || !account.resetCodeExpires ||
+        account.resetCodeExpires <= new Date() ||
+        account.passwordResetHash !== hashResetCode(account, code)) {
+      res.status(400).json({ message: "Code invalide ou expiré" });
+      return null;
+    }
+    return account;
+  }
+
+  router.post(`${prefix}/verify-reset-code`, limitLogin, async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    try {
+      if (await checkReset(req, res)) return res.json({ message: "Code valide" });
+    } catch {
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+  });
+
+  router.put(`${prefix}/reset-password`, limitLogin, async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
+    const { newPassword } = req.body || {};
+    if (!isValidNewPassword(newPassword, prefix === "/admin" ? 12 : 6)) {
+      return res.status(400).json({ message: "Mot de passe invalide ou trop court" });
+    }
+
+    try {
+      const account = await checkReset(req, res);
+      if (!account) return;
+      const password = await bcrypt.hash(newPassword, 13);
+      const changed = await account.constructor.updateOne({
+        ...buildSessionVersionFilter(account._id, getSessionVersion(account)),
+        email: account.email,
+        passwordResetHash: account.passwordResetHash,
+        resetCodeExpires: { $gt: new Date() },
+        ...(prefix === "/admin" && { role: account.role, status: { $ne: "DISABLED" } }),
+      }, {
+        $set: { password },
+        $inc: { sessionVersion: 1 },
+        $unset: {
+          resetCode: 1, resetCodeExpires: 1, passwordResetHash: 1,
+          ...(account.constructor === EmployeeModel && { loginDelivery: 1 }),
+        },
+      });
+      if (!changed.modifiedCount) return res.status(400).json({ message: "Code invalide ou expiré" });
+      return res.json({ message: "Mot de passe mis à jour avec succès" });
+    } catch {
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+  });
 }
 
-// ----------------- FORGOT PASSWORD ADMIN -----------------
-
-router.post("/admin/send-reset-code", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const admin = await findAdminByEmail(email);
-    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
-
-    const code = generateResetCode();
-    admin.resetCode = code;
-    admin.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await admin.save();
-
-    await sendTransactionalEmail({
-      to: [{ email: admin.email, name: admin.role || "Administrateur" }],
-      subject: "Votre code de réinitialisation de mot de passe administrateur",
-      htmlContent: buildResetCodeEmailHtml(code),
-    });
-
-    return res.json({ message: "Code envoyé par email" });
-  } catch (error) {
-    console.error("admin/send-reset-code:", error);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
+addPasswordResetRoutes("/admin", async (email) => {
+  const account = await AdminModel.findOne({ email }).select(resetFields);
+  return isActiveAdmin(account) ? account : null;
 });
-
-router.post("/admin/verify-reset-code", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const { code } = req.body;
-    const admin = await findAdminByEmail(email);
-    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
-
-    if (admin.resetCode !== code || new Date() > admin.resetCodeExpires) {
-      return res.status(400).json({ message: "Code invalide ou expiré" });
-    }
-
-    return res.json({ message: "Code valide" });
-  } catch (error) {
-    console.error("admin/verify-reset-code:", error);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
-});
-
-router.put("/admin/reset-password", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const { code, newPassword } = req.body;
-    const admin = await findAdminByEmail(email);
-    if (!admin) return res.status(404).json({ message: "Email non trouvé" });
-
-    if (admin.resetCode !== code || new Date() > admin.resetCodeExpires) {
-      return res.status(400).json({ message: "Code invalide ou expiré" });
-    }
-
-    admin.password = newPassword;
-    admin.resetCode = undefined;
-    admin.resetCodeExpires = undefined;
-    await admin.save();
-
-    return res.json({ message: "Mot de passe mis à jour avec succès" });
-  } catch (error) {
-    console.error("admin/reset-password:", error);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
-});
-
-// 1) envoyer le code
-router.post("/auth/send-reset-code", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(404).json({ message: "Email non trouvé" });
-
-    const code = generateResetCode();
-    user.resetCode = code;
-    user.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 min
-    await user.save();
-
-    await sendTransactionalEmail({
-      to: [{ email: user.email, name: user.firstname || "Utilisateur" }],
-      subject: "Votre code de réinitialisation de mot de passe",
-      htmlContent: buildResetCodeEmailHtml(code),
-    });
-
-    return res.json({ message: "Code envoyé par email" });
-  } catch (e) {
-    console.error("send-reset-code:", e);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
-});
-
-// 2) vérifier le code
-router.post("/auth/verify-reset-code", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const { code } = req.body;
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(404).json({ message: "Email non trouvé" });
-
-    if (user.resetCode !== code || new Date() > user.resetCodeExpires) {
-      return res.status(400).json({ message: "Code invalide ou expiré" });
-    }
-    return res.json({ message: "Code valide" });
-  } catch (e) {
-    console.error("verify-reset-code:", e);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
-});
-
-// 3) réinitialiser le mot de passe
-router.put("/auth/reset-password", async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body?.email);
-    const { code, newPassword } = req.body;
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(404).json({ message: "Email non trouvé" });
-
-    if (user.resetCode !== code || new Date() > user.resetCodeExpires) {
-      return res.status(400).json({ message: "Code invalide ou expiré" });
-    }
-
-    user.password = newPassword; // hash via pre('save')
-    incrementSessionVersion(user);
-    user.resetCode = undefined;
-    user.resetCodeExpires = undefined;
-    await user.save();
-
-    return res.json({ message: "Mot de passe mis à jour avec succès" });
-  } catch (e) {
-    console.error("reset-password:", e);
-    return res.status(500).json({ message: "Erreur serveur" });
-  }
-});
+addPasswordResetRoutes("/auth", findUserByEmail);
+addPasswordResetRoutes("/owner", (email) => OwnerModel.findOne({ email }).select(resetFields));
 
 module.exports = router;

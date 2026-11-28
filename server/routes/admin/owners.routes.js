@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 const authenticateAdmin = require("../../middleware/authenticate-admin");
-const { requireAdminRole } = require("../../middleware/authenticate-admin");
+const { requireSuperAdmin } = require("../../middleware/authenticate-admin");
 
 // MODELS
 const OwnerModel = require("../../models/owner.model");
@@ -39,7 +39,7 @@ router.get("/admin/owners", async (req, res) => {
 });
 
 // UPDATE OWNER
-router.put("/admin/owners/:id", requireAdminRole, async (req, res) => {
+router.put("/admin/owners/:id", requireSuperAdmin, async (req, res) => {
   const { ownerData } = req.body;
 
   try {
@@ -102,7 +102,7 @@ router.put("/admin/owners/:id", requireAdminRole, async (req, res) => {
 // REVOKE EVERY ACTIVE OWNER SESSION
 router.post(
   "/admin/owners/:id/revoke-sessions",
-  requireAdminRole,
+  requireSuperAdmin,
   async (req, res) => {
     try {
       const owner = await revokeAllAccountSessions(OwnerModel, req.params.id);
@@ -122,7 +122,7 @@ router.post(
 );
 
 // ADD OWNER
-router.post("/admin/add-owner", async (req, res) => {
+router.post("/admin/add-owner", requireSuperAdmin, async (req, res) => {
   const { ownerData } = req.body;
 
   try {
@@ -153,7 +153,9 @@ router.post("/admin/add-owner", async (req, res) => {
     // 4. Retourner le propriétaire créé
     res.status(201).json({
       message: "Propriétaire ajouté avec succès",
-      owner,
+      owner: { _id: owner._id, firstname: owner.firstname, lastname: owner.lastname,
+        email: owner.email, phoneNumber: owner.phoneNumber, stripeCustomerId: owner.stripeCustomerId,
+        restaurants: owner.restaurants },
     });
   } catch (error) {
     console.error("Erreur lors de la création du propriétaire:", error);
@@ -162,7 +164,7 @@ router.post("/admin/add-owner", async (req, res) => {
 });
 
 // DELETE OWNER
-router.delete("/admin/owners/:id", requireAdminRole, async (req, res) => {
+router.delete("/admin/owners/:id", requireSuperAdmin, async (req, res) => {
   try {
     // 1. Trouver le propriétaire par son ID
     const owner = await OwnerModel.findById(req.params.id);

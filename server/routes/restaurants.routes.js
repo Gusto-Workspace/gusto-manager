@@ -5,6 +5,7 @@ const stripe = require("stripe")(process.env.STRIPE_API_SECRET_KEY);
 
 // MIDDLEWARE
 const authenticateToken = require("../middleware/authentificate-token");
+const { authorizeRestaurantAccess } = require("../middleware/authorize-restaurant-access");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
@@ -82,17 +83,19 @@ router.get("/owner/restaurants", authenticateToken, async (req, res) => {
 });
 
 // CHANGE RESTAURANT SELECTED
-router.post("/owner/change-restaurant", authenticateToken, (req, res) => {
+router.post("/owner/change-restaurant", authenticateToken, async (req, res) => {
   const { restaurantId } = req.body;
-
-  const decodedToken = req.user;
-
-  const updatedToken = signAccountToken({
-    ...stripJwtMetadata(decodedToken),
-    restaurantId,
-  });
-
-  res.status(200).json({ token: updatedToken });
+  try {
+    if (req.user.role !== "owner" || !mongoose.isObjectIdOrHexString(restaurantId) ||
+        !(await RestaurantModel.exists({ _id: restaurantId, owner_id: req.user.id }))) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    res.set("Cache-Control", "private, no-store");
+    const token = signAccountToken({ ...stripJwtMetadata(req.user), restaurantId });
+    return res.json({ token });
+  } catch {
+    return res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 // CHANGE RESTAURANT SELECTED POUR EMPLOYÉ
@@ -106,7 +109,7 @@ router.post(
       }
 
       const { restaurantId } = req.body;
-      if (!restaurantId) {
+      if (!mongoose.isObjectIdOrHexString(restaurantId)) {
         return res.status(400).json({ message: "restaurantId is required" });
       }
 
@@ -119,7 +122,7 @@ router.post(
       const worksHere = (emp.restaurants || []).some(
         (id) => String(id) === String(restaurantId),
       );
-      if (!worksHere) {
+      if (!worksHere || !(await RestaurantModel.exists({ _id: restaurantId, employees: emp._id }))) {
         return res.status(403).json({
           message: "Employee is not linked to this restaurant",
         });
@@ -137,8 +140,7 @@ router.post(
         options: profile?.options || {},
       };
 
-      // 🔴 IMPORTANT : pas d'option expiresIn ici
-      const updatedToken = signAccountToken(payload);
+      const updatedToken = signAccountToken(payload, { expiresIn: "7d" });
 
       return res.status(200).json({ token: updatedToken });
     } catch (e) {
@@ -151,11 +153,13 @@ router.post(
 // GET RESTAURANT DETAILS FROM PANEL
 router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
   res.set("Cache-Control", "private, no-store");
+  if (req.user.role !== "owner") return res.status(403).json({ message: "Forbidden" });
   try {
     const { id } = req.params;
     const reservationsScope = req.query?.scope === "reservations";
 
-    let restaurantQuery = RestaurantModel.findById(id);
+    if (!mongoose.isObjectIdOrHexString(id)) return res.status(400).json({ message: "Invalid restaurant" });
+    let restaurantQuery = RestaurantModel.findOne({ _id: id, owner_id: req.user.id });
     if (reservationsScope) {
       restaurantQuery = restaurantQuery.select(
         "_id name website opening_hours exceptional_closures options reservationsSettings owner_id employees",
@@ -174,17 +178,6 @@ router.get("/owner/restaurants/:id", authenticateToken, async (req, res) => {
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });
-    }
-
-    if (req.user?.role !== "owner") {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    if (
-      String(restaurant.owner_id?._id || restaurant.owner_id) !==
-      String(req.user.id)
-    ) {
-      return res.status(403).json({ message: "Forbidden" });
     }
 
     const decoratedRestaurant = decorateRestaurantEmployees(
@@ -304,14 +297,19 @@ router.get("/restaurants/:id", async (req, res) => {
 
 // GET CURRENT SUBSCRIPTION FOR A RESTAURANT
 router.get("/restaurant-subscription", authenticateToken, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  if (req.user.role !== "owner") return res.status(403).json({ message: "Forbidden" });
   const { restaurantId } = req.query;
-  if (!restaurantId) {
+  if (!mongoose.isObjectIdOrHexString(restaurantId)) {
     return res
       .status(400)
       .json({ message: "restaurantId est requis pour cette requête." });
   }
 
   try {
+    if (!(await RestaurantModel.exists({ _id: restaurantId, owner_id: req.user.id }))) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
     const { subscription: restaurantSubscription } =
       await findRestaurantSubscription({
         restaurantId,
@@ -418,9 +416,11 @@ router.post("/restaurants/:id/visits", async (req, res) => {
 });
 
 // Récupère les N derniers mois de visites pour un restaurant
-router.get("/restaurants/:id/visits/monthly", async (req, res) => {
+router.get("/restaurants/:id/visits/monthly", authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "dashboard" }), async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const restaurantId = req.params.id;
-  const months = parseInt(req.query.months, 10) || 6;
+  const months = Math.min(24, Math.max(1, parseInt(req.query.months, 10) || 6));
 
   // 1) Construire la liste des labels attendus, ex. ["2025-01","2025-02",...]
   const periods = [];

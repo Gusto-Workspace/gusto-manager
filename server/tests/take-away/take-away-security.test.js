@@ -1706,6 +1706,7 @@ test("cross-restaurant access is denied", async () => {
 });
 
 test("restaurant authorization middleware returns 403 for another owner", async (t) => {
+  const restaurantId = "bbbbbbbbbbbbbbbbbbbbbbbb";
   const originalFindById = RestaurantModel.findById;
   RestaurantModel.findById = () => {
     const query = {
@@ -1717,7 +1718,7 @@ test("restaurant authorization middleware returns 403 for another owner", async 
       },
       then(resolve, reject) {
         return Promise.resolve({
-          _id: "restaurant-b",
+          _id: restaurantId,
           owner_id: "owner-b",
           employees: [],
         }).then(resolve, reject);
@@ -1743,7 +1744,7 @@ test("restaurant authorization middleware returns 403 for another owner", async 
   };
   await authorizeRestaurantAccess({ paramName: "restaurantId" })(
     {
-      params: { restaurantId: "restaurant-b" },
+      params: { restaurantId },
       user: { id: "owner-a", role: "owner" },
     },
     res,

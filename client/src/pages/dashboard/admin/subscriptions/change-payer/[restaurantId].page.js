@@ -40,7 +40,9 @@ export default function ChangePayerSubscriptionPage() {
         <NavAdminComponent />
 
         <div className="tablet:ml-[88px] bg-lightGrey text-darkBlue flex-1 px-2 p-6 mobile:p-6 mobile:px-6 flex flex-col gap-6 min-h-screen">
-          <ChangePayerSubscriptionAdminComponent />
+          {adminContext.canManageClients ? <ChangePayerSubscriptionAdminComponent /> : (
+            <p role="alert">{i18n.language === "en" ? "Only the super administrator can change the payer." : "Seul le super-admin peut changer le payeur."}</p>
+          )}
         </div>
       </div>
     </>

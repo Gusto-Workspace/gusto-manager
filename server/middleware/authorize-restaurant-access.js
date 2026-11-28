@@ -1,5 +1,6 @@
 const RestaurantModel = require("../models/restaurant.model");
 const EmployeeModel = require("../models/employee.model");
+const { isObjectIdOrHexString } = require("mongoose");
 
 function getEmployeeProfile(employee, restaurantId) {
   return (employee?.restaurantProfiles || []).find(
@@ -68,6 +69,12 @@ function authorizeRestaurantAccess({
   return async function authorizeRestaurantAccessMiddleware(req, res, next) {
     try {
       const restaurantId = req.params?.[paramName];
+      if (!isObjectIdOrHexString(restaurantId)) {
+        return res.status(400).json({ message: "Invalid restaurant" });
+      }
+      if (req.user?.role !== "owner" && (ownerOnly || req.user?.role !== "employee")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
       const restaurant = await RestaurantModel.findById(restaurantId)
         .select("_id owner_id employees options.take_away options.customers")
         .populate("employees", "restaurantProfiles");

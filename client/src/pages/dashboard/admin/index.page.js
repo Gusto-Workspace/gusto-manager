@@ -1,5 +1,4 @@
-import { useContext, useEffect } from "react";
-import { useRouter } from "next/router";
+import { useContext } from "react";
 import Head from "next/head";
 
 // I18N
@@ -14,23 +13,8 @@ import NavAdminComponent from "@/components/dashboard/admin/_shared/nav/nav.admi
 import DashboardAdminComponent from "@/components/dashboard/admin/dashboard/dashboard.admin.component";
 
 export default function AdminPage(props) {
-  const router = useRouter();
   const { adminContext } = useContext(GlobalContext);
-  const { dashboardData, dashboardLoading, dashboardError, fetchDashboard } =
-    adminContext;
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-      return;
-    }
-
-    if (!dashboardData && !dashboardLoading) {
-      fetchDashboard();
-    }
-  }, [dashboardData, dashboardLoading, fetchDashboard, router]);
+  const { dashboardData, dashboardLoading, dashboardError } = adminContext;
 
   let title;
   let description;

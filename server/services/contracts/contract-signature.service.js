@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const {
   CURRENT_CONTRACT_TERMS_VERSION,
+  COMMERCIAL_CONTRACT_TERMS_VERSION,
   normalizeEarlyTermination,
 } = require("./contract-terms.service");
 
@@ -38,7 +39,7 @@ function buildContractContentSnapshot(documentData, commercialSnapshot) {
     type: "CONTRACT",
     docNumber: source.docNumber || "",
     contractKind: source.contractKind === "AMENDMENT" ? "AMENDMENT" : "INITIAL",
-    contractTermsVersion: CURRENT_CONTRACT_TERMS_VERSION,
+    contractTermsVersion: source.offerConditions ? COMMERCIAL_CONTRACT_TERMS_VERSION : CURRENT_CONTRACT_TERMS_VERSION,
     versionNumber: Number(source.versionNumber || 1),
     issueDate: new Date(issueDate).toISOString(),
     party: plainValue(source.party) || {},
@@ -50,6 +51,7 @@ function buildContractContentSnapshot(documentData, commercialSnapshot) {
     modules: plainValue(source.modules) || [],
     timeClockTerminalRental: plainValue(source.timeClockTerminalRental) || {},
     comments: normalizeString(source.comments),
+    ...(source.offerConditions && { offerConditions: plainValue(source.offerConditions) }),
     amendment: plainValue(source.amendment) || null,
     commercialSnapshot: plainValue(commercialSnapshot) || null,
     acceptanceMode: source.acceptanceMode || "SIGNATURE",
@@ -152,31 +154,22 @@ function signatureRequestExpiresAt(now = new Date()) {
   return new Date(now.getTime() + SIGNATURE_REQUEST_TTL_MS);
 }
 
-function getSignatureAppBaseUrl(req) {
-  const configured =
-    normalizeString(process.env.GUSTO_MANAGER_PUBLIC_URL) ||
-    normalizeString(process.env.GUSTO_MANAGER_URL);
-  if (configured) return configured.replace(/\/+$/, "");
-
-  if (process.env.NODE_ENV !== "production") {
-    const origin = normalizeString(req?.get?.("origin"));
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
-      return origin.replace(/\/+$/, "");
-    }
-    return "http://localhost:8002";
+function buildSignatureUrl(token) {
+  const app = URL.parse(process.env.APP_URL || "");
+  if (!app || !["http:", "https:"].includes(app.protocol) || app.username || app.password) {
+    throw Object.assign(new Error("Configurez APP_URL pour générer le lien de signature."), { statusCode: 503 });
   }
-
-  return "https://gusto-manager.com";
-}
-
-function buildSignatureUrl(req, token) {
-  return `${getSignatureAppBaseUrl(req)}/signature/${encodeURIComponent(token)}`;
+  return new URL(`/signature/${encodeURIComponent(token)}`, app).href;
 }
 
 function getRequestState(documentData, now = new Date()) {
   const request = documentData?.signatureRequest || {};
   if (request.status === "REVOKED") return "REVOKED";
-  if (documentData?.status === "SIGNED") return "SIGNED";
+  if (documentData?.status === "SIGNED") {
+    if (documentData.offerConditions &&
+        (!request.signedCopyExpiresAt || new Date(request.signedCopyExpiresAt) <= now)) return "EXPIRED";
+    return "SIGNED";
+  }
   if (
     request.expiresAt &&
     new Date(request.expiresAt).getTime() <= now.getTime()
@@ -225,7 +218,8 @@ function serializePublicContract(documentData, now = new Date()) {
               : null,
           }
         : null,
-    expiresAt: documentData?.signatureRequest?.expiresAt || null,
+    expiresAt: (state === "SIGNED" && documentData?.offerConditions ?
+      documentData.signatureRequest?.signedCopyExpiresAt : documentData?.signatureRequest?.expiresAt) || null,
     signedAt: documentData?.signature?.signedAt || null,
     signerName: documentData?.signature?.signerName || "",
     emailStatus: documentData?.signature?.emailStatus || "NOT_SENT",

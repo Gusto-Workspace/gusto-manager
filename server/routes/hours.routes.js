@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const authenticateToken = require("../middleware/authentificate-token");
+const { authorizeRestaurantAccess } = require("../middleware/authorize-restaurant-access");
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
@@ -8,7 +10,8 @@ const {
 } = require("../services/reservations/restaurant-exceptional-closures.service");
 
 // UPDATE RESTAURANT HOURS OPENING
-router.put("/restaurants/:id/opening_hours", async (req, res) => {
+router.put("/restaurants/:id/opening_hours", authenticateToken,
+  authorizeRestaurantAccess({ paramName: "id", requiredOption: "restaurant" }), async (req, res) => {
   const restaurantId = req.params.id;
   const { openingHours, exceptionalClosures } = req.body;
 
@@ -60,11 +63,9 @@ router.put("/restaurants/:id/opening_hours", async (req, res) => {
     const restaurant = await RestaurantModel.findByIdAndUpdate(
       restaurantId,
       update,
-      { new: true },
+      { new: true, runValidators: true },
     )
-      .populate("owner_id", "firstname")
-      .populate("employees")
-      .populate("menus");
+      .select("opening_hours exceptional_closures");
 
     if (!restaurant) {
       return res.status(404).json({ message: "Restaurant not found" });

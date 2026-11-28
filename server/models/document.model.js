@@ -195,6 +195,9 @@ const PdfSchema = new mongoose.Schema(
   {
     url: { type: String, default: "" },
     public_id: { type: String, default: "" },
+    delivery_type: String,
+    resource_type: String,
+    format: String,
     version: { type: Number, default: 0 },
     generatedAt: { type: Date },
     sha256: { type: String, default: "" },
@@ -270,6 +273,7 @@ const SignatureRequestSchema = new mongoose.Schema(
     },
     issuedAt: { type: Date },
     expiresAt: { type: Date },
+    signedCopyExpiresAt: Date,
     lastSentAt: { type: Date },
     processingAt: { type: Date, default: null },
     revokedAt: { type: Date },
@@ -295,7 +299,7 @@ const SignatureHistorySchema = new mongoose.Schema(
     at: { type: Date, default: Date.now },
     actor: {
       type: String,
-      enum: ["ADMIN", "SIGNER", "SYSTEM"],
+      enum: ["ADMIN", "COMMERCIAL", "SIGNER", "SYSTEM"],
       required: true,
     },
     actorId: { type: String, default: "" },
@@ -400,11 +404,60 @@ const DocumentSchema = new mongoose.Schema(
     signatureHistory: { type: [SignatureHistorySchema], default: [] },
 
     sentAt: { type: Date },
+    firstSentAt: Date,
+    createdBy: String,
+    salesOwnerId: { type: mongoose.Schema.Types.ObjectId, ref: "CommercialAccount" },
+    prospectId: { type: mongoose.Schema.Types.ObjectId, ref: "CommercialProspect" },
+    sourceQuoteId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" },
+    sourceContractId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" },
+    setupInvoice: {
+      type: new mongoose.Schema({
+        establishmentId: { type: mongoose.Schema.Types.ObjectId, ref: "CommercialEstablishment", required: true },
+        active: { type: Boolean, default: true },
+        paidAt: Date,
+        paidBy: String,
+        paymentReference: String,
+        paymentRequestId: String,
+        advanceReason: String,
+        paymentCorrections: { type: [new mongoose.Schema({
+          requestId: { type: String, required: true },
+          paidAt: { type: Date, required: true },
+          paidBy: { type: String, required: true },
+          reference: String,
+          advanceReason: String,
+          correctedAt: { type: Date, required: true },
+          correctedBy: { type: String, required: true },
+          reason: { type: String, required: true },
+        }, { _id: false })], default: undefined },
+        cancelledAt: Date,
+        cancelledBy: String,
+        cancellationReason: String,
+      }, { _id: false }),
+      default: undefined,
+    },
+    offerConditions: { type: mongoose.Schema.Types.Mixed },
+    commercialDelivery: {
+      state: { type: String, enum: ["PREPARING", "HANDOFF", "UNCERTAIN", "SENT"] },
+      attemptId: String,
+      operation: { type: String, enum: ["RESEND_PDF", "REPLACE_LINK", "SIGNED_COPY"] },
+      updatedAt: Date,
+    },
+    deliveryHistory: [{
+      _id: false, attemptId: String, actor: String, state: String, at: Date, operation: String, pdf: PdfSchema,
+    }],
   },
   { timestamps: true },
 );
 
 DocumentSchema.index({ rootContractId: 1, versionNumber: 1 });
+DocumentSchema.index({ salesOwnerId: 1, type: 1, createdAt: -1, _id: -1 });
+DocumentSchema.index({ prospectId: 1, status: 1 });
+DocumentSchema.index({ sourceQuoteId: 1, type: 1 }, {
+  unique: true, partialFilterExpression: { type: "CONTRACT", sourceQuoteId: { $type: "objectId" } },
+});
+DocumentSchema.index({ "setupInvoice.establishmentId": 1 }, {
+  unique: true, partialFilterExpression: { "setupInvoice.active": true },
+});
 DocumentSchema.index({ "signatureRequest.tokenHash": 1 }, { sparse: true });
 DocumentSchema.index(
   { "selfServiceAcceptance.idempotencyKey": 1 },

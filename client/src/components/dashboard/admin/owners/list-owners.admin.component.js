@@ -115,14 +115,14 @@ export default function ListOwnersAdminComponent(props) {
         subtitle={`${filteredOwners.length} ${
           filteredOwners.length > 1 ? "propriétaires" : "propriétaire"
         }${normalizedSearch ? ` / ${owners.length}` : ""}`}
-        action={
+        action={props.isAdmin && (
           <button
             onClick={props.handleAddClick}
             className="inline-flex size-11 items-center justify-center rounded-2xl border border-blue/10 bg-[linear-gradient(180deg,#5F94FF_0%,#3978FF_100%)] text-white shadow-[0_14px_30px_rgba(57,120,255,0.22)] transition hover:scale-[1.01] hover:shadow-[0_18px_34px_rgba(57,120,255,0.28)] active:scale-[0.98]"
           >
             <Plus className="size-4" />
           </button>
-        }
+        )}
       />
 
       <div className="rounded-[22px] border border-darkBlue/10 bg-white/85 p-2 shadow-[0_12px_28px_rgba(19,30,54,0.04)] mobile:p-3">

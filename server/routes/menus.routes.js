@@ -1,5 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const authenticateToken = require("../middleware/authentificate-token");
+const { authorizeRestaurantAccess } = require("../middleware/authorize-restaurant-access");
+
+const contentAccess = authorizeRestaurantAccess({ requiredOption: "menus" });
+router.use(["/restaurants/:restaurantId/add-menus","/restaurants/:restaurantId/menus"], authenticateToken, contentAccess);
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");
@@ -233,12 +238,16 @@ router.put(
   "/restaurants/:restaurantId/menus/:menuId/update",
   async (req, res) => {
     const { restaurantId, menuId } = req.params;
-    const updateData = req.body;
+    const { name, description, price, type, combinations, dishes, menuDishes, customGroups, visible } = req.body;
+    const updateData = Object.fromEntries(Object.entries({
+      name, description, price, type, combinations, dishes, menuDishes, customGroups, visible,
+    }).filter(([, value]) => value !== undefined));
 
     try {
       // Mettre à jour le menu avec les données fournies
-      const menu = await MenuModel.findByIdAndUpdate(menuId, updateData, {
+      const menu = await MenuModel.findOneAndUpdate({ _id: menuId, restaurant_id: restaurantId }, updateData, {
         new: true,
+        runValidators: true,
       });
 
       if (!menu) {
@@ -273,7 +282,7 @@ router.delete("/restaurants/:restaurantId/menus/:menuId", async (req, res) => {
       return res.status(404).json({ message: "Restaurant not found" });
     }
 
-    const menu = await MenuModel.findByIdAndDelete(menuId);
+    const menu = await MenuModel.findOneAndDelete({ _id: menuId, restaurant_id: restaurantId });
     if (!menu) {
       return res.status(404).json({ message: "Menu not found" });
     }

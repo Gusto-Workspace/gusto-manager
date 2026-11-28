@@ -1,6 +1,7 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const { commercialDeliveryCopy, commercialConditionsCopy } = require("../contracts/contract-terms.service");
 
 function euro(n) {
   return `${Number(n || 0)
@@ -53,6 +54,7 @@ function isOffered(module) {
 }
 
 function computeMonthlyAmount(documentData) {
+  if (documentData.offerConditions) return documentData.offerConditions.monthlyCents / 100;
   const subPrice = toNumber(documentData?.subscription?.priceMonthly, 0);
 
   const mods = Array.isArray(documentData?.modules) ? documentData.modules : [];
@@ -292,9 +294,10 @@ async function renderInvoiceLikePdf(documentData, emitter) {
 
       for (const m of filtered) {
         const name = safeText(m.name);
+        const quantity = documentData.offerConditions ? Math.max(1, Number(m.quantity || 1)) : 1;
         const price = isOffered(m)
           ? "Offert"
-          : `${euro(toNumber(m.priceMonthly, 0))} / mois`;
+          : `${euro(toNumber(m.priceMonthly, 0))} / mois${quantity > 1 ? ` × ${quantity}` : ""}`;
 
         doc.text(`• ${name}`, 60, y, { width: 330 });
         doc.text(price, 410, y, { width: 135, align: "right" });
@@ -351,11 +354,15 @@ async function renderInvoiceLikePdf(documentData, emitter) {
     y += 16;
   }
 
-  doc.fontSize(11).fillColor("#111").text("Total", 350, y, { width: 120 });
+  doc.fontSize(11).fillColor("#111").text(documentData.offerConditions ? "Total ponctuel" : "Total", 350, y, { width: 120 });
   doc.text(euro(totals.total), 470, y, { width: 75, align: "right" });
 
   // ✅ Commentaires (QUOTE/INVOICE)
-  const comments = safeText(documentData?.comments);
+  const offer = documentData.offerConditions;
+  const comments = offer ? [
+    `Engagement de ${offer.engagementMonths} mois.`, commercialDeliveryCopy(offer),
+    ...commercialConditionsCopy(offer, { includeBankFees: false }), safeText(documentData?.comments),
+  ].filter(Boolean).join("\n") : safeText(documentData?.comments);
   if (comments) {
     y += 40;
 
@@ -365,7 +372,7 @@ async function renderInvoiceLikePdf(documentData, emitter) {
       y = 60;
     }
 
-    doc.fontSize(10).fillColor("#111").text("Commentaires :", 50, y);
+    doc.fontSize(10).fillColor("#111").text(offer ? "Conditions de l’offre" : "Commentaires :", 50, y);
 
     y += 14;
 
@@ -383,14 +390,14 @@ async function renderInvoiceLikePdf(documentData, emitter) {
   /* ---------------- Footer ---------------- */
   doc.y = (y || doc.y) + 28;
 
-  doc
-    .fontSize(9)
-    .fillColor("#444")
-    .text("TVA non applicable, art. 293 B du CGI.", 50, doc.y);
+  if (!offer) {
+    doc.fontSize(9).fillColor("#444").text(documentData.setupInvoiceTaxLabel || "TVA non applicable, art. 293 B du CGI.", 50, doc.y);
+  }
 
   // ✅ IBAN/BIC uniquement sur FACTURE
   if (documentData.type === "INVOICE" && (emitter.iban || emitter.bic)) {
     doc.moveDown(1);
+    if (documentData.setupInvoice) doc.text("Règlement par virement bancaire.");
     doc.text(`IBAN : ${emitter.iban || "-"}`);
     doc.text(`BIC : ${emitter.bic || "-"}`);
   }

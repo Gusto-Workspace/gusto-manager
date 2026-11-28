@@ -1,5 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const authenticateToken = require("../middleware/authentificate-token");
+const { authorizeRestaurantAccess } = require("../middleware/authorize-restaurant-access");
+
+const contentAccess = authorizeRestaurantAccess({ requiredOption: "dishes" });
+router.use("/restaurants/:restaurantId/dishes", authenticateToken, contentAccess);
 
 // MODELS
 const RestaurantModel = require("../models/restaurant.model");

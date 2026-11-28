@@ -14,7 +14,7 @@ require.cache[sessionPath] = {
   id: sessionPath,
   filename: sessionPath,
   loaded: true,
-  exports: { isAccountSessionValid: async (user) => user.id !== "revoked" },
+  exports: { ...require(sessionPath), isAccountSessionValid: async (user) => user.id !== "revoked" },
 };
 const cryptoPath = require.resolve("../../services/shared/encryption.service");
 require.cache[cryptoPath] = {

@@ -32,19 +32,19 @@ function pruneExpiredAttempts(now) {
   }
 }
 
-function allowPasswordAttempt(req, res, accountEmail) {
+function allowPasswordAttempt(req, res, accountEmail, scope = "password") {
   const now = Date.now();
   pruneExpiredAttempts(now);
 
   const source = String(req.ip || req.socket?.remoteAddress || "unknown");
   const email = normalizeEmail(accountEmail);
   const sourceAttempt = consumeAttempt(
-    `source:${source}`,
+    `${scope}:source:${source}`,
     MAX_ATTEMPTS_PER_SOURCE,
     now,
   );
   const accountAttempt = consumeAttempt(
-    `account:${source}:${email}`,
+    `${scope}:account:${source}:${email}`,
     MAX_ATTEMPTS_PER_ACCOUNT_AND_SOURCE,
     now,
   );

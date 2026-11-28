@@ -1,7 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-const { isObjectIdOrHexString } = require("mongoose");
-const Admin = require("../../models/admin.model");
 const authenticateAdmin = require("../../middleware/authenticate-admin");
 const { requireAdminRole } = authenticateAdmin;
 const { SkelloImportError } = require("../../services/employees/skello-workbook.service");
@@ -42,17 +40,6 @@ function protectFixture(_req, res, next) {
   }
 }
 
-async function requireCurrentAdmin(req, res, next) {
-  try {
-    if (!isObjectIdOrHexString(req.user.id) || !await Admin.exists({ _id: req.user.id, role: "admin" })) {
-      return res.status(403).json({ message: "Un compte d’administrateur actif est requis." });
-    }
-    return next();
-  } catch (error) {
-    return sendError(error, res);
-  }
-}
-
 function uploadWorkbook(req, res, next) {
   upload(req, res, (error) => {
     if (!error) return next();
@@ -82,10 +69,9 @@ function handler(action) {
 }
 
 const access = [privateResponse, authenticateAdmin, requireAdminRole];
-const workforceAccess = [...access, requireCurrentAdmin];
-router.get(path, ...workforceAccess, handler(({ restaurantId }) => listSkelloEmployees(restaurantId)));
-router.post(`${path}/preview`, ...workforceAccess, uploadWorkbook, handler(previewSkelloEmployees));
-router.post(path, ...workforceAccess, uploadWorkbook, handler(applySkelloEmployees));
+router.get(path, ...access, handler(({ restaurantId }) => listSkelloEmployees(restaurantId)));
+router.post(`${path}/preview`, ...access, uploadWorkbook, handler(previewSkelloEmployees));
+router.post(path, ...access, uploadWorkbook, handler(applySkelloEmployees));
 
 // The legacy tool generates fictitious payroll fixtures and retains its database safeguards.
 const fixturePath = `${path}/recette`;

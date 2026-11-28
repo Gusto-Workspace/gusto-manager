@@ -16,8 +16,9 @@ const ownerSchema = new mongoose.Schema({
   stripeCustomerId: { type: String },
   restaurants: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
   created_at: { type: Date, default: Date.now },
-  resetCode: String,
-  resetCodeExpires: Date,
+  resetCode: { type: String, select: false },
+  resetCodeExpires: { type: Date, select: false },
+  passwordResetHash: { type: String, select: false },
   sessionVersion: { type: Number, default: 0, select: false },
 });
 

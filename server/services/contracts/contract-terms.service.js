@@ -8,6 +8,7 @@ const DEFAULT_EARLY_TERMINATION = Object.freeze({
 // explicit contractual template version. Never infer a newer version from an
 // absent field: sent and signed legacy contracts must keep their original PDF.
 const CURRENT_CONTRACT_TERMS_VERSION = 2;
+const COMMERCIAL_CONTRACT_TERMS_VERSION = 3;
 const WEBSITE_OWNERSHIP_TERMS_VERSION = 2;
 
 const MAX_CONTRACT_TERM_MONTHS = 120;
@@ -16,6 +17,25 @@ function hasWebsiteOwnershipTerms(documentData = {}) {
   return (
     Number(documentData.contractTermsVersion) >= WEBSITE_OWNERSHIP_TERMS_VERSION
   );
+}
+
+function commercialDeliveryCopy(conditions) {
+  const days = conditions.dayType === "WORKING" ? "ouvrés" : "calendaires";
+  const delivery = conditions.copyVersion >= 2 ? "créé et mis en ligne" : "réalisé";
+  return `Le site sera ${delivery} sous 7 jours ${days} après validation de la maquette et réception des éléments nécessaires.`;
+}
+
+function commercialConditionsCopy(conditions, { includeBankFees = true } = {}) {
+  const { includedModule, extraModules = [] } = conditions.selections || {};
+  const bankFeesApply = conditions.copyVersion < 3 || !conditions.copyVersion || conditions.giftMonths ||
+    [includedModule, ...extraModules].some((code) => ["reservations", "gift_cards", "take_away"].includes(code));
+  return [
+    conditions.taxLabel,
+    bankFeesApply && (includeBankFees || !conditions.copyVersion) &&
+      `Frais de l’intermédiaire bancaire : 1,5 % + 0,25 € par transaction concernée${conditions.copyVersion >= 2 ? ", perçus par l’intermédiaire" : ""}. Périmètre : ${conditions.bankFeeScope}.`,
+    conditions.selections?.sms && conditions.smsLabel,
+    conditions.giftMonths && `Cartes cadeaux offert pendant ${conditions.giftMonths} mois. ${conditions.postPromotionTerms}`,
+  ].filter(Boolean);
 }
 
 function frenchInteger(value) {
@@ -233,11 +253,14 @@ function validateEarlyTermination(value, engagementMonths) {
 }
 
 module.exports = {
+  COMMERCIAL_CONTRACT_TERMS_VERSION,
   CURRENT_CONTRACT_TERMS_VERSION,
   DEFAULT_EARLY_TERMINATION,
   MAX_CONTRACT_TERM_MONTHS,
   WEBSITE_OWNERSHIP_TERMS_VERSION,
   buildContractDurationCopy,
+  commercialDeliveryCopy,
+  commercialConditionsCopy,
   earlyTerminationFromContractState,
   formatMonthsWithNumber,
   frenchInteger,

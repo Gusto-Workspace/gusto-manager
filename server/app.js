@@ -30,14 +30,6 @@ app.set("trust proxy", 1);
 const smsmodeWebhookRoutes = require("./routes/smsmode-webhook.routes");
 app.use("/api", smsmodeWebhookRoutes);
 
-// JSON
-app.post(
-  "/api/restaurants/:restaurantId/employees/:employeeId/shifts/batch",
-  express.json({ limit: "3mb" }),
-);
-app.use(express.json());
-app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }));
-
 // MONGOOSE
 mongoose
   .connect(process.env.CONNECTION_STRING_TEST, { connectTimeoutMS: 5000 })
@@ -84,6 +76,19 @@ app.use(
 );
 app.options("*", cors());
 
+// JSON
+app.post(
+  "/api/restaurants/:restaurantId/employees/:employeeId/shifts/batch",
+  express.json({ limit: "3mb" }),
+);
+app.use("/api/public/contract-signatures", express.json({ limit: "750kb" }), (error, _req, res, _next) => {
+  const tooLarge = error.type === "entity.too.large";
+  res.set("Cache-Control", "no-store").status(tooLarge ? 413 : 400).json({
+    message: tooLarge ? "La signature est trop volumineuse. Effacez le tracé et recommencez." : "Les données de signature sont invalides.",
+  });
+});
+app.use(express.json());
+
 // SSE BUS
 mountSseRoute(app);
 
@@ -96,6 +101,11 @@ const {
 
 app.use(apiRoutes, authRoutes);
 app.use(apiRoutes, restrictAccountantAccess);
+app.use(apiRoutes, require("./routes/commercial-accounts.routes"));
+app.use(apiRoutes, require("./routes/commercial-prospects.routes"));
+app.use(apiRoutes, require("./routes/commercial-documents.routes"));
+app.use(apiRoutes, require("./routes/commercial-pilotage.routes"));
+app.use(apiRoutes, require("./routes/commercial-resources.routes"));
 
 // ADMIN
 const dashboardAdminRoutes = require("./routes/admin/dashboard.routes");

@@ -422,7 +422,7 @@ export default function ListSubscriptionsAdminComponent(props) {
         actionErrorMessage={listActionError}
         resumeLoading={!!selectedSub?.id && resumeLoadingId === selectedSub.id}
         onEdit={handleEditClick}
-        onChangePayer={handleChangePayerClick}
+        onChangePayer={props.canChangePayer ? handleChangePayerClick : undefined}
         onStop={openCancelModal}
         onResumeScheduledStop={resumeScheduledCancellation}
         onLoadInvoices={loadSubscriptionInvoices}

@@ -45,6 +45,7 @@ export default function SubscriptionsPage(props) {
             ownersSubscriptionsList={adminContext.ownersSubscriptionsList}
             pagination={adminContext.ownersSubscriptionsPagination}
             refreshSubscriptions={adminContext.fetchOwnersSubscriptionsList}
+            canChangePayer={adminContext.canManageClients}
           />
         </div>
       </div>

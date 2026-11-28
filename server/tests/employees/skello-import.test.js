@@ -4,6 +4,7 @@ const { once } = require("node:events");
 const { DateTime } = require("luxon");
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const { signAdminToken } = require("../../middleware/authenticate-admin");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const Brevo = require("sib-api-v3-sdk");
@@ -219,7 +220,8 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   await once(listener, "listening");
   t.after(() => listener.close());
   function request(path, options = {}, role = "admin") {
-    const token = jwt.sign({ role: role === "otherOwner" ? "owner" : role,
+    const token = role === "admin" ? signAdminToken({ _id: admin, role }) :
+      jwt.sign({ role: role === "otherOwner" ? "owner" : role,
       id: String(role === "otherOwner" ? otherOwner : role === "owner" ? owner : admin),
       restaurantId: String(role === "otherOwner" ? other : restaurant) }, process.env.JWT_SECRET);
     return fetch(`http://127.0.0.1:${listener.address().port}${path}`, {
@@ -280,7 +282,10 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
   assert.equal(await Session.countDocuments(), 0);
   assert.equal(await TimeClockPin.countDocuments(), 0);
   assert.equal(await Notification.countDocuments(), 0);
-  assert.equal((await request("/auth/send-reset-code", json({ email: employee.email }), null)).status, 404);
+  const resetWithoutAccount = await request("/auth/send-reset-code", json({ email: employee.email }), null);
+  assert.equal(resetWithoutAccount.status, 200);
+  assert.match((await resetWithoutAccount.json()).message, /Si le compte est éligible/);
+  assert.equal(emails.length, 0);
   assert.equal((await Restaurant.findById(other).lean()).employees.length, 0);
 
   const root = `/restaurants/${restaurant}`;
@@ -581,7 +586,9 @@ test("admin preview, atomic import, report, retry and guarded removal on an isol
     assert.match((await missingPhone.json()).message, /téléphone/);
     assert.equal((await request(member, json({ firstname: "Identité vérifiée", phone: "0600000000", email }, "PATCH"), "otherOwner")).status, 200);
     assert.equal((await request(member, json({ options: { dashboard: true, reservations: true } }, "PATCH"), "otherOwner")).status, 200);
-    assert.equal((await request("/auth/send-reset-code", json({ email }), null)).status, 404);
+    const emailsBeforeReset = emails.length;
+    assert.equal((await request("/auth/send-reset-code", json({ email }), null)).status, 200);
+    assert.equal(emails.length, emailsBeforeReset);
     const activationPath = `${member}/account-activation`;
     const confirmedInvitation = json({ confirmed: true, email });
     assert.equal((await request(activationPath, confirmedInvitation, "owner")).status, 403);

@@ -1,11 +1,8 @@
 import { useRouter } from "next/router";
-import { useContext, useState } from "react";
+import { useState } from "react";
 
 // REACT HOOK FORM
 import { useForm } from "react-hook-form";
-
-// CONTEXT
-import { GlobalContext } from "@/contexts/global.context";
 
 // AXIOS
 import axios from "axios";
@@ -20,8 +17,6 @@ export default function FormAdminComponent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const { adminContext } = useContext(GlobalContext);
-
   function onSubmit(data) {
     setLoading(true);
     setErrorMessage("");
@@ -32,13 +27,6 @@ export default function FormAdminComponent() {
       .then((response) => {
         const { token } = response.data;
         localStorage.setItem("admin-token", token);
-        adminContext.syncAdminFromToken();
-        adminContext.fetchOwnersList();
-        adminContext.fetchSubscriptionsList();
-        adminContext.fetchRestaurantsList();
-        adminContext.fetchOwnersSubscriptionsList();
-          adminContext.fetchDocumentsList();
-        adminContext.setIsAuth(true);
         router.push("/dashboard/admin");
       })
       .catch((error) => {

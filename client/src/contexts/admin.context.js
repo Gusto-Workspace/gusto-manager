@@ -1,338 +1,224 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
-
-// AXIOS
 import axios from "axios";
-
-// JWT
 import { jwtDecode } from "jwt-decode";
-import { getAdminAuthConfig } from "@/components/dashboard/admin/_shared/utils/admin-auth.utils";
+import { getAdminAuthConfig, getAdminToken } from "@/components/dashboard/admin/_shared/utils/admin-auth.utils";
+
+const root = "/dashboard/admin";
+const login = `${root}/login`;
+const api = `${process.env.NEXT_PUBLIC_API_URL}/admin`;
+const endpoints = {
+  owners: ["/owners", "owners"],
+  subscriptions: ["/subscriptions", "products"],
+  restaurants: ["/restaurants", "restaurants"],
+  ownersSubscriptions: ["/all-subscriptions", "subscriptions"],
+  documents: ["/documents", "documents"],
+  dashboard: ["/dashboard"],
+};
+const defaultPagination = { page: 1, limit: 20, total: 0, totalPages: 1, hasPrevPage: false, hasNextPage: false };
+const emptyLists = Object.fromEntries(Object.keys(endpoints).map((key) => [key, { items: key === "dashboard" ? null : [], loading: true }]));
+const invalidSession = (error) => [401, 403].includes(error.response?.status);
+
+function pageLists(page) {
+  if (!page) return ["dashboard"];
+  if (page === "/owners") return ["owners"];
+  if (page === "/restaurants") return ["owners", "restaurants"];
+  if (page === "/subscriptions") return ["ownersSubscriptions"];
+  if (page === "/subscriptions/add") return ["owners", "subscriptions", "restaurants"];
+  if (page.startsWith("/subscriptions/edit")) return ["subscriptions"];
+  if (page.startsWith("/subscriptions/change-payer")) return ["owners"];
+  if (page === "/documents") return ["documents"];
+  if (page === "/documents/add") return ["restaurants"];
+  if (page.endsWith("/sign")) return [];
+  if (page.startsWith("/documents/add/")) return ["restaurants", "subscriptions"];
+  return [];
+}
+
+function sessionRole(token) {
+  try {
+    const decoded = jwtDecode(token);
+    if (["admin", "super-admin"].includes(decoded?.role) &&
+        decoded.aud === "gusto-manager:admin" && decoded.iss === "gusto-manager" &&
+        Number.isSafeInteger(decoded.sessionVersion) && decoded.sessionVersion >= 0) return decoded.role;
+  } catch {}
+  return null;
+}
 
 export default function AdminContext() {
   const router = useRouter();
+  const cache = useRef(null);
+  const [session, setSession] = useState({ role: null, status: "checking" });
+  const [retry, setRetry] = useState(0);
+  const [lists, setLists] = useState(emptyLists);
+  const [pagination, setPagination] = useState(defaultPagination);
+  const [selectionRevision, setSelectionRevision] = useState(0);
+  const isAuth = session.status === "authenticated";
+  const adminRole = session.role;
+  const page = router.pathname.slice(root.length);
+  const protectedPage = (router.pathname === root || router.pathname.startsWith(`${root}/`)) &&
+    page !== "/login" && !page.startsWith("/login/");
 
-  const [ownersList, setOwnersList] = useState([]);
-  const [subscriptionsList, setSubscriptionsList] = useState([]);
-  const [restaurantsList, setRestaurantsList] = useState([]);
-  const [ownersSubscriptionsList, setOwnersSubscriptionsList] = useState([]);
-  const [ownersSubscriptionsPagination, setOwnersSubscriptionsPagination] =
-    useState({
-      page: 1,
-      limit: 20,
-      total: 0,
-      totalPages: 1,
-      hasPrevPage: false,
-      hasNextPage: false,
-    });
-  const [ownersLoading, setOwnersLoading] = useState(true);
-  const [subscriptionsLoading, setSubscriptionsLoading] = useState(true);
-  const [restaurantsLoading, setRestaurantsLoading] = useState(true);
-  const [ownersSubscriptionsLoading, setOwnersSubscriptionsLoading] =
-    useState(true);
-  const [documentsList, setDocumentsList] = useState([]);
-  const [documentsLoading, setDocumentsLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState(null);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [dashboardError, setDashboardError] = useState("");
-
-  const [isAuth, setIsAuth] = useState(false);
-
-  const [adminRole, setAdminRole] = useState(null);
-  const isAdmin = adminRole === "admin";
-
-  function fetchOwnersList() {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-    } else {
-      setOwnersLoading(true);
-      try {
-        const decodedToken = jwtDecode(token);
-
-        if (!decodedToken.id) {
-          throw new Error("Invalid token: ownerId is missing");
-        }
-
-        axios
-          .get(`${process.env.NEXT_PUBLIC_API_URL}/admin/owners`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
-          .then((response) => {
-            setOwnersList(response.data.owners);
-            setOwnersLoading(false);
-            setIsAuth(true);
-          })
-          .catch((error) => {
-            console.error(
-              "Erreur lors de la récupération des restaurants:",
-              error,
-            );
-            setOwnersLoading(false);
-            localStorage.removeItem("admin-token");
-            router.push("/dashboard/admin/login");
-          });
-      } catch (error) {
-        setOwnersLoading(false);
-        localStorage.removeItem("admin-token");
-        router.push("/dashboard/admin/login");
-      }
-    }
-  }
-
-  function fetchSubscriptionsList() {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-      return;
-    }
-
-    setSubscriptionsLoading(true);
-
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/subscriptions`,
-        getAdminAuthConfig(),
-      )
-      .then((response) => {
-        setSubscriptionsList(response.data.products);
-        setSubscriptionsLoading(false);
-      })
-      .catch((error) => {
-        console.error("Erreur lors de la récupération des abonnements:", error);
-        setSubscriptionsLoading(false);
-      });
-  }
-
-  function fetchRestaurantsList() {
-    const token = localStorage.getItem("admin-token");
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-    } else {
-      setRestaurantsLoading(true);
-      axios
-        .get(
-          `${process.env.NEXT_PUBLIC_API_URL}/admin/restaurants`,
-          getAdminAuthConfig(),
-        )
-        .then((response) => {
-          setRestaurantsList(response.data.restaurants);
-          setRestaurantsLoading(false);
-        })
-        .catch((error) => {
-          if (error.response && error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/dashboard/admin/login");
-          } else {
-            console.error(
-              "Erreur lors de la récupération des restaurants:",
-              error,
-            );
-            setRestaurantsLoading(false);
-          }
-        });
-    }
-  }
-
-  function fetchOwnersSubscriptionsList(options = {}) {
-    const token = localStorage.getItem("admin-token");
-    const page = Number(options?.page || ownersSubscriptionsPagination.page || 1);
-    const limit = Number(
-      options?.limit || ownersSubscriptionsPagination.limit || 20,
-    );
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-    } else {
-      setOwnersSubscriptionsLoading(true);
-      axios
-        .get(
-          `${process.env.NEXT_PUBLIC_API_URL}/admin/all-subscriptions`,
-          getAdminAuthConfig({
-            params: { page, limit },
-          }),
-        )
-        .then((response) => {
-          setOwnersSubscriptionsList(response.data.subscriptions);
-          setOwnersSubscriptionsPagination(
-            response.data.pagination || {
-              page,
-              limit,
-              total: response.data.subscriptions?.length || 0,
-              totalPages: 1,
-              hasPrevPage: false,
-              hasNextPage: false,
-            },
-          );
-          setOwnersSubscriptionsLoading(false);
-        })
-        .catch((error) => {
-          if (error.response && error.response.status === 403) {
-            localStorage.removeItem("admin-token");
-            router.push("/dashboard/admin/login");
-          } else {
-            console.error(
-              "Erreur lors de la récupération des abonnements des propriétaires:",
-              error,
-            );
-            setOwnersSubscriptionsLoading(false);
-          }
-        });
-    }
-  }
-
-  async function fetchDocumentsList() {
-    if (typeof window === "undefined") return;
-
-    setDocumentsLoading(true);
-
-    const token = localStorage.getItem("admin-token");
-    if (!token) {
-      setDocumentsLoading(false);
-      router.push("/dashboard/admin/login");
-      return;
-    }
-
-    try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/documents`,
-        getAdminAuthConfig(),
-      );
-
-      setDocumentsList(response.data.documents);
-    } catch (error) {
-      if (error?.response?.status === 403) {
-        localStorage.removeItem("admin-token");
-        router.push("/dashboard/admin/login");
-      } else {
-        console.error("Erreur récupération documents:", error);
-      }
-    } finally {
-      setDocumentsLoading(false);
-    }
-  }
-
-  async function fetchDashboard(options = {}) {
-    const token = localStorage.getItem("admin-token");
-    const force = options?.force === true;
-
-    if (!token) {
-      router.push("/dashboard/admin/login");
-      return null;
-    }
-
-    if (!force && dashboardData) {
-      setDashboardLoading(false);
-      return dashboardData;
-    }
-
-    setDashboardLoading(true);
-    setDashboardError("");
-
-    try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/dashboard`,
-        getAdminAuthConfig(),
-      );
-
-      const nextData = response.data || null;
-      setDashboardData(nextData);
-      return nextData;
-    } catch (error) {
-      if (error?.response?.status === 403) {
-        localStorage.removeItem("admin-token");
-        router.push("/dashboard/admin/login");
-        return null;
-      }
-
-      const message =
-        error?.response?.data?.message ||
-        "Erreur lors du chargement du dashboard admin.";
-      setDashboardError(message);
-      return null;
-    } finally {
-      setDashboardLoading(false);
-    }
-  }
-
-  function syncAdminFromToken() {
-    if (typeof window === "undefined") return null;
-
-    const token = localStorage.getItem("admin-token");
-    if (!token) {
-      setAdminRole(null);
-      return null;
-    }
-
-    try {
-      const decoded = jwtDecode(token);
-      const role = decoded?.role || null;
-      setAdminRole(role);
-      return role;
-    } catch (e) {
-      localStorage.removeItem("admin-token");
-      setAdminRole(null);
-      return null;
-    }
+  function reset() {
+    cache.current?.controller.abort();
+    cache.current = null;
+    setLists(emptyLists);
+    setPagination(defaultPagination);
+    setSession({ role: null, status: "checking" });
   }
 
   function logout() {
     localStorage.removeItem("admin-token");
-    setAdminRole(null);
-    setOwnersList([]);
-    setSubscriptionsList([]);
-    setRestaurantsList([]);
-    setIsAuth(false);
-    router.replace("/dashboard/admin/login");
+    reset();
+    router.replace(login);
   }
 
   useEffect(() => {
-    const { pathname } = router;
-
-    if (pathname.includes("/dashboard/admin")) {
-      syncAdminFromToken();
-      fetchOwnersList();
-      fetchSubscriptionsList();
-      fetchRestaurantsList();
-      fetchOwnersSubscriptionsList();
-      fetchDocumentsList();
+    function storageChanged(event) {
+      if (event.key === "admin-token" || event.key === null) {
+        reset();
+        setRetry((value) => value + 1);
+      }
     }
+    window.addEventListener("storage", storageChanged);
+    return () => {
+      window.removeEventListener("storage", storageChanged);
+      cache.current?.controller.abort();
+      cache.current = null;
+    };
   }, []);
 
+  useEffect(() => {
+    if (!protectedPage) return;
+    const token = getAdminToken();
+    if (cache.current?.token === token && cache.current?.verified) return;
+    reset();
+    const role = sessionRole(token);
+    if (!role) {
+      logout();
+      return;
+    }
+    const controller = new AbortController();
+    const current = { token, controller, loaded: new Set(), pending: new Map() };
+    cache.current = current;
+    axios.get(`${api}/commerciaux/session`, getAdminAuthConfig({ signal: controller.signal }))
+      .then(() => {
+        if (cache.current !== current) return;
+        current.verified = true;
+        setSession({ role, status: "authenticated" });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || cache.current !== current) return;
+        if (invalidSession(error)) logout();
+        else setSession({ role: null, status: "unavailable" });
+      });
+    return () => { if (!current.verified) controller.abort(); };
+  }, [protectedPage, retry]);
+
+  function updateList(key, patch) {
+    setLists((previous) => ({ ...previous, [key]: { ...previous[key], ...patch } }));
+  }
+
+  function setItems(key, items) {
+    setLists((previous) => ({ ...previous, [key]: { ...previous[key],
+      items: typeof items === "function" ? items(previous[key].items) : items,
+    } }));
+  }
+
+  function loadList(key, { force = false, params } = {}) {
+    const current = cache.current;
+    if (!current?.verified || current.token !== getAdminToken()) return;
+    const queryKey = JSON.stringify(params || {});
+    if (current.pending.get(key)?.queryKey === queryKey && !force) return;
+    if (!force && current.loaded.has(key)) return;
+    const request = { queryKey };
+    current.pending.set(key, request);
+    const active = () => cache.current === current && current.token === getAdminToken() && current.pending.get(key) === request;
+    updateList(key, { loading: true, error: "" });
+    const [path, field] = endpoints[key];
+    return axios.get(api + path, getAdminAuthConfig({ params, signal: current.controller.signal }))
+      .then(({ data }) => {
+        if (!active()) return;
+        current.loaded.add(key);
+        const items = field ? data[field] || [] : data;
+        updateList(key, { items, loading: false });
+        if (key === "ownersSubscriptions") setPagination(data.pagination || { ...defaultPagination, ...params, total: items.length });
+        return items;
+      })
+      .catch((error) => {
+        if (!active()) return;
+        if (invalidSession(error)) logout();
+        else updateList(key, { loading: false, error: error.response?.data?.message || "Chargement momentanément indisponible." });
+      })
+      .finally(() => { if (active()) current.pending.delete(key); });
+  }
+
+  function loadCommercialSelection(overview) {
+    const current = cache.current;
+    if (!current?.verified || current.token !== getAdminToken()) return Promise.resolve([]);
+    const selection = current.selection ||= {};
+    const active = () => cache.current === current && current.selection === selection;
+    const read = (page, withPerformance) => axios.get(`${api}/commerciaux`, getAdminAuthConfig({
+      params: { page, view: "selection", ...(withPerformance && { performance: "overview" }) }, signal: current.controller.signal,
+    })).then(({ data }) => data);
+    if (!selection.chains) {
+      selection.chains = (async () => {
+        const first = await read(1, overview);
+        const items = [...first.accounts];
+        for (let page = 2, count = first.accounts.length; count && items.length < first.total; page += 1) {
+          const { accounts } = await read(page, false);
+          count = accounts.length;
+          items.push(...accounts);
+        }
+        if (overview) selection.performance = Promise.resolve(first.accounts);
+        return items;
+      })().catch((error) => {
+        if (active()) current.selection = null;
+        throw error;
+      });
+    }
+    return selection.chains.then(async (items) => {
+      if (!active()) return [];
+      if (!overview) return items;
+      selection.performance ||= read(1, true).then(({ accounts }) => accounts).catch((error) => {
+        selection.performance = null;
+        throw error;
+      });
+      const first = await selection.performance;
+      return active() ? [...first, ...items.slice(first.length)] : [];
+    });
+  }
+
+  function invalidateCommercialSelection() {
+    if (cache.current) cache.current.selection = null;
+    setSelectionRevision((value) => value + 1);
+  }
+
+  useEffect(() => {
+    if (protectedPage && isAuth) {
+      for (const key of pageLists(page)) loadList(key);
+    }
+  }, [protectedPage, isAuth, page]);
+
   return {
-    fetchOwnersList,
-    setOwnersList,
-    ownersList,
-    ownersLoading,
-    fetchSubscriptionsList,
-    subscriptionsList,
-    subscriptionsLoading,
-    fetchRestaurantsList,
-    setRestaurantsList,
-    restaurantsList,
-    restaurantsLoading,
-    fetchOwnersSubscriptionsList,
-    setOwnersSubscriptionsList,
-    ownersSubscriptionsList,
-    ownersSubscriptionsLoading,
-    ownersSubscriptionsPagination,
-    fetchDashboard,
-    dashboardData,
-    dashboardLoading,
-    dashboardError,
-    fetchDocumentsList,
-    documentsList,
-    setDocumentsList,
-    documentsLoading,
-    setIsAuth,
-    adminRole,
-    isAdmin,
-    syncAdminFromToken,
-    isAuth,
+    fetchOwnersList: () => loadList("owners", { force: true }),
+    setOwnersList: (items) => setItems("owners", items),
+    ownersList: lists.owners.items, ownersLoading: lists.owners.loading,
+    subscriptionsList: lists.subscriptions.items, subscriptionsLoading: lists.subscriptions.loading,
+    fetchRestaurantsList: () => loadList("restaurants", { force: true }),
+    setRestaurantsList: (items) => setItems("restaurants", items),
+    restaurantsList: lists.restaurants.items, restaurantsLoading: lists.restaurants.loading,
+    fetchOwnersSubscriptionsList: (options = {}) => loadList("ownersSubscriptions", { force: true,
+      params: { page: options.page || pagination.page, limit: options.limit || pagination.limit } }),
+    setOwnersSubscriptionsList: (items) => setItems("ownersSubscriptions", items),
+    ownersSubscriptionsList: lists.ownersSubscriptions.items, ownersSubscriptionsLoading: lists.ownersSubscriptions.loading,
+    ownersSubscriptionsPagination: pagination,
+    dashboardData: lists.dashboard.items, dashboardLoading: lists.dashboard.loading, dashboardError: lists.dashboard.error,
+    documentsList: lists.documents.items, documentsLoading: lists.documents.loading,
+    setDocumentsList: (items) => setItems("documents", items),
+    loadCommercialSelection, invalidateCommercialSelection, selectionRevision,
+    adminRole, canManageClients: adminRole === "super-admin",
+    isAuth, protectedPage, sessionUnavailable: session.status === "unavailable",
+    retrySession: () => setRetry((value) => value + 1),
     logout,
   };
 }

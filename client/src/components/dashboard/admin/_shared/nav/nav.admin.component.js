@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 import Image from "next/image";
 import { useTranslation } from "next-i18next";
-import { ChevronRight, LogOut } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, LogOut } from "lucide-react";
 
 import {
   AnalyticsSvg,
@@ -37,12 +37,22 @@ const ADMIN_NAV_ITEMS = [
     label: "nav.smsReminders",
     Icon: ReservationSvg,
   },
+  { href: "/dashboard/admin/seller", label: "nav.commercials", Icon: CommercialIcon },
 ];
+
+function CommercialIcon({ width, height, strokeColor }) {
+  return <BriefcaseBusiness width={width} height={height} color={strokeColor} aria-hidden="true" />;
+}
 
 export default function NavAdminComponent() {
   const { t } = useTranslation("admin");
   const router = useRouter();
+  return <DashboardSidebar items={ADMIN_NAV_ITEMS.map((item) => ({ ...item, label: t(item.label) }))} root="/dashboard/admin" logoutLabel={t("buttons.logout")}
+    onLogout={() => { localStorage.removeItem("admin-token"); router.push("/dashboard/admin/login"); }} />;
+}
 
+export function DashboardSidebar({ items, root, logoutLabel, onLogout, label, menuLabel = "Toggle navigation" }) {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [translateX, setTranslateX] = useState(0);
   const [supportsHover, setSupportsHover] = useState(false);
@@ -197,18 +207,17 @@ export default function NavAdminComponent() {
   }
 
   function isActive(itemHref) {
-    if (itemHref === "/dashboard/admin") {
-      return router.pathname === "/dashboard/admin";
+    if (itemHref === root) {
+      return router.pathname === root;
     }
     return router.pathname.startsWith(itemHref);
   }
 
   function handleLogout() {
-    localStorage.removeItem("admin-token");
     setMenuOpen(false);
     setNavExpanded(false);
     setNavHovered(false);
-    router.push("/dashboard/admin/login");
+    onLogout();
   }
 
   return (
@@ -225,22 +234,16 @@ export default function NavAdminComponent() {
 
       {/* Bouton hamburger */}
       <button
-        className="
-          fixed left-2 top-5 z-[150]
-          tablet:hidden desktop:hidden
-          flex items-center justify-center
-          w-[49px] h-[49px]
-          rounded-full border border-darkBlue/10
-          bg-white shadow-[0_18px_45px_rgba(19,30,54,0.16)]
-          transition-transform duration-200 ease-out
-        "
+        type="button"
+        className="fixed left-2 top-5 z-[150] flex size-[49px] items-center justify-center rounded-full border border-darkBlue/10 bg-white shadow-[0_18px_45px_rgba(19,30,54,0.16)] transition-transform duration-200 ease-out tablet:hidden"
         style={{
           transform: menuOpen ? `translateX(${translateX}px)` : "translateX(0)",
         }}
         onClick={() => setMenuOpen((o) => !o)}
-        aria-label="Toggle navigation"
+        aria-label={menuLabel}
+        aria-expanded={menuOpen}
       >
-        <div className="relative w-6 h-4 flex flex-col justify-between">
+        <div className="relative flex h-4 w-6 flex-col justify-between">
           <span
             className={`absolute left-0 top-0 h-[2px] w-full bg-darkBlue transition-all ${
               menuOpen ? "rotate-45 top-1/2 -translate-y-1/2" : ""
@@ -262,6 +265,7 @@ export default function NavAdminComponent() {
       {/* Sidebar */}
       <nav
         ref={navRef}
+        aria-label={label}
         className={`
           ${sidebarCls}
           transform
@@ -324,7 +328,7 @@ export default function NavAdminComponent() {
               width={50}
               height={50}
               draggable={false}
-              alt="logo"
+              alt={label ? "Gusto Manager" : "logo"}
               className={logoImgCls}
               priority
             />
@@ -332,7 +336,7 @@ export default function NavAdminComponent() {
 
           {/* Items */}
           <ul className={navListCls}>
-            {ADMIN_NAV_ITEMS.map(({ href, label, Icon }) => {
+            {items.map(({ href, label, Icon }) => {
               const active = isActive(href);
 
               const itemCls = [
@@ -348,6 +352,7 @@ export default function NavAdminComponent() {
                   <Link
                     href={href}
                     onClick={(e) => handleLinkClick(e, href)}
+                    aria-current={active ? "page" : undefined}
                     className={itemCls}
                   >
                     <div className={iconSlotCls}>
@@ -365,7 +370,7 @@ export default function NavAdminComponent() {
                       </div>
                     </div>
 
-                    <span className={navLabelCls}>{t(label)}</span>
+                    <span className={navLabelCls}>{label}</span>
                   </Link>
                 </li>
               );
@@ -373,13 +378,13 @@ export default function NavAdminComponent() {
           </ul>
 
           {/* Logout */}
-          <button className={logoutBtnCls} onClick={handleLogout}>
+          <button type="button" className={logoutBtnCls} onClick={handleLogout}>
             <div className={iconSlotCls}>
               <span className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/10 p-2 text-white">
                 <LogOut className="size-5" />
               </span>
             </div>
-            <span className={navLabelCls}>{t("buttons.logout")}</span>
+            <span className={navLabelCls}>{logoutLabel}</span>
           </button>
         </div>
       </nav>

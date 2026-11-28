@@ -15,6 +15,8 @@ const Input = require("../../models/personnel-report-input.model");
 const Import = require("../../models/hr-configuration-import.model");
 const Restaurant = require("../../models/restaurant.model");
 const Owner = require("../../models/owner.model");
+const Admin = require("../../models/admin.model");
+const { signAdminToken } = require("../../middleware/authenticate-admin");
 const Employee = require("../../models/employee.model");
 const Session = require("../../models/time-clock-session.model");
 const { parseXlsxSheets } = require("../../services/dish-card-import.service");
@@ -68,7 +70,7 @@ test("RH configuration previews, applies, reports and restores only in the selec
     try { await mongoose.connection.dropDatabase(); } finally { await mongoose.disconnect(); }
   });
   await Promise.all([Import.init(), Input.init(), Session.init()]);
-  const [source, target, owner, employee, admin] = Array.from({ length: 5 }, () => new ObjectId());
+  const [source, target, owner, employee, admin, otherAdmin] = Array.from({ length: 6 }, () => new ObjectId());
   const today = DateTime.now().setZone("Europe/Paris").startOf("day");
   const old = today.minus({ months: 1 }).startOf("week");
   const tomorrow = today.plus({ days: 1 }).toISODate();
@@ -88,6 +90,7 @@ test("RH configuration previews, applies, reports and restores only in the selec
   const oldClock = row(target, "clockRules", old.toISODate(), { ...clock, pause: "clocked" });
   const futureMeal = row(target, "rules", date.slice(0, 7), { ...meals, quantity: 1 });
   await Promise.all([
+    Admin.collection.insertMany([{ _id: admin, role: "admin" }, { _id: otherAdmin, role: "admin" }]),
     Owner.collection.insertOne({ _id: owner, firstname: "Responsable fictif" }),
     Restaurant.collection.insertMany([
       { _id: source, name: "Source fictive", options: { employees: true }, employees: [] },
@@ -107,7 +110,9 @@ test("RH configuration previews, applies, reports and restores only in the selec
 
   const endpoint = (restaurant) => `/admin/restaurants/${restaurant}/hr-configuration`;
   const request = (path, body, { method = body ? "POST" : "GET", role = "admin", user, restaurant = target } = {}) => {
-    const authorization = role && jwt.sign({ id: String(user || (role === "owner" ? owner : admin)), role, restaurantId: String(restaurant) }, process.env.JWT_SECRET);
+    const id = String(user || (role === "owner" ? owner : admin));
+    const authorization = role === "admin" ? signAdminToken({ _id: id, role }) :
+      role && jwt.sign({ id, role, restaurantId: String(restaurant) }, process.env.JWT_SECRET);
     return fetch(`http://127.0.0.1:${listener.address().port}${path}`, {
       method, ...(body && { body: JSON.stringify(body) }), headers: {
         "Content-Type": "application/json", ...(role && { Authorization: `Bearer ${authorization}` }),
@@ -143,8 +148,9 @@ test("RH configuration previews, applies, reports and restores only in the selec
   const payload = { configuration, effects };
   const inspect = async (body = payload) => {
     const response = await request(`${base}/preview`, body);
-    assert.equal(response.status, 200);
-    return response.json();
+    const data = await response.json();
+    assert.equal(response.status, 200, data.message);
+    return data;
   };
   const targetInputs = () => Input.find({ restaurant: target }).sort({ _id: 1 }).lean();
   const inputsBeforePreview = await targetInputs();
@@ -165,7 +171,7 @@ test("RH configuration previews, applies, reports and restores only in the selec
   assert.equal(await Import.countDocuments({ restaurant: target }), 0);
   assert.equal((await apply(preview.token, {}, endpoint(source))).status, 409);
   assert.equal((await apply(preview.token, { effects: { ...effects, clockRules: opening.plus({ days: 7 }).toISODate() } })).status, 409);
-  assert.equal((await request(`${base}/apply`, { ...payload, confirmed: true, token: preview.token }, { user: new ObjectId() })).status, 409);
+  assert.equal((await request(`${base}/apply`, { ...payload, confirmed: true, token: preview.token }, { user: otherAdmin })).status, 409);
   const pendingMeal = structuredClone(lesArtistes);
   pendingMeal.rules.rules.status = "to_confirm";
   assert.equal((await request(`${base}/review`, { configuration: pendingMeal, review: {
@@ -316,6 +322,7 @@ test("RH configuration previews, applies, reports and restores only in the selec
   assert.equal(await Session.countDocuments({ restaurant: target }), 1);
 
   const completed = structuredClone(sample);
+  completed.configuration.metadata.collectedOn = configuration.metadata.collectedOn;
   const nextMonth = opening.plus({ months: 1 }).toISODate();
   const nextMonday = opening.plus({ weeks: 1 }).toISODate();
   completed.effects = { ...sample.effects, clockRules: nextMonday, rules: nextMonth,
